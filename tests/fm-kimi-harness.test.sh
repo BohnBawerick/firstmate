@@ -40,6 +40,41 @@ fake_screen() {
     delivered)
       printf '✨ Read the brief at %s and follow it exactly.\ncontext: 1%% (2k/256k)\n╭────────────────────────────────╮\n│ >                              │\n╰────────────────────────────────╯\n' "$FM_FAKE_BRIEF_REAL"
       ;;
+    trust-dialog)
+      printf '%s\n' \
+        '  Trust this folder?' \
+        '  ↑↓ navigate · Enter select · Esc exit' \
+        '' \
+        '  /tmp/fake-wt' \
+        '' \
+        '  Project-level MCP servers are disabled until you explicitly choose Trust.' \
+        '  Trust starts the listed project MCP targets and remembers this folder.' \
+        '' \
+        '     Trust this folder' \
+        '     Enable project MCP servers. Remembered for this folder.' \
+        '' \
+        "   ❯ Don't trust" \
+        '     Exit Kimi Code. Asked again next launch.'
+      ;;
+    trust-selected)
+      printf '%s\n' \
+        '  Trust this folder?' \
+        '  ↑↓ navigate · Enter select · Esc exit' \
+        '' \
+        '  /tmp/fake-wt' \
+        '' \
+        '  Project-level MCP servers are disabled until you explicitly choose Trust.' \
+        '  Trust starts the listed project MCP targets and remembers this folder.' \
+        '' \
+        '   ❯ Trust this folder' \
+        '     Enable project MCP servers. Remembered for this folder.' \
+        '' \
+        "     Don't trust" \
+        '     Exit Kimi Code. Asked again next launch.'
+      ;;
+    rejected)
+      printf 'Exit Kimi Code. Asked again next launch.\n$ \n'
+      ;;
     *)
       printf 'shell starting\n$ \n'
       ;;
@@ -81,9 +116,26 @@ case "${1:-}" in
       exit 0
     fi
     case " $* " in
+      *' Up '*)
+        printf 'Up\n' >> "$FM_FAKE_KEY_LOG"
+        case "$state" in
+          trust-dialog) printf 'trust-selected\n' > "$FM_FAKE_KIMI_STATE" ;;
+        esac
+        ;;
       *' Enter '*)
+        printf 'Enter\n' >> "$FM_FAKE_KEY_LOG"
         case "$state" in
           launched)
+            if [ "${FM_FAKE_KIMI_TRUST:-no}" = yes ]; then
+              printf 'trust-dialog\n' > "$FM_FAKE_KIMI_STATE"
+            elif [ "${FM_FAKE_KIMI_READY:-yes}" = yes ]; then
+              printf 'ready\n' > "$FM_FAKE_KIMI_STATE"
+            fi
+            ;;
+          trust-dialog)
+            printf 'rejected\n' > "$FM_FAKE_KIMI_STATE"
+            ;;
+          trust-selected)
             if [ "${FM_FAKE_KIMI_READY:-yes}" = yes ]; then
               printf 'ready\n' > "$FM_FAKE_KIMI_STATE"
             fi
@@ -148,6 +200,7 @@ make_spawn_case() {
   : > "$case_dir/pointer.log"
   : > "$case_dir/kimi.state"
   : > "$case_dir/tmux-calls.log"
+  : > "$case_dir/key.log"
   printf '%s\n' "$case_dir|$home|$proj|$wt|$fakebin"
 }
 
@@ -163,9 +216,13 @@ run_spawn() {
     FM_FAKE_KIMI_STATE="$case_dir/kimi.state" \
     FM_FAKE_KIMI_SWALLOWED="$case_dir/kimi.swallowed" \
     FM_FAKE_KIMI_SWALLOW_FIRST="${FM_FAKE_KIMI_SWALLOW_FIRST:-no}" \
+    FM_FAKE_KIMI_TRUST="${FM_FAKE_KIMI_TRUST:-no}" \
     FM_FAKE_TMUX_CALL_LOG="$case_dir/tmux-calls.log" \
+    FM_FAKE_KEY_LOG="$case_dir/key.log" \
     FM_FAKE_BRIEF_REAL="$(cd "$home/data/$id" && pwd -P)/brief.md" \
-    FM_KIMI_READY_POLLS=2 FM_KIMI_DELIVERY_POLLS=2 FM_KIMI_POLL_INTERVAL=0 \
+    FM_KIMI_READY_POLLS="${FM_KIMI_READY_POLLS:-2}" \
+    FM_KIMI_DELIVERY_POLLS="${FM_KIMI_DELIVERY_POLLS:-2}" \
+    FM_KIMI_POLL_INTERVAL="${FM_KIMI_POLL_INTERVAL:-0}" \
     PATH="$fakebin:$BASE_PATH" \
     "$SPAWN" "$id" "$proj" --harness kimi --mode no-mistakes --yolo off "$@" 2>&1
 }
@@ -503,6 +560,47 @@ test_kimi_readiness_gate_precedes_pointer() {
   pass "fm-spawn: kimi never sends the brief pointer before an observable ready signal"
 }
 
+test_kimi_accepts_folder_trust_dialog_then_delivers() {
+  local id rec out rc keys
+  id=kimi-trust-z4-$$
+  rec=$(make_spawn_case trust-accept "$id")
+  read_spawn_record "$rec"
+  out=$(FM_FAKE_KIMI_TRUST=yes FM_KIMI_READY_POLLS=6 run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  rc=$?
+  expect_code 0 "$rc" "kimi spawn should accept the folder-trust dialog and continue"
+  assert_contains "$out" "spawned $id harness=kimi" \
+    "kimi spawn that saw a trust dialog did not report success"
+  keys=$(cat "$CASE_DIR/key.log")
+  printf '%s\n' "$keys" | grep -qx Up \
+    || fail "trust dialog was not advanced with Up: $keys"
+  printf '%s\n' "$keys" | awk '
+    $0 == "Up" { seen_up = 1 }
+    $0 == "Enter" && seen_up { accepted = 1 }
+    END { exit accepted ? 0 : 1 }
+  ' || fail "Enter was not sent after Up selected Trust this folder: $keys"
+  [ -s "$CASE_DIR/pointer.log" ] || fail "brief pointer was not sent after the dialog was accepted"
+  pass "fm-spawn: kimi accepts Trust this folder via Up then Enter, then delivers the brief"
+}
+
+test_kimi_unrecognized_screen_is_not_treated_as_trust_dialog() {
+  local id rec out rc keys
+  id=kimi-not-trust-z5
+  rec=$(make_spawn_case not-trust "$id")
+  read_spawn_record "$rec"
+  rc=0
+  out=$(FM_FAKE_KIMI_READY=no run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "an unrecognized non-ready screen should still fail"
+  assert_contains "$out" "kimi did not show a verified ready signal" \
+    "unrecognized-screen failure lacked the existing loud diagnostic"
+  [ ! -s "$CASE_DIR/pointer.log" ] || fail "kimi pointer was sent without a ready signal"
+  keys=$(cat "$CASE_DIR/key.log")
+  printf '%s\n' "$keys" | grep -qx Up \
+    && fail "an unrecognized screen was advanced with Up as if it were a trust dialog: $keys"
+  pass "fm-spawn: an unrecognized screen still fails loudly and is not accepted as trust"
+}
+
 test_kimi_detection_uses_ancestry_after_markers() {
   local dir fakebin cfg out
   dir="$TMP_ROOT/detection"
@@ -669,6 +767,8 @@ test_kimi_falls_back_to_expanded_home_binary
 test_kimi_missing_binary_refuses_before_pane_creation
 test_kimi_unconfirmed_delivery_fails_loudly
 test_kimi_readiness_gate_precedes_pointer
+test_kimi_accepts_folder_trust_dialog_then_delivers
+test_kimi_unrecognized_screen_is_not_treated_as_trust_dialog
 test_kimi_detection_uses_ancestry_after_markers
 test_kimi_session_lock_identity
 test_kimi_busy_signature_is_scoped_to_spinner_lines

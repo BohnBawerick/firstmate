@@ -2166,6 +2166,32 @@ kimi_composer_is_empty() {
   [ "$(fm_backend_composer_state "$BACKEND" "$T" "$W" 2>/dev/null)" = empty ]
 }
 
+# Kimi Code 0.36.0 (absent on the verified 0.29.1) shows a workspace-trust
+# dialog on a path it has not stored. The title, the MCP-server consequence,
+# and the Don't-trust exit choice together are the dialog; any one of those
+# strings can appear in a later conversation. The default selection is
+# Don't trust, so a lone Enter exits Kimi rather than accepting. Advance one
+# key per poll so Up can land before Enter. Do not write
+# ~/.kimi-code/workspace-trust/ - that store is vendor-managed.
+kimi_trust_dialog_is_showing() {  # <plain-pane-capture>
+  printf '%s\n' "$1" | grep -Fq 'Trust this folder?' || return 1
+  printf '%s\n' "$1" | grep -Fq 'Enable project MCP servers' || return 1
+  printf '%s\n' "$1" | grep -Fq "Don't trust" || return 1
+  return 0
+}
+
+kimi_accept_trust_dialog() {  # <plain-pane-capture>
+  if printf '%s\n' "$1" | grep -Fq '❯ Trust this folder'; then
+    spawn_send_key "$T" Enter
+    return 0
+  fi
+  if printf '%s\n' "$1" | grep -Fq "❯ Don't trust"; then
+    spawn_send_key "$T" Up
+    return 0
+  fi
+  return 1
+}
+
 kimi_wait_for_ready() {
   local pane i=0 max=${FM_KIMI_READY_POLLS:-60} interval=${FM_KIMI_POLL_INTERVAL:-0.5}
   while [ "$i" -lt "$max" ]; do
@@ -2173,6 +2199,9 @@ kimi_wait_for_ready() {
     if printf '%s\n' "$pane" | grep -Fq 'Welcome to Kimi Code!' \
        || kimi_composer_is_empty; then
       return 0
+    fi
+    if kimi_trust_dialog_is_showing "$pane"; then
+      kimi_accept_trust_dialog "$pane" || true
     fi
     i=$((i + 1))
     [ "$i" -ge "$max" ] || sleep "$interval"
