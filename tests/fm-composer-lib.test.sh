@@ -322,6 +322,21 @@ test_matrix_pi_separated_needs_identity() {
   pass "matrix: pi's separated composer needs identity + structure; the blank row alone never proves it"
 }
 
+test_matrix_agy_separated_shell_prompt() {
+  # agy 1.1.12 draws two solid `─` rules around a shell `>` prompt. That glyph
+  # is the container proof, so the pair classifies without pi identity. A bare
+  # `>` with no rules stays a dead shell.
+  local idle pending
+  idle=$'transcript\n────────────────────────────────\n>\n────────────────────────────────\n? for shortcuts'
+  pending=$'transcript\n────────────────────────────────\n> hello pending\n────────────────────────────────\n? for shortcuts'
+  assert_screen "agy idle separated shell prompt" empty "$CAPS_TMUX" "$idle" 2
+  assert_screen "agy pending separated shell prompt" pending "$CAPS_TMUX" "$pending" 2
+  assert_screen "agy idle cursorless" empty "$CAPS_STYLED_NOID" "$idle"
+  assert_screen "agy pending cursorless" pending "$CAPS_PLAIN" "$pending"
+  assert_screen "bare shell prompt is still a dead shell" unknown "$CAPS_TMUX" $'> ' 0
+  pass "matrix: agy's separated greater-than composer classifies without identity; a bare greater-than does not"
+}
+
 test_matrix_opencode_leftbar_signals() {
   # Real idle opencode: `┃`-prefixed rows holding the "Ask anything..." hint,
   # blanks, and a Build-mode footer. Two independent idle signals: the shared
@@ -613,6 +628,7 @@ test_matrix_muse_truecolor_glyph_survives_signal_loss
 test_matrix_cursor_reverse_video_placeholder_remnant
 test_matrix_herdr_halfblock_rule_bounds_bare_wrap
 test_matrix_pi_separated_needs_identity
+test_matrix_agy_separated_shell_prompt
 test_matrix_opencode_leftbar_signals
 test_matrix_grok_titled_bottom_border
 test_matrix_kimi_bordered_shell_glyph_box

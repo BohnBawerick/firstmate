@@ -67,6 +67,11 @@
 #                get`; the tmux foreground-process probe), because a blank
 #                region between two transcript rules is otherwise exactly the
 #                strict rule's unidentifiable blank row.
+#                agy draws the same two rules but with a shell `>` prompt on
+#                the content row (verified 2026-08-14, agy 1.1.12). That glyph
+#                is the container proof, so the pair classifies without
+#                identity: empty `>` is empty, `> hello` is pending. A bare
+#                `>` with no rules stays a dead shell.
 #
 # THE SAFETY RULE for glyphs: a bare shell prompt glyph (`>` `$` `%` `#`) -
 # what a pane shows once its agent has exited to a plain login shell - is a
@@ -1243,6 +1248,12 @@ EOF
     if [ "$FM_COMPOSER_SCAN_PI_PAIR_FOUND" = 1 ] \
        && [ "$cy" -gt "$FM_COMPOSER_SCAN_PI_OPEN" ] \
        && [ "$cy" -lt "$FM_COMPOSER_SCAN_PI_CLOSE" ]; then
+      if _fm_composer_separated_has_shell_prompt "$plain" \
+           "$((FM_COMPOSER_SCAN_PI_OPEN + 1))" "$((FM_COMPOSER_SCAN_PI_CLOSE - 1))"; then
+        _fm_composer_classify_rows "$screen" "$styled" 0 \
+          "$((FM_COMPOSER_SCAN_PI_OPEN + 1))" "$((FM_COMPOSER_SCAN_PI_CLOSE - 1))"
+        return 0
+      fi
       _fm_composer_pi_verdict "$screen" "$styled" "$has_identity" "$identity"
       return 0
     fi
@@ -1264,7 +1275,13 @@ EOF
   fi
   case "$FM_COMPOSER_SELECTED_KIND" in
     pi)
-      _fm_composer_pi_verdict "$screen" "$styled" "$has_identity" "$identity"
+      if _fm_composer_separated_has_shell_prompt "$plain" \
+           "$FM_COMPOSER_SELECTED_FIRST" "$FM_COMPOSER_SELECTED_LAST"; then
+        _fm_composer_classify_rows "$screen" "$styled" 0 \
+          "$FM_COMPOSER_SELECTED_FIRST" "$FM_COMPOSER_SELECTED_LAST"
+      else
+        _fm_composer_pi_verdict "$screen" "$styled" "$has_identity" "$identity"
+      fi
       ;;
     box)
       _fm_composer_classify_rows "$screen" "$styled" "$FM_COMPOSER_SELECTED_AMBIG" \
@@ -1361,6 +1378,24 @@ _fm_composer_classify_bare_pi_overlap() {  # <screen> <styled> <has-identity> <i
 # unknown; an unfetched identity on an identity-capable backend asks the
 # adapter to probe (lazily) and re-call. Proven input remains pending for every
 # live pi state, while only an idle/done/blocked pi proves an empty composer.
+# A separated pair whose content row starts with a shell prompt glyph is
+# agy's composer, not a blank pi pair. The two rules plus the glyph are
+# the container proof; identity is not required.
+_fm_composer_separated_has_shell_prompt() {  # <plain> <first-content> <last-content>
+  local plain=$1 first=$2 last=$3 row line trimmed glyph
+  row=$first
+  while [ "$row" -le "$last" ]; do
+    line=$(_fm_composer_screen_row "$row" "$plain")
+    trimmed=$line
+    fm_composer_normalize_trim_var trimmed
+    if fm_composer_leading_shell_glyph_var glyph "$trimmed"; then
+      return 0
+    fi
+    row=$((row + 1))
+  done
+  return 1
+}
+
 _fm_composer_pi_verdict() {  # <screen> <styled> <has_identity> <identity>
   local screen=$1 styled=$2 has_identity=$3 identity=$4 agent agent_status state
   if [ "$has_identity" != 1 ]; then
