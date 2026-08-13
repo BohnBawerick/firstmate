@@ -263,6 +263,49 @@ PY
   pass "agy hook install is surgical and removal keeps foreign hooks"
 }
 
+test_hook_install_never_names_a_missing_command() {
+  local home config registry status
+  home="$TMP_ROOT/hook-order"
+  config="$home/.gemini/config/hooks.json"
+  registry="$home/.gemini/config/fm-agy-turn-end.d"
+  mkdir -p "$home/.gemini/config"
+  # The registry path is occupied, so the hook script cannot be written.
+  printf 'occupied\n' > "$registry"
+
+  HOME="$home" "$AGY_HOOK" install >/dev/null 2>&1
+  status=$?
+  expect_code 1 "$status" "install should refuse when the registry path is not a directory"
+  assert_absent "$config" \
+    "a failed install left hooks.json naming a Stop command that was never written"
+  pass "agy hook install writes no config when the hook script cannot be written"
+}
+
+test_hook_install_refuses_a_foreign_hook_path() {
+  local home config hook registry status before
+  home="$TMP_ROOT/hook-foreign"
+  config="$home/.gemini/config/hooks.json"
+  hook="$home/.gemini/config/fm-agy-turn-end.sh"
+  registry="$home/.gemini/config/fm-agy-turn-end.d"
+  mkdir -p "$home/.gemini/config"
+  printf '%s\n' '{"captain-hook":{"Stop":[{"type":"command","command":"true"}]}}' > "$config"
+  before=$(cat "$config")
+  printf '#!/usr/bin/env bash\necho captain script\n' > "$hook"
+
+  HOME="$home" "$AGY_HOOK" install >/dev/null 2>&1
+  status=$?
+  expect_code 1 "$status" "install should refuse to overwrite a foreign hook script"
+  [ "$(cat "$config")" = "$before" ] || fail "a refused install still edited hooks.json"
+  assert_grep 'echo captain script' "$hook" "a refused install overwrote the foreign hook script"
+
+  rm -f "$hook"
+  ln -s "$TMP_ROOT/elsewhere" "$registry"
+  HOME="$home" "$AGY_HOOK" install >/dev/null 2>&1
+  status=$?
+  expect_code 1 "$status" "install should refuse a symlinked token registry"
+  assert_absent "$TMP_ROOT/elsewhere" "a refused install created the symlink target directory"
+  pass "agy hook install refuses a foreign hook script or symlinked registry"
+}
+
 test_hook_script_touches_only_a_matching_pointer() {
   local home hook wt token target payload
   home="$TMP_ROOT/hook-fire"
@@ -385,6 +428,8 @@ test_spawn_refuses_claude_model
 test_spawn_refuses_secondmate
 test_spawn_clears_inherited_foreign_harness_markers
 test_hook_install_is_surgical_and_gated
+test_hook_install_never_names_a_missing_command
+test_hook_install_refuses_a_foreign_hook_path
 test_hook_script_touches_only_a_matching_pointer
 test_hook_script_reads_a_pretty_printed_payload
 test_spawn_writes_turnend_pointer
