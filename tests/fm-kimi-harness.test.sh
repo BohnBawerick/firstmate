@@ -143,28 +143,38 @@ case "${1:-}" in
       esac
       exit 0
     fi
+    # Refuse KEY the way a backend that cannot carry it does. Scoped to the
+    # dialog screens so the launch Enter still lands, and capped by
+    # FM_FAKE_KIMI_KEY_REFUSE_MAX so a single refusal can stand in for a
+    # one-poll transient rather than a missing key.
+    maybe_refuse() {  # <key>
+      local so_far
+      [ "${FM_FAKE_KIMI_KEY_REFUSE:-no}" = "$1" ] || return 1
+      case "$state" in trust-dialog|trust-selected) ;; *) return 1 ;; esac
+      so_far=$(grep -c "^$1-refused " "$FM_FAKE_KEY_LOG" 2>/dev/null || true)
+      [ "${so_far:-0}" -lt "${FM_FAKE_KIMI_KEY_REFUSE_MAX:-99}" ] || return 1
+      printf '%s-refused %s\n' "$1" "$state" >> "$FM_FAKE_KEY_LOG"
+      echo "error: unsupported key '$1'" >&2
+      return 0
+    }
     # Log the screen each key landed on, not just the key name, so a test can
     # assert that nothing was sent while a given screen was showing.
     case " $* " in
       *' Up '*)
-        # Stands in for a backend whose send-key vocabulary has no Up at all
-        # (Orca errors and returns 1 for anything but Enter and C-c).
-        if [ "${FM_FAKE_KIMI_KEY_REFUSE:-no}" = Up ]; then
-          printf 'Up-refused %s\n' "${state:-none}" >> "$FM_FAKE_KEY_LOG"
-          echo "error: unsupported key 'Up'" >&2
-          exit 1
-        fi
+        maybe_refuse Up && exit 1
         printf 'Up %s\n' "${state:-none}" >> "$FM_FAKE_KEY_LOG"
         case "$state" in
           trust-dialog) printf 'trust-selected\n' > "$FM_FAKE_KIMI_STATE" ;;
         esac
         ;;
       *' Enter '*)
+        maybe_refuse Enter && exit 1
         printf 'Enter %s\n' "${state:-none}" >> "$FM_FAKE_KEY_LOG"
         case "$state" in
           launched)
             case "${FM_FAKE_KIMI_TRUST:-no}" in
               yes) printf 'trust-dialog\n' > "$FM_FAKE_KIMI_STATE" ;;
+              selected) printf 'trust-selected\n' > "$FM_FAKE_KIMI_STATE" ;;
               chatter) printf 'trust-chatter\n' > "$FM_FAKE_KIMI_STATE" ;;
               *)
                 if [ "${FM_FAKE_KIMI_READY:-yes}" = yes ]; then
@@ -259,6 +269,7 @@ run_spawn() {
     FM_FAKE_KIMI_SWALLOW_FIRST="${FM_FAKE_KIMI_SWALLOW_FIRST:-no}" \
     FM_FAKE_KIMI_TRUST="${FM_FAKE_KIMI_TRUST:-no}" \
     FM_FAKE_KIMI_KEY_REFUSE="${FM_FAKE_KIMI_KEY_REFUSE:-no}" \
+    FM_FAKE_KIMI_KEY_REFUSE_MAX="${FM_FAKE_KIMI_KEY_REFUSE_MAX:-99}" \
     FM_FAKE_TMUX_CALL_LOG="$case_dir/tmux-calls.log" \
     FM_FAKE_KEY_LOG="$case_dir/key.log" \
     FM_FAKE_BRIEF_REAL="$(cd "$home/data/$id" && pwd -P)/brief.md" \
@@ -667,7 +678,7 @@ test_kimi_trust_wording_without_the_dialog_is_not_accepted() {
 
 # A backend that cannot deliver Up must not report the dialog accepted and then
 # burn the whole readiness window on the generic error - and it must be asked
-# exactly once, so its own refusal does not repeat for every poll.
+# twice, not once per poll, so its own refusal does not fill the spawn output.
 test_kimi_backend_that_cannot_send_up_fails_by_name() {
   local id rec out rc attempts
   id=kimi-trust-nokey-z7
@@ -677,15 +688,60 @@ test_kimi_backend_that_cannot_send_up_fails_by_name() {
   out=$(FM_FAKE_KIMI_TRUST=yes FM_FAKE_KIMI_KEY_REFUSE=Up FM_KIMI_READY_POLLS=6 run_spawn \
     "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
   [ "$rc" -ne 0 ] || fail "a backend that cannot select Trust this folder must not report success"
-  assert_contains "$out" "refused the Up key that selects Trust this folder" \
+  assert_contains "$out" "failed twice in a row to deliver the Up key" \
     "an undeliverable acceptance key was not named as the cause"
   assert_not_contains "$out" "did not show a verified ready signal" \
     "an undeliverable acceptance key was reported as a plain readiness timeout"
   [ ! -s "$CASE_DIR/pointer.log" ] || fail "brief pointer was sent into an unaccepted trust dialog"
   attempts=$(grep -c '^Up-refused ' "$CASE_DIR/key.log" || true)
-  [ "$attempts" = 1 ] \
-    || fail "the refusing backend was asked for Up $attempts times instead of once"
-  pass "fm-spawn: a backend that cannot deliver Up fails once, by name, before delivery"
+  [ "$attempts" = 2 ] \
+    || fail "the refusing backend was asked for Up $attempts times, not the two that prove a real gap"
+  pass "fm-spawn: a backend that cannot deliver Up fails by name after two refusals"
+}
+
+# One failed send is a transient (a herdr socket hiccup, a tmux
+# display-message race), not a missing key: the next poll must retry it and the
+# spawn must still come up, exactly as it did before acceptance could abort.
+test_kimi_transient_key_failure_is_retried_not_blamed_on_the_backend() {
+  local id rec out rc keys
+  id=kimi-trust-flaky-z8
+  rec=$(make_spawn_case trust-flaky "$id")
+  read_spawn_record "$rec"
+  rc=0
+  out=$(FM_FAKE_KIMI_TRUST=yes FM_FAKE_KIMI_KEY_REFUSE=Up FM_FAKE_KIMI_KEY_REFUSE_MAX=1 \
+    FM_KIMI_READY_POLLS=6 run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  expect_code 0 "$rc" "a single transient key failure should be retried, not fail the spawn"
+  assert_contains "$out" "spawned $id harness=kimi" \
+    "a spawn that survived one failed key send did not report success"
+  assert_not_contains "$out" "failed twice in a row" \
+    "one transient key failure was blamed on the backend's key support"
+  keys=$(cat "$CASE_DIR/key.log")
+  [ "$(grep -c '^Up-refused ' "$CASE_DIR/key.log" || true)" = 1 ] \
+    || fail "the transient was not exercised exactly once: $keys"
+  printf '%s\n' "$keys" | grep -qx 'Up trust-dialog' \
+    || fail "the retry after a transient never delivered Up: $keys"
+  [ -s "$CASE_DIR/pointer.log" ] || fail "brief pointer was not delivered after the retry"
+  pass "fm-spawn: one failed acceptance key send is retried and the spawn still comes up"
+}
+
+# The accept branch for an already-selected Trust row sends Enter, not Up. The
+# diagnostic must name the key that was actually tried.
+test_kimi_undeliverable_enter_is_not_reported_as_up() {
+  local id rec out rc
+  id=kimi-trust-noenter-z9
+  rec=$(make_spawn_case trust-noenter "$id")
+  read_spawn_record "$rec"
+  rc=0
+  out=$(FM_FAKE_KIMI_TRUST=selected FM_FAKE_KIMI_KEY_REFUSE=Enter FM_KIMI_READY_POLLS=6 run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "an undeliverable Enter on a selected Trust row must not report success"
+  assert_contains "$out" "failed twice in a row to deliver the Enter key" \
+    "the failing key was not the one the diagnostic named"
+  assert_not_contains "$out" "deliver the Up key" \
+    "an Enter failure was misreported as an Up refusal"
+  [ ! -s "$CASE_DIR/pointer.log" ] || fail "brief pointer was sent into an unaccepted trust dialog"
+  pass "fm-spawn: an undeliverable Enter is named as Enter, not as an Up refusal"
 }
 
 test_kimi_detection_uses_ancestry_after_markers() {
@@ -858,6 +914,8 @@ test_kimi_accepts_folder_trust_dialog_then_delivers
 test_kimi_unrecognized_screen_is_not_treated_as_trust_dialog
 test_kimi_trust_wording_without_the_dialog_is_not_accepted
 test_kimi_backend_that_cannot_send_up_fails_by_name
+test_kimi_transient_key_failure_is_retried_not_blamed_on_the_backend
+test_kimi_undeliverable_enter_is_not_reported_as_up
 test_kimi_detection_uses_ancestry_after_markers
 test_kimi_session_lock_identity
 test_kimi_busy_signature_is_scoped_to_spinner_lines

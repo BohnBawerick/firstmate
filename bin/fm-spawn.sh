@@ -2181,26 +2181,40 @@ kimi_trust_dialog_is_showing() {  # <plain-pane-capture>
 }
 
 # Returns 0 when a key was delivered, 1 when neither selection row is
-# recognised, and 2 when the backend could not deliver the key at all. Only
-# tmux and herdr are verified to carry Up (herdr 0.8.0 emits the real ^[[A for
-# it; Orca's send-key vocabulary is Enter and C-c only), so 2 is the honest
-# answer on every other backend rather than a claimed acceptance the selection
-# never saw. The caller aborts on 2, which also keeps a rejecting backend to a
-# single stderr line instead of one per readiness poll.
+# recognised, 3 on a first send failure, and 2 once a second consecutive send
+# fails. A backend that cannot carry the key fails identically on every poll
+# and so reaches 2 immediately, while a one-poll transient (a herdr socket
+# hiccup, a tmux display-message race) is retried the way the readiness loop
+# retries everything else.
+#
+# Up is verified on tmux, which passes it through verbatim, and on herdr 0.8.0,
+# which emits the real ^[[A for it. Orca refuses it by construction: its
+# send-key vocabulary is Enter and C-c only. What zellij and cmux do with an
+# unrecognised key name is untested in both directions, so whether they reach
+# status 2 or return a success their selection never saw is not established.
+KIMI_TRUST_SEND_FAILURES=0
+KIMI_TRUST_FAILED_KEY=
 kimi_accept_trust_dialog() {  # <plain-pane-capture>
+  local key
   if printf '%s\n' "$1" | grep -Fq '❯ Trust this folder'; then
-    spawn_send_key "$T" Enter || return 2
+    key=Enter
+  elif printf '%s\n' "$1" | grep -Fq "❯ Don't trust"; then
+    key=Up
+  else
+    return 1
+  fi
+  if spawn_send_key "$T" "$key"; then
+    KIMI_TRUST_SEND_FAILURES=0
     return 0
   fi
-  if printf '%s\n' "$1" | grep -Fq "❯ Don't trust"; then
-    spawn_send_key "$T" Up || return 2
-    return 0
-  fi
-  return 1
+  KIMI_TRUST_FAILED_KEY=$key
+  KIMI_TRUST_SEND_FAILURES=$((KIMI_TRUST_SEND_FAILURES + 1))
+  [ "$KIMI_TRUST_SEND_FAILURES" -ge 2 ] || return 3
+  return 2
 }
 
-# 0 ready, 2 the trust dialog is up but this backend cannot accept it, 1 no
-# ready signal within the window.
+# 0 ready, 2 the trust dialog is up and two consecutive attempts to send its
+# acceptance key failed, 1 no ready signal within the window.
 kimi_wait_for_ready() {
   local pane i=0 max=${FM_KIMI_READY_POLLS:-60} interval=${FM_KIMI_POLL_INTERVAL:-0.5} accepted
   while [ "$i" -lt "$max" ]; do
@@ -2868,7 +2882,7 @@ if [ "$HARNESS" = kimi ]; then
   KIMI_READY_STATUS=0
   kimi_wait_for_ready || KIMI_READY_STATUS=$?
   if [ "$KIMI_READY_STATUS" -eq 2 ]; then
-    kimi_spawn_fail "kimi is showing its workspace-trust dialog but backend=$BACKEND refused the Up key that selects Trust this folder (verified on tmux and herdr only)"
+    kimi_spawn_fail "kimi is showing its workspace-trust dialog but backend=$BACKEND failed twice in a row to deliver the $KIMI_TRUST_FAILED_KEY key that accepts it"
     exit 1
   fi
   if [ "$KIMI_READY_STATUS" -ne 0 ]; then
