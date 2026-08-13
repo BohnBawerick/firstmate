@@ -5,7 +5,8 @@
 # $HOME/.gemini/config/hooks.json. install creates that file when absent, or
 # upserts only the fm-agy-turn-end key when the file already holds other hooks.
 # remove deletes only that key. Missing, malformed, symlinked, or otherwise
-# surprising JSON is refused without a config write.
+# surprising JSON is refused without a config write, as is a hook script path or
+# token registry that does not hold the Firstmate-owned shape.
 #
 # The installed Stop hook always exits 0 and stays silent. It reads
 # workspacePaths from the hook payload, checks for a .fm-agy-turnend pointer
@@ -20,7 +21,7 @@ set -u
 case "${1:-}" in
   install|remove) ACTION=$1 ;;
   -h|--help)
-    sed -n '2,17{s/^# \{0,1\}//;p;}' "$0"
+    sed -n '2,18{s/^# \{0,1\}//;p;}' "$0"
     exit 0
     ;;
   *)
@@ -58,6 +59,8 @@ HOOK_KEY = sys.argv[3]
 CONFIG = os.path.join(CONFIG_DIR, "hooks.json")
 HOOK = os.path.join(CONFIG_DIR, "fm-agy-turn-end.sh")
 REGISTRY = os.path.join(CONFIG_DIR, "fm-agy-turn-end.d")
+
+HOOK_PREFIX = b"#!/usr/bin/env bash\n# Firstmate agy turn-end hook."
 
 HOOK_BYTES = b'''#!/usr/bin/env bash
 # Firstmate agy turn-end hook. Managed by fm-agy-turnend-hook.sh.
@@ -101,6 +104,36 @@ def regular_not_symlink(path: str, label: str):
     return info
 
 
+def private_dir(path: str, label: str, enforce_mode: bool) -> None:
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        os.makedirs(path, mode=0o700, exist_ok=True)
+        return
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+        refuse(f"{label} is not a regular non-symlink directory at {path}.")
+    if enforce_mode:
+        os.chmod(path, 0o700)
+
+
+def check_hook_path() -> None:
+    if not os.path.lexists(HOOK):
+        return
+    regular_not_symlink(HOOK, "Firstmate hook script")
+    with open(HOOK, "rb") as stream:
+        existing = stream.read()
+    if existing != HOOK_BYTES and not existing.startswith(HOOK_PREFIX):
+        refuse(f"Firstmate hook path has unexpected content at {HOOK}.")
+
+
+def check_registry_path() -> None:
+    if not os.path.lexists(REGISTRY):
+        return
+    info = os.lstat(REGISTRY)
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+        refuse(f"Firstmate registry is not a regular non-symlink directory at {REGISTRY}.")
+
+
 def load_hooks(path: str):
     info = regular_not_symlink(path, "hooks.json")
     if info is None:
@@ -122,7 +155,7 @@ def load_hooks(path: str):
 
 def atomic_write(path: str, data: dict) -> None:
     directory = os.path.dirname(path)
-    os.makedirs(directory, mode=0o700, exist_ok=True)
+    private_dir(directory, "agy config directory", False)
     fd, tmp = tempfile.mkstemp(prefix=".fm-agy-hooks.", dir=directory)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -138,8 +171,10 @@ def atomic_write(path: str, data: dict) -> None:
 
 
 def write_hook_script() -> None:
-    os.makedirs(CONFIG_DIR, mode=0o700, exist_ok=True)
-    os.makedirs(REGISTRY, mode=0o700, exist_ok=True)
+    check_hook_path()
+    check_registry_path()
+    private_dir(CONFIG_DIR, "agy config directory", False)
+    private_dir(REGISTRY, "Firstmate registry", True)
     fd, tmp = tempfile.mkstemp(prefix=".fm-agy-hook.", dir=CONFIG_DIR)
     try:
         with os.fdopen(fd, "wb") as handle:
@@ -167,18 +202,21 @@ entry = {
 if ACTION == "install":
     hooks = load_hooks(CONFIG)
     hooks[HOOK_KEY] = entry
-    atomic_write(CONFIG, hooks)
+    # The script first: hooks.json must never name a command that does not exist.
     write_hook_script()
+    atomic_write(CONFIG, hooks)
     raise SystemExit(0)
 
 hooks = load_hooks(CONFIG)
+check_hook_path()
+check_registry_path()
 if HOOK_KEY in hooks:
     del hooks[HOOK_KEY]
     if hooks:
         atomic_write(CONFIG, hooks)
     elif os.path.exists(CONFIG):
         os.unlink(CONFIG)
-if os.path.exists(HOOK):
+if os.path.lexists(HOOK):
     os.unlink(HOOK)
 if os.path.isdir(REGISTRY):
     try:
