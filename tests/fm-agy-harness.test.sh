@@ -10,6 +10,7 @@ set -u
 SPAWN="$ROOT/bin/fm-spawn.sh"
 HARNESS="$ROOT/bin/fm-harness.sh"
 AGY_HOOK="$ROOT/bin/fm-agy-turnend-hook.sh"
+TEARDOWN="$ROOT/bin/fm-teardown.sh"
 TMP_ROOT=$(fm_test_tmproot fm-agy-harness)
 PYTHON_BIN=$(command -v python3) || fail "test needs python3"
 JQ_BIN=$(command -v jq) || fail "test needs jq"
@@ -30,7 +31,11 @@ case "${1:-}" in
   list-windows) exit 0 ;;
   has-session|new-session|new-window|kill-window) exit 0 ;;
   capture-pane)
-    printf '? for shortcuts                                          Gemini 3.1 Pro · high\n'
+    if [ -n "${FM_FAKE_PANE_TEXT:-}" ]; then
+      printf '%s\n' "$FM_FAKE_PANE_TEXT"
+    else
+      printf '? for shortcuts                                          Gemini 3.1 Pro · high\n'
+    fi
     exit 0
     ;;
   send-keys)
@@ -39,6 +44,9 @@ case "${1:-}" in
       if [ "$prev" = -l ]; then
         printf '%s\n' "$arg" >> "$FM_FAKE_LAUNCH_LOG"
         break
+      fi
+      if [ "$arg" = Enter ]; then
+        printf 'Enter\n' >> "${FM_FAKE_KEYS_LOG:-/dev/null}"
       fi
       prev=$arg
     done
@@ -83,7 +91,8 @@ run_agy_spawn() {  # <home> <proj> <wt> <fakebin> <id> [extra args...]
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
     FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" TMUX="fake,1,0" \
-    FM_AGY_TRUST_POLLS=0 \
+    FM_AGY_TRUST_POLLS="${FM_AGY_TRUST_POLLS:-0}" \
+    FM_AGY_TRUST_POLL_INTERVAL="${FM_AGY_TRUST_POLL_INTERVAL:-0}" \
     FM_FAKE_LAUNCH_LOG="$home/launch.log" \
     HOME="$home" \
     PATH="$fakebin:$PATH" \
@@ -236,12 +245,6 @@ assert "captain-hook" in data, data
 assert "fm-agy-turn-end" in data, data
 PY
   HOME="$home" "$AGY_HOOK" install || fail "second agy hook install failed"
-  count=$("$PYTHON_BIN" - "$config" <<'PY'
-import json, sys
-data = json.load(open(sys.argv[1], encoding="utf-8"))
-print(list(data).count("fm-agy-turn-end") + (1 if "fm-agy-turn-end" in data else 0) - 1)
-PY
-)
   # The key exists once.
   "$PYTHON_BIN" - "$config" <<'PY' || fail "idempotent install duplicated the Firstmate hook key"
 import json, sys
@@ -298,6 +301,82 @@ EOF
   pass "agy spawn installs the gated global Stop hook and per-task pointer"
 }
 
+test_hook_script_reads_a_pretty_printed_payload() {
+  local home hook wt token target payload
+  home="$TMP_ROOT/hook-multiline"
+  mkdir -p "$home/.gemini/config/fm-agy-turn-end.d"
+  HOME="$home" "$AGY_HOOK" install || fail "hook install for multiline test failed"
+  hook="$home/.gemini/config/fm-agy-turn-end.sh"
+  wt="$home/wt"
+  mkdir -p "$wt" "$home/state"
+  token="fm.abcdefghijkl"
+  target="$home/state/agy-multiline.turn-ended"
+  printf '%s\n' "$target" > "$home/.gemini/config/fm-agy-turn-end.d/$token"
+  printf 'token=%s\n' "$token" > "$wt/.fm-agy-turnend"
+  # agy is free to pretty-print the Stop payload; a first-line-only read sees
+  # `{` and the wake is lost silently.
+  payload=$(printf '{\n  "workspacePaths": [\n    "%s"\n  ]\n}\n' "$wt")
+  HOME="$home" "$hook" <<<"$payload"
+  assert_present "$target" "a pretty-printed Stop payload did not touch the turn-end marker"
+  pass "agy Stop hook reads a multi-line Stop payload, not just its first line"
+}
+
+test_spawn_fails_when_the_trust_dialog_never_clears() {
+  local rec case_dir home proj wt fakebin id out status base_enters stuck_enters
+  rec=$(make_spawn_case trust-ready)
+  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+  FM_AGY_TRUST_POLLS=3 FM_AGY_TRUST_POLL_INTERVAL=0 \
+    FM_FAKE_KEYS_LOG="$home/keys.log" \
+    run_agy_spawn "$home" "$proj" "$wt" "$fakebin" "$id" --mode no-mistakes --yolo off >/dev/null \
+    || fail "agy spawn against a ready pane failed"
+  base_enters=$(grep -c '^Enter$' "$home/keys.log")
+
+  rec=$(make_spawn_case trust-stuck)
+  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+  out=$(FM_AGY_TRUST_POLLS=3 FM_AGY_TRUST_POLL_INTERVAL=0 \
+    FM_FAKE_PANE_TEXT='Do you trust the contents of this project?' \
+    FM_FAKE_KEYS_LOG="$home/keys.log" \
+    run_agy_spawn "$home" "$proj" "$wt" "$fakebin" "$id" --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "agy spawn reported success while its trust dialog was still up: $out"
+  assert_contains "$out" "trust dialog" "stuck-trust refusal did not name the trust dialog"
+  assert_grep 'failed:' "$home/state/$id.status" "stuck-trust spawn did not record a failure status"
+  # Exactly one accept Enter across three polls: a second one would submit an
+  # empty prompt to the composer the moment the dialog does clear.
+  stuck_enters=$(grep -c '^Enter$' "$home/keys.log")
+  [ "$stuck_enters" -eq "$((base_enters + 1))" ] \
+    || fail "agy spawn sent $((stuck_enters - base_enters)) accept Enters across 3 trust polls, expected 1"
+  pass "agy spawn fails when its trust dialog is still up, having sent exactly one accept"
+}
+
+test_teardown_removes_agy_pointer_and_registry_token() {
+  local rec case_dir home proj wt fakebin id token
+  rec=$(make_spawn_case teardown)
+  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+  run_agy_spawn "$home" "$proj" "$wt" "$fakebin" "$id" --mode no-mistakes --yolo off >/dev/null \
+    || fail "agy spawn for teardown failed"
+  token=$(sed -n 's/^token=//p' "$wt/.fm-agy-turnend")
+  [ -n "$token" ] || fail "agy spawn wrote no turn-end token"
+  assert_present "$home/.gemini/config/fm-agy-turn-end.d/$token" "agy spawn minted no registry entry"
+
+  HOME="$home" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_SPAWN_NO_GUARD=1 PATH="$fakebin:$PATH" \
+    "$TEARDOWN" "$id" --force >/dev/null 2>&1 || fail "agy teardown failed"
+  assert_absent "$home/.gemini/config/fm-agy-turn-end.d/$token" \
+    "agy registry entry survived teardown, leaking one home-config file per task"
+  assert_absent "$home/state/$id.agy-turnend-token" "agy turn-end token state survived teardown"
+  assert_absent "$wt/.fm-agy-turnend" "agy turn-end pointer survived teardown"
+  pass "fm-teardown: agy registry entry, state token, and worktree pointer are all retired"
+}
+
 test_detects_agy_process_ancestor
 test_detection_does_not_claim_agy_substrings
 test_spawn_launch_shape_pins_gemini_and_omits_effort
@@ -307,4 +386,7 @@ test_spawn_refuses_secondmate
 test_spawn_clears_inherited_foreign_harness_markers
 test_hook_install_is_surgical_and_gated
 test_hook_script_touches_only_a_matching_pointer
+test_hook_script_reads_a_pretty_printed_payload
 test_spawn_writes_turnend_pointer
+test_spawn_fails_when_the_trust_dialog_never_clears
+test_teardown_removes_agy_pointer_and_registry_token

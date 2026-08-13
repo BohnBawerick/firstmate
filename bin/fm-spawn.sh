@@ -2210,27 +2210,44 @@ kimi_capture() {
   fm_backend_capture "$BACKEND" "$T" 120 "$W" 2>/dev/null || true
 }
 
+# agy readiness routes through the shared classifier, the same owner every
+# steer and injection guard reads, exactly as kimi's does.
+agy_composer_is_empty() {
+  [ "$(fm_backend_composer_state "$BACKEND" "$T" "$W" 2>/dev/null)" = empty ]
+}
+
 # --dangerously-skip-permissions does not suppress agy's workspace trust
 # dialog on a path that is not already in trustedWorkspaces (verified
 # 2026-08-14, agy 1.1.12). Yes is preselected; Enter accepts it. Skip the
 # wait when FM_AGY_TRUST_POLLS=0 (tests). Do not send Enter unless the dialog
-# is visible: an extra Enter on a ready composer submits an empty prompt.
+# is visible, and send it at most once: an extra Enter on a ready composer
+# submits an empty prompt. The budget matches kimi's readiness wait (~30s),
+# because a cold agy start reaches the dialog well after the launch keystroke
+# and a missed dialog strands the brief behind it forever. Returns non-zero
+# only when the dialog is STILL up at the end of the budget - the one state
+# that proves the brief never reached the agent.
 agy_maybe_accept_trust() {
-  local pane i=0 max=${FM_AGY_TRUST_POLLS:-16} interval=${FM_AGY_TRUST_POLL_INTERVAL:-0.25}
+  local pane i=0 max=${FM_AGY_TRUST_POLLS:-60} interval=${FM_AGY_TRUST_POLL_INTERVAL:-0.5}
+  local dialog=0 accepted=0
   case "$max" in ''|*[!0-9]*) return 0 ;; esac
   [ "$max" -gt 0 ] || return 0
   while [ "$i" -lt "$max" ]; do
     pane=$(fm_backend_capture "$BACKEND" "$T" 40 "$W" 2>/dev/null || true)
+    dialog=0
     if printf '%s\n' "$pane" | grep -Fq 'Do you trust the contents of this project?'; then
-      spawn_send_key "$T" Enter
-      return 0
-    fi
-    if printf '%s\n' "$pane" | grep -Fq 'for shortcuts'; then
+      dialog=1
+      if [ "$accepted" = 0 ]; then
+        spawn_send_key "$T" Enter
+        accepted=1
+      fi
+    elif printf '%s\n' "$pane" | grep -Fq 'for shortcuts' || agy_composer_is_empty; then
       return 0
     fi
     i=$((i + 1))
     [ "$i" -ge "$max" ] || sleep "$interval"
   done
+  [ "$dialog" = 0 ] || return 1
+  echo "warning: agy showed no ready signal for $ID within the trust wait; the brief may still be pending in window $T" >&2
   return 0
 }
 
@@ -2283,7 +2300,7 @@ kimi_wait_for_delivery() {
   return 1
 }
 
-kimi_spawn_fail() {  # <detail>
+spawn_harness_fail() {  # <detail>
   printf 'failed: %s\n' "$1" >> "$STATE/$ID.status"
   echo "error: $1; inspect window $T" >&2
 }
@@ -2920,11 +2937,14 @@ if [ "${HERDR_PROJECTED:-0}" -eq 1 ]; then
 fi
 spawn_send_key "$T" Enter
 if [ "$HARNESS" = agy ]; then
-  agy_maybe_accept_trust
+  if ! agy_maybe_accept_trust; then
+    spawn_harness_fail "agy is still showing its workspace trust dialog, so the brief never reached the agent"
+    exit 1
+  fi
 fi
 if [ "$HARNESS" = kimi ]; then
   if ! kimi_wait_for_ready; then
-    kimi_spawn_fail "kimi did not show a verified ready signal before brief delivery"
+    spawn_harness_fail "kimi did not show a verified ready signal before brief delivery"
     exit 1
   fi
   KIMI_POINTER="Read the brief at $BRIEF_REAL and follow it exactly."
@@ -2934,15 +2954,15 @@ if [ "$HARNESS" = kimi ]; then
   KIMI_SUBMIT_VERDICT=$(fm_backend_send_text_submit \
     "$BACKEND" "$T" "$KIMI_POINTER" "$KIMI_SUBMIT_RETRIES" \
     "$KIMI_SUBMIT_SLEEP" "$KIMI_SUBMIT_SETTLE" "$W") || {
-    kimi_spawn_fail "kimi brief pointer could not be submitted"
+    spawn_harness_fail "kimi brief pointer could not be submitted"
     exit 1
   }
   if [ "$KIMI_SUBMIT_VERDICT" = send-failed ]; then
-    kimi_spawn_fail "kimi brief pointer could not be submitted"
+    spawn_harness_fail "kimi brief pointer could not be submitted"
     exit 1
   fi
   if ! kimi_wait_for_delivery; then
-    kimi_spawn_fail "kimi brief pointer delivery was not confirmed"
+    spawn_harness_fail "kimi brief pointer delivery was not confirmed"
     exit 1
   fi
 fi

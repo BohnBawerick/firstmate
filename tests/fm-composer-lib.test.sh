@@ -334,6 +334,17 @@ test_matrix_agy_separated_shell_prompt() {
   assert_screen "agy idle cursorless" empty "$CAPS_STYLED_NOID" "$idle"
   assert_screen "agy pending cursorless" pending "$CAPS_PLAIN" "$pending"
   assert_screen "bare shell prompt is still a dead shell" unknown "$CAPS_TMUX" $'> ' 0
+  # The glyph replaces the IDENTITY half of pi's conjunction, never the
+  # structure half: a region taller than FM_COMPOSER_PI_MAX_LINES is not a
+  # composer, and only `>` was ever verified in this shape. Both of these read
+  # `empty` - the one verdict that authorizes overwrite - before this guard.
+  local tall dollar
+  tall=$'────────────────────────────────\n\n\n\n\n\n\n\n\n>\n────────────────────────────────'
+  assert_screen "tall separated region is not a proven agy composer" unknown "$CAPS_STYLED_NOID" "$tall"
+  assert_screen "tall separated region under a cursor" unknown "$CAPS_TMUX" "$tall" 9 probe-absent
+  dollar=$'transcript\n────────────────────────────────\n$\n────────────────────────────────\n? for shortcuts'
+  assert_screen "unverified separated dollar prompt" unknown "$CAPS_STYLED_NOID" "$dollar"
+  assert_screen "unverified separated dollar prompt under a cursor" unknown "$CAPS_TMUX" "$dollar" 2 probe-absent
   pass "matrix: agy's separated greater-than composer classifies without identity; a bare greater-than does not"
 }
 

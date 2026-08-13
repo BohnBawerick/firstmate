@@ -70,8 +70,11 @@
 #                agy draws the same two rules but with a shell `>` prompt on
 #                the content row (verified 2026-08-14, agy 1.1.12). That glyph
 #                is the container proof, so the pair classifies without
-#                identity: empty `>` is empty, `> hello` is pending. A bare
-#                `>` with no rules stays a dead shell.
+#                identity: empty `>` is empty, `> hello` is pending. It buys
+#                only the identity half: the pair must still pass the same
+#                FM_COMPOSER_PI_MAX_LINES geometry bound, and `>` is the ONE
+#                shell glyph verified in this shape - `$`, `%`, and `#` are
+#                not. A bare `>` with no rules stays a dead shell.
 #
 # THE SAFETY RULE for glyphs: a bare shell prompt glyph (`>` `$` `%` `#`) -
 # what a pane shows once its agent has exited to a plain login shell - is a
@@ -365,6 +368,10 @@ fm_busy_lines_match() {  # [harness]
 # literal and no entry is ever exposed to pathname expansion.
 FM_COMPOSER_AGENT_PROMPT_GLYPHS=$(printf '%s\n' '❯' '›' '⟩' '→')
 FM_COMPOSER_SHELL_PROMPT_GLYPHS=$(printf '%s\n' '>' '$' '%' '#')
+# The SEPARATED subset: the shell glyphs verified to stand in for a live agent
+# identity between two solid rules. Only agy's `>` is (agy 1.1.12); a lone `$`,
+# `%`, or `#` in that region is unproven and must keep deferring to identity.
+FM_COMPOSER_SEPARATED_PROMPT_GLYPHS=$(printf '%s\n' '>')
 
 # The ONE fleet-wide idle-placeholder set: composer text a harness renders in
 # an EMPTY composer that a plain capture cannot tell from typed text. Grok's
@@ -1373,22 +1380,23 @@ _fm_composer_classify_bare_pi_overlap() {  # <screen> <styled> <has-identity> <i
   fi
 }
 
-# The pi separated-shape verdict: identity + structure conjunction (herdr's
-# rule, now fleet-wide). A missing identity capability keeps the shape
-# unknown; an unfetched identity on an identity-capable backend asks the
-# adapter to probe (lazily) and re-call. Proven input remains pending for every
-# live pi state, while only an idle/done/blocked pi proves an empty composer.
-# A separated pair whose content row starts with a shell prompt glyph is
-# agy's composer, not a blank pi pair. The two rules plus the glyph are
-# the container proof; identity is not required.
+# A separated pair whose content row starts with a VERIFIED separated shell
+# glyph is agy's composer, not a blank pi pair: the glyph stands in for the
+# identity half of the conjunction below. It replaces only that half, so the
+# structure half still has to hold - hence the PAIR_VALID gate, which keeps the
+# region inside FM_COMPOSER_PI_MAX_LINES exactly as _fm_composer_pi_verdict
+# does. Gating here rather than at the call sites means no caller can take the
+# shortcut past the geometry bound.
 _fm_composer_separated_has_shell_prompt() {  # <plain> <first-content> <last-content>
   local plain=$1 first=$2 last=$3 row line trimmed glyph
+  [ "$FM_COMPOSER_SCAN_PI_PAIR_VALID" = 1 ] || return 1
   row=$first
   while [ "$row" -le "$last" ]; do
     line=$(_fm_composer_screen_row "$row" "$plain")
     trimmed=$line
     fm_composer_normalize_trim_var trimmed
-    if fm_composer_leading_shell_glyph_var glyph "$trimmed"; then
+    if fm_composer_leading_shell_glyph_var glyph "$trimmed" \
+       && _fm_composer_is_prompt_glyph "$glyph" "$FM_COMPOSER_SEPARATED_PROMPT_GLYPHS"; then
       return 0
     fi
     row=$((row + 1))
@@ -1396,6 +1404,11 @@ _fm_composer_separated_has_shell_prompt() {  # <plain> <first-content> <last-con
   return 1
 }
 
+# The pi separated-shape verdict: identity + structure conjunction (herdr's
+# rule, now fleet-wide). A missing identity capability keeps the shape
+# unknown; an unfetched identity on an identity-capable backend asks the
+# adapter to probe (lazily) and re-call. Proven input remains pending for every
+# live pi state, while only an idle/done/blocked pi proves an empty composer.
 _fm_composer_pi_verdict() {  # <screen> <styled> <has_identity> <identity>
   local screen=$1 styled=$2 has_identity=$3 identity=$4 agent agent_status state
   if [ "$has_identity" != 1 ]; then

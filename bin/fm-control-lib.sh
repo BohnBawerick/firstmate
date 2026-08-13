@@ -232,10 +232,16 @@ fm_control_harness_wiring_paths() {  # <harness> <worktree> <state-dir> <id>
   esac
 }
 
+# The adapters whose turn-end hook is global and gated by a private token file,
+# declared exactly once so every consumer (teardown, the control plane's
+# relaunch) retires the same set instead of carrying its own list. Every other
+# adapter's wiring is fully covered by fm_control_harness_wiring_paths.
+fm_control_turnend_global_harnesses() {
+  printf '%s\n' grok kimi agy
+}
+
 # The firstmate-owned global turn-end registry entry a harness mints per task.
-# grok, kimi, and agy are the adapters whose turn-end hook is global and gated
-# by a private token file; every other adapter's wiring is fully covered by
-# fm_control_harness_wiring_paths. Prints the registry path or nothing.
+# Prints the registry path or nothing.
 fm_control_harness_turnend_token_path() {  # <harness> <state-dir> <id>
   local harness=${1-} state=${2-} id=${3-}
   [ -n "$state" ] && [ -n "$id" ] || return 1

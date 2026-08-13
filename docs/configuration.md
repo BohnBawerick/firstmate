@@ -213,6 +213,8 @@ Cursor delivery confirmation is verified on tmux and Herdr only.
 On Zellij, cmux, and Orca a Cursor steer lands, but `fm-send` reports delivery unconfirmed and exits non-zero because their shared submit core does not consult the busy footer; [runtime backend verification](verification/runtime-backends.md#cursor-agent-cli) owns the evidence and transcript-state boundary.
 muse is verified for crewmate and scout launches ONLY, and `fm-spawn.sh` refuses it for a secondmate, because muse ships no usable hook surface for a primary session's turn-end supervision; [`docs/verification/muse.md`](verification/muse.md) owns that evidence.
 muse also needs a worker-reachable credential before spawning, and the portable fleet path is the `<config>/muse/auth.json` credential stored by `muse login`, because a caller-only `META_API_KEY` does not cross a long-lived backend daemon.
+agy (Antigravity CLI) is verified for crewmate and scout launches ONLY, and `fm-spawn.sh` refuses it for a secondmate because Antigravity CLI has no verified primary supervision protocol.
+agy launches are pinned to `--model gemini-3.1-pro-high` with no `--effort` flag, and `fm-spawn.sh` refuses a `claude-*` model for agy.
 New harnesses get verified through a supervised trial task before joining the set.
 The verified adapter evidence - each harness's busy-state source, interrupt and exit behavior, skill-invocation syntax, and per-harness quirks - lives in [`.agents/skills/harness-adapters/SKILL.md`](../.agents/skills/harness-adapters/SKILL.md).
 The executable interrupt and exit mechanics live in [`bin/fm-control-lib.sh`](../bin/fm-control-lib.sh), and [`docs/agent-control.md`](agent-control.md) owns their lifecycle-control architecture.
@@ -244,6 +246,10 @@ For Kimi crews, `fm-spawn.sh` runs `fm-kimi-turnend-hook.sh install`, drops a pe
 Kimi continues to use the captain's normal Kimi home, including the existing config, skills, and memory; Firstmate does not create an isolated Kimi home.
 The Kimi installer requires an existing regular non-symlink `~/.kimi-code/config.toml`, `python3` with `tomllib`, and `jq`; it validates but never serializes the captain's TOML and refuses before writing when the config is missing, malformed, or surprising or when either tool requirement is unavailable.
 Its `remove` action excises only the marker-delimited Firstmate region and removes Firstmate's hook files.
+For agy crews, `fm-spawn.sh` runs `fm-agy-turnend-hook.sh install`, which upserts one surgically named Firstmate key in the captain's global `~/.gemini/config/hooks.json` and writes `~/.gemini/config/fm-agy-turn-end.sh`, drops a per-task `.fm-agy-turnend` pointer in the worktree, and records the matching private registry token; teardown removes the registry entry, the token, and the pointer.
+agy likewise uses the captain's normal Gemini home rather than an isolated one, so spawning an agy crewmate writes to that global config.
+The agy installer requires `python3` and `jq` and refuses before writing when `hooks.json` is a symlink, a non-regular file, malformed, or not a JSON object; if `jq` is later removed, the installed hook stays silent and agy turn-end wakes stop, with [`docs/turnend-guard.md`](turnend-guard.md#compatibility-limits) owning that fail-open tradeoff.
+agy remains outside the primary turn-end guard integrations for the same reason it is refused as a secondmate.
 For Pi and pi-signed secondmate launches, `fm-spawn.sh` starts the selected executable with `-e` pointed at the secondmate home's own tracked `.pi/extensions/fm-primary-pi-watch.ts` and `.pi/extensions/fm-primary-turnend-guard.ts`, both already present from the secondmate home's git worktree.
 
 ## Crew dispatch profiles (config/crew-dispatch.json)

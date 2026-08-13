@@ -64,8 +64,10 @@ HOOK_BYTES = b'''#!/usr/bin/env bash
 # This hook is deliberately passive: every path is silent and exits zero.
 set +e
 exec >/dev/null 2>&1
-payload=
-IFS= read -r payload || [ -n "$payload" ] || exit 0
+# The whole payload, not its first line: agy is free to pretty-print the Stop
+# JSON, and a lone `{` would silently stop every turn-end wake.
+payload=$(cat)
+[ -n "$payload" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 workspace=$(jq -er '.workspacePaths[0] | strings | select(length > 0)' <<< "$payload" 2>/dev/null) || exit 0
 pointer="$workspace/.fm-agy-turnend"
