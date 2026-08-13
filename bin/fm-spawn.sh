@@ -2180,20 +2180,29 @@ kimi_trust_dialog_is_showing() {  # <plain-pane-capture>
   return 0
 }
 
+# Returns 0 when a key was delivered, 1 when neither selection row is
+# recognised, and 2 when the backend could not deliver the key at all. Only
+# tmux and herdr are verified to carry Up (herdr 0.8.0 emits the real ^[[A for
+# it; Orca's send-key vocabulary is Enter and C-c only), so 2 is the honest
+# answer on every other backend rather than a claimed acceptance the selection
+# never saw. The caller aborts on 2, which also keeps a rejecting backend to a
+# single stderr line instead of one per readiness poll.
 kimi_accept_trust_dialog() {  # <plain-pane-capture>
   if printf '%s\n' "$1" | grep -Fq '❯ Trust this folder'; then
-    spawn_send_key "$T" Enter
+    spawn_send_key "$T" Enter || return 2
     return 0
   fi
   if printf '%s\n' "$1" | grep -Fq "❯ Don't trust"; then
-    spawn_send_key "$T" Up
+    spawn_send_key "$T" Up || return 2
     return 0
   fi
   return 1
 }
 
+# 0 ready, 2 the trust dialog is up but this backend cannot accept it, 1 no
+# ready signal within the window.
 kimi_wait_for_ready() {
-  local pane i=0 max=${FM_KIMI_READY_POLLS:-60} interval=${FM_KIMI_POLL_INTERVAL:-0.5}
+  local pane i=0 max=${FM_KIMI_READY_POLLS:-60} interval=${FM_KIMI_POLL_INTERVAL:-0.5} accepted
   while [ "$i" -lt "$max" ]; do
     pane=$(kimi_capture)
     if printf '%s\n' "$pane" | grep -Fq 'Welcome to Kimi Code!' \
@@ -2201,7 +2210,9 @@ kimi_wait_for_ready() {
       return 0
     fi
     if kimi_trust_dialog_is_showing "$pane"; then
-      kimi_accept_trust_dialog "$pane" || true
+      kimi_accept_trust_dialog "$pane"
+      accepted=$?
+      [ "$accepted" -ne 2 ] || return 2
     fi
     i=$((i + 1))
     [ "$i" -ge "$max" ] || sleep "$interval"
@@ -2854,7 +2865,13 @@ if [ "${HERDR_PROJECTED:-0}" -eq 1 ]; then
 fi
 spawn_send_key "$T" Enter
 if [ "$HARNESS" = kimi ]; then
-  if ! kimi_wait_for_ready; then
+  KIMI_READY_STATUS=0
+  kimi_wait_for_ready || KIMI_READY_STATUS=$?
+  if [ "$KIMI_READY_STATUS" -eq 2 ]; then
+    kimi_spawn_fail "kimi is showing its workspace-trust dialog but backend=$BACKEND refused the Up key that selects Trust this folder (verified on tmux and herdr only)"
+    exit 1
+  fi
+  if [ "$KIMI_READY_STATUS" -ne 0 ]; then
     kimi_spawn_fail "kimi did not show a verified ready signal before brief delivery"
     exit 1
   fi

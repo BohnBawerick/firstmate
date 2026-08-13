@@ -453,6 +453,8 @@ Kimi Code CLI launches from the absolute path resolved from `PATH`, falling back
 | Effort | No reasoning-effort flag exists, so requested effort is recorded in task metadata but omitted from launch. |
 
 `fm-spawn.sh` launches Kimi bare, accepts a `Trust this folder?` dialog when that exact screen is showing, waits for the composer box or `Welcome to Kimi Code!`, sends only `Read the brief at <absolute-path> and follow it exactly.`, and requires a cleared composer plus either the echoed `✨` submission or nonzero context before accepting delivery.
+Trust acceptance needs an `Up` key, which is verified on exactly two backends: tmux, which passes it through verbatim, and herdr 0.8.0, where `pane send-keys <pane> Up` emits the real `^[[A` and visibly moved the selection to `Trust this folder` against kimi 0.36.0 (`arrow_up`, `ArrowUp` and `up_arrow` are all rejected by herdr, so only `Up`/`up` is wired).
+Orca cannot accept the dialog at all - `fm_backend_orca_send_key` supports Enter and C-c only - and zellij and cmux are simply unverified; on any of them the spawn aborts on the first poll with a diagnostic naming the backend rather than timing out on the generic readiness error.
 This launch-then-send shape is mandatory because Kimi rejects a positional brief as an unknown command.
 Sending before readiness was reproduced as a silent drop with a zero exit status, an empty composer, `context: 0%`, no echoed user message, and a healthy-looking idle pane.
 The brief path must be absolute because the brief lives outside the task worktree, and Kimi reads it there without `--add-dir`.
