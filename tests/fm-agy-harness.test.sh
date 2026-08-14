@@ -31,6 +31,15 @@ case "${1:-}" in
   list-windows) exit 0 ;;
   has-session|new-session|new-window|kill-window) exit 0 ;;
   capture-pane)
+    # FM_FAKE_TRUST_STATE models a live trust dialog: it is shown while the
+    # dialog file exists, and the first Enter sent after it has actually been
+    # displayed accepts it, the way agy's preselected Yes does. Timing-free, so
+    # the dialog cannot be "cleared" by a keystroke sent before it appeared.
+    if [ -n "${FM_FAKE_TRUST_STATE:-}" ] && [ -e "$FM_FAKE_TRUST_STATE/dialog" ]; then
+      : > "$FM_FAKE_TRUST_STATE/shown"
+      printf 'Do you trust the contents of this project?\n'
+      exit 0
+    fi
     if [ -n "${FM_FAKE_PANE_TEXT:-}" ]; then
       printf '%s\n' "$FM_FAKE_PANE_TEXT"
     else
@@ -47,6 +56,9 @@ case "${1:-}" in
       fi
       if [ "$arg" = Enter ]; then
         printf 'Enter\n' >> "${FM_FAKE_KEYS_LOG:-/dev/null}"
+        if [ -n "${FM_FAKE_TRUST_STATE:-}" ] && [ -e "$FM_FAKE_TRUST_STATE/shown" ]; then
+          rm -f "$FM_FAKE_TRUST_STATE/dialog"
+        fi
       fi
       prev=$arg
     done
@@ -225,17 +237,15 @@ test_raw_launch_command_named_agy_spawns() {
   # The raw-launch escape hatch names the harness from the command's first
   # word, so `agy ...` takes the agy branch without ever going through the
   # generated template - and so without the hook installer that only the
-  # template block runs. That leaves one accepted residual, unchanged here
-  # because it is identical for kimi: the turn-end mint still expects the
-  # registry directory the skipped installer would have created, so the mkdir
-  # below stands in for it and this hatch does not work unaided. What the test
-  # pins is the binary resolution, which must not abort the raw path.
+  # template block runs. This hatch is the adapter-verification path, so it has
+  # to work unaided: nothing here pre-creates the turn-end registry the skipped
+  # installer would have made, and the mint must still land rather than abort a
+  # spawn whose window and worktree already exist.
   local rec case_dir home proj wt fakebin id raw launch out status
   rec=$(make_spawn_case raw-launch)
   IFS='|' read -r case_dir home proj wt fakebin id <<EOF
 $rec
 EOF
-  mkdir -p "$home/.gemini/config/fm-agy-turn-end.d"
   raw="agy --dangerously-skip-permissions --prompt-interactive 'probe'"
   out=$(run_spawn_arg3 "$home" "$proj" "$wt" "$fakebin" "$id" "$raw" \
     --mode no-mistakes --yolo off)
@@ -243,7 +253,10 @@ EOF
   expect_code 0 "$status" "raw agy launch command should spawn: $out"
   launch=$(cat "$home/launch.log")
   assert_contains "$launch" "$raw" "raw agy launch command was not sent to the pane"
-  pass "a raw launch command whose first word is agy spawns"
+  assert_present "$wt/.fm-agy-turnend" "raw agy launch did not write the turn-end pointer"
+  assert_present "$home/state/$id.agy-turnend-token" \
+    "raw agy launch did not record the turn-end token"
+  pass "a raw launch command whose first word is agy spawns unaided"
 }
 
 # --- turn-end hook ----------------------------------------------------------
@@ -466,6 +479,41 @@ EOF
   pass "agy spawn fails when its trust dialog is still up, having sent exactly one accept"
 }
 
+test_spawn_accepts_a_trust_dialog_that_appears_on_the_last_poll() {
+  local rec case_dir home proj wt fakebin id out status trust base_enters late_enters
+  rec=$(make_spawn_case trust-late-base)
+  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+  FM_AGY_TRUST_POLLS=1 FM_AGY_TRUST_POLL_INTERVAL=0 \
+    FM_FAKE_KEYS_LOG="$home/keys.log" \
+    run_agy_spawn "$home" "$proj" "$wt" "$fakebin" "$id" --mode no-mistakes --yolo off >/dev/null \
+    || fail "agy spawn against a ready pane failed"
+  base_enters=$(grep -c '^Enter$' "$home/keys.log")
+
+  # A cold agy start can reach the dialog only on the last budgeted poll. The
+  # accept lands, so the brief does reach the agent; declaring failure there
+  # would strand a working crewmate behind a failed spawn.
+  rec=$(make_spawn_case trust-late)
+  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+  trust="$case_dir/trust"
+  mkdir -p "$trust"
+  : > "$trust/dialog"
+  out=$(FM_AGY_TRUST_POLLS=1 FM_AGY_TRUST_POLL_INTERVAL=0 \
+    FM_FAKE_TRUST_STATE="$trust" FM_FAKE_KEYS_LOG="$home/keys.log" \
+    run_agy_spawn "$home" "$proj" "$wt" "$fakebin" "$id" --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "agy spawn failed on a trust dialog its own accept cleared: $out"
+  assert_contains "$out" "spawned $id harness=agy" "late-dialog agy spawn did not report success"
+  assert_grep 'harness=agy' "$home/state/$id.meta" "late-dialog agy spawn published no task metadata"
+  late_enters=$(grep -c '^Enter$' "$home/keys.log")
+  [ "$late_enters" -eq "$((base_enters + 1))" ] \
+    || fail "late-dialog agy spawn sent $((late_enters - base_enters)) accept Enters, expected 1"
+  pass "agy spawn re-checks a trust dialog it accepted on the last poll"
+}
+
 test_teardown_removes_agy_pointer_and_registry_token() {
   local rec case_dir home proj wt fakebin id token
   rec=$(make_spawn_case teardown)
@@ -507,4 +555,5 @@ test_hook_script_reads_a_pretty_printed_payload
 test_hook_script_scans_every_workspace_path
 test_spawn_writes_turnend_pointer
 test_spawn_fails_when_the_trust_dialog_never_clears
+test_spawn_accepts_a_trust_dialog_that_appears_on_the_last_poll
 test_teardown_removes_agy_pointer_and_registry_token

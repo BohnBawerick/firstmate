@@ -664,11 +664,24 @@ remove_turnend_auth() {
   done < <(fm_control_turnend_global_harnesses)
 }
 
-# The gitignored per-task worktree pointer each of those hooks is gated by.
+# The gitignored per-task worktree pointer each of those hooks is gated by,
+# derived from the same two owners as the registry entries above rather than
+# from a second copy of the adapter list, so a new adapter of that shape cannot
+# be wired without teardown retiring its pointer too. Only the worktree-resident
+# half of each adapter's wiring belongs here; the state-dir half is retired by
+# remove_turnend_auth against the real state directory, so the placeholder state
+# path below is one no wiring path can ever fall under.
 remove_turnend_worktree_pointers() {  # <worktree>
-  local wt=$1
+  local wt=$1 harness path
   [ -n "$wt" ] || return 0
-  rm -f "$wt/.fm-grok-turnend" "$wt/.fm-kimi-turnend" "$wt/.fm-agy-turnend"
+  while IFS= read -r harness; do
+    while IFS= read -r path; do
+      case "$path" in
+        "$wt"/*/*) ;;
+        "$wt"/*) rm -f -- "$path" ;;
+      esac
+    done < <(fm_control_harness_wiring_paths "$harness" "$wt" /nonexistent-fm-state fm-turnend)
+  done < <(fm_control_turnend_global_harnesses)
 }
 
 retire_busy_state() {
