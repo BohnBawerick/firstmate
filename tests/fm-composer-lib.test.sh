@@ -319,11 +319,15 @@ test_matrix_pi_separated_needs_identity() {
   assert_screen "lone glyph without identity capability" empty "$CAPS_STYLED_NOID" "$typed"
   assert_screen "lone glyph on plain backend" empty "$CAPS_PLAIN" "$typed"
   assert_screen "lone glyph with non-pi identity" empty "$CAPS_STYLED" "$typed" '' "$none"
-  # A lone `>` is agy's idle composer AND a legal pi draft. When the backend
-  # reports a pi identity, the reported identity wins over the glyph shortcut at
-  # both separated-pair call sites: a live pi draft must never read empty, the
-  # one verdict that authorizes overwriting it.
+  # A lone `>` is agy's idle composer AND a legal pi draft. The identity wins
+  # over the glyph shortcut at both separated-pair call sites: a live pi draft
+  # must never read empty, the one verdict that authorizes overwriting it.
+  # Identity-capable adapters classify FIRST with the identity unfetched, so
+  # that first read is exactly where a glyph-only empty would escape, and it has
+  # to ask for the probe instead.
   typed=$'transcript\n────────────────────────\n>\n────────────────────────\n footer'
+  assert_screen "unprobed greater-than pair on tmux" need-identity "$CAPS_TMUX" "$typed" 2
+  assert_screen "unprobed greater-than pair on herdr" need-identity "$CAPS_STYLED" "$typed" ''
   assert_screen "pi greater-than draft on tmux" pending "$CAPS_TMUX" "$typed" 2 "$pi_idle"
   assert_screen "pi greater-than draft on herdr" pending "$CAPS_STYLED" "$typed" '' "$pi_idle"
   assert_screen "working pi greater-than draft on tmux" pending "$CAPS_TMUX" "$typed" 2 "$pi_working"
@@ -338,19 +342,22 @@ test_matrix_agy_separated_shell_prompt() {
   local idle pending
   idle=$'transcript\n────────────────────────────────\n>\n────────────────────────────────\n? for shortcuts'
   pending=$'transcript\n────────────────────────────────\n> hello pending\n────────────────────────────────\n? for shortcuts'
-  assert_screen "agy idle separated shell prompt" empty "$CAPS_TMUX" "$idle" 2
-  assert_screen "agy pending separated shell prompt" pending "$CAPS_TMUX" "$pending" 2
   assert_screen "agy idle cursorless" empty "$CAPS_STYLED_NOID" "$idle"
   assert_screen "agy pending cursorless" pending "$CAPS_PLAIN" "$pending"
-  # agy publishes no identity marker, so an identity-capable backend reports it
-  # unfetched, probe-absent, or as the plain shell it is - none of which is pi,
-  # so the glyph shortcut still carries agy on every one of those paths.
+  # On an identity-capable backend the shape is worth one lazy probe first,
+  # because the same `>` pair could be a live pi draft. agy publishes no pi
+  # marker, so the probe comes back absent (or names the plain shell it is) and
+  # the second read takes the glyph shortcut to agy's verified verdicts.
   local none_identity
   none_identity=$(printf 'zsh\t')
-  assert_screen "agy idle with an absent probe" empty "$CAPS_TMUX" "$idle" 2 probe-absent
+  assert_screen "unprobed agy pair on tmux" need-identity "$CAPS_TMUX" "$idle" 2
+  assert_screen "unprobed agy pair on herdr" need-identity "$CAPS_STYLED" "$idle" ''
+  assert_screen "agy idle separated shell prompt" empty "$CAPS_TMUX" "$idle" 2 probe-absent
+  assert_screen "agy pending separated shell prompt" pending "$CAPS_TMUX" "$pending" 2 probe-absent
   assert_screen "agy idle under a non-pi identity" empty "$CAPS_TMUX" "$idle" 2 "$none_identity"
-  assert_screen "agy idle cursorless with an absent probe" empty "$CAPS_STYLED" "$idle" '' probe-absent
   assert_screen "agy pending under a non-pi identity" pending "$CAPS_TMUX" "$pending" 2 "$none_identity"
+  assert_screen "agy idle on herdr after the probe" empty "$CAPS_STYLED" "$idle" '' probe-absent
+  assert_screen "agy pending on herdr after the probe" pending "$CAPS_STYLED" "$pending" '' probe-absent
   assert_screen "bare shell prompt is still a dead shell" unknown "$CAPS_TMUX" $'> ' 0
   # The glyph replaces the IDENTITY half of pi's conjunction, never the
   # structure half: a region taller than FM_COMPOSER_PI_MAX_LINES is not a
