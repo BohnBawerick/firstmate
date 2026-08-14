@@ -104,7 +104,7 @@
 #   profile consultation. A --secondmate spawn is exempt and resolves the SECONDMATE
 #   harness (config/secondmate-harness -> config/crew-harness -> own), so the
 #   secondmate-vs-crewmate split is DURABLE across every respawn (recovery,
-#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|muse)
+#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|muse|agy)
 #   overrides it for this spawn (either kind). A non-flag string containing
 #   whitespace is treated as a RAW launch command - the escape hatch for verifying
 #   new adapters. For pi and pi-signed, fm-spawn resolves the selected executable
@@ -161,6 +161,7 @@
 #     __OPINPUT__   absolute path to the canonical operational-input encoder
 #     __WORKTREE__  absolute path to the task worktree
 #     __CURSORBIN__ resolved, cursor-verified executable for a cursor launch
+#     __AGYBIN__    resolved agy executable for an agy launch
 # Verified per-harness turn-end hooks are installed automatically where enabled; some live outside the worktree.
 # Kimi uses one surgically installed Firstmate region in $HOME/.kimi-code/config.toml,
 # a firstmate-owned global hook and registry, and a gitignored per-task pointer.
@@ -169,12 +170,18 @@
 # muse installs no hook at all - its plugin engine is off in the default build - so
 # it writes state/<id>.muse-session to bind the pane to muse's own session event
 # log; muse is crewmate/scout only and is refused for --secondmate.
-# cursor likewise installs no hook: it writes state/<id>.cursor-session to bind
-# the pane to cursor's own conversation transcript (projects root, the exact
+# cursor installs no per-task hook either: it writes state/<id>.cursor-session to
+# bind the pane to cursor's own conversation transcript (projects root, the exact
 # workspace path cursor records in .workspace-trusted, and the conversations that
-# already existed for that workspace). cursor is crewmate/scout only and is
-# refused for --secondmate, and is launched through the verified binary resolver
-# because `cursor` is not the CLI name.
+# already existed for that workspace). It is launched through the verified binary
+# resolver because `cursor` is not the CLI name. A cursor SECONDMATE instead runs
+# the tracked project-scope .cursor/hooks.json in its own home, whose stop-hook
+# park owns that home's supervision (docs/supervision-protocols/cursor.md).
+# agy (Antigravity CLI) is crewmate/scout only: it has no verified primary
+# turn-end or watcher supervision protocol. It pins --model gemini-3.1-pro-high
+# and omits --effort because that flag conflicts with *-high model ids.
+# Its Stop hook is a surgically installed named key in $HOME/.gemini/config/hooks.json
+# plus a gitignored per-task pointer.
 # On success prints: spawned <id> harness=<name> kind=<ship|scout|secondmate> [mode=<mode> yolo=<on|off>] window=<backend-target> worktree=<path>
 # A ship task records the explicit mode/yolo it was passed; a secondmate spawn records
 # mode=secondmate, yolo=off, home=, and projects=; a scout records neither, and both the
@@ -438,13 +445,13 @@ spawn_remote_secondmate() {
     harness=$("$FM_ROOT/bin/fm-harness.sh" secondmate)
   fi
   case "$harness" in
-    cursor)
+    agy)
       fm_lock_release "$registry_lock" || true
       fm_lock_release "$SPAWN_TASK_LOCK" || true
-      echo "error: cursor is a verified crewmate/scout adapter only and cannot run a remote secondmate; no primary supervision protocol has been verified for Cursor Agent CLI" >&2
+      echo "error: agy is a verified crewmate/scout adapter only and cannot run a remote secondmate; no primary supervision protocol has been verified for Antigravity CLI" >&2
       return 1
       ;;
-    claude|codex|opencode|pi|pi-signed|grok|kimi) ;;
+    claude|codex|opencode|pi|pi-signed|grok|kimi|cursor) ;;
     *)
       fm_lock_release "$registry_lock" || true
       fm_lock_release "$SPAWN_TASK_LOCK" || true
@@ -1051,7 +1058,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
   }
 elif [ "$KIND" = secondmate ]; then
   case "${POS[1]:-}" in
-    ''|claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|muse)
+    ''|claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|muse|agy)
       ARG3=${POS[1]:-}
       ;;
     *' '*)
@@ -1181,6 +1188,15 @@ launch_template() {
     # written below. Nothing to place in the template for it.
     # codex, opencode, and kimi are also markerless and share this inherited-marker hazard; changing their verified launch boundaries belongs in follow-up work.
     muse) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS XDG_CONFIG_HOME=__MUSECONFIG__ XDG_DATA_HOME=__MUSEDATA__ MUSE_EXPERIMENTAL_FOREIGN_PERSONAL_CONTEXT_KILL=on __MUSEBIN__ --yolo __MODELFLAG____EFFORTFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+    # agy (Antigravity CLI): --prompt-interactive takes the brief as its
+    # argument and MUST be last. Placing it before --model makes --model the
+    # prompt text (verified 2026-08-14, agy 1.1.12). --dangerously-skip-permissions
+    # auto-approves tool calls but does NOT suppress the workspace trust dialog.
+    # --effort conflicts with model ids that already encode effort
+    # (gemini-3.1-pro-high + --effort low falls back to Gemini 3.6 Flash High),
+    # so firstmate never emits it. Default model is pinned by the caller.
+    # Foreign markers are cleared because agy is markerless.
+    agy) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u CURSOR_AGENT -u CURSOR_INVOKED_AS __AGYBIN__ --dangerously-skip-permissions __MODELFLAG__--prompt-interactive "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
     *) return 1 ;;
   esac
 }
@@ -1232,14 +1248,14 @@ if [ "$KIND" = secondmate ] && [ "$HARNESS" = muse ]; then
   exit 1
 fi
 
-# Cursor is verified only for task workers.
-# Its CLI has no verified primary turn-end or watcher supervision integration,
-# so a Cursor secondmate would start successfully but could never satisfy the
-# persistent primary-session contract.
-if [ "$KIND" = secondmate ] && [ "$HARNESS" = cursor ]; then
-  echo "error: cursor is a verified crewmate/scout adapter only and cannot run a secondmate; no primary supervision protocol has been verified for Cursor Agent CLI" >&2
+# agy is verified only for task workers. No primary turn-end or watcher
+# supervision protocol has been verified, so a secondmate would start and
+# then be unable to satisfy the persistent primary-session contract.
+if [ "$KIND" = secondmate ] && [ "$HARNESS" = agy ]; then
+  echo "error: agy is a verified crewmate/scout adapter only and cannot run a secondmate; no primary supervision protocol has been verified for Antigravity CLI" >&2
   exit 1
 fi
+
 
 case "$HARNESS" in
   pi|pi-signed)
@@ -1298,9 +1314,13 @@ secondmate_registry_value() {
   secondmate_registry_field "$DATA/secondmates.md" "$1" "$2"
 }
 
-resolve_kimi_binary() {
-  local candidate dir fallback
-  candidate=$(command -v kimi 2>/dev/null || true)
+# The launch template embeds an ABSOLUTE path, so a relative `command -v` hit
+# has to be resolved against its own directory before it is quoted in. Every
+# PATH-resolved adapter binary goes through here; an adapter with an extra
+# install location adds it caller-side on a non-zero return.
+resolve_path_binary() {  # <command> <not-found-error, empty to stay silent>
+  local command_name=$1 not_found=$2 candidate dir
+  candidate=$(command -v "$command_name" 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     case "$candidate" in
       /*) printf '%s\n' "$candidate"; return 0 ;;
@@ -1313,6 +1333,13 @@ resolve_kimi_binary() {
         ;;
     esac
   fi
+  [ -z "$not_found" ] || echo "$not_found" >&2
+  return 1
+}
+
+resolve_kimi_binary() {
+  local fallback
+  resolve_path_binary kimi '' && return 0
   fallback="${HOME:-}/.kimi-code/bin/kimi"
   if [ -n "${HOME:-}" ] && [ -x "$fallback" ]; then
     printf '%s\n' "$fallback"
@@ -1323,22 +1350,13 @@ resolve_kimi_binary() {
 }
 
 resolve_muse_binary() {
-  local candidate dir
-  candidate=$(command -v muse 2>/dev/null || true)
-  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
-    case "$candidate" in
-      /*) printf '%s\n' "$candidate"; return 0 ;;
-      *)
-        dir=$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P) || dir=
-        if [ -n "$dir" ]; then
-          printf '%s/%s\n' "$dir" "$(basename "$candidate")"
-          return 0
-        fi
-        ;;
-    esac
-  fi
-  echo "error: muse executable not found on PATH; install Muse Code or select a different verified harness" >&2
-  return 1
+  resolve_path_binary muse \
+    "error: muse executable not found on PATH; install Muse Code or select a different verified harness"
+}
+
+resolve_agy_binary() {
+  resolve_path_binary agy \
+    "error: agy executable not found on PATH; install Antigravity CLI or select a different verified harness"
 }
 
 # muse_credential_present: 0 when a launched muse pane can reach its provider
@@ -1375,7 +1393,7 @@ model_flag_for_harness() {
   local harness=$1 model=$2
   [ -n "$model" ] && [ "$model" != default ] || return 0
   case "$harness" in
-    claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|muse)
+    claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|muse|agy)
       printf -- '--model %s ' "$(shell_quote "$model")"
       ;;
   esac
@@ -1434,7 +1452,9 @@ effort_flag_for_harness() {
     # kimi likewise has no reasoning-effort flag; the requested axis stays in
     # task metadata but never reaches the launch command. Cursor encodes effort
     # in model ids such as cursor-grok-4.5-high, so it also receives no separate
-    # effort flag.
+    # effort flag. agy model ids already encode effort (gemini-3.1-pro-high);
+    # passing --effort alongside them makes 1.1.12 fall back to Gemini 3.6 Flash
+    # High, so firstmate never emits the flag.
   esac
 }
 
@@ -1465,6 +1485,26 @@ case "$LAUNCH" in
     if [ "$KIND" != secondmate ]; then
       "$FM_ROOT/bin/fm-kimi-turnend-hook.sh" install || {
         echo "error: refusing Kimi spawn because the global turn-end hook could not be installed safely" >&2
+        exit 1
+      }
+    fi
+    ;;
+esac
+
+case "$LAUNCH" in
+  *__AGYBIN__*)
+    AGY_BIN=$(resolve_agy_binary) || exit 1
+    LAUNCH=${LAUNCH//__AGYBIN__/"$(shell_quote "$AGY_BIN")"}
+    case "$MODEL" in
+      ''|default) MODEL=gemini-3.1-pro-high ;;
+      claude*|Claude*)
+        echo "error: agy must not run a claude-* model; the captain's standing pin is gemini-3.1-pro-high" >&2
+        exit 1
+        ;;
+    esac
+    if [ "$KIND" != secondmate ]; then
+      "$FM_ROOT/bin/fm-agy-turnend-hook.sh" install || {
+        echo "error: refusing agy spawn because the global turn-end hook could not be installed safely" >&2
         exit 1
       }
     fi
@@ -2154,6 +2194,47 @@ kimi_capture() {
   fm_backend_capture "$BACKEND" "$T" 120 "$W" 2>/dev/null || true
 }
 
+# agy readiness routes through the shared classifier, the same owner every
+# steer and injection guard reads, exactly as kimi's does.
+agy_composer_is_empty() {
+  [ "$(fm_backend_composer_state "$BACKEND" "$T" "$W" 2>/dev/null)" = empty ]
+}
+
+# --dangerously-skip-permissions does not suppress agy's workspace trust
+# dialog on a path that is not already in trustedWorkspaces (verified
+# 2026-08-14, agy 1.1.12). Yes is preselected; Enter accepts it. Skip the
+# wait when FM_AGY_TRUST_POLLS=0 (tests). Do not send Enter unless the dialog
+# is visible, and send it at most once: an extra Enter on a ready composer
+# submits an empty prompt. The budget matches kimi's readiness wait (~30s),
+# because a cold agy start reaches the dialog well after the launch keystroke
+# and a missed dialog strands the brief behind it forever. Returns non-zero
+# only when the dialog is STILL up at the end of the budget - the one state
+# that proves the brief never reached the agent.
+agy_maybe_accept_trust() {
+  local pane i=0 max=${FM_AGY_TRUST_POLLS:-60} interval=${FM_AGY_TRUST_POLL_INTERVAL:-0.5}
+  local dialog=0 accepted=0
+  case "$max" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$max" -gt 0 ] || return 0
+  while [ "$i" -lt "$max" ]; do
+    pane=$(fm_backend_capture "$BACKEND" "$T" 40 "$W" 2>/dev/null || true)
+    dialog=0
+    if printf '%s\n' "$pane" | grep -Fq 'Do you trust the contents of this project?'; then
+      dialog=1
+      if [ "$accepted" = 0 ]; then
+        spawn_send_key "$T" Enter
+        accepted=1
+      fi
+    elif printf '%s\n' "$pane" | grep -Fq 'for shortcuts' || agy_composer_is_empty; then
+      return 0
+    fi
+    i=$((i + 1))
+    [ "$i" -ge "$max" ] || sleep "$interval"
+  done
+  [ "$dialog" = 0 ] || return 1
+  echo "warning: agy showed no ready signal for $ID within the trust wait; the brief may still be pending in window $T" >&2
+  return 0
+}
+
 # Kimi launch-readiness and delivery route their composer-emptiness half
 # through the shared classifier (bin/fm-composer-lib.sh via
 # fm_backend_composer_state), the same owner every steer and injection guard
@@ -2257,7 +2338,7 @@ kimi_wait_for_delivery() {
   return 1
 }
 
-kimi_spawn_fail() {  # <detail>
+spawn_harness_fail() {  # <detail>
   printf 'failed: %s\n' "$1" >> "$STATE/$ID.status"
   echo "error: $1; inspect window $T" >&2
 }
@@ -2639,6 +2720,17 @@ EOF
       printf 'token=%s\n' "${auth_file##*/}" > "$WT/.fm-kimi-turnend"
       exclude_path '.fm-kimi-turnend'
       ;;
+    agy*)
+      AGY_AUTH_DIR="$HOME/.gemini/config/fm-agy-turn-end.d"
+      old_umask=$(umask)
+      umask 077
+      auth_file=$(mktemp "$AGY_AUTH_DIR/fm.XXXXXXXXXXXX")
+      umask "$old_umask"
+      printf '%s\n' "$TURNEND" > "$auth_file"
+      printf '%s\n' "${auth_file##*/}" > "$STATE/$ID.agy-turnend-token"
+      printf 'token=%s\n' "${auth_file##*/}" > "$WT/.fm-agy-turnend"
+      exclude_path '.fm-agy-turnend'
+      ;;
   esac
 fi
 
@@ -2813,8 +2905,11 @@ fi
 if [ "$KIND" = secondmate ]; then
   sq_home=$(shell_quote "$PROJ_ABS")
   sq_primary_home=$(shell_quote "$FM_HOME")
+  # Keep this in step with fm_supervision_model (bin/fm-wake-lib.sh): Claude's
+  # Stop auto-arm and Cursor's stop-hook park both run the watcher only BETWEEN
+  # turns, so a fresh beacon with no live watcher is their healthy mid-turn state.
   case "$HARNESS" in
-    claude) supervision_model=autoarm ;;
+    claude|cursor) supervision_model=autoarm ;;
     *) supervision_model=persistent ;;
   esac
   # Deliver the primary's EFFECTIVE trace-context decision as a normalized on/off
@@ -2878,6 +2973,12 @@ if [ "${HERDR_PROJECTED:-0}" -eq 1 ]; then
   spawn_herdr_presentation_order_lock_release
 fi
 spawn_send_key "$T" Enter
+if [ "$HARNESS" = agy ]; then
+  if ! agy_maybe_accept_trust; then
+    spawn_harness_fail "agy is still showing its workspace trust dialog, so the brief never reached the agent"
+    exit 1
+  fi
+fi
 if [ "$HARNESS" = kimi ]; then
   KIMI_READY_STATUS=0
   kimi_wait_for_ready || KIMI_READY_STATUS=$?
@@ -2896,15 +2997,15 @@ if [ "$HARNESS" = kimi ]; then
   KIMI_SUBMIT_VERDICT=$(fm_backend_send_text_submit \
     "$BACKEND" "$T" "$KIMI_POINTER" "$KIMI_SUBMIT_RETRIES" \
     "$KIMI_SUBMIT_SLEEP" "$KIMI_SUBMIT_SETTLE" "$W") || {
-    kimi_spawn_fail "kimi brief pointer could not be submitted"
+    spawn_harness_fail "kimi brief pointer could not be submitted"
     exit 1
   }
   if [ "$KIMI_SUBMIT_VERDICT" = send-failed ]; then
-    kimi_spawn_fail "kimi brief pointer could not be submitted"
+    spawn_harness_fail "kimi brief pointer could not be submitted"
     exit 1
   fi
   if ! kimi_wait_for_delivery; then
-    kimi_spawn_fail "kimi brief pointer delivery was not confirmed"
+    spawn_harness_fail "kimi brief pointer delivery was not confirmed"
     exit 1
   fi
 fi

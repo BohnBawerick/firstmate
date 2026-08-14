@@ -8,14 +8,22 @@
 # lock-owning primary session before it may arm or rewake.
 # This file is sourced by scripts and has no side effects on source.
 
+# Cursor process identity is NOT expressible as a command-name pattern and is
+# deliberately not added to the tables below: Cursor's installed names are
+# cursor-agent and the far-too-generic legacy alias `agent`, and it runs as a
+# bundled node script. bin/fm-cursor-lib.sh is the fleet's single owner of that
+# decision, so this file delegates to it rather than widening the name match.
+# shellcheck source=bin/fm-cursor-lib.sh
+. "$(dirname -- "${BASH_SOURCE[0]}")/fm-cursor-lib.sh"
+
 # Known harness command names; extend when a new adapter is verified.
-FM_HARNESS_RE='claude|codex|opencode|grok|kimi|^pi$|^pi-signed$'
+FM_HARNESS_RE='claude|codex|opencode|grok|kimi|^agy$|^pi$|^pi-signed$'
 
 # The same harnesses as exact executable names. Keep in sync with
 # FM_HARNESS_RE. Used only for the stricter path evidence below, where the
 # loose regex would also match ordinary firstmate paths such as
 # bin/fm-claude-stop-autoarm.sh.
-FM_HARNESS_NAMES=(claude codex opencode grok kimi pi-signed pi)
+FM_HARNESS_NAMES=(claude codex opencode grok kimi agy pi-signed pi)
 
 # Print the exact harness name carried by executable path $1 - its own basename
 # or any directory component - or return 1.
@@ -48,6 +56,7 @@ fm_harness_path_name() {  # <path>
 #      name and ignores argv[0] entirely, so a version-named Claude Code binary
 #      is identified by its install path on macOS and by argv[0] on Linux.
 #   3. a bare interpreter (node, python) running a harness script path.
+#   4. Cursor's own structural identity, owned by bin/fm-cursor-lib.sh.
 FM_HARNESS_IS_CLAUDE=0
 fm_harness_process_matches() {  # <comm> <args>
   local comm=$1 args=$2 base argv0 name
@@ -71,6 +80,11 @@ fm_harness_process_matches() {  # <comm> <args>
       fi
       ;;
   esac
+  # Cursor: its own owner decides, from Cursor's name or versioned install tree
+  # in the command path or argv[0]. Without this a Cursor primary can never
+  # locate its own harness in the ancestry, so every session start refuses the
+  # fleet lock as read-only and the park can never arm.
+  fm_cursor_process_matches "$comm" "$args" "$argv0" && return 0
   return 1
 }
 
