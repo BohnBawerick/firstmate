@@ -178,7 +178,7 @@
 # the tracked project-scope .cursor/hooks.json in its own home, whose stop-hook
 # park owns that home's supervision (docs/supervision-protocols/cursor.md).
 # agy (Antigravity CLI) is crewmate/scout only: it has no verified primary
-# turn-end or watcher supervision protocol. It pins --model gemini-3.1-pro-high
+# turn-end or watcher supervision protocol. It pins --model gemini-3.7-flash-high
 # and omits --effort because that flag conflicts with *-high model ids.
 # Its Stop hook is a surgically installed named key in $HOME/.gemini/config/hooks.json
 # plus a gitignored per-task pointer.
@@ -1496,9 +1496,9 @@ case "$LAUNCH" in
     AGY_BIN=$(resolve_agy_binary) || exit 1
     LAUNCH=${LAUNCH//__AGYBIN__/"$(shell_quote "$AGY_BIN")"}
     case "$MODEL" in
-      ''|default) MODEL=gemini-3.1-pro-high ;;
+      ''|default) MODEL=gemini-3.7-flash-high ;;
       claude*|Claude*)
-        echo "error: agy must not run a claude-* model; the captain's standing pin is gemini-3.1-pro-high" >&2
+        echo "error: agy must not run a claude-* model; the captain's standing pin is gemini-3.7-flash-high" >&2
         exit 1
         ;;
     esac

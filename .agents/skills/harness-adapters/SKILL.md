@@ -155,7 +155,7 @@ Use the discovery surface in the current authenticated environment because suppo
 | grok | Run `grok models`, which lists the models available to the current Grok installation and account. |
 | kimi | Run `kimi provider list --json`, which lists the current provider and model configuration. |
 | cursor | Run `cursor-agent --list-models` (or the legacy `agent --list-models`), which lists the ids available to the current Cursor account. `cursor` is not the CLI name. |
-| agy | Run `agy models`, which lists the ids available to the current Antigravity account. The captain's standing pin is `gemini-3.1-pro-high`. |
+| agy | Run `agy models`, which lists the ids available to the current Antigravity account. The captain's standing pin is `gemini-3.7-flash-high` (moved from `gemini-3.1-pro-high` on 2026-08-14; he rates 3.7 Flash above 3.1 Pro). |
 
 For an unfamiliar harness or model namespace, establish support and provider identity from that harness's authoritative CLI help, model listing, or current documentation rather than guessing from a name or prefix.
 A listing that reaches the account and does not contain the model is concrete evidence the model is unsupported: block that candidate and quote the result.
@@ -559,14 +559,16 @@ Antigravity CLI (`agy`) is a CREWMATE and SCOUT adapter only.
 `bin/fm-spawn.sh` refuses local and remote `--secondmate` launches, and `bin/fm-control-lib.sh` refuses a secondmate relaunch, because no primary turn-end or watcher supervision protocol has been verified.
 A secondmate launch, the primary turn-end guard, and the watcher-arm PreToolUse seatbelt were not tested.
 
-The captain's standing pin is `gemini-3.1-pro-high`.
+The captain's standing pin is `gemini-3.7-flash-high`, moved from `gemini-3.1-pro-high` on 2026-08-14 because he rates 3.7 Flash above 3.1 Pro.
+Every empirical line below that names `gemini-3.1-pro-high` records what was actually executed on that date and is left as run; only the pin changed.
+Effort on agy is carried in the model id rather than a flag: `-high`, `-medium` and `-low` variants exist for the Flash families, so the effort axis is expressed by choosing the model.
 agy also offers `claude-*` models; firstmate refuses those at spawn so the arbiter reading agy output cannot collapse into the same voice.
 
 | Fact | Value |
 |---|---|
 | Binary | Executable `agy` from `PATH`, resolved to an absolute path; spawning refuses if it is absent. Verified at `~/.local/bin/agy`. |
 | Launch | `--dangerously-skip-permissions __MODELFLAG__--prompt-interactive "$(brief)"`. `--prompt-interactive` MUST be last: placing it before `--model` made 1.1.12 treat `--model` as the prompt text and ignore the brief. |
-| Models | `--model gemini-3.1-pro-high` by default. `agy models` on 2026-08-14 listed `gemini-3.1-pro-high` and `gemini-3.1-pro-low` (no medium), plus Flash and `claude-*` ids. A requested `claude-*` model is refused. |
+| Models | `--model gemini-3.7-flash-high` by default since 2026-08-14 (previously `gemini-3.1-pro-high`; probed live, answers and exits 0). `agy models` the same day listed `gemini-3.7-flash-{high,medium,low}`, `gemini-3.6-flash-*`, `gemini-3.5-flash-*`, `gemini-3.1-pro-{high,low}` (no pro medium), `gpt-oss-120b-medium`, plus `claude-*` ids. A requested `claude-*` model is refused. |
 | Busy state | Unknown. PreInvocation and Stop hooks fire on a global `~/.gemini/config/hooks.json` (see below), but Stop does not fire on Escape interrupt, so a hook writer would stick busy after cancel. No semantic busy source is armed. Mid-turn footer is `esc to cancel`; idle footer is `? for shortcuts`. |
 | Exit command | `/exit`. The pane prints `Resume with -c (or command below): agy --conversation=<uuid>` and returns to the shell. Docs also name `Ctrl+D Ctrl+D` and `/quit`; those were not used as the control-plane exit. |
 | Interrupt | Single Escape. Footer mid-turn reads `esc to cancel`. After interrupt the pane shows `Interrupted · What should Antigravity CLI do instead?` and an empty `>` composer, so no clear key is needed. Stop does not fire on this path. |

@@ -139,19 +139,19 @@ EOF
   assert_contains "$out" "spawned $id harness=agy" "agy spawn did not report success"
   launch=$(cat "$home/launch.log")
   assert_contains "$launch" '--dangerously-skip-permissions' "agy launch omitted autonomy"
-  assert_contains "$launch" "--model 'gemini-3.1-pro-high'" "agy launch did not pin gemini-3.1-pro-high"
+  assert_contains "$launch" "--model 'gemini-3.7-flash-high'" "agy launch did not pin gemini-3.7-flash-high"
   assert_contains "$launch" '--prompt-interactive' "agy launch omitted --prompt-interactive"
   assert_contains "$launch" 'encode launch-brief' "agy launch did not deliver the brief"
   assert_not_contains "$launch" '--effort' "agy launch passed --effort, which conflicts with *-high model ids"
   assert_grep 'harness=agy' "$home/state/$id.meta" "agy harness was not recorded in meta"
-  assert_grep 'model=gemini-3.1-pro-high' "$home/state/$id.meta" "agy default model was not recorded"
+  assert_grep 'model=gemini-3.7-flash-high' "$home/state/$id.meta" "agy default model was not recorded"
   # The prompt must come AFTER the flags; --prompt-interactive --model swallows --model as the prompt.
   case "$launch" in
     *'--prompt-interactive'*'--model'*)
       fail "agy launch placed --prompt-interactive before --model, which consumes --model as the prompt"
       ;;
   esac
-  pass "agy spawn pins gemini-3.1-pro-high, skips --effort, and keeps --prompt-interactive last"
+  pass "agy spawn pins gemini-3.7-flash-high, skips --effort, and keeps --prompt-interactive last"
 }
 
 test_spawn_omits_requested_effort_and_keeps_model_pin() {
@@ -164,8 +164,8 @@ EOF
     --mode no-mistakes --yolo off --effort low >/dev/null \
     || fail "agy spawn with effort low failed"
   launch=$(cat "$home/launch.log")
-  assert_contains "$launch" "--model 'gemini-3.1-pro-high'" "agy effort spawn dropped the model pin"
-  assert_not_contains "$launch" '--effort' "agy spawn forwarded --effort low, which conflicts with gemini-3.1-pro-high"
+  assert_contains "$launch" "--model 'gemini-3.7-flash-high'" "agy effort spawn dropped the model pin"
+  assert_not_contains "$launch" '--effort' "agy spawn forwarded --effort low, which conflicts with gemini-3.7-flash-high"
   assert_grep 'effort=low' "$home/state/$id.meta" "requested effort was not recorded in meta"
   pass "agy records requested effort in meta and omits it from the launch"
 }
