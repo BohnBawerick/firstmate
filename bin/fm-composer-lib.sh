@@ -68,10 +68,13 @@
 #                region between two transcript rules is otherwise exactly the
 #                strict rule's unidentifiable blank row.
 #                agy draws the same two rules but with a shell `>` prompt on
-#                the content row (verified 2026-08-14, agy 1.1.12). That glyph
-#                is the container proof, so the pair classifies without
-#                identity: empty `>` is empty, `> hello` is pending. It buys
-#                only the identity half: the pair must still pass the same
+#                the content row (verified 2026-08-14, agy 1.1.12). The glyph
+#                is not a substitute for identity: the shortcut is refused
+#                when identity is unavailable (zellij, cmux, and orca stay
+#                unknown), when it is still unfetched, and when the probe
+#                names pi. After a probe-absent or non-pi identity, empty `>`
+#                is empty and `> hello` is pending. It still buys only the
+#                identity half: the pair must pass the same
 #                FM_COMPOSER_PI_MAX_LINES geometry bound, and `>` is the ONE
 #                shell glyph verified in this shape - `$`, `%`, and `#` are
 #                not. A bare `>` with no rules stays a dead shell.
@@ -1383,26 +1386,22 @@ _fm_composer_classify_bare_pi_overlap() {  # <screen> <styled> <has-identity> <i
 }
 
 # A separated pair whose content row starts with a VERIFIED separated shell
-# glyph is agy's composer, not a blank pi pair: the glyph stands in for the
-# identity half of the conjunction below. It replaces only that half, so the
-# structure half still has to hold - hence the PAIR_VALID gate, which keeps the
-# region inside FM_COMPOSER_PI_MAX_LINES exactly as _fm_composer_pi_verdict
-# does. Gating here rather than at the call sites means no caller can take the
-# shortcut past the geometry bound.
-#
-# The glyph only stands in for an identity nobody CAN report. On an
-# identity-capable backend the real identity wins: the shortcut is refused
-# while the identity is still unfetched, so the shape falls through to
-# _fm_composer_pi_verdict and asks the adapter to probe, and it stays refused
+# glyph can be agy's composer, but the glyph does not stand in for identity.
+# The structure half still has to hold - hence the PAIR_VALID gate, which
+# keeps the region inside FM_COMPOSER_PI_MAX_LINES exactly as
+# _fm_composer_pi_verdict does. The identity half has to hold too: refuse
+# the shortcut when has_identity is not 1 (unknown is the honest verdict on
+# an unverified identityless surface), while identity is still unfetched
+# (fall through so _fm_composer_pi_verdict asks the adapter to probe), or
 # once that probe names pi. A lone `>` inside a live pi pair must never read
-# empty on the strength of a glyph, and the lazy-probe protocol means the first
-# read is exactly where that would happen. agy is markerless, so its probe
-# comes back probe-absent (or names the plain shell it is) and the second read
-# takes the shortcut to the same verdict as before.
+# empty on the strength of a glyph. agy is markerless, so on an
+# identity-capable backend the probe comes back probe-absent (or names the
+# plain shell it is) and the second read takes the shortcut.
 _fm_composer_separated_has_shell_prompt() {  # <plain> <first-content> <last-content> <has-identity> <identity>
   local plain=$1 first=$2 last=$3 has_identity=${4:-0} identity=${5:-} row line trimmed glyph
   [ "$FM_COMPOSER_SCAN_PI_PAIR_VALID" = 1 ] || return 1
-  if [ "$has_identity" = 1 ] && [ "$identity" != probe-absent ] \
+  [ "$has_identity" = 1 ] || return 1
+  if [ "$identity" != probe-absent ] \
      && { [ -z "$identity" ] || [ "${identity%%$'\t'*}" = pi ]; }; then
     return 1
   fi
