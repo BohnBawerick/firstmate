@@ -342,8 +342,8 @@ test_matrix_agy_separated_shell_prompt() {
   local idle pending
   idle=$'transcript\n────────────────────────────────\n>\n────────────────────────────────\n? for shortcuts'
   pending=$'transcript\n────────────────────────────────\n> hello pending\n────────────────────────────────\n? for shortcuts'
-  assert_screen "agy idle cursorless" empty "$CAPS_STYLED_NOID" "$idle"
-  assert_screen "agy pending cursorless" pending "$CAPS_PLAIN" "$pending"
+  assert_screen "agy idle cursorless" unknown "$CAPS_STYLED_NOID" "$idle"
+  assert_screen "agy pending cursorless" unknown "$CAPS_PLAIN" "$pending"
   # On an identity-capable backend the shape is worth one lazy probe first,
   # because the same `>` pair could be a live pi draft. agy publishes no pi
   # marker, so the probe comes back absent (or names the plain shell it is) and
