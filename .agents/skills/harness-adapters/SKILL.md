@@ -576,7 +576,8 @@ agy also offers `claude-*` models; firstmate refuses those at spawn so the arbit
 
 **Flag order is load-bearing.**
 `agy --prompt-interactive --model gemini-3.1-pro-high ... "$(brief)"` consumed `--model` as the prompt and started Gemini 3.6 Flash.
-`agy --model gemini-3.1-pro-high --dangerously-skip-permissions --prompt-interactive "$(brief)"` delivered the brief and pinned Gemini 3.1 Pro High.
+`agy --dangerously-skip-permissions --model gemini-3.1-pro-high --prompt-interactive "$(brief)"` delivered the brief and pinned Gemini 3.1 Pro High, and is the order firstmate emits.
+`--dangerously-skip-permissions` and `--model` are named options (`agy --help`), so their order relative to each other does not matter; only `--prompt-interactive`'s trailing value position is load-bearing.
 
 **`--effort` is a silent fallback, not a no-op.**
 `agy --model gemini-3.1-pro-high --effort low` printed ` --model gemini-3.1-pro-high conflicts with --effort=low. Using "Gemini 3.6 Flash (High)" instead.`

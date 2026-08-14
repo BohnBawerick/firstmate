@@ -74,19 +74,23 @@ exec >/dev/null 2>&1
 payload=$(cat)
 [ -n "$payload" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
-workspace=$(jq -er '.workspacePaths[0] | strings | select(length > 0)' <<< "$payload" 2>/dev/null) || exit 0
-pointer="$workspace/.fm-agy-turnend"
-[ -f "$pointer" ] || exit 0
-first=
-IFS= read -r -n 256 first < "$pointer" 2>/dev/null || [ -n "$first" ] || exit 0
-case "$first" in token=*) token=${first#token=} ;; *) exit 0 ;; esac
-case "$token" in fm.????????????) : ;; *) exit 0 ;; esac
-case "$token" in *[!A-Za-z0-9._-]*) exit 0 ;; esac
 auth_dir=${HOME:-}/.gemini/config/fm-agy-turn-end.d
 [ -n "${HOME:-}" ] || exit 0
-target=$(cat "$auth_dir/$token" 2>/dev/null) || exit 0
-case "$target" in /*.turn-ended) : ;; *) exit 0 ;; esac
-touch -- "$target" 2>/dev/null || true
+# workspacePaths is an ARRAY: a multi-root Stop payload may list this task's
+# worktree at any index, and reading only [0] loses the wake silently. Every
+# candidate still has to pass the same pointer, token and registry gate.
+while IFS= read -r workspace; do
+  pointer="$workspace/.fm-agy-turnend"
+  [ -f "$pointer" ] || continue
+  first=
+  IFS= read -r -n 256 first < "$pointer" 2>/dev/null || [ -n "$first" ] || continue
+  case "$first" in token=*) token=${first#token=} ;; *) continue ;; esac
+  case "$token" in fm.????????????) : ;; *) continue ;; esac
+  case "$token" in *[!A-Za-z0-9._-]*) continue ;; esac
+  target=$(cat "$auth_dir/$token" 2>/dev/null) || continue
+  case "$target" in /*.turn-ended) : ;; *) continue ;; esac
+  touch -- "$target" 2>/dev/null || true
+done < <(jq -r '.workspacePaths[]? | strings | select(length > 0)' <<< "$payload" 2>/dev/null)
 exit 0
 '''
 
