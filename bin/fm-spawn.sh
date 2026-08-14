@@ -1314,9 +1314,13 @@ secondmate_registry_value() {
   secondmate_registry_field "$DATA/secondmates.md" "$1" "$2"
 }
 
-resolve_kimi_binary() {
-  local candidate dir fallback
-  candidate=$(command -v kimi 2>/dev/null || true)
+# The launch template embeds an ABSOLUTE path, so a relative `command -v` hit
+# has to be resolved against its own directory before it is quoted in. Every
+# PATH-resolved adapter binary goes through here; an adapter with an extra
+# install location adds it caller-side on a non-zero return.
+resolve_path_binary() {  # <command> <not-found-error, empty to stay silent>
+  local command_name=$1 not_found=$2 candidate dir
+  candidate=$(command -v "$command_name" 2>/dev/null || true)
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
     case "$candidate" in
       /*) printf '%s\n' "$candidate"; return 0 ;;
@@ -1329,6 +1333,13 @@ resolve_kimi_binary() {
         ;;
     esac
   fi
+  [ -z "$not_found" ] || echo "$not_found" >&2
+  return 1
+}
+
+resolve_kimi_binary() {
+  local fallback
+  resolve_path_binary kimi '' && return 0
   fallback="${HOME:-}/.kimi-code/bin/kimi"
   if [ -n "${HOME:-}" ] && [ -x "$fallback" ]; then
     printf '%s\n' "$fallback"
@@ -1339,41 +1350,13 @@ resolve_kimi_binary() {
 }
 
 resolve_muse_binary() {
-  local candidate dir
-  candidate=$(command -v muse 2>/dev/null || true)
-  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
-    case "$candidate" in
-      /*) printf '%s\n' "$candidate"; return 0 ;;
-      *)
-        dir=$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P) || dir=
-        if [ -n "$dir" ]; then
-          printf '%s/%s\n' "$dir" "$(basename "$candidate")"
-          return 0
-        fi
-        ;;
-    esac
-  fi
-  echo "error: muse executable not found on PATH; install Muse Code or select a different verified harness" >&2
-  return 1
+  resolve_path_binary muse \
+    "error: muse executable not found on PATH; install Muse Code or select a different verified harness"
 }
 
 resolve_agy_binary() {
-  local candidate dir
-  candidate=$(command -v agy 2>/dev/null || true)
-  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
-    case "$candidate" in
-      /*) printf '%s\n' "$candidate"; return 0 ;;
-      *)
-        dir=$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P) || dir=
-        if [ -n "$dir" ]; then
-          printf '%s/%s\n' "$dir" "$(basename "$candidate")"
-          return 0
-        fi
-        ;;
-    esac
-  fi
-  echo "error: agy executable not found on PATH; install Antigravity CLI or select a different verified harness" >&2
-  return 1
+  resolve_path_binary agy \
+    "error: agy executable not found on PATH; install Antigravity CLI or select a different verified harness"
 }
 
 # muse_credential_present: 0 when a launched muse pane can reach its provider

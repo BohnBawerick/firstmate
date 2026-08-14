@@ -409,6 +409,31 @@ test_hook_script_reads_a_pretty_printed_payload() {
   pass "agy Stop hook reads a multi-line Stop payload, not just its first line"
 }
 
+test_hook_script_scans_every_workspace_path() {
+  local home hook wt token target payload
+  home="$TMP_ROOT/hook-multiroot"
+  mkdir -p "$home/.gemini/config/fm-agy-turn-end.d"
+  HOME="$home" "$AGY_HOOK" install || fail "hook install for multiroot test failed"
+  hook="$home/.gemini/config/fm-agy-turn-end.sh"
+  wt="$home/wt"
+  mkdir -p "$wt" "$home/state"
+  token="fm.abcdefghijkl"
+  target="$home/state/agy-multiroot.turn-ended"
+  printf '%s\n' "$target" > "$home/.gemini/config/fm-agy-turn-end.d/$token"
+  printf 'token=%s\n' "$token" > "$wt/.fm-agy-turnend"
+  # workspacePaths is an array; reading only [0] loses the wake whenever the
+  # task worktree is not the first root agy reports.
+  payload=$(printf '%s' "{\"workspacePaths\":[\"/tmp/not-a-firstmate-worktree\",\"$wt\"]}")
+  HOME="$home" "$hook" <<<"$payload"
+  assert_present "$target" "a later-index worktree did not touch the turn-end marker"
+
+  rm -f "$target"
+  payload=$(printf '%s' '{"workspacePaths":["/tmp/not-a-firstmate-worktree","/tmp/also-not-one"]}')
+  HOME="$home" "$hook" <<<"$payload"
+  assert_absent "$target" "a multi-root payload with no pointer still touched the turn-end marker"
+  pass "agy Stop hook scans every workspace path, not only the first"
+}
+
 test_spawn_fails_when_the_trust_dialog_never_clears() {
   local rec case_dir home proj wt fakebin id out status base_enters stuck_enters
   rec=$(make_spawn_case trust-ready)
@@ -479,6 +504,7 @@ test_hook_install_refuses_a_foreign_hook_path
 test_hook_remove_deregisters_a_foreign_hook_script
 test_hook_script_touches_only_a_matching_pointer
 test_hook_script_reads_a_pretty_printed_payload
+test_hook_script_scans_every_workspace_path
 test_spawn_writes_turnend_pointer
 test_spawn_fails_when_the_trust_dialog_never_clears
 test_teardown_removes_agy_pointer_and_registry_token
