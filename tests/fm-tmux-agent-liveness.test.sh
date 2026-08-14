@@ -356,5 +356,45 @@ fi
   || fail "a dead-shell pane still showing Cursor's composer must never read empty"
 pass "cursor composer: a stale Cursor screen over a dead shell never reads empty"
 
+# agy 1.1.12's real composer: a `>` prompt between two solid rules, cursor left
+# inside the pair. A lone `>` there is ALSO a legal pi draft, so the glyph
+# cannot out-vote a live pi and the classifier asks for the identity probe
+# before it answers. That makes this the round trip no fixture reaches: probe,
+# then verdict, through the real adapter against a real foreground process.
+agy_screen() {  # <composer-text>
+  printf 'transcript\n────────────────\n> %s\n────────────────\n? for shortcuts\n\033[3;3H' "$1"
+}
+
+open_agy_pane() {  # <window> <binary> <composer-text> <wait-text>
+  local window=$1 binary=$2 text=$3 wait_text=$4 i=0
+  new_window "$window" bash -c "$(declare -f agy_screen); agy_screen '$text'; exec '$binary' 900"
+  while [ "$i" -lt 100 ]; do
+    case "$("$REAL_TMUX" -L "$SOCKET" capture-pane -p -t "$SESSION:$window" 2>/dev/null)" in
+      *"$wait_text"*) return 0 ;;
+    esac
+    sleep 0.1
+    i=$((i + 1))
+  done
+  fail "pane $window never rendered its agy composer"
+}
+
+open_agy_pane agy-idle "$LAB/bin/agy" '' '? for shortcuts'
+[ "$(fm_tmux_composer_cursor_row "$SESSION:agy-idle")" = 2 ] \
+  || fail "the agy pane's cursor must sit inside the separated pair, or this case proves nothing"
+[ "$(fm_tmux_composer_state "$SESSION:agy-idle")" = empty ] \
+  || fail "an idle agy composer must still read empty once the identity probe reports no pi; without it every agy crewmate read defers forever"
+pass "agy composer: an idle agy pane reads empty through the identity probe"
+
+open_agy_pane agy-typed "$LAB/bin/agy" 'half typed captain text' 'half typed captain text'
+[ "$(fm_tmux_composer_state "$SESSION:agy-typed")" = pending ] \
+  || fail "real unsubmitted text in an agy composer must read pending, never empty"
+pass "agy composer: real typed text in an agy pane still reads pending"
+
+# The SAME rendered screen, with only the foreground process identity changed.
+open_agy_pane pi-lone-glyph "$LAB/bin/pi" '' '? for shortcuts'
+[ "$(fm_tmux_composer_state "$SESSION:pi-lone-glyph")" != empty ] \
+  || fail "a live pi pane whose composer holds a lone > must never read empty on the strength of agy's glyph; an escalation would overwrite the captain's draft"
+pass "agy composer: the identical screen over a live pi pane never reads empty"
+
 cleanup_all
 trap - EXIT

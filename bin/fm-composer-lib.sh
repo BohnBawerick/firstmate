@@ -1390,16 +1390,20 @@ _fm_composer_classify_bare_pi_overlap() {  # <screen> <styled> <has-identity> <i
 # does. Gating here rather than at the call sites means no caller can take the
 # shortcut past the geometry bound.
 #
-# The glyph only stands in for an identity nobody reported. When the backend
-# HAS reported one and it names pi, the real identity wins and the shortcut is
-# refused: a lone `>` inside a live pi pair must never read empty on the
-# strength of a glyph. agy is markerless, so its identity is unfetched or
-# probe-absent and the shortcut still applies.
+# The glyph only stands in for an identity nobody CAN report. On an
+# identity-capable backend the real identity wins: the shortcut is refused
+# while the identity is still unfetched, so the shape falls through to
+# _fm_composer_pi_verdict and asks the adapter to probe, and it stays refused
+# once that probe names pi. A lone `>` inside a live pi pair must never read
+# empty on the strength of a glyph, and the lazy-probe protocol means the first
+# read is exactly where that would happen. agy is markerless, so its probe
+# comes back probe-absent (or names the plain shell it is) and the second read
+# takes the shortcut to the same verdict as before.
 _fm_composer_separated_has_shell_prompt() {  # <plain> <first-content> <last-content> <has-identity> <identity>
   local plain=$1 first=$2 last=$3 has_identity=${4:-0} identity=${5:-} row line trimmed glyph
   [ "$FM_COMPOSER_SCAN_PI_PAIR_VALID" = 1 ] || return 1
-  if [ "$has_identity" = 1 ] && [ -n "$identity" ] && [ "$identity" != probe-absent ] \
-     && [ "${identity%%$'\t'*}" = pi ]; then
+  if [ "$has_identity" = 1 ] && [ "$identity" != probe-absent ] \
+     && { [ -z "$identity" ] || [ "${identity%%$'\t'*}" = pi ]; }; then
     return 1
   fi
   row=$first
