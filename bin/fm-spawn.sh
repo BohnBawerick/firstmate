@@ -2209,13 +2209,17 @@ agy_composer_is_empty() {
 # because a cold agy start reaches the dialog well after the launch keystroke
 # and a missed dialog strands the brief behind it forever. Returns non-zero
 # only when the dialog is STILL up at the end of the budget - the one state
-# that proves the brief never reached the agent.
+# that proves the brief never reached the agent. A dialog that first appears on
+# the very last budgeted poll is exactly the cold start the budget exists for,
+# so the accept always gets one re-check poll of its own before that verdict;
+# otherwise the accept that just worked would be reported as a failure while a
+# live agy pane waits for the brief.
 agy_maybe_accept_trust() {
   local pane i=0 max=${FM_AGY_TRUST_POLLS:-60} interval=${FM_AGY_TRUST_POLL_INTERVAL:-0.5}
-  local dialog=0 accepted=0
+  local dialog=0 accepted=0 grace=0
   case "$max" in ''|*[!0-9]*) return 0 ;; esac
   [ "$max" -gt 0 ] || return 0
-  while [ "$i" -lt "$max" ]; do
+  while :; do
     pane=$(fm_backend_capture "$BACKEND" "$T" 40 "$W" 2>/dev/null || true)
     dialog=0
     if printf '%s\n' "$pane" | grep -Fq 'Do you trust the contents of this project?'; then
@@ -2223,12 +2227,17 @@ agy_maybe_accept_trust() {
       if [ "$accepted" = 0 ]; then
         spawn_send_key "$T" Enter
         accepted=1
+        grace=1
       fi
     elif printf '%s\n' "$pane" | grep -Fq 'for shortcuts' || agy_composer_is_empty; then
       return 0
     fi
     i=$((i + 1))
-    [ "$i" -ge "$max" ] || sleep "$interval"
+    if [ "$i" -ge "$max" ]; then
+      [ "$grace" = 1 ] || break
+      grace=0
+    fi
+    sleep "$interval"
   done
   [ "$dialog" = 0 ] || return 1
   echo "warning: agy showed no ready signal for $ID within the trust wait; the brief may still be pending in window $T" >&2
@@ -2668,6 +2677,7 @@ EOF
       ;;
     agy*)
       AGY_AUTH_DIR="$HOME/.gemini/config/fm-agy-turn-end.d"
+      mkdir -p "$AGY_AUTH_DIR"
       old_umask=$(umask)
       umask 077
       auth_file=$(mktemp "$AGY_AUTH_DIR/fm.XXXXXXXXXXXX")
