@@ -224,8 +224,12 @@ EOF
 test_raw_launch_command_named_agy_spawns() {
   # The raw-launch escape hatch names the harness from the command's first
   # word, so `agy ...` takes the agy branch without ever going through the
-  # generated template. Nothing agy-template-specific may be required on that
-  # path.
+  # generated template - and so without the hook installer that only the
+  # template block runs. That leaves one accepted residual, unchanged here
+  # because it is identical for kimi: the turn-end mint still expects the
+  # registry directory the skipped installer would have created, so the mkdir
+  # below stands in for it and this hatch does not work unaided. What the test
+  # pins is the binary resolution, which must not abort the raw path.
   local rec case_dir home proj wt fakebin id raw launch out status
   rec=$(make_spawn_case raw-launch)
   IFS='|' read -r case_dir home proj wt fakebin id <<EOF
