@@ -337,8 +337,11 @@ test_matrix_pi_separated_needs_identity() {
 
 test_matrix_agy_separated_shell_prompt() {
   # agy 1.1.12 draws two solid `─` rules around a shell `>` prompt. That glyph
-  # is the container proof, so the pair classifies without pi identity. A bare
-  # `>` with no rules stays a dead shell.
+  # is a shape check layered on top of identity, never a substitute for it: the
+  # shortcut runs only once identity has been fetched and came back
+  # `probe-absent` or naming a non-pi harness. Backends that cannot carry
+  # identity at all stay `unknown`, and a bare `>` with no rules stays a dead
+  # shell.
   local idle pending
   idle=$'transcript\n────────────────────────────────\n>\n────────────────────────────────\n? for shortcuts'
   pending=$'transcript\n────────────────────────────────\n> hello pending\n────────────────────────────────\n? for shortcuts'
@@ -359,10 +362,12 @@ test_matrix_agy_separated_shell_prompt() {
   assert_screen "agy idle on herdr after the probe" empty "$CAPS_STYLED" "$idle" '' probe-absent
   assert_screen "agy pending on herdr after the probe" pending "$CAPS_STYLED" "$pending" '' probe-absent
   assert_screen "bare shell prompt is still a dead shell" unknown "$CAPS_TMUX" $'> ' 0
-  # The glyph replaces the IDENTITY half of pi's conjunction, never the
-  # structure half: a region taller than FM_COMPOSER_PI_MAX_LINES is not a
-  # composer, and only `>` was ever verified in this shape. Both of these read
-  # `empty` - the one verdict that authorizes overwrite - before this guard.
+  # The glyph never relaxes the structure half of pi's conjunction: a region
+  # taller than FM_COMPOSER_PI_MAX_LINES is not a composer, and only `>` was
+  # ever verified in this shape. Each pair pins the same refusal from both
+  # sides - the identityless row because no identity means no shortcut at all,
+  # and the probe-absent row because geometry and glyph are still checked after
+  # identity clears.
   local tall dollar
   tall=$'────────────────────────────────\n\n\n\n\n\n\n\n\n>\n────────────────────────────────'
   assert_screen "tall separated region is not a proven agy composer" unknown "$CAPS_STYLED_NOID" "$tall"
@@ -370,7 +375,7 @@ test_matrix_agy_separated_shell_prompt() {
   dollar=$'transcript\n────────────────────────────────\n$\n────────────────────────────────\n? for shortcuts'
   assert_screen "unverified separated dollar prompt" unknown "$CAPS_STYLED_NOID" "$dollar"
   assert_screen "unverified separated dollar prompt under a cursor" unknown "$CAPS_TMUX" "$dollar" 2 probe-absent
-  pass "matrix: agy's separated greater-than composer classifies without identity; a bare greater-than does not"
+  pass "matrix: agy's separated greater-than composer classifies only after identity clears; a bare greater-than never does"
 }
 
 test_matrix_opencode_leftbar_signals() {

@@ -56,14 +56,7 @@ esac
 exit 0
 SH
   chmod +x "$fakebin/tmux"
-  cat > "$fakebin/agy" <<'SH'
-#!/usr/bin/env bash
-set -u
-[ -n "${FM_FAKE_HARNESS_RESULT:-}" ] || exit 0
-exec bash -c 'result=$($FM_FAKE_HARNESS_PROBE); printf "%s" "$result" > "$FM_FAKE_HARNESS_RESULT"'
-SH
-  chmod +x "$fakebin/agy"
-  fm_fake_exit0 "$fakebin" treehouse gh-axi gh
+  fm_fake_exit0 "$fakebin" agy treehouse gh-axi gh
   ln -s "$JQ_BIN" "$fakebin/jq"
   printf '%s\n' "$fakebin"
 }
@@ -87,6 +80,12 @@ make_spawn_case() {
 run_agy_spawn() {  # <home> <proj> <wt> <fakebin> <id> [extra args...]
   local home=$1 proj=$2 wt=$3 fakebin=$4 id=$5
   shift 5
+  run_spawn_arg3 "$home" "$proj" "$wt" "$fakebin" "$id" agy "$@"
+}
+
+run_spawn_arg3() {  # <home> <proj> <wt> <fakebin> <id> <arg3> [extra args...]
+  local home=$1 proj=$2 wt=$3 fakebin=$4 id=$5 arg3=$6
+  shift 6
   FM_ROOT_OVERRIDE='' FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
@@ -96,7 +95,7 @@ run_agy_spawn() {  # <home> <proj> <wt> <fakebin> <id> [extra args...]
     FM_FAKE_LAUNCH_LOG="$home/launch.log" \
     HOME="$home" \
     PATH="$fakebin:$PATH" \
-    "$SPAWN" "$id" "$proj" agy "$@" 2>&1
+    "$SPAWN" "$id" "$proj" "$arg3" "$@" 2>&1
 }
 
 # --- detection --------------------------------------------------------------
@@ -208,20 +207,39 @@ test_spawn_refuses_secondmate() {
 }
 
 test_spawn_clears_inherited_foreign_harness_markers() {
-  local rec case_dir home proj wt fakebin id result out status
+  local rec case_dir home proj wt fakebin id launch out status
   rec=$(make_spawn_case inherited-markers)
   IFS='|' read -r case_dir home proj wt fakebin id <<EOF
 $rec
 EOF
-  result="$case_dir/harness-result"
   out=$(CLAUDECODE=1 PI_CODING_AGENT=true GROK_AGENT=1 FM_PI_HARNESS=pi-signed \
-    FM_FAKE_HARNESS_RESULT="$result" FM_FAKE_HARNESS_PROBE="$HARNESS" \
     run_agy_spawn "$home" "$proj" "$wt" "$fakebin" "$id" --mode no-mistakes --yolo off)
   status=$?
   expect_code 0 "$status" "agy spawn from a marked backend should succeed: $out"
   launch=$(cat "$home/launch.log")
   assert_contains "$launch" '-u CLAUDECODE' "agy launch did not clear an inherited CLAUDECODE"
   pass "agy launch clears foreign harness markers"
+}
+
+test_raw_launch_command_named_agy_spawns() {
+  # The raw-launch escape hatch names the harness from the command's first
+  # word, so `agy ...` takes the agy branch without ever going through the
+  # generated template. Nothing agy-template-specific may be required on that
+  # path.
+  local rec case_dir home proj wt fakebin id raw launch out status
+  rec=$(make_spawn_case raw-launch)
+  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+  mkdir -p "$home/.gemini/config/fm-agy-turn-end.d"
+  raw="agy --dangerously-skip-permissions --prompt-interactive 'probe'"
+  out=$(run_spawn_arg3 "$home" "$proj" "$wt" "$fakebin" "$id" "$raw" \
+    --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "raw agy launch command should spawn: $out"
+  launch=$(cat "$home/launch.log")
+  assert_contains "$launch" "$raw" "raw agy launch command was not sent to the pane"
+  pass "a raw launch command whose first word is agy spawns"
 }
 
 # --- turn-end hook ----------------------------------------------------------
@@ -450,6 +468,7 @@ test_spawn_omits_requested_effort_and_keeps_model_pin
 test_spawn_refuses_claude_model
 test_spawn_refuses_secondmate
 test_spawn_clears_inherited_foreign_harness_markers
+test_raw_launch_command_named_agy_spawns
 test_hook_install_is_surgical_and_gated
 test_hook_install_never_names_a_missing_command
 test_hook_install_refuses_a_foreign_hook_path
