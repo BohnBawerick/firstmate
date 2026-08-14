@@ -561,7 +561,7 @@ agy also offers `claude-*` models; firstmate refuses those at spawn so the arbit
 
 | Fact | Value |
 |---|---|
-| Binary | Executable `agy` from `PATH`, resolved to an absolute path; spawning refuses if it is absent. Verified at `/home/paiva/.local/bin/agy`. |
+| Binary | Executable `agy` from `PATH`, resolved to an absolute path; spawning refuses if it is absent. Verified at `~/.local/bin/agy`. |
 | Launch | `--dangerously-skip-permissions __MODELFLAG__--prompt-interactive "$(brief)"`. `--prompt-interactive` MUST be last: placing it before `--model` made 1.1.12 treat `--model` as the prompt text and ignore the brief. |
 | Models | `--model gemini-3.1-pro-high` by default. `agy models` on 2026-08-14 listed `gemini-3.1-pro-high` and `gemini-3.1-pro-low` (no medium), plus Flash and `claude-*` ids. A requested `claude-*` model is refused. |
 | Busy state | Unknown. PreInvocation and Stop hooks fire on a global `~/.gemini/config/hooks.json` (see below), but Stop does not fire on Escape interrupt, so a hook writer would stick busy after cancel. No semantic busy source is armed. Mid-turn footer is `esc to cancel`; idle footer is `? for shortcuts`. |
