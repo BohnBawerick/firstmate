@@ -145,7 +145,8 @@ That warning uses `bin/fm-supervision-instructions.sh --repair-line`, so it alwa
 - agy has no project-level hook configuration and remains outside the primary guard integrations above.
 - Captain-approved agy crew wake support uses `bin/fm-agy-turnend-hook.sh` to upsert only one surgically named Firstmate key in that global config and install a silent always-zero hook.
 - That hook remains inert unless the payload's first `workspacePaths` entry holds a per-task token pointer that resolves through Firstmate's private registry to one `state/<id>.turn-ended` marker.
-- Its installation refuses before writing unless `python3` and `jq` are available, and unless `hooks.json` is either absent or a regular non-symlink file holding a JSON object.
+- Its installation refuses before writing unless `python3` and `jq` are available, unless `hooks.json` is either absent or a regular non-symlink file holding a JSON object, unless `~/.gemini/config` and the `fm-agy-turn-end.d` token registry are absent or real non-symlink directories, and unless `fm-agy-turn-end.sh` is absent or holds a Firstmate-authored hook.
+- Removal de-registers the key before those file guards run, so an unrecognized hook script is always unwired from agy even when Firstmate refuses to delete it.
 - If `jq` is removed after installation, the agy hook stays silent and exits 0, turn-end wakes stop, and agy crews fall back to idle detection.
 - Teardown retires the agy registry entry, the per-task state token, and the worktree pointer alongside grok's and kimi's.
 - Unreadable hook input remains fail-open.

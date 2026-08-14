@@ -306,6 +306,29 @@ test_hook_install_refuses_a_foreign_hook_path() {
   pass "agy hook install refuses a foreign hook script or symlinked registry"
 }
 
+test_hook_remove_deregisters_a_foreign_hook_script() {
+  local home config hook status
+  home="$TMP_ROOT/hook-remove-foreign"
+  config="$home/.gemini/config/hooks.json"
+  hook="$home/.gemini/config/fm-agy-turn-end.sh"
+  mkdir -p "$home/.gemini/config"
+  HOME="$home" "$AGY_HOOK" install >/dev/null 2>&1 || fail "install for the removal test failed"
+  # Something else replaced the hook script Firstmate registered.
+  printf '#!/usr/bin/env bash\necho not ours\n' > "$hook"
+
+  HOME="$home" "$AGY_HOOK" remove >/dev/null 2>&1
+  status=$?
+  expect_code 1 "$status" "remove should still report the unrecognized hook script"
+  "$PYTHON_BIN" - "$config" <<'PY' || fail "remove left agy executing an unrecognized Stop command"
+import json, os, sys
+path = sys.argv[1]
+if os.path.exists(path):
+    assert "fm-agy-turn-end" not in json.load(open(path, encoding="utf-8")), "key survived"
+PY
+  assert_present "$hook" "remove deleted a hook script it does not recognize"
+  pass "agy hook removal de-registers the Stop key even when the hook script is foreign"
+}
+
 test_hook_script_touches_only_a_matching_pointer() {
   local home hook wt token target payload
   home="$TMP_ROOT/hook-fire"
@@ -430,6 +453,7 @@ test_spawn_clears_inherited_foreign_harness_markers
 test_hook_install_is_surgical_and_gated
 test_hook_install_never_names_a_missing_command
 test_hook_install_refuses_a_foreign_hook_path
+test_hook_remove_deregisters_a_foreign_hook_script
 test_hook_script_touches_only_a_matching_pointer
 test_hook_script_reads_a_pretty_printed_payload
 test_spawn_writes_turnend_pointer

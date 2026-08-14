@@ -5,8 +5,10 @@
 # $HOME/.gemini/config/hooks.json. install creates that file when absent, or
 # upserts only the fm-agy-turn-end key when the file already holds other hooks.
 # remove deletes only that key. Missing, malformed, symlinked, or otherwise
-# surprising JSON is refused without a config write, as is a hook script path or
-# token registry that does not hold the Firstmate-owned shape.
+# surprising JSON is refused without a config write, as is an install over a
+# hook script path or token registry that does not hold the Firstmate-owned
+# shape. remove always de-registers the key first, then refuses to delete a
+# hook script or registry it no longer recognizes.
 #
 # The installed Stop hook always exits 0 and stays silent. It reads
 # workspacePaths from the hook payload, checks for a .fm-agy-turnend pointer
@@ -21,7 +23,7 @@ set -u
 case "${1:-}" in
   install|remove) ACTION=$1 ;;
   -h|--help)
-    sed -n '2,18{s/^# \{0,1\}//;p;}' "$0"
+    sed -n '2,20{s/^# \{0,1\}//;p;}' "$0"
     exit 0
     ;;
   *)
@@ -208,14 +210,16 @@ if ACTION == "install":
     raise SystemExit(0)
 
 hooks = load_hooks(CONFIG)
-check_hook_path()
-check_registry_path()
+# De-register first: agy must stop running the command whatever state the file
+# it names is in. Only the deletion of Firstmate's own files is guarded.
 if HOOK_KEY in hooks:
     del hooks[HOOK_KEY]
     if hooks:
         atomic_write(CONFIG, hooks)
     elif os.path.exists(CONFIG):
         os.unlink(CONFIG)
+check_hook_path()
+check_registry_path()
 if os.path.lexists(HOOK):
     os.unlink(HOOK)
 if os.path.isdir(REGISTRY):

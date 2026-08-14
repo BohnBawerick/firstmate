@@ -1256,7 +1256,8 @@ EOF
        && [ "$cy" -gt "$FM_COMPOSER_SCAN_PI_OPEN" ] \
        && [ "$cy" -lt "$FM_COMPOSER_SCAN_PI_CLOSE" ]; then
       if _fm_composer_separated_has_shell_prompt "$plain" \
-           "$((FM_COMPOSER_SCAN_PI_OPEN + 1))" "$((FM_COMPOSER_SCAN_PI_CLOSE - 1))"; then
+           "$((FM_COMPOSER_SCAN_PI_OPEN + 1))" "$((FM_COMPOSER_SCAN_PI_CLOSE - 1))" \
+           "$has_identity" "$identity"; then
         _fm_composer_classify_rows "$screen" "$styled" 0 \
           "$((FM_COMPOSER_SCAN_PI_OPEN + 1))" "$((FM_COMPOSER_SCAN_PI_CLOSE - 1))"
         return 0
@@ -1283,7 +1284,8 @@ EOF
   case "$FM_COMPOSER_SELECTED_KIND" in
     pi)
       if _fm_composer_separated_has_shell_prompt "$plain" \
-           "$FM_COMPOSER_SELECTED_FIRST" "$FM_COMPOSER_SELECTED_LAST"; then
+           "$FM_COMPOSER_SELECTED_FIRST" "$FM_COMPOSER_SELECTED_LAST" \
+           "$has_identity" "$identity"; then
         _fm_composer_classify_rows "$screen" "$styled" 0 \
           "$FM_COMPOSER_SELECTED_FIRST" "$FM_COMPOSER_SELECTED_LAST"
       else
@@ -1387,9 +1389,19 @@ _fm_composer_classify_bare_pi_overlap() {  # <screen> <styled> <has-identity> <i
 # region inside FM_COMPOSER_PI_MAX_LINES exactly as _fm_composer_pi_verdict
 # does. Gating here rather than at the call sites means no caller can take the
 # shortcut past the geometry bound.
-_fm_composer_separated_has_shell_prompt() {  # <plain> <first-content> <last-content>
-  local plain=$1 first=$2 last=$3 row line trimmed glyph
+#
+# The glyph only stands in for an identity nobody reported. When the backend
+# HAS reported one and it names pi, the real identity wins and the shortcut is
+# refused: a lone `>` inside a live pi pair must never read empty on the
+# strength of a glyph. agy is markerless, so its identity is unfetched or
+# probe-absent and the shortcut still applies.
+_fm_composer_separated_has_shell_prompt() {  # <plain> <first-content> <last-content> <has-identity> <identity>
+  local plain=$1 first=$2 last=$3 has_identity=${4:-0} identity=${5:-} row line trimmed glyph
   [ "$FM_COMPOSER_SCAN_PI_PAIR_VALID" = 1 ] || return 1
+  if [ "$has_identity" = 1 ] && [ -n "$identity" ] && [ "$identity" != probe-absent ] \
+     && [ "${identity%%$'\t'*}" = pi ]; then
+    return 1
+  fi
   row=$first
   while [ "$row" -le "$last" ]; do
     line=$(_fm_composer_screen_row "$row" "$plain")
