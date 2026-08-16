@@ -514,6 +514,8 @@ Firstmate's shared instruction surface reaches running homes only after it lands
 Only `AGENTS.md`, `bin/`, and `.agents/skills/` are loaded by a running firstmate; public `skills/` is an installer-facing surface.
 When the captain invokes `/updatefirstmate` or asks to update firstmate, load the `/updatefirstmate` skill.
 It performs guarded fast-forward updates of firstmate and registered secondmate homes, refreshes instructions, and never touches anything under `projects/`.
+When the captain invokes `/sync-axi` or asks to sync or update cloned repositories from upstream, load the `sync-axi` skill.
+It updates cloned repositories and firstmate from origin using local patch stacks, reports conflicts before applying clean changes, and never touches unlanded work.
 
 ## 13. Agent-only reference skills
 
