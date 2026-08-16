@@ -25,7 +25,34 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 PROJECTS="${FM_PROJECTS_OVERRIDE:-$FM_HOME/projects}"
 
 usage() {
-  echo "usage: fm-sync-axi.sh [--help] [<project-dir-or-name>]" >&2
+  cat << 'EOF'
+usage: fm-sync-axi.sh [--help] [<project-dir-or-name>]
+
+Update cloned repositories and firstmate from origin using local patch stacks.
+
+Arguments:
+  <project-dir-or-name>   Optional project directory or bare name under $FM_HOME/projects.
+                          If omitted, syncs all clones under $PROJECTS plus firstmate.
+
+Mechanics per repository:
+  1. Discover target repositories and skip targets with no origin remote.
+  2. Refuse dirty working trees or unlanded local branches.
+  3. Fetch origin without mutating working trees.
+  4. Test scratch integration on a detached scratch worktree:
+     - Replay ours on top (rebase our commits onto origin/<default>).
+     - Take theirs on top (merge origin/<default> into our default branch).
+     - If both conflict, leave real repository untouched and report conflicts.
+  5. Apply clean update to real repository.
+  6. Rebuild globally installed commands that resolve into updated clones.
+  7. Report plain-English status per repository, including firstmate restart note
+     when bin/ or .agents/skills/ are updated.
+
+Safety guarantees:
+  - Never pushes to any remote, never opens PRs, never forks.
+  - Never stashes, forces, resets, or discards unlanded work or dirty trees.
+  - Evaluates updates on a scratch worktree first; never mutates a real tree if
+    conflicts occur.
+EOF
 }
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
@@ -105,12 +132,11 @@ sync_repo() {
     return 0
   fi
 
-  local local_branches b unlanded_count unlanded_found=0
+  local local_branches b unlanded_found=0
   local_branches=$(git -C "$target_dir" for-each-ref --format='%(refname:short)' refs/heads/ 2>/dev/null || true)
   for b in $local_branches; do
     [ "$b" = "$default_branch" ] && continue
-    unlanded_count=$(git -C "$target_dir" rev-list --count "origin/$default_branch..$b" 2>/dev/null || echo 0)
-    if [ "$unlanded_count" -gt 0 ]; then
+    if ! git -C "$target_dir" merge-base --is-ancestor "$b" "$default_branch" 2>/dev/null; then
       unlanded_found=1
       break
     fi

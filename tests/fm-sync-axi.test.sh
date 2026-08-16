@@ -159,7 +159,7 @@ else
   fail "dirty repo mutated unexpectedly"
 fi
 
-# --- Test 7: Unlanded work on task branch ---
+# --- Test 7a: Unlanded work on task branch ---
 branch_home="$TMP_ROOT/home-branch"
 mkdir -p "$branch_home/projects" "$branch_home/remotes"
 
@@ -179,6 +179,72 @@ out=$(FM_HOME="$branch_home" "$SYNC_SCRIPT" "$branch_home/projects/taskrepo" 2>&
 case "$out" in
   *"taskrepo: unlanded work in progress - not applied"*) pass "unlanded task branch reported" ;;
   *) fail "expected unlanded work output, got: $out" ;;
+esac
+
+# --- Test 7b: Merged task branch is NOT treated as unlanded ---
+merged_home="$TMP_ROOT/home-merged-branch"
+mkdir -p "$merged_home/projects" "$merged_home/remotes"
+
+git init -q --bare "$merged_home/remotes/mergedrepo.git"
+git -C "$merged_home/remotes/mergedrepo.git" symbolic-ref HEAD refs/heads/main
+
+work_merged="$TMP_ROOT/work-merged"
+git clone -q "$merged_home/remotes/mergedrepo.git" "$work_merged" 2>/dev/null
+commit_file "$work_merged" file.txt v1 C1
+git -C "$work_merged" push -q origin main
+
+git clone -q "$merged_home/remotes/mergedrepo.git" "$merged_home/projects/mergedrepo" 2>/dev/null
+
+# Create a task branch and merge it into main in the clone
+git -C "$merged_home/projects/mergedrepo" checkout -q -b fm/landed-task
+commit_file "$merged_home/projects/mergedrepo" landed.txt l1 C-landed
+git -C "$merged_home/projects/mergedrepo" checkout -q main
+git -C "$merged_home/projects/mergedrepo" merge -q fm/landed-task
+
+# Advance upstream origin
+commit_file "$work_merged" file.txt v2 C2-upstream
+git -C "$work_merged" push -q origin main
+
+out=$(FM_HOME="$merged_home" "$SYNC_SCRIPT" "$merged_home/projects/mergedrepo" 2>&1)
+case "$out" in
+  *"mergedrepo: updated, 1 new commit from upstream"*) pass "merged task branch allowed and updated cleanly" ;;
+  *) fail "expected updated output for merged task branch, got: $out" ;;
+esac
+
+# --- Test 7c: Multiple merged branches plus one unmerged branch still refuses ---
+mix_home="$TMP_ROOT/home-mix-branch"
+mkdir -p "$mix_home/projects" "$mix_home/remotes"
+
+git init -q --bare "$mix_home/remotes/mixrepo.git"
+git -C "$mix_home/remotes/mixrepo.git" symbolic-ref HEAD refs/heads/main
+
+work_mix="$TMP_ROOT/work-mix"
+git clone -q "$mix_home/remotes/mixrepo.git" "$work_mix" 2>/dev/null
+commit_file "$work_mix" file.txt v1 C1
+git -C "$work_mix" push -q origin main
+
+git clone -q "$mix_home/remotes/mixrepo.git" "$mix_home/projects/mixrepo" 2>/dev/null
+
+# Create 2 merged branches
+git -C "$mix_home/projects/mixrepo" checkout -q -b fm/merged1
+commit_file "$mix_home/projects/mixrepo" m1.txt m1 C-m1
+git -C "$mix_home/projects/mixrepo" checkout -q main
+git -C "$mix_home/projects/mixrepo" merge -q fm/merged1
+
+git -C "$mix_home/projects/mixrepo" checkout -q -b fm/merged2
+commit_file "$mix_home/projects/mixrepo" m2.txt m2 C-m2
+git -C "$mix_home/projects/mixrepo" checkout -q main
+git -C "$mix_home/projects/mixrepo" merge -q fm/merged2
+
+# Create 1 unmerged branch
+git -C "$mix_home/projects/mixrepo" checkout -q -b fm/unmerged1
+commit_file "$mix_home/projects/mixrepo" u1.txt u1 C-u1
+git -C "$mix_home/projects/mixrepo" checkout -q main
+
+out=$(FM_HOME="$mix_home" "$SYNC_SCRIPT" "$mix_home/projects/mixrepo" 2>&1)
+case "$out" in
+  *"mixrepo: unlanded work in progress - not applied"*) pass "mixed merged and unmerged branches correctly refused" ;;
+  *) fail "expected unlanded output for mixed branches, got: $out" ;;
 esac
 
 # --- Test 8: Firstmate restart note ---
