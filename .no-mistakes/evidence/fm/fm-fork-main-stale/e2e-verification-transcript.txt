@@ -1,0 +1,50 @@
+================================================================================
+Firstmate Fork Delivery Path End-to-End Verification Transcript
+Commit: 28e0329d8cb52a3815e832d1d7e71baca881621d
+Date: 2026-08-18 19:31:09Z
+================================================================================
+
+=== Scenario 1: fm-fleet-sync Skips Firstmate Home Gracefully ===
+Command: bin/fm-fleet-sync.sh "/home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0B5586CYW8M67MY31E6CNYH"
+/home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0B5586CYW8M67MY31E6CNYH: skipped: firstmate home (upstream sync is manual)
+Exit code: 0
+
+=== Scenario 2: fm-merge-local Lands Firstmate Tasks (mode=no-mistakes) ===
+Task metadata:
+id=task-fm-delivery-01
+project=/tmp/fm-evidence-run.TXYQ9v/firstmate-home
+mode=no-mistakes
+kind=crewmate
+branch=fm/task-fm-delivery-01
+Before merge, main is at: e78dc26
+Executing fm-merge-local.sh...
+merged fm/task-fm-delivery-01 into local main (e78dc26 -> 85ed28c) in /tmp/fm-evidence-run.TXYQ9v/firstmate-home
+After merge, main is at: 85ed28c
+Main commit message: feat: landing fix
+
+=== Scenario 3: fm-pr-merge Merges PR and Fast-Forwards Local Main for Firstmate ===
+Executing fm-pr-merge.sh for Firstmate task task-fm-pr-02...
+armed: state/task-fm-pr-02.check.sh
+MOCK gh-axi invoked: pr merge 99 --repo BohnBawerick/firstmate --squash
+merged fm/task-fm-pr-02 into local main (85ed28c -> c2beb85) in /tmp/fm-evidence-run.TXYQ9v/firstmate-home
+After fm-pr-merge, local main is at: c2beb85
+Main commit message: feat: remote PR fix
+
+=== Scenario 4: fm-teardown Recognizes Content Landed in Local Main ===
+Worktree exists before teardown: YES
+Executing fm-teardown.sh...
+/tmp/fm-evidence-run.TXYQ9v/firstmate-home: skipped: firstmate home (upstream sync is manual)
+teardown task-fm-td-03 complete (window firstmate:fm-task-fm-td-03, worktree /tmp/fm-evidence-run.TXYQ9v/wt-task-fm-td-03)
+Backlog: task-fm-td-03 just finished. Run tasks-axi done task-fm-td-03 --pr PR_URL, then run tasks-axi ready for dependency-cleared candidates, check date gates, and dispatch only work whose blockers are gone and date is due.
+Teardown exit code: 0
+Worktree exists after teardown: NO
+
+=== Scenario 5: Guard Safety - Refusal on Ordinary Project with mode=no-mistakes ===
+Attempting fm-merge-local on ordinary project with mode=no-mistakes (expected error):
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: task task-other-04 is mode=no-mistakes on /tmp/fm-evidence-run.TXYQ9v/other-repo, not local-only; merge PR tasks with bin/fm-pr-merge.sh <id> <PR url> after approval
+Guard exit code: 1 (expected non-zero refusal)
+
+================================================================================
+All verification scenarios passed successfully.
+================================================================================
