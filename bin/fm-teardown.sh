@@ -881,6 +881,20 @@ content_in_default() {
   [ "$merged_tree" = "$default_tree" ]
 }
 
+content_in_local_default() {
+  local name default_tree merged_tree
+  name=$(default_branch) || return 1
+  git -C "$WT" rev-parse --quiet --verify "refs/heads/$name" >/dev/null 2>&1 || return 1
+  if git -C "$WT" merge-base --is-ancestor HEAD "refs/heads/$name" 2>/dev/null; then
+    return 0
+  fi
+  default_tree=$(git -C "$WT" rev-parse --quiet --verify "refs/heads/$name^{tree}" 2>/dev/null) || return 1
+  [ -n "$default_tree" ] || return 1
+  merged_tree=$(git -C "$WT" merge-tree --write-tree "refs/heads/$name" HEAD 2>/dev/null) || return 1
+  merged_tree=$(printf '%s\n' "$merged_tree" | head -1)
+  [ "$merged_tree" = "$default_tree" ]
+}
+
 # Has the worktree's committed work actually LANDED, though its commits are not
 # reachable from any remote-tracking branch? True when a merged PR proves the
 # current local work is contained in the PR head, OR the content is already in the
@@ -889,7 +903,8 @@ content_in_default() {
 work_is_landed() {
   local branch=$1
   pr_is_merged "$branch" && return 0
-  content_in_default
+  content_in_default && return 0
+  content_in_local_default
 }
 
 backlog_refresh_reminder() {
