@@ -43,9 +43,10 @@
 #     routine is escalated.
 #   - Bounded wedge latency: a stale pane without a declared external wait is
 #     escalated after STALE_ESCALATE_SECS (configurable) unless its crew is
-#     affirmatively provably working. A stale pane whose semantic busy source
-#     affirmatively reports working suppresses escalation and resets the timer.
-#     A wedged crewmate is therefore detected within STALE_ESCALATE_SECS + a tick,
+#     affirmatively provably working. An affirmative working verdict suppresses
+#     escalation and resets the timer; a readable non-working pane escalates on
+#     schedule; an unreadable-or-gone pane drops its marker. A wedged crewmate is
+#     therefore detected within STALE_ESCALATE_SECS + a tick,
 #     never lost. A declared pause instead gets its own longer PAUSE_RESURFACE_SECS
 #     recheck, never a wedge escalation.
 #     Crewmates are autonomous, so a delayed stale response does not stall a

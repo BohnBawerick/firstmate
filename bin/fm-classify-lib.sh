@@ -1120,9 +1120,9 @@ crew_absorb_class() {  # <id>
 # absorb-only-when-provably-working: a no-verb turn-end or stale wake is absorbed
 # ONLY when this returns 0, and SURFACED otherwise (the crew may be done, waiting
 # on a decision, or wedged). For stale panes, an affirmative working verdict
-# suppresses possible-wedge escalation and resets the timer, while any non-working
-# verdict (idle, unknown, dead, unreadable, or missing busy source) escalates on
-# the FM_STALE_ESCALATE_SECS schedule. It is also checked before trusting the
+# suppresses possible-wedge escalation and resets the timer; a readable non-working
+# pane escalates on schedule; an unreadable-or-gone pane drops its marker. It is
+# also checked before trusting the
 # status log so a pre-validation captain-relevant line does not override an active
 # run. See crew_absorb_class for the exact working/paused/none decision.
 crew_is_provably_working() {  # <id>
