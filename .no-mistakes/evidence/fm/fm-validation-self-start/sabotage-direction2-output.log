@@ -1,0 +1,7 @@
+ok - fm-brief.sh: bash -n succeeds
+/tmp/fm-brief.ZUkoZZ/heredoc-in-substitution.sh:2
+ok - fm-brief.sh: no heredoc is nested inside a command substitution (Bash 3.2 parse-safe)
+ok - fm-brief.sh: --help renders the complete header
+ok - fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly
+ok - fm-brief.sh: ship --mode is required and closed-set validated
+not ok - explicit no-mistakes brief did not render the pipeline definition of done
