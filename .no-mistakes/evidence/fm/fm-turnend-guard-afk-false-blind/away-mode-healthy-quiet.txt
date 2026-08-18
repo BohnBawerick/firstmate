@@ -1,0 +1,5 @@
+# Demonstration A: Away Mode Active (state/.afk) with Live Ticking Away Daemon
+$ FM_HOME=/tmp/fm-evid-TayXdq/home_a bin/fm-turnend-guard.sh --claude
+Exit Status: 0
+Output:
+(Quiet exit - zero output produced, turn end proceeds safely)

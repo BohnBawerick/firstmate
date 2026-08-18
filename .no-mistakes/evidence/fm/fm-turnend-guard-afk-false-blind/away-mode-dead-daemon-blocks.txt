@@ -1,0 +1,9 @@
+# Demonstration B: Away Mode Active (state/.afk) with Dead Away Daemon Process
+$ FM_HOME=/tmp/fm-evid-TayXdq/home_b bin/fm-turnend-guard.sh --claude
+Exit Status: 2
+Output:
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  TURN WOULD END BLIND - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live away-mode supervision daemon holds this home (last supervision tick: 0s ago).
+●  Away mode owns watcher supervision; load /afk and ensure the daemon is running instead of starting normal supervision directly.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

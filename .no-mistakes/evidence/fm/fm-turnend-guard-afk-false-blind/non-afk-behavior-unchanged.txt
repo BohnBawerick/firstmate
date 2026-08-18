@@ -1,0 +1,17 @@
+# Demonstration D: Non-AFK Home (No state/.afk) - Missing Watcher vs Healthy Watcher
+
+--- Subcase D1: Missing Watcher Process ---
+$ FM_HOME=/tmp/fm-evid-TayXdq/home_d bin/fm-turnend-guard.sh --claude
+Exit Status: 2
+Output:
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  TURN WOULD END BLIND - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher holds this home lock (last beat: never).
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+--- Subcase D2: Healthy Live Watcher Process ---
+$ FM_HOME=/tmp/fm-evid-TayXdq/home_d bin/fm-turnend-guard.sh --claude
+Exit Status: 0
+Output:
+(Quiet exit - zero output produced, turn end proceeds safely)

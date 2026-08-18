@@ -1,0 +1,9 @@
+# Demonstration C: Away Mode Active (state/.afk) with Stalled/Un-ticking Away Daemon
+$ FM_HOME=/tmp/fm-evid-TayXdq/home_c bin/fm-turnend-guard.sh --claude
+Exit Status: 2
+Output:
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  TURN WOULD END BLIND - SUPERVISION IS OFF
+●  1 task(s) in flight, but the away-mode supervision daemon is alive but has stopped ticking (last supervision tick: 300s ago, grace 180s).
+●  Away mode owns watcher supervision; load /afk and ensure the daemon is running instead of starting normal supervision directly.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
