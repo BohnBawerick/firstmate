@@ -1,0 +1,30 @@
+=== Scenario 1: Refusing task ID reuse with existing retained report ===
+[Attempting to scaffold task-101]
+error: task id 'task-101' already exists at /tmp/tmp.LMGXHKvA1H/demo-home/data/task-101 (contains: report.md); choose a distinct task id (e.g. 'task-101-2' or mint a new one) to preserve retained history and avoid collisions
+[Command exited non-zero as expected]
+[Checking preserved report.md content:]
+Original report from previous run
+[Checking brief.md does not exist:]
+brief.md is absent (protected)
+
+=== Scenario 2: Refusing task ID reuse with multiple artifacts ===
+[Attempting to scaffold task-102 with --scout]
+error: task id 'task-102' already exists at /tmp/tmp.LMGXHKvA1H/demo-home/data/task-102 (contains: brief.md, report.md); choose a distinct task id (e.g. 'task-102-2' or mint a new one) to preserve retained history and avoid collisions
+[Command exited non-zero as expected]
+
+=== Scenario 3: Refusing task ID reuse with empty directory ===
+[Attempting to scaffold task-103 with --mode direct-PR]
+error: task id 'task-103' already exists at /tmp/tmp.LMGXHKvA1H/demo-home/data/task-103 (empty directory); choose a distinct task id (e.g. 'task-103-2' or mint a new one) to preserve retained history and avoid collisions
+[Command exited non-zero as expected]
+
+=== Scenario 4: Refusing task ID reuse with existing file ===
+[Attempting to scaffold task-104 with --mode local-only]
+error: task id 'task-104' already exists at /tmp/tmp.LMGXHKvA1H/demo-home/data/task-104 (existing file); choose a distinct task id (e.g. 'task-104-2' or mint a new one) to preserve retained history and avoid collisions
+[Command exited non-zero as expected]
+
+=== Scenario 5: Successful scaffolding with fresh/unused task ID ===
+[Attempting to scaffold task-105 with --mode no-mistakes]
+scaffolded: /tmp/tmp.LMGXHKvA1H/demo-home/data/task-105/brief.md (ship, mode=no-mistakes; replace {TASK})
+[Command exited 0 as expected]
+[Checking brief.md was created:]
+brief.md successfully generated
