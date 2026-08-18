@@ -406,7 +406,7 @@ test_no_scaffold_instructs_a_skill_invocation() {
     "no-mistakes DOD did not bind completion to a green PR"
   assert_grep "not yet validated - no PR yet" "$brief" \
     "no-mistakes DOD let the implementation handoff read as a shipped result"
-  assert_grep "never report \`done:\` for work that has no PR" "$brief" \
+  assert_grep "stop, never \`done:\`." "$brief" \
     "no-mistakes DOD did not route an unstartable run to blocked: instead of done:"
 
   # The faster paths must refuse the pipeline without naming a skill for it.

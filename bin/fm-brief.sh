@@ -400,7 +400,7 @@ Two firstmate-specific rules layer on top of that guidance:
   When the decision comes back, feed it to the gate with \`no-mistakes axi respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
 - Avoid \`--yes\`: it would silently bypass firstmate's authority check and any required captain escalation.
 
-If you cannot start or continue the run, append \`blocked: {the exact error}\` and stop; never report \`done:\` for work that has no PR.
+If you cannot start or continue the run, append \`blocked: {the exact error}\` and stop, never \`done:\`.
 After the run reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\` and stop. You are finished.
 EOF
     ;;
