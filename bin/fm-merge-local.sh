@@ -23,7 +23,27 @@ META="$STATE/$ID.meta"
 
 PROJ=$(grep '^project=' "$META" | cut -d= -f2-)
 MODE=$(grep '^mode=' "$META" | cut -d= -f2- || true)
-[ "$MODE" = local-only ] || { echo "error: task $ID is mode=$MODE, not local-only; merge PR tasks with bin/fm-pr-merge.sh <id> <PR url> after approval" >&2; exit 1; }
+
+canonical_dir() {
+  local target=$1
+  ( cd "$target" 2>/dev/null && pwd -P ) || printf '%s\n' "$target"
+}
+
+is_firstmate_repo() {
+  local proj_real root_real home_real
+  proj_real=$(canonical_dir "$PROJ")
+  root_real=$(canonical_dir "$FM_ROOT")
+  home_real=$(canonical_dir "$FM_HOME")
+  [ "$proj_real" = "$root_real" ] || [ "$proj_real" = "$home_real" ]
+}
+
+if [ "$MODE" != "local-only" ] && ! is_firstmate_repo; then
+  echo "error: task $ID is mode=$MODE on $PROJ, not local-only; merge PR tasks with bin/fm-pr-merge.sh <id> <PR url> after approval" >&2
+  exit 1
+fi
+
+[ -n "$PROJ" ] && [ -d "$PROJ" ] || { echo "error: project directory '$PROJ' does not exist" >&2; exit 1; }
+git -C "$PROJ" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "error: '$PROJ' is not a git repository" >&2; exit 1; }
 
 default_branch() {
   local ref branch

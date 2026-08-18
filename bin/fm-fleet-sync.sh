@@ -304,6 +304,13 @@ sync_project() {
     echo "$label: skipped: not a git repo"
     return 0
   fi
+  proj_real=$(cd "$PROJ" 2>/dev/null && pwd -P || printf '%s\n' "$PROJ")
+  root_real=$(cd "$FM_ROOT" 2>/dev/null && pwd -P || printf '%s\n' "$FM_ROOT")
+  home_real=$(cd "$FM_HOME" 2>/dev/null && pwd -P || printf '%s\n' "$FM_HOME")
+  if [ "$proj_real" = "$root_real" ] || [ "$proj_real" = "$home_real" ]; then
+    echo "$label: skipped: firstmate home (upstream sync is manual)"
+    return 0
+  fi
   mode_line=$("$FM_ROOT/bin/fm-project-mode.sh" "$label" 2>/dev/null || echo "no-mistakes off")
   mode=${mode_line%% *}
   if [ "$mode" = "local-only" ]; then
