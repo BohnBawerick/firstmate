@@ -1,0 +1,35 @@
+================================================================================
+AWAY-MODE WEDGE DETECTION BEHAVIOR DEMONSTRATION
+================================================================================
+Date: Tue Aug 18 00:46:35 UTC 2026
+Commit: 96e839c06dfa3e3b6859d43b999f886277fd0147
+Base: 64d61aed84373e02b1a28c4e6b262908ed8128d5
+Target: 96e839c06dfa3e3b6859d43b999f886277fd0147
+
+--------------------------------------------------------------------------------
+Scenario: 1. Pane static past threshold, busy source affirmatively reports WORKING
+Semantic State Reading: "state: working · source: pane · agent active"
+Outcome: SUPPRESSED (Timer reset to current timestamp)
+Suppression Log: 
+
+--------------------------------------------------------------------------------
+Scenario: 2. Pane static past threshold, busy source reports IDLE
+Semantic State Reading: "state: idle · source: none · idle worker"
+Outcome: ESCALATED
+Wake Queue Record: 1787013996	4	stale	demo:task-1	stale: demo:task-1 (idle 500s, possible wedge, escalation 4, demand-deep-inspection: same pane has wedge-escalated 4 times in a row - do not re-absorb on the run-step/pane state alone)
+
+--------------------------------------------------------------------------------
+Scenario: 3. Pane static past threshold, busy source UNKNOWN / unreadable
+Semantic State Reading: "state: unknown · source: pane · harness state unavailable"
+Outcome: ESCALATED
+Wake Queue Record: 1787013996	5	stale	demo:task-1	stale: demo:task-1 (idle 500s, possible wedge, escalation 5, demand-deep-inspection: same pane has wedge-escalated 5 times in a row - do not re-absorb on the run-step/pane state alone)
+
+--------------------------------------------------------------------------------
+Scenario: 4. Pane static past threshold, harness with NO semantic busy source
+Semantic State Reading: "state: unknown · source: none · no current-state source available"
+Outcome: ESCALATED
+Wake Queue Record: 1787013996	6	stale	demo:task-1	stale: demo:task-1 (idle 500s, possible wedge, escalation 6, demand-deep-inspection: same pane has wedge-escalated 6 times in a row - do not re-absorb on the run-step/pane state alone)
+
+================================================================================
+VERIFICATION COMPLETE: ALL SCENARIOS MATCHED AUTHORITATIVE USER INTENT
+================================================================================
