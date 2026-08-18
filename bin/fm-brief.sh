@@ -30,8 +30,9 @@
 # For ship tasks, --mode is REQUIRED and shapes the definition of done. Firstmate
 # resolves it per task at intake (AGENTS.md section 7); data/projects.md holds the
 # captain's standing posture as context, and this script never reads it:
-#   no-mistakes  implement -> no-mistakes pipeline (the `no-mistakes axi` CLI, not a
-#                skill) -> PR -> configured merge authority
+#   no-mistakes  implement -> worker starts the no-mistakes pipeline (the `no-mistakes axi`
+#                CLI, not a skill) immediately after the implementation commit -> PR ->
+#                configured merge authority
 #   direct-PR    implement -> push + open PR via gh-axi (no pipeline) -> configured merge authority
 #   local-only   implement on branch, stop and report "ready in branch" (no push/PR);
 #                the configured merge authority approves, firstmate merges to local main
@@ -387,8 +388,9 @@ EOF
 # Definition of done
 Delivery contract: mode=no-mistakes
 This mode is complete only when the no-mistakes pipeline has shipped a PR whose checks are green.
-When implementation is committed on your branch, append \`done: implemented and committed, not yet validated - no PR yet\` to the status file and stop.
-Firstmate then triggers validation on you. That trigger may arrive worded as a \`/no-mistakes\` skill invocation, but what you run is the \`no-mistakes\` CLI on your \`PATH\`: \`no-mistakes axi run --intent "<...>"\` to start, and \`no-mistakes axi respond\` for each gate.
+When implementation is committed on your branch, start the no-mistakes pipeline yourself immediately.
+Append \`working: starting no-mistakes validation\` to the status file, then run the \`no-mistakes\` CLI on your \`PATH\`: \`no-mistakes axi run --intent "<...>"\` to start, and \`no-mistakes axi respond\` for each gate.
+Do not append \`done:\` until there is a PR.
 
 You drive no-mistakes by responding to its gates, not by implementing fixes.
 Follow the guidance no-mistakes itself provides for the mechanics: \`no-mistakes axi run --help\` plus the \`help\` lines in each \`axi\` response are authoritative and version-matched to the installed binary.
@@ -402,6 +404,7 @@ Two firstmate-specific rules layer on top of that guidance:
 - Avoid \`--yes\`: it would silently bypass firstmate's authority check and any required captain escalation.
 
 If you cannot start or continue the run, append \`blocked: {the exact error}\` and stop, never \`done:\`.
+If the run dies mid-pipeline, append \`failed: {the exact error}\` and stop, never stay silent.
 After the run reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\` and stop. You are finished.
 EOF
     ;;
