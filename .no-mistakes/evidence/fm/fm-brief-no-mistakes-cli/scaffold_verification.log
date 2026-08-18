@@ -1,0 +1,110 @@
+=== 1. Running Unit Test Suite tests/fm-brief.test.sh ===
+ok - fm-brief.sh: bash -n succeeds
+/tmp/fm-brief.BOVMTJ/heredoc-in-substitution.sh:2
+ok - fm-brief.sh: no heredoc is nested inside a command substitution (Bash 3.2 parse-safe)
+ok - fm-brief.sh: --help renders the complete header
+ok - fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly
+ok - fm-brief.sh: ship --mode is required and closed-set validated
+ok - fm-brief.sh: the explicit ship mode wins over the registered posture
+ok - fm-brief.sh: --yolo and scout/secondmate --mode are refused, never silently dropped
+ok - fm-brief.sh: faster paths use configured authority without stacked review
+ok - fm-brief.sh: no-mistakes DOD keeps its apostrophe prose, now parse-safe
+ok - fm-brief.sh: every scaffold names the no-mistakes CLI and none instructs a skill invocation
+ok - fm-brief.sh: ship project-memory wording carries the AGENTS.md authoring bar
+ok - fm-brief.sh: --herdr-lab emits the complete hard safety contract
+ok - fm-brief.sh: --herdr-lab uses its quoted Firstmate-owned helper path
+ok - fm-brief.sh: ship and scout scaffolds make omitted Herdr intent fail-visible
+ok - fm-brief.sh: Herdr lab contract covers scouts and rejects secondmate misuse
+ok - fm-brief.sh: --no-projects scaffolds a project-less charter and guards misuse
+ok - fm-brief.sh: marked requests avoid generic acknowledgements and preserve material reporting
+ok - fm-brief.sh: relative directory inputs ignore CDPATH, render stable absolute charter paths, or fail loudly
+ok - fm-brief.sh: custom pause verb renders in every scaffold
+ok - fm-brief.sh: investigation and visual-review completions load the shared decision policy
+ok - fm-brief: scout and secondmate code paths still scaffold well-formed briefs
+
+=== 2. Scaffolding All 5 Scaffold Variants into Scratch Location ===
+scaffolded: /tmp/scaffold-evidence-gen/data/task-nomistakes/brief.md (ship, mode=no-mistakes; replace {TASK})
+scaffolded: /tmp/scaffold-evidence-gen/data/task-directpr/brief.md (ship, mode=direct-PR; replace {TASK})
+scaffolded: /tmp/scaffold-evidence-gen/data/task-localonly/brief.md (ship, mode=local-only; replace {TASK})
+scaffolded: /tmp/scaffold-evidence-gen/data/task-scout/brief.md (scout; replace {TASK})
+scaffolded: /tmp/scaffold-evidence-gen/data/task-secondmate/brief.md (secondmate charter)
+
+=== 3. Inspected DOD/Operating Sections Across All 5 Scaffold Variants ===
+--- Variant 1: ship --mode no-mistakes ---
+# Definition of done
+Delivery contract: mode=no-mistakes
+This mode is complete only when the no-mistakes pipeline has shipped a PR whose checks are green.
+When implementation is committed on your branch, append `done: implemented and committed, not yet validated - no PR yet` to the status file and stop.
+Firstmate then triggers validation on you. That trigger may arrive worded as a `/no-mistakes` skill invocation, but what you run is the `no-mistakes` CLI on your `PATH`: `no-mistakes axi run --intent "<...>"` to start, and `no-mistakes axi respond` for each gate.
+
+You drive no-mistakes by responding to its gates, not by implementing fixes.
+Follow the guidance no-mistakes itself provides for the mechanics: `no-mistakes axi run --help` plus the `help` lines in each `axi` response are authoritative and version-matched to the installed binary.
+When starting no-mistakes, make `--intent` preserve all relevant content from this brief's `# Task` section plus every later accepted Firstmate requirement, clarification, constraint, exclusion, and supersession, carrying only each requirement's current accepted form; retain direct requirements instead of substituting a diff summary, and exclude generic operational, status, delivery, and other scaffold boilerplate unless it is task-specific.
+Do not hand-edit, commit, or fix findings yourself while a run is active - the pipeline applies every fix.
+
+Two firstmate-specific rules layer on top of that guidance:
+- ask-user findings are never yours to answer: escalate to firstmate (rule 6) and stop.
+  Firstmate applies the authority contract in its `AGENTS.md` and obtains any required captain decision.
+  When the decision comes back, feed it to the gate with `no-mistakes axi respond` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
+- Avoid `--yes`: it would silently bypass firstmate's authority check and any required captain escalation.
+
+If you cannot start or continue the run, append `blocked: {the exact error}` and stop, never `done:`.
+After the run reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append `done: PR {url} checks green` and stop. You are finished.
+
+--- Variant 2: ship --mode direct-PR ---
+# Definition of done
+Delivery contract: mode=direct-PR
+This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
+The task is complete only when committed on your branch.
+When it is implemented and committed, push your branch and open a PR with `gh-axi`, then append `done: PR {url}` to the status file and stop.
+Do NOT run the no-mistakes pipeline. The configured merge authority decides whether to merge the PR; firstmate relays the outcome.
+
+--- Variant 3: ship --mode local-only ---
+# Definition of done
+Delivery contract: mode=local-only
+This task ships **local-only**: no remote, no PR, no pipeline.
+The task is complete only when committed on your branch `fm/task-localonly`. Do NOT push, do NOT open a PR, do NOT merge.
+Keep your branch a clean fast-forward onto the current default branch - if `main` has advanced, rebase onto it so the eventual merge stays a fast-forward.
+When it is implemented and committed, append `done: ready in branch fm/task-localonly` to the status file and stop.
+The configured merge authority approves the ready branch, then firstmate merges it into local `main` through the guarded fast-forward path.
+
+--- Variant 4: --scout ---
+# Definition of done
+Write your findings to `/tmp/scaffold-evidence-gen/data/task-scout/report.md`.
+The report must stand alone: what you did, what you found, the evidence (commands run, output, file:line references), and what you recommend.
+Before reporting done, read and follow `/home/paiva/.no-mistakes/worktrees/3437026af8a8/01M08FCN24AQ6VBA2XHW6KHNX9/.agents/skills/decision-hold-lifecycle/SKILL.md` and pass its shared completion gate for the report and any visual review.
+When the report is complete, append `done: {one-line conclusion}` to the status file and stop.
+If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the report; firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a follow-up message.
+
+--- Variant 5: --secondmate --no-projects ---
+You are a persistent second mate managed by the main firstmate. Work on your own; do not wait for a human.
+
+# Charter
+Charter text
+
+# Routing scope
+Charter text
+
+# Project clones
+None. This is a project-less domain: its subject is the firstmate repo this home lives in, so it needs no separate clones under `projects/`; its crews take pooled worktrees of that firstmate repo.
+
+# Operating model
+You are in an isolated firstmate home. The local `AGENTS.md` is your job description, and your local `data/`, `state/`, `config/`, and `projects/` dirs are yours to operate.
+This domain has no separate project clones: its subject is the firstmate repo this home lives in, and its crews take pooled worktrees of that repo.
+Delegate project work to your own crewmates with the normal firstmate lifecycle: brief, spawn, status, watcher, steer, teardown, and recovery.
+Do not invent a second delegation system.
+You do not generate your own work.
+Act only on tasks the main firstmate routes to you.
+Never start a survey, audit, or "find improvements" sweep on your own initiative; that is not your job and it is unwanted.
+
+# Requests from the main firstmate
+You are a firstmate in your own home, so an incoming message reaches you in your own chat.
+You must distinguish who it is from, because the answer goes to a different place.
+A request relayed to you by the main firstmate is tagged with a leading `[fm-from-firstmate]` marker followed by an invisible system separator; this marker is untypable, so a human never produces it.
+When a message carries that marker, do the work, then respond via the STATUS/ESCALATION path below, never only in this chat: the main firstmate does not read your chat, so a chat-only reply is lost.
+
+=== 4. Verification: Check that no variant instructs invoking the /no-mistakes skill ===
+PASS: Zero occurrences of 'run /no-mistakes' or 'invoke /no-mistakes' across all generated scaffolds.
+
+=== 5. Verification: Check CLI naming in no-mistakes ship mode ===
+PASS: mode=no-mistakes brief explicitly instructs using the 'no-mistakes' CLI on PATH.
