@@ -186,6 +186,7 @@ elif [ -f "$HEAD_FILE" ] && [ ! -L "$HEAD_FILE" ]; then
   esac
 fi
 
+MEMORY_DIR_OK=1
 [ ! -L "$MEMORY" ] || MEMORY_DIR_OK=0
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/.fm-memory-compile.XXXXXX") || die 'could not create a working directory'
@@ -306,9 +307,9 @@ note_inventory() {
 # notes themselves so it is correct even when catalog.md on disk is stale.
 render_catalog() {
   local base title updated shown line
-  printf '<!-- compiled by bin/fm-memory-compile.sh from data/memory/notes/ -->\n\n'
+  printf '<!-- compiled by bin/fm-memory-compile.sh from %s/notes/ -->\n\n' "$REL_LABEL"
   if [ ! -s "$TMP/inventory" ]; then
-    printf 'No notes filed yet in data/memory/notes/.\n'
+    printf 'No notes filed yet in %s/notes/.\n' "$REL_LABEL"
     return 0
   fi
   # Split by hand rather than with `read -r a b c`: IFS=tab is IFS WHITESPACE,
@@ -337,15 +338,15 @@ if [ "$MODE" = catalog ]; then
     cat "$TMP/catalog"
     exit 0
   fi
-  [ "$MEMORY_DIR_OK" -eq 1 ] || die 'data/memory is a symlink; refusing to publish through it'
+  [ "$MEMORY_DIR_OK" -eq 1 ] || die "$REL_LABEL is a symlink; refusing to publish through it"
   [ -d "$MEMORY" ] || mkdir -p "$MEMORY" || die "could not create $MEMORY"
   if [ -L "$MEMORY/catalog.md" ]; then
-    die 'data/memory/catalog.md is a symlink; refusing to publish through it'
+    die "$REL_LABEL/catalog.md is a symlink; refusing to publish through it"
   fi
   cp "$TMP/catalog" "$MEMORY/.catalog.md.tmp" || die 'could not stage the catalog'
   mv -f "$MEMORY/.catalog.md.tmp" "$MEMORY/catalog.md" || die 'could not publish the catalog'
-  printf 'catalog: published data/memory/catalog.md (%s note(s))\n' \
-    "$(wc -l < "$TMP/inventory" | tr -d ' ')"
+  printf 'catalog: published %s/catalog.md (%s note(s))\n' \
+    "$REL_LABEL" "$(wc -l < "$TMP/inventory" | tr -d ' ')"
   exit 0
 fi
 

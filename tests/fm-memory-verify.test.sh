@@ -583,6 +583,123 @@ test_drop_tray_keeps_claim_matching_two_adjacent_claims() {
   pass 'drop tray dedup keeps a claim that merely concatenates two already captured claims'
 }
 
+# --- 8. Portability And Reporting Regressions -------------------------------
+
+# Stock macOS ships Bash 3.2, which has neither `mapfile` nor `readarray`. The
+# CI parse sweep only runs `bash -n`, so a Bash 4 builtin survives it and fails
+# at runtime. Sourcing the verifier from a shell with those builtins disabled
+# reproduces that host without needing a 3.2 interpreter here.
+test_verify_runs_without_bash4_builtins() {
+  local home gen_dir sim out
+  home=$(new_home bash32-sim 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+  printf '# Captain\n- Rule A\n' > "$home/data/captain.md"
+
+  gen_dir="$home/data/memory/gen/1"
+  mkdir -p "$gen_dir/notes"
+  printf '# Core\n<!-- source: data/captain.md -->\n- Rule A\n' > "$gen_dir/core.md"
+  write_note "$gen_dir/notes" n1 'Note 1' 'one' 2026-08-20 'data/source.md'
+
+  sim="$home/bash32-sim.sh"
+  cat <<'SIM' > "$sim"
+#!/usr/bin/env bash
+enable -n mapfile 2>/dev/null || true
+enable -n readarray 2>/dev/null || true
+. "$FM_SIM_TARGET"
+SIM
+  chmod +x "$sim"
+
+  out=$(FM_SIM_TARGET="$VERIFY" FM_HOME="$home" bash "$sim" 1 2>&1) \
+    || fail "verifier failed with Bash 4 builtins disabled: $out"
+  assert_contains "$out" 'PASS citations' 'citation check did not run without Bash 4 builtins'
+  assert_contains "$out" 'VERIFICATION PASSED' 'verification did not pass without Bash 4 builtins'
+  assert_not_contains "$out" 'has no citations or source metadata' \
+    'cited notes were falsely reported as uncited without Bash 4 builtins'
+
+  pass 'verifier runs its citation check on a shell without the Bash 4 mapfile builtin'
+}
+
+test_verify_accepts_note_with_incidental_unresolvable_prose_path() {
+  local home gen_dir out
+  home=$(new_home citations-incidental 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+  printf '# Captain\n- Rule A\n' > "$home/data/captain.md"
+
+  gen_dir="$home/data/memory/gen/1"
+  mkdir -p "$gen_dir/notes"
+  printf '# Core\n<!-- source: data/captain.md -->\n- Rule A\n' > "$gen_dir/core.md"
+  write_note "$gen_dir/notes" mixed 'Mixed Note' 'mixed' 2026-08-20 'data/source.md' \
+    'We hit this while cleaning up data/old-report.md last month.'
+
+  out=$(FM_HOME="$home" "$VERIFY" 1 2>&1) \
+    || fail "verify refused a note that cites a resolvable source alongside prose: $out"
+  assert_contains "$out" 'PASS citations' 'note with one resolvable citation did not pass'
+  assert_contains "$out" 'WARN citations: note notes/mixed.md mentions unresolvable path(s): "data/old-report.md"' \
+    'the incidental path was dropped from the report instead of being surfaced'
+
+  # A note whose every extracted path is unresolvable is still refused.
+  write_note "$gen_dir/notes" broken 'Broken Note' 'broken' 2026-08-20 'data/gone.md'
+  if out=$(FM_HOME="$home" "$VERIFY" 1 2>&1); then
+    fail "verify passed a note with no resolvable citation at all: $out"
+  fi
+  assert_contains "$out" 'FAIL citations: note notes/broken.md cites missing or unresolvable source' \
+    'a wholly uncited note was not refused'
+
+  pass 'a note is accepted when at least one citation resolves, and an incidental prose path is reported not fatal'
+}
+
+test_catalog_mode_reports_the_generation_it_wrote() {
+  local home gen_dir out catalog_body
+  home=$(new_home catalog-paths 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+  printf '# Captain\n- Rule A\n' > "$home/data/captain.md"
+
+  gen_dir="$home/data/memory/gen/1"
+  mkdir -p "$gen_dir/notes"
+  printf '# Core\n<!-- source: data/captain.md -->\n- Rule A\n' > "$gen_dir/core.md"
+  write_note "$gen_dir/notes" n1 'Catalogued Note' 'catalogued' 2026-08-20 'data/source.md'
+  FM_HOME="$home" "$PUBLISH" 1 >/dev/null
+
+  out=$(FM_HOME="$home" "$COMPILE" catalog)
+  assert_contains "$out" 'catalog: published data/memory/gen/1/catalog.md' \
+    'catalog mode named a path it did not write'
+  assert_present "$gen_dir/catalog.md" 'catalog was not written into the active generation'
+  assert_absent "$home/data/memory/catalog.md" 'catalog was written outside the active generation'
+
+  # data/memory/gen/1/catalog.md is the compiler's own generated output, so its
+  # provenance header is part of that generated contract.
+  catalog_body=$(cat "$gen_dir/catalog.md")
+  assert_contains "$catalog_body" 'from data/memory/gen/1/notes/' \
+    'the published catalog claims provenance from the wrong notes directory'
+
+  pass 'catalog mode names and labels the active generation it actually wrote'
+}
+
+test_compile_reads_resolved_dir_when_data_memory_is_a_symlink() {
+  local home gen_dir out
+  home=$(new_home memory-symlink 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+
+  # data/memory itself is a symlink, but the generation handed to --memory-dir
+  # is a real directory: exactly how fm-memory-verify.sh calls the compiler.
+  rmdir "$home/data/memory/drop" "$home/data/memory"
+  mkdir -p "$home/data/real-memory/gen/1/notes"
+  ln -s "$home/data/real-memory" "$home/data/memory"
+  gen_dir="$home/data/real-memory/gen/1"
+  printf '# Core\n<!-- source: data/source.md -->\n- Rule A\n' > "$gen_dir/core.md"
+  write_note "$gen_dir/notes" n1 'Symlinked Home Note' 'symlinked' 2026-08-20 'data/source.md'
+
+  out=$(FM_HOME="$home" "$COMPILE" compile --memory-dir "$gen_dir")
+  assert_contains "$out" 'Symlinked Home Note' \
+    'compiler skipped the note inventory of a real directory under a symlinked data/memory'
+  assert_contains "$out" 'notes_total=1' \
+    'compiler measured an empty bundle for a real generation directory'
+  assert_not_contains "$out" 'core: ABSENT' \
+    'compiler skipped core.md of a real directory under a symlinked data/memory'
+
+  pass 'compiler measures the resolved generation even when data/memory itself is a symlink'
+}
+
 # --- Run All Tests ----------------------------------------------------------
 
 test_drop_tray_capture_basic
@@ -603,6 +720,10 @@ test_verify_accepts_bare_path_citation_in_note_body
 test_verify_requires_citations_in_non_empty_core
 test_verify_refuses_generation_whose_catalog_is_dropped
 test_drop_tray_keeps_claim_matching_two_adjacent_claims
+test_verify_runs_without_bash4_builtins
+test_verify_accepts_note_with_incidental_unresolvable_prose_path
+test_catalog_mode_reports_the_generation_it_wrote
+test_compile_reads_resolved_dir_when_data_memory_is_a_symlink
 
 printf '# all fm-memory-verify tests passed\n'
 exit 0

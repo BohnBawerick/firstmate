@@ -20,7 +20,8 @@
 #      using bin/fm-memory-compile.sh and bin/fm-startup-memory-budget-lib.sh,
 #      and the catalog must survive the cap so every note stays reachable;
 #   2. Citations: every note and a non-empty core.md must cite at least one
-#      existing source file, report, or task record on disk;
+#      existing source file, report, or task record on disk. Incidental paths
+#      mentioned in prose are reported but do not block publication.
 #   3. Constitution: standing captain preferences in data/captain.md must be
 #      preserved in core.md and never silently dropped or deleted;
 #   4. Diff bounds: a single generation cannot replace or delete excessive
@@ -307,9 +308,31 @@ extract_citations_from_file() {
            | awk 'NF > 0 && !seen[$0]++'
 }
 
+# tally_citations <file>: writes CITED_COUNT, CITED_VALID and CITED_UNRESOLVED
+# for one file. Arrays and `mapfile` are avoided throughout: stock macOS ships
+# Bash 3.2, which has neither, and the CI parse sweep cannot catch a runtime
+# builtin lookup.
+tally_citations() {
+  local file=$1 cited
+  CITED_COUNT=0
+  CITED_VALID=0
+  CITED_UNRESOLVED=""
+
+  extract_citations_from_file "$file" > "$TMP/cited"
+  while IFS= read -r cited; do
+    [ -n "$cited" ] || continue
+    CITED_COUNT=$((CITED_COUNT + 1))
+    if resolve_source_path "$cited"; then
+      CITED_VALID=$((CITED_VALID + 1))
+    else
+      CITED_UNRESOLVED="$CITED_UNRESOLVED \"$cited\""
+    fi
+  done < "$TMP/cited"
+}
+
 check_citations() {
   local notes_dir="$GEN_DIR/notes" note_count=0 valid_citations=0 note
-  local cited_list=() cited file_err=0
+  local file_err=0
 
   if [ -d "$notes_dir" ] && [ ! -L "$notes_dir" ]; then
     for note in "$notes_dir"/*.md; do
@@ -317,57 +340,40 @@ check_citations() {
       note_count=$((note_count + 1))
       local note_slug
       note_slug=$(basename "$note")
-      
-      # Extract citations for this note
-      mapfile -t cited_list < <(extract_citations_from_file "$note")
-      
-      if [ "${#cited_list[@]}" -eq 0 ]; then
+
+      tally_citations "$note"
+      valid_citations=$((valid_citations + CITED_VALID))
+
+      if [ "$CITED_COUNT" -eq 0 ]; then
         printf 'FAIL citations: note notes/%s has no citations or source metadata\n' \
           "$note_slug" >&2
         file_err=$((file_err + 1))
-        continue
-      fi
-
-      local note_has_valid=0
-      for cited in "${cited_list[@]}"; do
-        [ -n "$cited" ] || continue
-        if resolve_source_path "$cited"; then
-          note_has_valid=1
-          valid_citations=$((valid_citations + 1))
-        else
-          printf 'FAIL citations: note notes/%s cites missing or unresolvable source: "%s"\n' \
-            "$note_slug" "$cited" >&2
-          file_err=$((file_err + 1))
-        fi
-      done
-      
-      if [ "$note_has_valid" -eq 0 ]; then
+      elif [ "$CITED_VALID" -eq 0 ]; then
+        printf 'FAIL citations: note notes/%s cites missing or unresolvable source:%s\n' \
+          "$note_slug" "$CITED_UNRESOLVED" >&2
         file_err=$((file_err + 1))
+      elif [ -n "$CITED_UNRESOLVED" ]; then
+        printf 'WARN citations: note notes/%s mentions unresolvable path(s):%s; accepted because the note also cites a resolvable source\n' \
+          "$note_slug" "$CITED_UNRESOLVED" >&2
       fi
     done
   fi
 
   # Check core.md citations if present
   if [ -f "$GEN_DIR/core.md" ] && [ ! -L "$GEN_DIR/core.md" ] && [ -s "$GEN_DIR/core.md" ]; then
-    mapfile -t cited_list < <(extract_citations_from_file "$GEN_DIR/core.md")
-    if [ "${#cited_list[@]}" -eq 0 ]; then
+    tally_citations "$GEN_DIR/core.md"
+    valid_citations=$((valid_citations + CITED_VALID))
+
+    if [ "$CITED_COUNT" -eq 0 ]; then
       printf 'FAIL citations: core.md has no citations or source metadata\n' >&2
       file_err=$((file_err + 1))
-    fi
-    local core_has_valid=0
-    for cited in "${cited_list[@]}"; do
-      [ -n "$cited" ] || continue
-      if resolve_source_path "$cited"; then
-        core_has_valid=1
-        valid_citations=$((valid_citations + 1))
-      else
-        printf 'FAIL citations: core.md cites missing or unresolvable source: "%s"\n' \
-          "$cited" >&2
-        file_err=$((file_err + 1))
-      fi
-    done
-    if [ "${#cited_list[@]}" -gt 0 ] && [ "$core_has_valid" -eq 0 ]; then
+    elif [ "$CITED_VALID" -eq 0 ]; then
+      printf 'FAIL citations: core.md cites missing or unresolvable source:%s\n' \
+        "$CITED_UNRESOLVED" >&2
       file_err=$((file_err + 1))
+    elif [ -n "$CITED_UNRESOLVED" ]; then
+      printf 'WARN citations: core.md mentions unresolvable path(s):%s; accepted because core.md also cites a resolvable source\n' \
+        "$CITED_UNRESOLVED" >&2
     fi
   fi
 
@@ -413,11 +419,14 @@ check_constitution() {
     case "$heading" in
       'captain preferences'|'preferences'|'standing preferences'|'constitution') continue ;;
     esac
-    if ! printf '%s\n' "$core_text" | grep -Fq "$heading"; then
-      printf 'FAIL constitution: standing section heading "%s" from data/captain.md is missing in core.md\n' \
-        "$heading" >&2
-      missing=$((missing + 1))
-    fi
+    case "$core_text" in
+      *"$heading"*) ;;
+      *)
+        printf 'FAIL constitution: standing section heading "%s" from data/captain.md is missing in core.md\n' \
+          "$heading" >&2
+        missing=$((missing + 1))
+        ;;
+    esac
   done < <(grep '^#\{1,4\}[[:space:]]' "$captain_file" || true)
 
   # 2. Check bullet rules and standing directives
@@ -435,9 +444,9 @@ check_constitution() {
     local token match_count=0 total_tokens=0
     for token in $keywords; do
       total_tokens=$((total_tokens + 1))
-      if printf '%s\n' "$core_text" | grep -Fq "$token"; then
-        match_count=$((match_count + 1))
-      fi
+      case "$core_text" in
+        *"$token"*) match_count=$((match_count + 1)) ;;
+      esac
     done
 
     # If less than half of the rule's keywords are present, flag as potentially dropped rule

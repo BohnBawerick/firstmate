@@ -101,6 +101,7 @@ init_changed_fixture_repo() {
     fm-backend-herdr-smoke.test.sh \
     fm-secondmate-safety.test.sh \
     fm-session-start.test.sh \
+    fm-memory-verify.test.sh \
     fm-afk-pi-herdr-return-e2e.test.sh \
     fm-backend.test.sh \
     fm-pr-merge.test.sh \
@@ -116,6 +117,8 @@ init_changed_fixture_repo() {
   : >"$repo/tests/lib.sh"
   : >"$repo/tests/fm-backend-herdr-eventwait.test.py"
   : >"$repo/bin/fm-supervisor-target-lib.sh"
+  : >"$repo/bin/fm-memory-verify.sh"
+  : >"$repo/bin/fm-memory-drop.sh"
   : >"$repo/bin/unmapped-source.sh"
   printf '# .claude/settings.json\n# .pi/extensions/fm-primary-turnend-guard.ts\n' \
     >>"$repo/tests/fm-cd-pretool-check.test.sh"
@@ -158,6 +161,16 @@ test_changed_dependency_selection_and_unmapped_failure() {
   assert_contains "$listed" "tests/fm-afk-return.test.sh" "supervisor target selects afk coverage"
   git -C "$repo" add bin/fm-supervisor-target-lib.sh
   git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm supervisor-change
+
+  printf '\n' >>"$repo/bin/fm-memory-verify.sh"
+  printf '\n' >>"$repo/bin/fm-memory-drop.sh"
+  listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
+  assert_contains "$listed" "tests/fm-memory-verify.test.sh" \
+    "memory verifier source selects its own coverage"
+  assert_contains "$listed" "tests/fm-session-start.test.sh" \
+    "memory verifier source selects session-bootstrap coverage"
+  git -C "$repo" add bin/fm-memory-verify.sh bin/fm-memory-drop.sh
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm memory-source-change
 
   printf '\n' >>"$repo/.agents/skills/example/SKILL.md"
   printf '\n' >>"$repo/.claude/settings.json"
