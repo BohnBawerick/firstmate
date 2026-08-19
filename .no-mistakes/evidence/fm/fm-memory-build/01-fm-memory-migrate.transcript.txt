@@ -1,0 +1,97 @@
+========================================================================
+1. PRE-MIGRATION STATE: data/learnings.md exists
+========================================================================
+-rw-rw-r-- 1 paiva paiva 873 Aug 20 01:56 /tmp/fm-memory-evidence.z3Mhhv/home-migrate/data/learnings.md
+
+========================================================================
+2. EXECUTING: bin/fm-memory-migrate.sh
+========================================================================
+created notes/treehouse-lease-timeouts-must-be-strictly-bounded.md
+created notes/herdr-workspace-focus-and-presentation-lifecycle.md
+created notes/memory-budget-calculation-rules-fm-startup-memory-budget-sh.md
+created notes/sqlite-database-locking-in-multi-agent-environments-2026-08.md
+migrate: 4 note(s) created, 0 already present
+catalog: published data/memory/catalog.md (4 note(s))
+migrate: froze the original at data/memory/raw/learnings-2026-08-19.md
+migrate: appended the original to data/memory-archive.md
+migrate: removed data/learnings.md (frozen at data/memory/raw/learnings-2026-08-19.md and archived in data/memory-archive.md)
+
+========================================================================
+3. RESULTING DIRECTORY LAYOUT: data/memory/
+========================================================================
+/tmp/fm-memory-evidence.z3Mhhv/home-migrate/data/memory/catalog.md
+/tmp/fm-memory-evidence.z3Mhhv/home-migrate/data/memory/drop/README.md
+/tmp/fm-memory-evidence.z3Mhhv/home-migrate/data/memory/notes/herdr-workspace-focus-and-presentation-lifecycle.md
+/tmp/fm-memory-evidence.z3Mhhv/home-migrate/data/memory/notes/memory-budget-calculation-rules-fm-startup-memory-budget-sh.md
+/tmp/fm-memory-evidence.z3Mhhv/home-migrate/data/memory/notes/sqlite-database-locking-in-multi-agent-environments-2026-08.md
+/tmp/fm-memory-evidence.z3Mhhv/home-migrate/data/memory/notes/treehouse-lease-timeouts-must-be-strictly-bounded.md
+/tmp/fm-memory-evidence.z3Mhhv/home-migrate/data/memory/raw/learnings-2026-08-19.md
+
+========================================================================
+4. GENERATED CATALOG (data/memory/catalog.md)
+========================================================================
+<!-- compiled by bin/fm-memory-compile.sh from data/memory/notes/ -->
+
+- Herdr workspace focus and presentation lifecycle (herdr-workspace-focus-and-presentation-lifecycle.md | herdr | 2026-08-12)
+- Memory budget calculation rules (`fm-startup-memory-budget.sh`) (memory-budget-calculation-rules-fm-startup-memory-budget-sh.md | fm-startup-memory-budget.sh, memory | ?)
+- SQLite database locking in multi-agent environments (2026-08-17) (sqlite-database-locking-in-multi-agent-environments-2026-08.md | multi-agent, sqlite | 2026-08-17)
+- `treehouse` lease timeouts must be strictly bounded (treehouse-lease-timeouts-must-be-strictly-bounded.md | treehouse | 2026-08-10)
+
+========================================================================
+5. ATOMIC NOTE WITH EXTRACTED METADATA
+========================================================================
+---
+title: `treehouse` lease timeouts must be strictly bounded
+triggers: treehouse
+updated: 2026-08-10
+tier: <!--a:2026-08-10-->
+source: data/learnings.md
+---
+
+# `treehouse` lease timeouts must be strictly bounded
+Treehouse lease acquisitions can hang if network health checks stall.
+Always wrap lease acquisition with bounded timeouts.
+
+
+========================================================================
+6. RAW ARCHIVE (data/memory/raw/learnings-YYYY-MM-DD.md)
+========================================================================
+total 4.0K
+-rw-rw-r-- 1 paiva paiva 873 Aug 20 01:56 learnings-2026-08-19.md
+
+========================================================================
+7. DURABLE MEMORY ARCHIVE (data/memory-archive.md)
+========================================================================
+
+<!-- archived from data/learnings.md by bin/fm-memory-migrate.sh on 2026-08-19 -->
+
+<!-- memory tiers: see the stow skill -->
+
+## `treehouse` lease timeouts must be strictly bounded <!--a:2026-08-10-->
+Treehouse lease acquisitions can hang if network health checks stall.
+Always wrap lease acquisition with bounded timeouts.
+
+## Herdr workspace focus and presentation lifecycle <!--a:2026-08-12-->
+Herdr panes must be focused cleanly without flashing.
+Workspace presentation helpers must check for existing active panes before spawning new ones.
+
+## Memory budget calculation rules (`fm-startup-memory-budget.sh`) <!--P-->
+The conservative token estimation formula is `ceil(UTF-8 bytes / 3)`.
+Framing and delimiters are excluded when computing memory content bytes.
+
+## SQLite database locking in multi-agent environments (2026-08-17)
+SQLite requires busy timeouts when multiple worker processes contend for the state database.
+Use WAL mode where possible.
+
+========================================================================
+8. IDEMPOTENCY VERIFICATION (RE-RUNNING MIGRATION)
+========================================================================
+kept    notes/treehouse-lease-timeouts-must-be-strictly-bounded.md
+kept    notes/herdr-workspace-focus-and-presentation-lifecycle.md
+kept    notes/memory-budget-calculation-rules-fm-startup-memory-budget-sh.md
+kept    notes/sqlite-database-locking-in-multi-agent-environments-2026-08.md
+migrate: 0 note(s) created, 4 already present
+catalog: published data/memory/catalog.md (4 note(s))
+migrate: data/memory/raw/learnings-2026-08-19.md already exists; the original was frozen by an earlier run
+migrate: data/memory-archive.md already carries this run banner
+migrate: removed data/learnings.md (frozen at data/memory/raw/learnings-2026-08-19.md and archived in data/memory-archive.md)

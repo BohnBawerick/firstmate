@@ -1,0 +1,120 @@
+========================================================================
+1. COMPILE WITH CAPTAIN.MD FALLBACK (NO CORE.MD YET)
+========================================================================
+COMPILED WORKING MEMORY (data/memory)
+--------------------------------------------------------------------------------
+Compiled by bin/fm-memory-compile.sh against a 7500-estimated-token cap.
+This is the whole startup memory surface: it is selected and capped, not dumped.
+The catalog lists every note that exists, so when a title below matches what
+this turn needs and its body was not injected, read that file by its path.
+
+core: data/captain.md (standing constitution; data/memory/core.md is ABSENT)
+--------------------------------------------------------------------------------
+# Captain Standing Preferences
+- Local main is authoritative.
+- Verify all changes.
+
+catalog (compiled from data/memory/notes/)
+--------------------------------------------------------------------------------
+<!-- compiled by bin/fm-memory-compile.sh from data/memory/notes/ -->
+
+- Herdr focus and presentation lifecycle (herdr-focus.md | herdr, workspace | 2026-08-12)
+- Treehouse lease timeout handling (treehouse-leases.md | treehouse, lease | 2026-08-10)
+- Unrelated Python pip packaging note (unrelated-topic.md | python, pip | 2026-08-01)
+
+hot note: notes/herdr-focus.md
+--------------------------------------------------------------------------------
+---
+title: Herdr focus and presentation lifecycle
+triggers: herdr, workspace
+updated: 2026-08-12
+source: data/learnings.md
+---
+
+# Herdr focus and presentation lifecycle
+Herdr panes must be focused cleanly without flashing.
+Workspace presentation helpers must check for existing active panes before spawning new ones.
+
+hot note: notes/treehouse-leases.md
+--------------------------------------------------------------------------------
+---
+title: Treehouse lease timeout handling
+triggers: treehouse, lease
+updated: 2026-08-10
+source: data/learnings.md
+---
+
+# Treehouse lease timeout handling
+Treehouse lease acquisitions can hang if network health checks stall.
+Always wrap lease acquisition with bounded timeouts.
+
+MEMORY_NOTICE: data/memory/catalog.md is ABSENT. The catalog in this bundle was rendered fresh from data/memory/notes/; publish the file with bin/fm-memory-compile.sh catalog.
+
+MEMORY_ACCOUNTING: budget=7500 core=28 catalog=112 hot_notes=2 hot_notes_tokens=200 notes_total=3 hot_dropped=0 injected_total=340 status=within-budget
+
+========================================================================
+2. AUTHORING DATA/MEMORY/CORE.MD (TAKES PRECEDENCE OVER CAPTAIN.MD)
+========================================================================
+COMPILED WORKING MEMORY (data/memory)
+--------------------------------------------------------------------------------
+Compiled by bin/fm-memory-compile.sh against a 7500-estimated-token cap.
+This is the whole startup memory surface: it is selected and capped, not dumped.
+The catalog lists every note that exists, so when a title below matches what
+this turn needs and its body was not injected, read that file by its path.
+
+core: data/memory/core.md
+--------------------------------------------------------------------------------
+# Standing Constitution
+- Local main is authoritative.
+- Never delete historical records without an archive.
+- Stay within startup memory budget.
+
+catalog (compiled from data/memory/notes/)
+--------------------------------------------------------------------------------
+<!-- compiled by bin/fm-memory-compile.sh from data/memory/notes/ -->
+
+- Herdr focus and presentation lifecycle (herdr-focus.md | herdr, workspace | 2026-08-12)
+- Treehouse lease timeout handling (treehouse-leases.md | treehouse, lease | 2026-08-10)
+- Unrelated Python pip packaging note (unrelated-topic.md | python, pip | 2026-08-01)
+
+hot note: notes/herdr-focus.md
+--------------------------------------------------------------------------------
+---
+title: Herdr focus and presentation lifecycle
+triggers: herdr, workspace
+updated: 2026-08-12
+source: data/learnings.md
+---
+
+# Herdr focus and presentation lifecycle
+Herdr panes must be focused cleanly without flashing.
+Workspace presentation helpers must check for existing active panes before spawning new ones.
+
+hot note: notes/treehouse-leases.md
+--------------------------------------------------------------------------------
+---
+title: Treehouse lease timeout handling
+triggers: treehouse, lease
+updated: 2026-08-10
+source: data/learnings.md
+---
+
+# Treehouse lease timeout handling
+Treehouse lease acquisitions can hang if network health checks stall.
+Always wrap lease acquisition with bounded timeouts.
+
+MEMORY_NOTICE: data/captain.md is still present (28 estimated tokens) and is NOT injected because data/memory/core.md takes precedence. Fold standing preferences into data/memory/core.md, or remove data/captain.md.
+
+MEMORY_NOTICE: data/memory/catalog.md is ABSENT. The catalog in this bundle was rendered fresh from data/memory/notes/; publish the file with bin/fm-memory-compile.sh catalog.
+
+MEMORY_ACCOUNTING: budget=7500 core=49 catalog=112 hot_notes=2 hot_notes_tokens=200 notes_total=3 hot_dropped=0 injected_total=361 status=within-budget
+
+========================================================================
+3. REPUBLISHING CATALOG (bin/fm-memory-compile.sh catalog)
+========================================================================
+catalog: published data/memory/catalog.md (3 note(s))
+<!-- compiled by bin/fm-memory-compile.sh from data/memory/notes/ -->
+
+- Herdr focus and presentation lifecycle (herdr-focus.md | herdr, workspace | 2026-08-12)
+- Treehouse lease timeout handling (treehouse-leases.md | treehouse, lease | 2026-08-10)
+- Unrelated Python pip packaging note (unrelated-topic.md | python, pip | 2026-08-01)

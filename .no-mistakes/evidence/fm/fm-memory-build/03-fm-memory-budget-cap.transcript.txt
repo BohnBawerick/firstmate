@@ -1,0 +1,62 @@
+========================================================================
+CASE A: GENEROUS BUDGET (7500 tokens) -> STATUS: within-budget
+========================================================================
+MEMORY_ACCOUNTING: budget=7500 core=19 catalog=144 hot_notes=5 hot_notes_tokens=370 notes_total=5 hot_dropped=0 injected_total=533 status=within-budget
+
+========================================================================
+CASE B: TIGHT BUDGET (180 tokens) -> STATUS: capped
+========================================================================
+COMPILED WORKING MEMORY (data/memory)
+--------------------------------------------------------------------------------
+Compiled by bin/fm-memory-compile.sh against a 180-estimated-token cap.
+This is the whole startup memory surface: it is selected and capped, not dumped.
+The catalog lists every note that exists, so when a title below matches what
+this turn needs and its body was not injected, read that file by its path.
+
+core: data/memory/core.md
+--------------------------------------------------------------------------------
+# Standing Constitution
+- Local main is authoritative.
+
+catalog (compiled from data/memory/notes/)
+--------------------------------------------------------------------------------
+<!-- compiled by bin/fm-memory-compile.sh from data/memory/notes/ -->
+
+- Note number 1 on active task handling (note-1.md | task | 2026-08-11)
+- Note number 2 on active task handling (note-2.md | task | 2026-08-12)
+- Note number 3 on active task handling (note-3.md | task | 2026-08-13)
+- Note number 4 on active task handling (note-4.md | task | 2026-08-14)
+- Note number 5 on active task handling (note-5.md | task | 2026-08-15)
+
+MEMORY_BUDGET_NOTICE: 5 trigger-matched note(s) did not fit the budget and were not injected. Every one of them is still listed in the catalog above; read it by path when its title matches.
+
+MEMORY_NOTICE: data/memory/catalog.md is ABSENT. The catalog in this bundle was rendered fresh from data/memory/notes/; publish the file with bin/fm-memory-compile.sh catalog.
+
+MEMORY_ACCOUNTING: budget=180 core=19 catalog=144 hot_notes=0 hot_notes_tokens=0 notes_total=5 hot_dropped=5 injected_total=163 status=capped
+
+========================================================================
+CASE C: CORE ALONE EXCEEDS BUDGET (20 tokens) -> STATUS: over-budget warning
+========================================================================
+COMPILED WORKING MEMORY (data/memory)
+--------------------------------------------------------------------------------
+Compiled by bin/fm-memory-compile.sh against a 20-estimated-token cap.
+This is the whole startup memory surface: it is selected and capped, not dumped.
+The catalog lists every note that exists, so when a title below matches what
+this turn needs and its body was not injected, read that file by its path.
+
+core: data/memory/core.md
+--------------------------------------------------------------------------------
+# Standing Constitution
+- Local main is authoritative.
+
+MEMORY_BUDGET_WARNING: the core plus catalog is 163 estimated tokens against a 20 budget, so the catalog and every note were dropped. Trim the core or raise config/startup-memory-budget; until then this session cannot see what notes exist.
+
+MEMORY_NOTICE: data/memory/catalog.md is ABSENT. The catalog in this bundle was rendered fresh from data/memory/notes/; publish the file with bin/fm-memory-compile.sh catalog.
+
+MEMORY_ACCOUNTING: budget=20 core=19 catalog=0 hot_notes=0 hot_notes_tokens=0 notes_total=5 hot_dropped=5 injected_total=19 status=capped
+
+========================================================================
+CASE D: CORRUPTED/INVALID BUDGET FILE -> REFUSES EXECUTION
+========================================================================
+fm-memory-compile: invalid config/startup-memory-budget - value must be one positive decimal integer
+Exit status: 1
