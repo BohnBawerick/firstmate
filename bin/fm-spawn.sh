@@ -3036,8 +3036,6 @@ if [ "$HARNESS" = kimi ]; then
     spawn_harness_fail "kimi did not show a verified ready signal before brief delivery"
     exit 1
   fi
-    exit 1
-  fi
   KIMI_POINTER="Read the brief at $BRIEF_REAL and follow it exactly."
   KIMI_SUBMIT_RETRIES=${FM_KIMI_SUBMIT_RETRIES:-3}
   KIMI_SUBMIT_SLEEP=${FM_KIMI_SUBMIT_SLEEP:-${FM_KIMI_POLL_INTERVAL:-0.5}}
