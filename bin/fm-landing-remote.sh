@@ -384,10 +384,10 @@ record_gh_default() {
 
 refresh_no_mistakes() {
   if ! command -v no-mistakes >/dev/null 2>&1; then
-    echo "warning: no-mistakes is not on PATH; after origin points at the landing remote, run: no-mistakes --yes init" >&2
+    echo "warning: no-mistakes is not on PATH; after origin points at the landing remote, run: no-mistakes init" >&2
     return 0
   fi
-  ( cd "$REPO" && no-mistakes --yes init ) || return 1
+  ( cd "$REPO" && no-mistakes init ) || return 1
 }
 
 cmd_status() {
@@ -531,7 +531,7 @@ cmd_apply() {
     fail_after_restore "gh did not record origin as its default repository; with no gh default and both origin and upstream present, gh ranks upstream above origin, so a flagless 'gh pr create' can still open the PR on the third-party parent."
   fi
   if ! refresh_no_mistakes; then
-    fail_after_restore "no-mistakes --yes init failed, so its stored PR target would still name the previous remote and the pipeline would open PRs there."
+    fail_after_restore "no-mistakes init failed, so its stored PR target would still name the previous remote and the pipeline would open PRs there."
   fi
 
   APPLY_IN_FLIGHT=0
