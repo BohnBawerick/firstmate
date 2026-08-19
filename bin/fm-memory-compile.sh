@@ -78,12 +78,6 @@ CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 MEMORY="$DATA/memory"
 NOTES_DIR="$MEMORY/notes"
 
-# A symlinked data/memory would defeat every per-file symlink guard below in one
-# step, because the files inside the link target are ordinary regular files.
-# The directory itself is therefore checked exactly like the files in it.
-MEMORY_DIR_OK=1
-[ ! -L "$MEMORY" ] || MEMORY_DIR_OK=0
-
 CONTEXT_BYTES=${FM_MEMORY_CONTEXT_BYTES:-65536}
 case "$CONTEXT_BYTES" in ''|*[!0-9]*|0) CONTEXT_BYTES=65536 ;; esac
 
@@ -186,8 +180,25 @@ elif [ -f "$HEAD_FILE" ] && [ ! -L "$HEAD_FILE" ]; then
   esac
 fi
 
+# A symlinked data/memory would defeat every per-file symlink guard below in one
+# step, because the files inside the link target are ordinary regular files.
+# The directory itself is therefore checked exactly like the files in it, and so
+# is data/memory whenever the resolved directory was reached by traversing it.
 MEMORY_DIR_OK=1
-[ ! -L "$MEMORY" ] || MEMORY_DIR_OK=0
+MEMORY_SYMLINK_PATH=""
+if [ -L "$MEMORY" ]; then
+  MEMORY_DIR_OK=0
+  MEMORY_SYMLINK_PATH="$REL_LABEL"
+else
+  case "$MEMORY" in
+    "$DATA/memory"|"$DATA/memory"/*)
+      if [ -L "$DATA/memory" ]; then
+        MEMORY_DIR_OK=0
+        MEMORY_SYMLINK_PATH="data/memory"
+      fi
+      ;;
+  esac
+fi
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/.fm-memory-compile.XXXXXX") || die 'could not create a working directory'
 # shellcheck disable=SC2329 # Registered by the EXIT and signal traps below.
@@ -338,7 +349,7 @@ if [ "$MODE" = catalog ]; then
     cat "$TMP/catalog"
     exit 0
   fi
-  [ "$MEMORY_DIR_OK" -eq 1 ] || die "$REL_LABEL is a symlink; refusing to publish through it"
+  [ "$MEMORY_DIR_OK" -eq 1 ] || die "$MEMORY_SYMLINK_PATH is a symlink; refusing to publish through it"
   [ -d "$MEMORY" ] || mkdir -p "$MEMORY" || die "could not create $MEMORY"
   if [ -L "$MEMORY/catalog.md" ]; then
     die "$REL_LABEL/catalog.md is a symlink; refusing to publish through it"

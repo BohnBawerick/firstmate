@@ -97,6 +97,11 @@ case "$MAX_DIFF_RATIO" in
 esac
 [ "$MAX_DIFF_RATIO" -ge 1 ] && [ "$MAX_DIFF_RATIO" -le 100 ] || die "max-diff-ratio must be between 1 and 100"
 
+# A symlinked data/memory defeats every per-file guard below in one step, so no
+# verdict is issued for such a home at all rather than a green one measured
+# through the link.
+[ ! -L "$MEMORY" ] || die 'data/memory is a symlink; refusing to verify through it'
+
 # Resolve proposed generation directory
 GEN_DIR=""
 GEN_IDENTIFIER=""
@@ -199,10 +204,16 @@ resolve_source_path() {
   p=$(printf '%s\n' "$p" | sed -e 's/^[][[:space:]"'\'')(`><.,:;]*//' -e 's/[][[:space:]"'\'')(`><.,:;]*$//')
   [ -n "$p" ] || return 1
 
-  # If absolute path
-  if [ -e "$p" ] || [ -L "$p" ]; then
-    return 0
-  fi
+  # Only an absolute citation may be probed as written. A relative one belongs
+  # to the home, not to whatever directory the operator happens to stand in.
+  case "$p" in
+    /*)
+      if [ -e "$p" ] || [ -L "$p" ]; then
+        return 0
+      fi
+      return 1
+      ;;
+  esac
 
   # Relative to FM_HOME
   if [ -e "$FM_HOME/$p" ] || [ -L "$FM_HOME/$p" ]; then

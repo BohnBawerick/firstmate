@@ -700,6 +700,94 @@ test_compile_reads_resolved_dir_when_data_memory_is_a_symlink() {
   pass 'compiler measures the resolved generation even when data/memory itself is a symlink'
 }
 
+# --- 9. Symlinked Memory Root And Citation Provenance ------------------------
+
+test_compile_refuses_to_traverse_a_symlinked_memory_root() {
+  local home gen_dir out rc
+  home=$(new_home symlink-root 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+
+  # The active generation is reached only by traversing a symlinked data/memory,
+  # which defeats every per-file guard inside it in one step.
+  rmdir "$home/data/memory/drop" "$home/data/memory"
+  mkdir -p "$home/data/real/gen/1/notes"
+  ln -s "$home/data/real" "$home/data/memory"
+  gen_dir="$home/data/real/gen/1"
+  printf 'gen/1\n' > "$home/data/real/HEAD"
+  printf '# Core\n<!-- source: data/source.md -->\n- Rule A\n' > "$gen_dir/core.md"
+  write_note "$gen_dir/notes" n1 'Through The Link' 'linked' 2026-08-20 'data/source.md'
+
+  set +e
+  out=$(FM_HOME="$home" "$COMPILE" catalog 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "catalog mode published through a symlinked data/memory: $out"
+  assert_contains "$out" 'data/memory is a symlink; refusing to publish through it' \
+    'the refusal did not name data/memory as the symlink'
+  assert_absent "$gen_dir/catalog.md" 'catalog was written through the symlinked memory root'
+
+  # compile mode degrades instead of dying, but must not read through the link.
+  out=$(FM_HOME="$home" "$COMPILE" compile)
+  assert_not_contains "$out" 'Through The Link' \
+    'compiler injected a note read through a symlinked data/memory'
+  assert_contains "$out" 'notes_total=0' \
+    'compiler inventoried notes through a symlinked data/memory'
+
+  pass 'a symlinked data/memory is refused even when data/memory/HEAD points past it'
+}
+
+test_verify_refuses_a_symlinked_memory_root() {
+  local home gen_dir out rc
+  home=$(new_home verify-symlink-root 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+
+  rmdir "$home/data/memory/drop" "$home/data/memory"
+  mkdir -p "$home/data/real/gen/1/notes"
+  ln -s "$home/data/real" "$home/data/memory"
+  gen_dir="$home/data/real/gen/1"
+  printf '# Core\n<!-- source: data/source.md -->\n- Rule A\n' > "$gen_dir/core.md"
+  write_note "$gen_dir/notes" n1 'Linked Note' 'linked' 2026-08-20 'data/source.md'
+
+  set +e
+  out=$(FM_HOME="$home" "$VERIFY" 1 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "verifier issued a verdict through a symlinked data/memory: $out"
+  assert_contains "$out" 'data/memory is a symlink; refusing to verify through it' \
+    'the verifier did not refuse a symlinked memory root'
+  assert_not_contains "$out" 'PASS budget' \
+    'the verifier reported a green budget check it measured through a symlink'
+
+  pass 'the verifier refuses a home whose data/memory is a symlink instead of grading through it'
+}
+
+test_citation_resolution_ignores_the_callers_working_directory() {
+  local home decoy out rc
+  home=$(new_home citations-cwd 7500)
+  decoy="$TMP_ROOT/citations-cwd-decoy"
+  mkdir -p "$decoy/data" "$home/data/memory/gen/1/notes"
+  printf 'DECOY\n' > "$decoy/data/decoy-source.md"
+
+  # The cited path exists only in the caller's working directory, never in the
+  # home or in the repo, so it is fabricated provenance.
+  write_note "$home/data/memory/gen/1/notes" n1 'Decoy Note' 'decoy' 2026-08-20 'data/decoy-source.md'
+
+  set +e
+  out=$(cd "$decoy" && FM_HOME="$home" "$VERIFY" 1 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "verifier resolved a citation against the caller's cwd: $out"
+  assert_contains "$out" 'data/decoy-source.md' 'the failure did not name the fabricated citation'
+
+  # The same generation still passes once the cited file exists in the home.
+  printf 'REAL\n' > "$home/data/decoy-source.md"
+  out=$(cd "$decoy" && FM_HOME="$home" "$VERIFY" 1) \
+    || fail "verifier refused a citation that resolves inside the home: $out"
+  assert_contains "$out" 'PASS citations' 'a home-resolvable citation did not pass'
+
+  pass 'citation provenance resolves against the home and repo, never the caller working directory'
+}
+
 # --- Run All Tests ----------------------------------------------------------
 
 test_drop_tray_capture_basic
@@ -724,6 +812,9 @@ test_verify_runs_without_bash4_builtins
 test_verify_accepts_note_with_incidental_unresolvable_prose_path
 test_catalog_mode_reports_the_generation_it_wrote
 test_compile_reads_resolved_dir_when_data_memory_is_a_symlink
+test_compile_refuses_to_traverse_a_symlinked_memory_root
+test_verify_refuses_a_symlinked_memory_root
+test_citation_resolution_ignores_the_callers_working_directory
 
 printf '# all fm-memory-verify tests passed\n'
 exit 0
