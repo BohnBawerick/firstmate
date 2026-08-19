@@ -3029,11 +3029,13 @@ if [ "$HARNESS" = kimi ]; then
   KIMI_READY_STATUS=0
   kimi_wait_for_ready || KIMI_READY_STATUS=$?
   if [ "$KIMI_READY_STATUS" -eq 2 ]; then
-    kimi_spawn_fail "kimi is showing its workspace-trust dialog but backend=$BACKEND failed twice in a row to deliver the $KIMI_TRUST_FAILED_KEY key that accepts it"
+    spawn_harness_fail "kimi is showing its workspace-trust dialog but backend=$BACKEND failed twice in a row to deliver the $KIMI_TRUST_FAILED_KEY key that accepts it"
     exit 1
   fi
   if [ "$KIMI_READY_STATUS" -ne 0 ]; then
-    kimi_spawn_fail "kimi did not show a verified ready signal before brief delivery"
+    spawn_harness_fail "kimi did not show a verified ready signal before brief delivery"
+    exit 1
+  fi
     exit 1
   fi
   KIMI_POINTER="Read the brief at $BRIEF_REAL and follow it exactly."
