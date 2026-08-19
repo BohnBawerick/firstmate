@@ -82,3 +82,13 @@ if ! caller_has_merge_method "$@"; then
 fi
 
 gh-axi pr merge "$PR_NUMBER" --repo "$PR_OWNER/$PR_REPO" "${merge_args[@]+"${merge_args[@]}"}" "$@"
+
+PROJ=$(grep '^project=' "$META" | cut -d= -f2- || true)
+if [ -n "$PROJ" ] && [ -d "$PROJ" ]; then
+  proj_real=$(cd "$PROJ" 2>/dev/null && pwd -P || printf '%s\n' "$PROJ")
+  root_real=$(cd "$FM_ROOT" 2>/dev/null && pwd -P || printf '%s\n' "$FM_ROOT")
+  home_real=$(cd "$FM_HOME" 2>/dev/null && pwd -P || printf '%s\n' "$FM_HOME")
+  if [ "$proj_real" = "$root_real" ] || [ "$proj_real" = "$home_real" ]; then
+    "$SCRIPT_DIR/fm-merge-local.sh" "$ID"
+  fi
+fi
