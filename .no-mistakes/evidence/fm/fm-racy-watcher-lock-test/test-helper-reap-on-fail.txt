@@ -1,0 +1,10 @@
+=== Demonstration: Test helper automatic reaping on early failure ===
+Executing test script that spawns background child and fails early...
+
+Spawning background child that ignores SIGTERM...
+Failing assertion deliberately before explicit reap...
+not ok - assertion failed as part of demonstration
+/home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0DDW88W3ET2PSY02BFQ9JPA/tests/lib.sh: line 218: 57530 Killed                  bash -c 'trap "" TERM HUP; exec sleep 600'
+
+Checking if tracked child PID 57530 is still running:
+SUCCESS: Child process 57530 was cleanly reaped by tests/lib.sh EXIT trap.

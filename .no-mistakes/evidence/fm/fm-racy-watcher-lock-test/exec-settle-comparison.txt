@@ -1,0 +1,11 @@
+=== Demonstration: Fork-to-exec settling window ===
+Widening fork-to-exec window with bash -c 'sleep 0.25; exec sleep 300'
+
+Running 20 iterations with IMMEDIATE sampling (no settle wait):
+  iter 1: sample1 != sample2 (diverged mid-exec)
+  iter 2: sample1 != sample2 (diverged mid-exec)
+  iter 3: sample1 != sample2 (diverged mid-exec)
+Immediate sampling divergence: 20 / 20 iterations (FAILED / RED)
+
+Running 20 iterations with fm_test_wait_exec_settled (with settle wait):
+Settled sampling divergence: 0 / 20 iterations (PASSED / GREEN)
