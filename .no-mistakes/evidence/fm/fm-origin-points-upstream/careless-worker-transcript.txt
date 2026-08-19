@@ -1,0 +1,53 @@
+==============================================================
+remotes as the clone starts
+==============================================================
+  fork	file:///tmp/fm-landing-demo/ours.git (fetch)
+  fork	file:///tmp/fm-landing-demo/ours.git (push)
+  origin	file:///tmp/fm-landing-demo/parent.git (fetch)
+  origin	file:///tmp/fm-landing-demo/parent.git (push)
+
+ours   (BohnBawerick stand-in) = file:///tmp/fm-landing-demo/ours.git
+parent (kunchenguid stand-in)  = file:///tmp/fm-landing-demo/parent.git
+
+==============================================================
+BEFORE the fix: a worker doing the obvious thing
+==============================================================
+  git checkout -b fm/careless-before  (from origin/main)
+    tree: CARRIES the third party's unreviewed commit
+    tree: MISSING our authoritative main
+  git push (no remote named)
+    landed on remote 'origin' -> file:///tmp/fm-landing-demo/parent.git
+  gh pr create -> remote origin -> file:///tmp/fm-landing-demo/parent.git
+  git pull on main would fetch from: origin
+
+==============================================================
+firstmate runs the remap on the primary checkout
+  bin/fm-landing-remote.sh apply --ours <ours> --upstream <parent>
+==============================================================
+  no-mistakes --yes init
+  landing-remote: origin now points at the landing remote
+  origin=file:///tmp/fm-landing-demo/ours.git
+  upstream=file:///tmp/fm-landing-demo/parent.git
+  fork=absent
+  gh-default=origin
+
+  origin	file:///tmp/fm-landing-demo/ours.git (fetch)
+  origin	file:///tmp/fm-landing-demo/ours.git (push)
+  upstream	file:///tmp/fm-landing-demo/parent.git (fetch)
+  upstream	file:///tmp/fm-landing-demo/parent.git (push)
+
+==============================================================
+AFTER the fix: the same worker, the same commands, no flags
+==============================================================
+  git checkout -b fm/careless-after  (from origin/main)
+    tree: clean of third-party commits
+    tree: contains our authoritative main
+  git push (no remote named)
+    landed on remote 'origin' -> file:///tmp/fm-landing-demo/ours.git
+  gh pr create -> remote origin -> file:///tmp/fm-landing-demo/ours.git
+  git pull on main would fetch from: origin
+
+==============================================================
+a worker in a linked worktree cannot retarget the fleet
+==============================================================
+  error: refusing to rewrite remotes from a linked worktree; run this on the primary checkout

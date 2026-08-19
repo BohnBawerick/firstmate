@@ -1,0 +1,3 @@
+ok - without apply, the careless path still names the parent remote
+not ok - careless origin is file:///tmp/fm-landing-remote.TMpxV0/with-apply/parent.git, not the landing remote file:///tmp/fm-landing-remote.TMpxV0/with-apply/ours.git
+exit=1

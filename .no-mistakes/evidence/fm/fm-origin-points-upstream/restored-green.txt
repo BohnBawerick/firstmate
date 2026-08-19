@@ -1,0 +1,16 @@
+ok - without apply, the careless path still names the parent remote
+ok - apply makes careless branch creation and default-repo targeting land on ours
+ok - apply refetches origin so tracking refs stop naming the parent
+ok - a refused apply leaves the remotes unchanged and the corrected re-run still applies
+ok - apply fails when the gh default cannot be set, restores the checkout, and names the consequence
+ok - apply completes a partly arranged checkout instead of calling it already correct
+ok - apply refuses to rewrite remotes from a linked worktree at any depth
+ok - apply refuses an origin that is neither ours nor the named parent
+ok - a rename that dies mid-remap restores the checkout and the retry still applies
+ok - a failed restore is reported as needing hand repair, not as a restored checkout
+ok - apply fails when gh records a default repository that is not origin
+ok - a failed apply on an unrenamed origin leaves no gh default behind
+ok - an interrupted remap restores the checkout and still exits non-zero
+ok - a rollback restores local config only and never copies a global value in
+# all fm-landing-remote tests passed
+exit=0
