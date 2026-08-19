@@ -132,7 +132,7 @@ fi
 # Load claims from claims-file if specified
 if [ -n "$CLAIMS_FILE" ]; then
   [ -f "$CLAIMS_FILE" ] || die "claims file not found: '$CLAIMS_FILE'"
-  while IFS= read -r line; do
+  while IFS= read -r line || [ -n "$line" ]; do
     # Strip leading markdown bullet or whitespace if present
     line=$(printf '%s\n' "$line" | sed -e 's/^[[:space:]]*[-*][[:space:]]*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
     [ -n "$line" ] || continue
@@ -150,7 +150,7 @@ TARGET_FILE="$DROP_DIR/$TASK_ID.md"
 EXISTING_CLAIMS=()
 if [ -f "$TARGET_FILE" ] && [ ! -L "$TARGET_FILE" ]; then
   in_body=0
-  while IFS= read -r line; do
+  while IFS= read -r line || [ -n "$line" ]; do
     if [ "$line" = "---" ]; then
       if [ "$in_body" -eq 0 ]; then
         in_body=1

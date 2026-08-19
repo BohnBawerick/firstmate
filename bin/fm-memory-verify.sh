@@ -204,6 +204,13 @@ resolve_source_path() {
   p=$(printf '%s\n' "$p" | sed -e 's/^[][[:space:]"'\'')(`><.,:;]*//' -e 's/[][[:space:]"'\'')(`><.,:;]*$//')
   [ -n "$p" ] || return 1
 
+  # A citation names provenance inside the home or the repo, so a parent
+  # traversal is never legitimate: it would let fabricated provenance resolve
+  # against any file on the host.
+  case "$p" in
+    ..|../*|*/../*|*/..) return 1 ;;
+  esac
+
   # Only an absolute citation may be probed as written. A relative one belongs
   # to the home, not to whatever directory the operator happens to stand in.
   case "$p" in

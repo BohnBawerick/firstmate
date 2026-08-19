@@ -726,14 +726,35 @@ test_compile_refuses_to_traverse_a_symlinked_memory_root() {
     'the refusal did not name data/memory as the symlink'
   assert_absent "$gen_dir/catalog.md" 'catalog was written through the symlinked memory root'
 
-  # compile mode degrades instead of dying, but must not read through the link.
+  # Every other --memory-dir spelling of the same directory is refused too.
+  local spelling
+  for spelling in \
+    "$home/data/memory/gen/1" \
+    "$home/data/./memory/gen/1" \
+    "data/memory/gen/1"; do
+    set +e
+    out=$(cd "$home" && FM_HOME="$home" "$COMPILE" catalog --memory-dir "$spelling" 2>&1)
+    rc=$?
+    set -e
+    [ "$rc" -ne 0 ] \
+      || fail "catalog mode published through a symlinked data/memory spelled '$spelling': $out"
+    assert_contains "$out" 'data/memory is a symlink; refusing to publish through it' \
+      "the refusal did not name data/memory for spelling '$spelling'"
+    assert_absent "$gen_dir/catalog.md" \
+      "catalog was written through the symlinked memory root spelled '$spelling'"
+  done
+
+  # compile mode degrades instead of dying, but must not read through the link
+  # and must say why the bundle came back empty.
   out=$(FM_HOME="$home" "$COMPILE" compile)
   assert_not_contains "$out" 'Through The Link' \
     'compiler injected a note read through a symlinked data/memory'
   assert_contains "$out" 'notes_total=0' \
     'compiler inventoried notes through a symlinked data/memory'
+  assert_contains "$out" 'MEMORY_NOTICE: data/memory is a symlink, so nothing was read through it' \
+    'the empty bundle was reported as an empty home instead of a refused symlink'
 
-  pass 'a symlinked data/memory is refused even when data/memory/HEAD points past it'
+  pass 'a symlinked data/memory is refused in every path spelling and the empty bundle says why'
 }
 
 test_verify_refuses_a_symlinked_memory_root() {
@@ -788,6 +809,44 @@ test_citation_resolution_ignores_the_callers_working_directory() {
   pass 'citation provenance resolves against the home and repo, never the caller working directory'
 }
 
+test_citation_cannot_escape_the_home_by_parent_traversal() {
+  local home out rc
+  home=$(new_home citations-traversal 7500)
+  mkdir -p "$home/data/memory/gen/1/notes"
+
+  # /etc/passwd exists on every host this runs on, so it resolves the moment a
+  # parent traversal is concatenated onto the home.
+  write_note "$home/data/memory/gen/1/notes" n1 'Escaping Note' 'escape' 2026-08-20 \
+    '../../../../etc/passwd'
+
+  set +e
+  out=$(FM_HOME="$home" "$VERIFY" 1 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "verifier accepted a citation that escapes the home: $out"
+  assert_contains "$out" 'FAIL citations' 'a parent-traversal citation was not refused'
+
+  pass 'a citation carrying a parent traversal cannot resolve against a file outside the home'
+}
+
+test_drop_tray_keeps_a_claims_file_final_line_without_a_newline() {
+  local home claims out content
+  home=$(new_home drop-no-trailing-newline)
+  claims="$home/claims.md"
+
+  # No trailing newline: ordinary for a file assembled by printf or a here-string.
+  printf -- '- Claim one\n- Claim two\n- Claim three lands last' > "$claims"
+
+  out=$(FM_HOME="$home" "$DROP" fm-task-nl --claims-file "$claims")
+  assert_contains "$out" '(3 claim(s))' "drop lost the unterminated final claim: $out"
+
+  content=$(cat "$home/data/memory/drop/fm-task-nl.md")
+  assert_contains "$content" '- Claim three lands last' \
+    'the drop file lost the final claim of an unterminated claims file'
+
+  pass 'a claims file whose last line has no trailing newline keeps that claim'
+}
+
 # --- Run All Tests ----------------------------------------------------------
 
 test_drop_tray_capture_basic
@@ -815,6 +874,8 @@ test_compile_reads_resolved_dir_when_data_memory_is_a_symlink
 test_compile_refuses_to_traverse_a_symlinked_memory_root
 test_verify_refuses_a_symlinked_memory_root
 test_citation_resolution_ignores_the_callers_working_directory
+test_citation_cannot_escape_the_home_by_parent_traversal
+test_drop_tray_keeps_a_claims_file_final_line_without_a_newline
 
 printf '# all fm-memory-verify tests passed\n'
 exit 0

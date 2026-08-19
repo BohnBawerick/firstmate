@@ -189,15 +189,21 @@ MEMORY_SYMLINK_PATH=""
 if [ -L "$MEMORY" ]; then
   MEMORY_DIR_OK=0
   MEMORY_SYMLINK_PATH="$REL_LABEL"
-else
-  case "$MEMORY" in
-    "$DATA/memory"|"$DATA/memory"/*)
-      if [ -L "$DATA/memory" ]; then
+elif [ -L "$DATA/memory" ]; then
+  # Both sides are normalised to a logical absolute path before the prefix test,
+  # so no spelling of the same directory can slip past it. `pwd` is used rather
+  # than `pwd -P` on purpose: the question is whether the link was traversed,
+  # which resolving the link away would erase.
+  MEMORY_LOGICAL=$(cd "$MEMORY" 2>/dev/null && pwd) || MEMORY_LOGICAL=""
+  MEMORY_ROOT_LOGICAL=$(cd "$DATA/memory" 2>/dev/null && pwd) || MEMORY_ROOT_LOGICAL=""
+  if [ -n "$MEMORY_LOGICAL" ] && [ -n "$MEMORY_ROOT_LOGICAL" ]; then
+    case "$MEMORY_LOGICAL" in
+      "$MEMORY_ROOT_LOGICAL"|"$MEMORY_ROOT_LOGICAL"/*)
         MEMORY_DIR_OK=0
         MEMORY_SYMLINK_PATH="data/memory"
-      fi
-      ;;
-  esac
+        ;;
+    esac
+  fi
 fi
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/.fm-memory-compile.XXXXXX") || die 'could not create a working directory'
@@ -458,6 +464,10 @@ CORE_PATH=
 CORE_LABEL=
 CORE_TOKENS=0
 NOTICES=()
+
+if [ "$MEMORY_DIR_OK" -eq 0 ]; then
+  NOTICES+=("MEMORY_NOTICE: $MEMORY_SYMLINK_PATH is a symlink, so nothing was read through it. Any core, catalog and notes under it are NOT in this bundle and are reported here as absent. Replace the symlink with a real directory.")
+fi
 
 if [ -n "$HEAD_UNRESOLVED" ]; then
   NOTICES+=("MEMORY_NOTICE: data/memory/HEAD names \"$HEAD_UNRESOLVED\", which is not a generation directory under data/memory. This bundle was compiled from $REL_LABEL instead, so the published generation is NOT what this session is running on. Republish with bin/fm-memory-publish.sh, or remove data/memory/HEAD.")
