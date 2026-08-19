@@ -166,9 +166,14 @@ Shared captain preferences that apply across secondmate domains live only in the
 Fleet-local operational facts and gotchas live locally as one atomic note per claim under `data/memory/notes/`, alongside an optional standing constitution in `data/memory/core.md`, the regenerable index `data/memory/catalog.md`, and the never-injected candidate tray `data/memory/drop/`.
 The standing constitution `data/memory/core.md` holds standing preferences, authority boundaries, and core guidelines with a 1,500-2,500 estimated-token target.
 The whole directory is gitignored and is created by `bin/fm-memory-migrate.sh`, which also splits a home's legacy `data/learnings.md` into notes and freezes the original under `data/memory/raw/` before archiving it to `data/memory-archive.md`.
+Completed tasks deposit candidate findings and tactical gotchas into `data/memory/drop/<task-id>.md` through `bin/fm-memory-drop.sh`.
+Generations of memory live under `data/memory/gen/<N>/` and are activated atomically by pointing `data/memory/HEAD` at the active generation.
+Every proposed generation must pass the mechanical verifier in `bin/fm-memory-verify.sh` before `bin/fm-memory-publish.sh` will update `data/memory/HEAD`.
+The verifier enforces four safety properties: working memory must fit within `config/startup-memory-budget`, every claim must cite an existing file on disk, standing captain preferences in `data/captain.md` must be preserved in `core.md`, and single-generation deletions cannot exceed the diff bounds cap.
 There is no shared notes directory by captain decision.
 
 Session start injects this memory through `bin/fm-memory-compile.sh`, which selects a core, a catalog of every note, and the notes whose triggers match live fleet work, and refuses to emit more than the startup memory budget below allows.
+When `data/memory/HEAD` is present, the compiler reads from that active generation directory; otherwise it reads directly from `data/memory/`.
 The budget caps the compiled memory bundle only; `data/captain-shared.md` is printed outside that cap.
 That script's header is the single owner of the note format, the trigger-matching rule, and the precedence that decides what is dropped first under budget pressure.
 A home with no `data/memory/` directory keeps the previous whole-file print of `data/captain.md` and `data/learnings.md`, and so does a session where the compile could not run, so a startup that cannot cap its memory still starts with the memory it has.

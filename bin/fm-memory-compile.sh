@@ -2,9 +2,10 @@
 # fm-memory-compile.sh - compile the capped startup working-memory bundle.
 #
 # Usage:
-#   fm-memory-compile.sh [compile] [--context <text>]... [--context-file <path>]...
+#   fm-memory-compile.sh [compile] [--memory-dir <path>] [--gen <N>]
+#                        [--context <text>]... [--context-file <path>]...
 #                        [--no-auto-context]
-#   fm-memory-compile.sh catalog [--dry-run]
+#   fm-memory-compile.sh catalog [--memory-dir <path>] [--gen <N>] [--dry-run]
 #   fm-memory-compile.sh -h | --help
 #
 # `compile` writes the bundle to stdout and never writes to disk, so a
@@ -107,6 +108,7 @@ DRY_RUN=0
 NO_AUTO_CONTEXT=0
 CONTEXT_TEXTS=()
 CONTEXT_FILES=()
+EXPLICIT_MEMORY_DIR=""
 
 case "${1:-}" in
   compile|catalog) MODE=$1; shift ;;
@@ -115,6 +117,12 @@ esac
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --memory-dir)
+      [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+      EXPLICIT_MEMORY_DIR="$2"; shift 2 ;;
+    --gen)
+      [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+      EXPLICIT_MEMORY_DIR="$DATA/memory/gen/$2"; shift 2 ;;
     --context)
       [ "$#" -ge 2 ] || { usage >&2; exit 2; }
       CONTEXT_TEXTS+=("$2"); shift 2 ;;
@@ -136,6 +144,42 @@ if [ "$MODE" = catalog ]; then
 else
   [ "$DRY_RUN" -eq 0 ] || { usage >&2; exit 2; }
 fi
+
+# Resolve target memory directory: explicit option, or data/memory/HEAD, or data/memory
+REL_LABEL="data/memory"
+HEAD_FILE="$DATA/memory/HEAD"
+if [ -n "$EXPLICIT_MEMORY_DIR" ]; then
+  [ ! -L "$EXPLICIT_MEMORY_DIR" ] || die "memory directory is a symlink: $EXPLICIT_MEMORY_DIR"
+  [ -d "$EXPLICIT_MEMORY_DIR" ] || die "memory directory not found: $EXPLICIT_MEMORY_DIR"
+  MEMORY="$EXPLICIT_MEMORY_DIR"
+  NOTES_DIR="$MEMORY/notes"
+  if [ "$MEMORY" = "$DATA" ] || [ "${MEMORY#"$DATA/"}" != "$MEMORY" ]; then
+    REL_LABEL="data/${MEMORY#"$DATA/"}"
+  else
+    REL_LABEL="$MEMORY"
+  fi
+elif [ -f "$HEAD_FILE" ] && [ ! -L "$HEAD_FILE" ]; then
+  HEAD_TARGET=$(head -n 1 "$HEAD_FILE" | tr -d '\r\n[:space:]')
+  case "$HEAD_TARGET" in
+    ''|*..*|/*)
+      # Malformed or unsafe HEAD pointer; keep default data/memory
+      ;;
+    *)
+      CANDIDATE="$DATA/memory/$HEAD_TARGET"
+      if [ -d "$CANDIDATE" ] && [ ! -L "$CANDIDATE" ]; then
+        MEMORY="$CANDIDATE"
+        NOTES_DIR="$MEMORY/notes"
+        REL_LABEL="data/memory/$HEAD_TARGET"
+      elif [ -d "$DATA/memory/gen/$HEAD_TARGET" ] && [ ! -L "$DATA/memory/gen/$HEAD_TARGET" ]; then
+        MEMORY="$DATA/memory/gen/$HEAD_TARGET"
+        NOTES_DIR="$MEMORY/notes"
+        REL_LABEL="data/memory/gen/$HEAD_TARGET"
+      fi
+      ;;
+  esac
+fi
+
+[ ! -L "$MEMORY" ] || MEMORY_DIR_OK=0
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/.fm-memory-compile.XXXXXX") || die 'could not create a working directory'
 # shellcheck disable=SC2329 # Registered by the EXIT and signal traps below.
@@ -398,20 +442,20 @@ NOTICES=()
 
 if [ "$MEMORY_DIR_OK" -eq 1 ] && [ -f "$MEMORY/core.md" ] && [ ! -L "$MEMORY/core.md" ]; then
   CORE_PATH="$MEMORY/core.md"
-  CORE_LABEL='data/memory/core.md'
+  CORE_LABEL="$REL_LABEL/core.md"
   if [ -f "$DATA/captain.md" ] && [ ! -L "$DATA/captain.md" ] && [ -s "$DATA/captain.md" ]; then
     CAPTAIN_TOKENS=$(tokens_of_file "$DATA/captain.md")
-    NOTICES+=("MEMORY_NOTICE: data/captain.md is still present (${CAPTAIN_TOKENS} estimated tokens) and is NOT injected because data/memory/core.md takes precedence. Fold standing preferences into data/memory/core.md, or remove data/captain.md.")
+    NOTICES+=("MEMORY_NOTICE: data/captain.md is still present (${CAPTAIN_TOKENS} estimated tokens) and is NOT injected because $REL_LABEL/core.md takes precedence. Fold standing preferences into $REL_LABEL/core.md, or remove data/captain.md.")
   fi
 elif [ -f "$DATA/captain.md" ] && [ ! -L "$DATA/captain.md" ]; then
   CORE_PATH="$DATA/captain.md"
-  CORE_LABEL='data/captain.md (standing constitution; data/memory/core.md is ABSENT)'
+  CORE_LABEL="data/captain.md (standing constitution; $REL_LABEL/core.md is ABSENT)"
 fi
 
 if [ -n "$CORE_PATH" ]; then
   CORE_TOKENS=$(tokens_of_file "$CORE_PATH")
 else
-  NOTICES+=('MEMORY_NOTICE: no core memory - both data/memory/core.md and data/captain.md are ABSENT, so this home is running on the firstmate repo built-in defaults.')
+  NOTICES+=("MEMORY_NOTICE: no core memory - both $REL_LABEL/core.md and data/captain.md are ABSENT, so this home is running on the firstmate repo built-in defaults.")
 fi
 
 render_catalog > "$TMP/catalog"
@@ -419,9 +463,9 @@ CATALOG_TOKENS=$(tokens_of_file "$TMP/catalog")
 
 if [ "$MEMORY_DIR_OK" -eq 1 ] && [ -f "$MEMORY/catalog.md" ] && [ ! -L "$MEMORY/catalog.md" ]; then
   cmp -s "$TMP/catalog" "$MEMORY/catalog.md" \
-    || NOTICES+=('MEMORY_NOTICE: data/memory/catalog.md on disk is stale relative to data/memory/notes/. The catalog in this bundle was rendered fresh from the notes; republish the file with bin/fm-memory-compile.sh catalog.')
+    || NOTICES+=("MEMORY_NOTICE: $REL_LABEL/catalog.md on disk is stale relative to $REL_LABEL/notes/. The catalog in this bundle was rendered fresh from the notes; republish the file with bin/fm-memory-compile.sh catalog.")
 else
-  NOTICES+=('MEMORY_NOTICE: data/memory/catalog.md is ABSENT. The catalog in this bundle was rendered fresh from data/memory/notes/; publish the file with bin/fm-memory-compile.sh catalog.')
+  NOTICES+=("MEMORY_NOTICE: $REL_LABEL/catalog.md is ABSENT. The catalog in this bundle was rendered fresh from $REL_LABEL/notes/; publish the file with bin/fm-memory-compile.sh catalog.")
 fi
 
 if [ -f "$DATA/learnings.md" ] && [ ! -L "$DATA/learnings.md" ]; then
@@ -471,7 +515,7 @@ fi
 
 RULE='--------------------------------------------------------------------------------'
 
-printf 'COMPILED WORKING MEMORY (data/memory)\n%s\n' "$RULE"
+printf 'COMPILED WORKING MEMORY (%s)\n%s\n' "$REL_LABEL" "$RULE"
 cat <<EOF
 Compiled by bin/fm-memory-compile.sh against a ${BUDGET}-estimated-token cap.
 This is the whole startup memory surface: it is selected and capped, not dumped.
@@ -491,13 +535,13 @@ else
 fi
 
 if [ "$CORE_OVER" -eq 1 ]; then
-  printf '\nMEMORY_BUDGET_WARNING: the core alone is %s estimated tokens against a %s budget. It was printed in full and NOTHING else was: no catalog, no notes. Trim the core (data/memory/core.md, or data/captain.md when no core.md exists) or raise config/startup-memory-budget.\n' \
-    "$CORE_TOKENS" "$BUDGET"
+  printf '\nMEMORY_BUDGET_WARNING: the core alone is %s estimated tokens against a %s budget. It was printed in full and NOTHING else was: no catalog, no notes. Trim the core (%s/core.md, or data/captain.md when no core.md exists) or raise config/startup-memory-budget.\n' \
+    "$CORE_TOKENS" "$BUDGET" "$REL_LABEL"
 elif [ "$CATALOG_KEPT" -eq 0 ]; then
   printf '\nMEMORY_BUDGET_WARNING: the core plus catalog is %s estimated tokens against a %s budget, so the catalog and every note were dropped. Trim the core or raise config/startup-memory-budget; until then this session cannot see what notes exist.\n' \
     "$((CORE_TOKENS + CATALOG_TOKENS))" "$BUDGET"
 else
-  printf '\ncatalog (compiled from data/memory/notes/)\n%s\n' "$RULE"
+  printf '\ncatalog (compiled from %s/notes/)\n%s\n' "$REL_LABEL" "$RULE"
   cat "$TMP/catalog"
 
   while IFS= read -r base; do

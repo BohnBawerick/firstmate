@@ -121,3 +121,8 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | `fm-public-followup-lib.sh` | Shared relay-activation gate, O(1) presence checks, and private transport paths for promised public replies |
 | `fm-public-followup.sh`  | Reconcile typed terminal work results into a public commitment and deliver its final reply once |
 | `fm-public-followup-emit.sh` | Report one typed terminal work result into the home that owes the public reply    |
+| `fm-memory-compile.sh`   | Compile the selected and capped startup working-memory bundle from `data/memory/`    |
+| `fm-memory-migrate.sh`   | Split legacy `data/learnings.md` into atomic notes and archive the original          |
+| `fm-memory-drop.sh`      | Deposit candidate claims from completed tasks into the drop tray `data/memory/drop/` |
+| `fm-memory-verify.sh`    | Mechanical safety verifier and generation publication guard for `data/memory/`      |
+| `fm-memory-publish.sh`   | Verify and atomically update `data/memory/HEAD` to point to a proposed generation    |
