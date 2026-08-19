@@ -17,13 +17,18 @@
 #
 # SAFETY CHECKS.  Every proposed generation must pass four mechanical checks:
 #   1. Budget: the compiled bundle must fit within config/startup-memory-budget
-#      using bin/fm-memory-compile.sh and bin/fm-startup-memory-budget-lib.sh;
-#   2. Citations: every note and core claim must cite an existing source file,
-#      report, or task record on disk;
+#      using bin/fm-memory-compile.sh and bin/fm-startup-memory-budget-lib.sh,
+#      and the catalog must survive the cap so every note stays reachable;
+#   2. Citations: every note and a non-empty core.md must cite at least one
+#      existing source file, report, or task record on disk;
 #   3. Constitution: standing captain preferences in data/captain.md must be
 #      preserved in core.md and never silently dropped or deleted;
 #   4. Diff bounds: a single generation cannot replace or delete excessive
-#      proportions of memory (default: max 50% deletion of baseline notes).
+#      proportions of memory (default: max 50% deletion of baseline notes) and
+#      can never delete every baseline note, however small the baseline is.
+#
+# The generation must live under data/memory: data/memory/HEAD holds the
+# data/memory-relative identifier, which is the only form the compiler resolves.
 #
 # ATOMIC PUBLICATION.  When publishing, data/memory/HEAD is updated via atomic
 # file swap (.HEAD.tmp -> HEAD) only after all four checks pass.
@@ -32,9 +37,7 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
-STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
-CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 MEMORY="$DATA/memory"
 
 # shellcheck source=bin/fm-startup-memory-budget-lib.sh
@@ -98,28 +101,41 @@ GEN_DIR=""
 GEN_IDENTIFIER=""
 
 # Check if target is a simple number or gen/<N> or explicit path
-if [ -d "$DATA/memory/gen/$TARGET" ] && [ ! -L "$DATA/memory/gen/$TARGET" ]; then
-  GEN_DIR="$DATA/memory/gen/$TARGET"
-  GEN_IDENTIFIER="gen/$TARGET"
-elif [ -d "$DATA/memory/$TARGET" ] && [ ! -L "$DATA/memory/$TARGET" ]; then
-  GEN_DIR="$DATA/memory/$TARGET"
-  GEN_IDENTIFIER="$TARGET"
+if [ -d "$MEMORY/gen/$TARGET" ] && [ ! -L "$MEMORY/gen/$TARGET" ]; then
+  GEN_DIR="$MEMORY/gen/$TARGET"
+elif [ -d "$MEMORY/$TARGET" ] && [ ! -L "$MEMORY/$TARGET" ]; then
+  GEN_DIR="$MEMORY/$TARGET"
 elif [ -d "$TARGET" ] && [ ! -L "$TARGET" ]; then
   GEN_DIR="$TARGET"
-  case "$TARGET" in
-    "$DATA/memory/"*)
-      GEN_IDENTIFIER="${TARGET#"$DATA/memory/"}"
-      ;;
-    *)
-      GEN_IDENTIFIER="$TARGET"
-      ;;
-  esac
 else
   die "proposed generation directory does not exist or is a symlink: '$TARGET'"
 fi
 
 # Canonical check: generation directory must not be a symlink
 [ ! -L "$GEN_DIR" ] || die "generation directory is a symlink: '$GEN_DIR'"
+
+# bin/fm-memory-compile.sh resolves data/memory/HEAD relative to data/memory,
+# so the identifier written there is derived once from the canonical location
+# of the generation rather than from whatever form the target was typed in.
+# A target outside data/memory can never become a resolvable pointer.
+MEMORY_CANON=$(cd "$MEMORY" 2>/dev/null && pwd -P) \
+  || die "data/memory does not exist; cannot resolve a generation pointer"
+GEN_CANON=$(cd "$GEN_DIR" 2>/dev/null && pwd -P) \
+  || die "could not resolve generation directory: '$TARGET'"
+if [ "$GEN_CANON" = "$MEMORY_CANON" ]; then
+  GEN_IDENTIFIER=""
+else
+  case "$GEN_CANON" in
+    "$MEMORY_CANON"/*)
+      GEN_IDENTIFIER="${GEN_CANON#"$MEMORY_CANON"/}" ;;
+    *)
+      die "generation directory must live under data/memory to be publishable: '$TARGET'" ;;
+  esac
+  case "$GEN_IDENTIFIER" in
+    *..*|*[[:space:]]*)
+      die "generation identifier is not a usable HEAD pointer: '$GEN_IDENTIFIER'" ;;
+  esac
+fi
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/.fm-memory-verify.XXXXXX") || die 'could not create temporary directory'
 # shellcheck disable=SC2329 # Registered by EXIT trap
@@ -150,6 +166,12 @@ check_budget() {
 
   if [ "$status" = "over-budget" ]; then
     printf 'FAIL budget: core alone (%s tokens) exceeds startup budget (%s tokens)\n' \
+      "$core" "$budget" >&2
+    return 1
+  fi
+
+  if [ "$catalog" = "0" ]; then
+    printf 'FAIL budget: core (%s tokens) leaves no room for the catalog within the %s token budget, so the catalog and every note were dropped and no note is reachable\n' \
       "$core" "$budget" >&2
     return 1
   fi
@@ -194,6 +216,22 @@ resolve_source_path() {
   # Relative to DATA
   if [ -e "$DATA/$p" ] || [ -L "$DATA/$p" ]; then
     return 0
+  fi
+
+  # Provenance frozen by bin/fm-memory-migrate.sh: it stamps notes with the
+  # pre-migration path (for example data/learnings.md), copies the original to
+  # data/memory/raw/<stem>-<date>.<ext>, and only then removes it from data/.
+  # The cited path is therefore gone while its content is still durably on
+  # disk, so the frozen copy is what makes such a citation resolvable.
+  local base stem
+  base=${p##*/}
+  stem=${base%.*}
+  if [ -n "$stem" ]; then
+    for candidate in "$MEMORY/raw/$stem"-*.* "$MEMORY/raw/$base"; do
+      if [ -f "$candidate" ] && [ ! -L "$candidate" ]; then
+        return 0
+      fi
+    done
   fi
 
   # Check if git commit object
@@ -250,10 +288,19 @@ extract_citations_from_file() {
       }
       # Look for explicit data/... state/... docs/... bin/... tests/... paths
       line = $0
-      while (match(line, /\<(data|state|docs|bin|tests|projects|\.agents)\/[A-Za-z0-9_.\/-]+/)) {
-        cite = substr(line, RSTART, RLENGTH)
+      # `\<` is a GNU extension: mawk and BSD awk never match it, so the
+      # boundary is spelled out as an explicit leading character class.
+      while (match(line, /(^|[^A-Za-z0-9_\/])(data|state|docs|bin|tests|projects|\.agents)\/[A-Za-z0-9_.\/-]+/)) {
+        cstart = RSTART
+        clen = RLENGTH
+        cite = substr(line, cstart, clen)
+        if (cite !~ /^(data|state|docs|bin|tests|projects|\.agents)\//) {
+          cstart = cstart + 1
+          clen = clen - 1
+          cite = substr(line, cstart, clen)
+        }
         print cite
-        line = substr(line, RSTART + RLENGTH)
+        line = substr(line, cstart + clen)
       }
     }
   ' "$file" | sed -e 's/^[][[:space:]"'\'')(`><.,:;]*//' -e 's/[][[:space:]"'\'')(`><.,:;]*$//' \
@@ -303,9 +350,15 @@ check_citations() {
   # Check core.md citations if present
   if [ -f "$GEN_DIR/core.md" ] && [ ! -L "$GEN_DIR/core.md" ] && [ -s "$GEN_DIR/core.md" ]; then
     mapfile -t cited_list < <(extract_citations_from_file "$GEN_DIR/core.md")
+    if [ "${#cited_list[@]}" -eq 0 ]; then
+      printf 'FAIL citations: core.md has no citations or source metadata\n' >&2
+      file_err=$((file_err + 1))
+    fi
+    local core_has_valid=0
     for cited in "${cited_list[@]}"; do
       [ -n "$cited" ] || continue
       if resolve_source_path "$cited"; then
+        core_has_valid=1
         valid_citations=$((valid_citations + 1))
       else
         printf 'FAIL citations: core.md cites missing or unresolvable source: "%s"\n' \
@@ -313,6 +366,9 @@ check_citations() {
         file_err=$((file_err + 1))
       fi
     done
+    if [ "${#cited_list[@]}" -gt 0 ] && [ "$core_has_valid" -eq 0 ]; then
+      file_err=$((file_err + 1))
+    fi
   fi
 
   if [ "$file_err" -gt 0 ]; then
@@ -495,6 +551,15 @@ check_diff_bounds() {
     fi
   done
 
+  # Absolute floor first: a percentage cap is too coarse to catch a baseline of
+  # one or two notes being replaced wholesale, so no generation may drop every
+  # baseline note regardless of how small the baseline is.
+  if [ "$deleted_count" -eq "$base_count" ]; then
+    printf 'FAIL diff-bounds: proposed generation deletes every one of the %s baseline note(s)\n' \
+      "$base_count" >&2
+    return 1
+  fi
+
   # Check deletion ratio
   local del_pct=$(( (deleted_count * 100) / base_count ))
   if [ "$base_count" -ge 3 ] && [ "$del_pct" -gt "$MAX_DIFF_RATIO" ]; then
@@ -537,12 +602,16 @@ fi
 # --- Publish Mode -----------------------------------------------------------
 
 if [ "$DRY_RUN" -eq 1 ]; then
+  [ -n "$GEN_IDENTIFIER" ] \
+    || die "data/memory itself is not a publishable generation; publish a directory under it"
   printf 'publish: --dry-run, all checks passed; would update data/memory/HEAD to point to %s\n' \
     "$GEN_IDENTIFIER"
   exit 0
 fi
 
 # Atomic pointer swap to data/memory/HEAD
+[ -n "$GEN_IDENTIFIER" ] \
+  || die "data/memory itself is not a publishable generation; publish a directory under it"
 [ ! -L "$DATA/memory" ] || die "data/memory is a symlink; refusing to publish"
 [ -d "$DATA/memory" ] || mkdir -p "$DATA/memory" || die "could not create data/memory"
 

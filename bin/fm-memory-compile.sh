@@ -148,6 +148,7 @@ fi
 # Resolve target memory directory: explicit option, or data/memory/HEAD, or data/memory
 REL_LABEL="data/memory"
 HEAD_FILE="$DATA/memory/HEAD"
+HEAD_UNRESOLVED=""
 if [ -n "$EXPLICIT_MEMORY_DIR" ]; then
   [ ! -L "$EXPLICIT_MEMORY_DIR" ] || die "memory directory is a symlink: $EXPLICIT_MEMORY_DIR"
   [ -d "$EXPLICIT_MEMORY_DIR" ] || die "memory directory not found: $EXPLICIT_MEMORY_DIR"
@@ -161,8 +162,12 @@ if [ -n "$EXPLICIT_MEMORY_DIR" ]; then
 elif [ -f "$HEAD_FILE" ] && [ ! -L "$HEAD_FILE" ]; then
   HEAD_TARGET=$(head -n 1 "$HEAD_FILE" | tr -d '\r\n[:space:]')
   case "$HEAD_TARGET" in
-    ''|*..*|/*)
+    '')
       # Malformed or unsafe HEAD pointer; keep default data/memory
+      HEAD_UNRESOLVED='(empty)'
+      ;;
+    *..*|/*)
+      HEAD_UNRESOLVED="$HEAD_TARGET"
       ;;
     *)
       CANDIDATE="$DATA/memory/$HEAD_TARGET"
@@ -174,6 +179,8 @@ elif [ -f "$HEAD_FILE" ] && [ ! -L "$HEAD_FILE" ]; then
         MEMORY="$DATA/memory/gen/$HEAD_TARGET"
         NOTES_DIR="$MEMORY/notes"
         REL_LABEL="data/memory/gen/$HEAD_TARGET"
+      else
+        HEAD_UNRESOLVED="$HEAD_TARGET"
       fi
       ;;
   esac
@@ -439,6 +446,10 @@ CORE_PATH=
 CORE_LABEL=
 CORE_TOKENS=0
 NOTICES=()
+
+if [ -n "$HEAD_UNRESOLVED" ]; then
+  NOTICES+=("MEMORY_NOTICE: data/memory/HEAD names \"$HEAD_UNRESOLVED\", which is not a generation directory under data/memory. This bundle was compiled from $REL_LABEL instead, so the published generation is NOT what this session is running on. Republish with bin/fm-memory-publish.sh, or remove data/memory/HEAD.")
+fi
 
 if [ "$MEMORY_DIR_OK" -eq 1 ] && [ -f "$MEMORY/core.md" ] && [ ! -L "$MEMORY/core.md" ]; then
   CORE_PATH="$MEMORY/core.md"

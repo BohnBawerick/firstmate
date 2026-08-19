@@ -351,6 +351,238 @@ test_publish_dry_run_leaves_head_unchanged() {
   pass 'publish --dry-run verifies all checks and leaves HEAD unchanged'
 }
 
+# --- 7. Regression Coverage -------------------------------------------------
+
+test_publish_path_form_target_writes_resolvable_head() {
+  local home gen_dir publish_out head_content compile_out out
+  home=$(new_home publish-path-form 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+  printf '# Captain\n- Rule One: always test\n' > "$home/data/captain.md"
+
+  gen_dir="$home/data/memory/gen/1"
+  mkdir -p "$gen_dir/notes"
+  printf '# Core\n<!-- source: data/captain.md -->\n- Rule One: always test\n' > "$gen_dir/core.md"
+  write_note "$gen_dir/notes" pathnote 'Path Form Note' 'pathform' 2026-08-20 'data/source.md' 'BODY-OF-PATH-FORM-NOTE'
+
+  # Publish by the directory path rather than the bare generation number.
+  publish_out=$(cd "$home" && FM_HOME="$home" "$PUBLISH" data/memory/gen/1)
+  assert_contains "$publish_out" 'memory: published generation gen/1' \
+    'path-form publish did not normalise the identifier'
+
+  head_content=$(head -n 1 "$home/data/memory/HEAD")
+  [ "$head_content" = "gen/1" ] || fail "HEAD holds an unresolvable pointer: $head_content"
+
+  compile_out=$(FM_HOME="$home" "$COMPILE" compile)
+  assert_contains "$compile_out" 'COMPILED WORKING MEMORY (data/memory/gen/1)' \
+    'compiler did not resolve HEAD written by a path-form publish'
+  assert_contains "$compile_out" 'Path Form Note (pathnote.md' \
+    'compiler did not catalogue the published generation note'
+
+  # An absolute path to the same directory normalises identically.
+  rm -f "$home/data/memory/HEAD"
+  publish_out=$(FM_HOME="$home" "$PUBLISH" "$gen_dir")
+  head_content=$(head -n 1 "$home/data/memory/HEAD")
+  [ "$head_content" = "gen/1" ] || fail "absolute-path publish wrote an unresolvable pointer: $head_content"
+
+  # A generation outside data/memory can never become a resolvable pointer.
+  mkdir -p "$home/outside/notes"
+  printf '# Core\n<!-- source: data/captain.md -->\n- Rule One: always test\n' > "$home/outside/core.md"
+  write_note "$home/outside/notes" n1 'Outside Note' 'outside' 2026-08-20 'data/source.md'
+  if out=$(FM_HOME="$home" "$PUBLISH" "$home/outside" 2>&1); then
+    fail "publish accepted a generation outside data/memory: $out"
+  fi
+  assert_contains "$out" 'must live under data/memory' \
+    'publish did not explain why an out-of-tree generation is refused'
+
+  pass 'publish normalises any target form into a data/memory-relative HEAD pointer the compiler resolves'
+}
+
+test_compile_reports_unresolvable_head_pointer() {
+  local home compile_out
+  home=$(new_home head-dangling 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+  write_note "$home/data/memory/notes" fallback 'Fallback Note' 'fallback' 2026-08-20 'data/source.md'
+  printf 'gen/42\n' > "$home/data/memory/HEAD"
+
+  compile_out=$(FM_HOME="$home" "$COMPILE" compile)
+  assert_contains "$compile_out" 'COMPILED WORKING MEMORY (data/memory)' \
+    'compiler did not fall back to data/memory for a dangling HEAD'
+  assert_contains "$compile_out" 'MEMORY_NOTICE: data/memory/HEAD names "gen/42"' \
+    'compiler silently ignored an unresolvable HEAD pointer'
+
+  pass 'compiler surfaces an unresolvable data/memory/HEAD pointer as a notice instead of degrading silently'
+}
+
+test_verify_refuses_full_deletion_of_small_baseline() {
+  local home gen0_dir gen1_dir out
+  home=$(new_home diff-bounds-small 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+  printf '# Captain\n- Rule A\n' > "$home/data/captain.md"
+
+  gen0_dir="$home/data/memory/gen/0"
+  mkdir -p "$gen0_dir/notes"
+  printf '# Core\n<!-- source: data/captain.md -->\n- Rule A\n' > "$gen0_dir/core.md"
+  write_note "$gen0_dir/notes" a 'Note A' 'a' 2026-08-01 'data/source.md'
+  write_note "$gen0_dir/notes" b 'Note B' 'b' 2026-08-02 'data/source.md'
+  printf 'gen/0\n' > "$home/data/memory/HEAD"
+
+  # Two baseline notes replaced wholesale by two unrelated notes.
+  gen1_dir="$home/data/memory/gen/1"
+  mkdir -p "$gen1_dir/notes"
+  printf '# Core\n<!-- source: data/captain.md -->\n- Rule A\n' > "$gen1_dir/core.md"
+  write_note "$gen1_dir/notes" x 'Note X' 'x' 2026-08-03 'data/source.md'
+  write_note "$gen1_dir/notes" y 'Note Y' 'y' 2026-08-04 'data/source.md'
+
+  if out=$(FM_HOME="$home" "$VERIFY" 1 2>&1); then
+    fail "verify passed a generation that deleted every baseline note: $out"
+  fi
+  assert_contains "$out" 'FAIL diff-bounds' 'verifier did not report diff-bounds failure'
+  assert_contains "$out" 'deletes every one of the 2 baseline note(s)' \
+    'error did not name the wholesale baseline deletion'
+
+  pass 'verifier refuses a generation that deletes every note of a baseline too small for the percentage cap'
+}
+
+test_verify_resolves_citations_frozen_by_migration() {
+  local home gen_dir out
+  home=$(new_home citations-migrated 7500)
+  printf '# Captain\n- Rule A\n' > "$home/data/captain.md"
+
+  # bin/fm-memory-migrate.sh stamps notes with data/learnings.md, freezes the
+  # original under data/memory/raw/, and only then removes it from data/.
+  mkdir -p "$home/data/memory/raw"
+  printf '# Learnings\nOriginal content.\n' > "$home/data/memory/raw/learnings-2026-08-20.md"
+  printf 'archived under a dated banner\n' > "$home/data/memory-archive.md"
+  assert_absent "$home/data/learnings.md" 'test fixture left the pre-migration file in place'
+
+  gen_dir="$home/data/memory/gen/1"
+  mkdir -p "$gen_dir/notes"
+  printf '# Core\n<!-- source: data/captain.md -->\n- Rule A\n' > "$gen_dir/core.md"
+  write_note "$gen_dir/notes" migrated 'Migrated Note' 'migrated' 2026-08-20 'data/learnings.md'
+
+  out=$(FM_HOME="$home" "$VERIFY" 1) \
+    || fail "verify rejected a generation built from a migrated home: $out"
+  assert_contains "$out" 'PASS citations' 'migrated provenance did not resolve'
+
+  # A citation that was never frozen anywhere is still refused.
+  write_note "$gen_dir/notes" bogus 'Bogus Note' 'bogus' 2026-08-20 'data/never-existed.md'
+  if out=$(FM_HOME="$home" "$VERIFY" 1 2>&1); then
+    fail "verify passed an unfrozen, non-existent citation: $out"
+  fi
+  assert_contains "$out" 'data/never-existed.md' 'error did not name the unresolvable citation'
+
+  pass 'verifier resolves note provenance that bin/fm-memory-migrate.sh froze under data/memory/raw'
+}
+
+test_verify_accepts_bare_path_citation_in_note_body() {
+  local home gen_dir out
+  home=$(new_home citations-bare-path 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+  printf '# Captain\n- Rule A\n' > "$home/data/captain.md"
+
+  gen_dir="$home/data/memory/gen/1"
+  mkdir -p "$gen_dir/notes"
+  printf '# Core\n<!-- source: data/captain.md -->\n- Rule A\n' > "$gen_dir/core.md"
+
+  # No source frontmatter at all: the only citation is a bare path in the body.
+  cat <<'NOTE' > "$gen_dir/notes/barepath.md"
+---
+title: Bare path claim
+triggers: barepath
+updated: 2026-08-20
+---
+
+# Bare path claim
+
+Observed while reading data/source.md during the run.
+NOTE
+
+  out=$(FM_HOME="$home" "$VERIFY" 1) \
+    || fail "verify rejected a note whose only citation is a bare body path: $out"
+  assert_contains "$out" 'PASS citations' 'bare body path was not extracted as a citation'
+
+  pass 'verifier extracts bare data/ paths from a note body regardless of the host awk implementation'
+}
+
+test_verify_requires_citations_in_non_empty_core() {
+  local home gen_dir out
+  home=$(new_home core-citations 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+
+  gen_dir="$home/data/memory/gen/1"
+  mkdir -p "$gen_dir/notes"
+  printf '# Core Memory\n\n- Always run the validation gate before delivery.\n' > "$gen_dir/core.md"
+  write_note "$gen_dir/notes" n1 'Note 1' 'one' 2026-08-20 'data/source.md'
+
+  if out=$(FM_HOME="$home" "$VERIFY" 1 2>&1); then
+    fail "verify passed a non-empty core.md carrying no citations: $out"
+  fi
+  assert_contains "$out" 'FAIL citations: core.md has no citations or source metadata' \
+    'verifier did not require a citation on a non-empty core.md'
+
+  # Adding a resolvable citation clears the failure.
+  printf '<!-- source: data/source.md -->\n' >> "$gen_dir/core.md"
+  out=$(FM_HOME="$home" "$VERIFY" 1) \
+    || fail "verify rejected a cited core.md: $out"
+  assert_contains "$out" 'PASS citations' 'cited core.md did not pass'
+
+  pass 'verifier requires a resolvable citation on a non-empty core.md, matching its documented contract'
+}
+
+test_verify_refuses_generation_whose_catalog_is_dropped() {
+  local home gen_dir out i accounting
+  home=$(new_home catalog-dropped 340)
+  printf 'SOURCE\n' > "$home/data/source.md"
+
+  gen_dir="$home/data/memory/gen/1"
+  mkdir -p "$gen_dir/notes"
+
+  # Core fits on its own but leaves no room for the catalog, so the compiler
+  # drops the catalog and every note and reports catalog=0.
+  printf '# Core Memory\n<!-- source: data/source.md -->\n' > "$gen_dir/core.md"
+  for i in $(seq 1 12); do
+    printf -- '- Standing rule number %s with a fair amount of explanatory wording attached.\n' "$i" \
+      >> "$gen_dir/core.md"
+  done
+  for i in $(seq 1 12); do
+    write_note "$gen_dir/notes" "note$i" "Catalogued Note $i" "trigger$i" 2026-08-20 'data/source.md'
+  done
+
+  accounting=$(FM_HOME="$home" "$COMPILE" compile --memory-dir "$gen_dir" | grep '^MEMORY_ACCOUNTING:')
+  assert_contains "$accounting" 'catalog=0' 'fixture did not produce a dropped catalog'
+  assert_contains "$accounting" 'status=capped' 'fixture was over-budget rather than capped'
+
+  if out=$(FM_HOME="$home" "$VERIFY" 1 2>&1); then
+    fail "verify passed a generation whose catalog and every note were dropped: $out"
+  fi
+  assert_contains "$out" 'FAIL budget' 'verifier accepted a fully capped generation'
+  assert_contains "$out" 'no note is reachable' 'error did not explain the unusable bundle'
+
+  pass 'verifier refuses a capped generation whose catalog was dropped, leaving no note reachable'
+}
+
+test_drop_tray_keeps_claim_matching_two_adjacent_claims() {
+  local home drop_file content out
+  home=$(new_home drop-dedup-collision)
+
+  out=$(FM_HOME="$home" "$DROP" fm-task-dedup \
+    --claim "First" \
+    --claim "Second" \
+    --claim "First Second")
+
+  assert_contains "$out" '(3 claim(s))' "drop discarded a distinct claim: $out"
+
+  drop_file="$home/data/memory/drop/fm-task-dedup.md"
+  content=$(cat "$drop_file")
+  assert_contains "$content" '- First Second' 'drop file lost the claim that concatenates two earlier claims'
+
+  # A genuine repeat is still collapsed.
+  out=$(FM_HOME="$home" "$DROP" fm-task-dedup --claim "First")
+  assert_contains "$out" '(3 claim(s))' "drop stopped deduplicating exact repeats: $out"
+
+  pass 'drop tray dedup keeps a claim that merely concatenates two already captured claims'
+}
+
 # --- Run All Tests ----------------------------------------------------------
 
 test_drop_tray_capture_basic
@@ -363,6 +595,14 @@ test_verify_refuses_silent_standing_rule_deletion
 test_verify_refuses_excessive_deletion_diff_bounds
 test_atomic_publish_and_compiler_integration
 test_publish_dry_run_leaves_head_unchanged
+test_publish_path_form_target_writes_resolvable_head
+test_compile_reports_unresolvable_head_pointer
+test_verify_refuses_full_deletion_of_small_baseline
+test_verify_resolves_citations_frozen_by_migration
+test_verify_accepts_bare_path_citation_in_note_body
+test_verify_requires_citations_in_non_empty_core
+test_verify_refuses_generation_whose_catalog_is_dropped
+test_drop_tray_keeps_claim_matching_two_adjacent_claims
 
 printf '# all fm-memory-verify tests passed\n'
 exit 0

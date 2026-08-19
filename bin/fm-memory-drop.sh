@@ -167,17 +167,20 @@ if [ -f "$TARGET_FILE" ] && [ ! -L "$TARGET_FILE" ]; then
   done < "$TARGET_FILE"
 fi
 
-# Merge claims with deduplication
+# Merge claims with deduplication. The seen-set is newline delimited because a
+# claim is always a single line, so no claim can straddle the delimiter and be
+# mistaken for the concatenation of two claims already captured.
 ALL_CLAIMS=()
-SEEN_CLAIMS=" "
+NL=$'\n'
+SEEN_CLAIMS="$NL"
 
 # Add newly passed claims first
 for c in "${CLAIMS[@]-}"; do
   [ -n "$c" ] || continue
   case "$SEEN_CLAIMS" in
-    *" $c "*) continue ;;
+    *"$NL$c$NL"*) continue ;;
   esac
-  SEEN_CLAIMS="$SEEN_CLAIMS$c "
+  SEEN_CLAIMS="$SEEN_CLAIMS$c$NL"
   ALL_CLAIMS+=("$c")
 done
 
@@ -185,9 +188,9 @@ done
 for c in "${EXISTING_CLAIMS[@]-}"; do
   [ -n "$c" ] || continue
   case "$SEEN_CLAIMS" in
-    *" $c "*) continue ;;
+    *"$NL$c$NL"*) continue ;;
   esac
-  SEEN_CLAIMS="$SEEN_CLAIMS$c "
+  SEEN_CLAIMS="$SEEN_CLAIMS$c$NL"
   ALL_CLAIMS+=("$c")
 done
 
