@@ -847,6 +847,100 @@ test_drop_tray_keeps_a_claims_file_final_line_without_a_newline() {
   pass 'a claims file whose last line has no trailing newline keeps that claim'
 }
 
+# --- 10. Standing Constitution Baseline --------------------------------------
+
+test_constitution_uses_published_core_as_baseline_without_captain_md() {
+  local home out rc
+  home=$(new_home constitution-no-captain 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+  assert_absent "$home/data/captain.md" 'fixture unexpectedly created data/captain.md'
+
+  mkdir -p "$home/data/memory/gen/1/notes" "$home/data/memory/gen/2/notes"
+  printf '# Standing constitution\n<!-- source: data/source.md -->\n- Never merge a PR without explicit captain approval.\n- Never force push to main under any circumstances.\n' \
+    > "$home/data/memory/gen/1/core.md"
+  write_note "$home/data/memory/gen/1/notes" n1 'Note 1' 'one' 2026-08-20 'data/source.md'
+  FM_HOME="$home" "$PUBLISH" 1 >/dev/null
+
+  # gen/2 keeps the heading but deletes both standing rules.
+  printf '# Standing constitution\n<!-- source: data/source.md -->\n' \
+    > "$home/data/memory/gen/2/core.md"
+  write_note "$home/data/memory/gen/2/notes" n1 'Note 1' 'one' 2026-08-20 'data/source.md'
+
+  set +e
+  out=$(FM_HOME="$home" "$PUBLISH" 2 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "publish accepted a generation that deleted every standing rule: $out"
+  assert_contains "$out" 'FAIL constitution' 'the constitution check stayed inert without data/captain.md'
+  assert_contains "$out" 'Never merge a PR without explicit captain approval' \
+    'the failure did not name the deleted standing rule'
+  [ "$(head -n 1 "$home/data/memory/HEAD")" = "gen/1" ] \
+    || fail 'HEAD moved to the generation that dropped the standing constitution'
+
+  # Carrying the rules forward publishes normally.
+  printf '# Standing constitution\n<!-- source: data/source.md -->\n- Never merge a PR without explicit captain approval.\n- Never force push to main under any circumstances.\n- Always run the validation gate before delivery.\n' \
+    > "$home/data/memory/gen/2/core.md"
+  out=$(FM_HOME="$home" "$PUBLISH" 2) \
+    || fail "publish refused a generation that preserves the standing constitution: $out"
+  assert_contains "$out" 'PASS constitution' 'a preserving generation did not pass'
+  [ "$(head -n 1 "$home/data/memory/HEAD")" = "gen/2" ] || fail 'HEAD did not advance to gen/2'
+
+  pass 'with no data/captain.md the published generation core.md is the standing constitution baseline'
+}
+
+test_constitution_allows_a_generation_with_no_core_when_captain_md_supplies_it() {
+  local home out
+  home=$(new_home constitution-captain-core 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+
+  # The layout bin/fm-memory-migrate.sh produces: captain.md keeps the standing
+  # constitution and the generation carries notes only.
+  printf '# Captain preferences\n- Never merge a PR without explicit captain approval.\n' \
+    > "$home/data/captain.md"
+  mkdir -p "$home/data/memory/gen/1/notes"
+  write_note "$home/data/memory/gen/1/notes" n1 'Note 1' 'one' 2026-08-20 'data/source.md'
+  write_note "$home/data/memory/gen/1/notes" n2 'Note 2' 'two' 2026-08-20 'data/source.md'
+  assert_absent "$home/data/memory/gen/1/core.md" 'fixture unexpectedly created a core.md'
+
+  out=$(FM_HOME="$home" "$PUBLISH" 1) \
+    || fail "publish refused the documented post-migration layout: $out"
+  assert_contains "$out" 'PASS constitution' 'a generation relying on the captain.md core did not pass'
+  [ "$(head -n 1 "$home/data/memory/HEAD")" = "gen/1" ] || fail 'HEAD was not written'
+
+  # The compiler agrees: data/captain.md is the core this generation presents.
+  out=$(FM_HOME="$home" "$COMPILE" compile)
+  assert_contains "$out" 'core: data/captain.md (standing constitution' \
+    'the compiler did not fall back to data/captain.md for the published generation'
+
+  # A generation that writes a core.md still has to carry the captain rules.
+  mkdir -p "$home/data/memory/gen/2/notes"
+  printf '# Core\n<!-- source: data/source.md -->\n- Something else entirely.\n' \
+    > "$home/data/memory/gen/2/core.md"
+  write_note "$home/data/memory/gen/2/notes" n1 'Note 1' 'one' 2026-08-20 'data/source.md'
+  write_note "$home/data/memory/gen/2/notes" n2 'Note 2' 'two' 2026-08-20 'data/source.md'
+  if out=$(FM_HOME="$home" "$VERIFY" 2 2>&1); then
+    fail "verify accepted a core.md that drops a captain.md standing rule: $out"
+  fi
+  assert_contains "$out" 'FAIL constitution' 'the captain.md baseline stopped being enforced'
+
+  pass 'a generation may omit core.md when data/captain.md supplies the core, matching the compiler'
+}
+
+test_compile_labels_the_data_directory_without_doubling_the_path() {
+  local home out
+  home=$(new_home rel-label-data 7500)
+  mkdir -p "$home/data/notes"
+  printf 'SOURCE\n' > "$home/data/source.md"
+  write_note "$home/data/notes" n1 'Data Dir Note' 'datadir' 2026-08-20 'data/source.md'
+
+  out=$(FM_HOME="$home" "$COMPILE" compile --memory-dir "$home/data")
+  assert_contains "$out" 'COMPILED WORKING MEMORY (data)' \
+    'the bundle header doubled the absolute path into the label'
+  assert_not_contains "$out" "data/$home" 'a label concatenated data/ with the absolute path'
+
+  pass 'a memory directory that is data/ itself is labelled data, not data/ plus its absolute path'
+}
+
 # --- Run All Tests ----------------------------------------------------------
 
 test_drop_tray_capture_basic
@@ -876,6 +970,9 @@ test_verify_refuses_a_symlinked_memory_root
 test_citation_resolution_ignores_the_callers_working_directory
 test_citation_cannot_escape_the_home_by_parent_traversal
 test_drop_tray_keeps_a_claims_file_final_line_without_a_newline
+test_constitution_uses_published_core_as_baseline_without_captain_md
+test_constitution_allows_a_generation_with_no_core_when_captain_md_supplies_it
+test_compile_labels_the_data_directory_without_doubling_the_path
 
 printf '# all fm-memory-verify tests passed\n'
 exit 0

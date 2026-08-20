@@ -22,8 +22,12 @@
 #   2. Citations: every note and a non-empty core.md must cite at least one
 #      existing source file, report, or task record on disk. Incidental paths
 #      mentioned in prose are reported but do not block publication.
-#   3. Constitution: standing captain preferences in data/captain.md must be
-#      preserved in core.md and never silently dropped or deleted;
+#   3. Constitution: the standing constitution a session sees today must still
+#      be there tomorrow. The baseline is data/captain.md when it carries
+#      standing preferences, otherwise the core.md of the published generation
+#      named by data/memory/HEAD. The proposed surface is the generation's
+#      core.md, or data/captain.md when the generation has none, mirroring the
+#      precedence bin/fm-memory-compile.sh applies;
 #   4. Diff bounds: a single generation cannot replace or delete excessive
 #      proportions of memory (default: max 50% deletion of baseline notes) and
 #      can never delete every baseline note, however small the baseline is.
@@ -147,6 +151,34 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/.fm-memory-verify.XXXXXX") || die 'could not cr
 # shellcheck disable=SC2329 # Registered by EXIT trap
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT INT TERM
+
+# resolve_baseline_gen_dir: sets BASELINE_GEN_DIR to the generation directory
+# data/memory/HEAD currently publishes, or to data/memory when HEAD names
+# nothing resolvable. Both the constitution and the diff-bounds check need the
+# same answer to "what is live right now", so it is resolved in one place.
+BASELINE_GEN_DIR=""
+resolve_baseline_gen_dir() {
+  local head_target
+  BASELINE_GEN_DIR=""
+
+  if [ -f "$MEMORY/HEAD" ] && [ ! -L "$MEMORY/HEAD" ]; then
+    head_target=$(head -n 1 "$MEMORY/HEAD" | tr -d '\r\n[:space:]')
+    case "$head_target" in
+      ''|*..*|/*) ;;
+      *)
+        if [ -d "$MEMORY/$head_target" ] && [ ! -L "$MEMORY/$head_target" ]; then
+          BASELINE_GEN_DIR="$MEMORY/$head_target"
+        elif [ -d "$MEMORY/gen/$head_target" ] && [ ! -L "$MEMORY/gen/$head_target" ]; then
+          BASELINE_GEN_DIR="$MEMORY/gen/$head_target"
+        fi
+        ;;
+    esac
+  fi
+
+  if [ -z "$BASELINE_GEN_DIR" ] && [ -d "$MEMORY" ] && [ ! -L "$MEMORY" ]; then
+    BASELINE_GEN_DIR="$MEMORY"
+  fi
+}
 
 # --- 1. Budget Verification -------------------------------------------------
 
@@ -406,26 +438,60 @@ check_citations() {
 
 # --- 3. Standing Constitution Safety ----------------------------------------
 
+# usable_file <path>: a plain, non-empty, non-symlink regular file
+usable_file() {
+  [ -f "$1" ] && [ ! -L "$1" ] && [ -s "$1" ]
+}
+
 check_constitution() {
   local captain_file="$DATA/captain.md"
-  local core_file="$GEN_DIR/core.md"
+  local gen_core="$GEN_DIR/core.md"
+  local baseline_file="" baseline_label="" target_file="" target_label=""
 
-  # If data/captain.md is absent or empty, constitution safety check passes
-  if [ ! -f "$captain_file" ] || [ -L "$captain_file" ] || [ ! -s "$captain_file" ]; then
-    printf 'PASS constitution: data/captain.md is absent or empty; no standing baseline to verify against\n'
+  # The baseline is whatever standing constitution is in force right now:
+  # data/captain.md while it still carries preferences, and otherwise the
+  # core.md of the generation data/memory/HEAD currently publishes.
+  if usable_file "$captain_file"; then
+    baseline_file="$captain_file"
+    baseline_label='data/captain.md'
+  else
+    resolve_baseline_gen_dir
+    if [ -n "$BASELINE_GEN_DIR" ] && [ "$BASELINE_GEN_DIR" != "$GEN_DIR" ] \
+      && usable_file "$BASELINE_GEN_DIR/core.md"; then
+      baseline_file="$BASELINE_GEN_DIR/core.md"
+      baseline_label='the published core.md'
+    fi
+  fi
+
+  if [ -z "$baseline_file" ]; then
+    printf 'PASS constitution: no standing baseline on disk; data/captain.md is absent or empty and no published generation carries a core.md\n'
     return 0
   fi
 
-  # If data/captain.md exists and is non-empty, proposed core.md MUST exist and be non-empty
-  if [ ! -f "$core_file" ] || [ -L "$core_file" ] || [ ! -s "$core_file" ]; then
-    printf 'FAIL constitution: data/captain.md contains standing preferences but proposed generation lacks non-empty core.md\n' >&2
+  # bin/fm-memory-compile.sh injects the generation's core.md when it has one
+  # and falls back to data/captain.md when it does not, so the surface a future
+  # session will actually read is what has to preserve the baseline.
+  if usable_file "$gen_core"; then
+    target_file="$gen_core"
+    target_label='core.md'
+  elif usable_file "$captain_file"; then
+    target_file="$captain_file"
+    target_label='data/captain.md (the compiler core while the generation has no core.md)'
+  else
+    printf 'FAIL constitution: %s carries standing preferences but the proposed generation has no core.md and no data/captain.md to fall back to\n' \
+      "$baseline_label" >&2
     return 1
   fi
 
-  # Extract key standing rules and headings from data/captain.md
-  # Every heading and bullet rule in captain.md must have representation in core.md
+  if [ "$target_file" = "$baseline_file" ]; then
+    printf 'PASS constitution: this generation does not change the standing constitution (%s)\n' \
+      "$baseline_label"
+    return 0
+  fi
+
+  # Every heading and bullet rule in the baseline must survive into the target
   local missing=0 heading rule clean_rule core_text
-  core_text=$(cat "$core_file" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+  core_text=$(LC_ALL=C tr '[:upper:]' '[:lower:]' < "$target_file")
 
   # 1. Check headings
   while IFS= read -r heading; do
@@ -440,12 +506,12 @@ check_constitution() {
     case "$core_text" in
       *"$heading"*) ;;
       *)
-        printf 'FAIL constitution: standing section heading "%s" from data/captain.md is missing in core.md\n' \
-          "$heading" >&2
+        printf 'FAIL constitution: standing section heading "%s" from %s is missing in %s\n' \
+          "$heading" "$baseline_label" "$target_label" >&2
         missing=$((missing + 1))
         ;;
     esac
-  done < <(grep '^#\{1,4\}[[:space:]]' "$captain_file" || true)
+  done < <(grep '^#\{1,4\}[[:space:]]' "$baseline_file" || true)
 
   # 2. Check bullet rules and standing directives
   while IFS= read -r rule; do
@@ -469,17 +535,18 @@ check_constitution() {
 
     # If less than half of the rule's keywords are present, flag as potentially dropped rule
     if [ "$total_tokens" -gt 0 ] && [ "$match_count" -lt "$(( (total_tokens + 1) / 2 ))" ]; then
-      printf 'FAIL constitution: standing preference rule from data/captain.md was silently dropped or truncated in core.md: "%s"\n' \
-        "$clean_rule" >&2
+      printf 'FAIL constitution: standing preference rule from %s was silently dropped or truncated in %s: "%s"\n' \
+        "$baseline_label" "$target_label" "$clean_rule" >&2
       missing=$((missing + 1))
     fi
-  done < <(grep '^[[:space:]]*[-*][[:space:]]' "$captain_file" || true)
+  done < <(grep '^[[:space:]]*[-*][[:space:]]' "$baseline_file" || true)
 
   if [ "$missing" -gt 0 ]; then
     return 1
   fi
 
-  printf 'PASS constitution: standing captain preferences from data/captain.md are preserved in core.md\n'
+  printf 'PASS constitution: standing preferences from %s are preserved in %s\n' \
+    "$baseline_label" "$target_label"
   return 0
 }
 
@@ -489,24 +556,14 @@ check_diff_bounds() {
   local base_dir="" base_notes=() gen_notes=() note
   local base_count=0 gen_count=0 deleted_count=0 modified_count=0 added_count=0
 
-  # Determine baseline generation
-  if [ -f "$DATA/memory/HEAD" ] && [ ! -L "$DATA/memory/HEAD" ]; then
-    local head_target
-    head_target=$(head -n 1 "$DATA/memory/HEAD" | tr -d '\r\n[:space:]')
-    case "$head_target" in
-      ''|*..*|/*) ;;
-      *)
-        if [ -d "$DATA/memory/$head_target/notes" ]; then
-          base_dir="$DATA/memory/$head_target/notes"
-        elif [ -d "$DATA/memory/gen/$head_target/notes" ]; then
-          base_dir="$DATA/memory/gen/$head_target/notes"
-        fi
-        ;;
-    esac
+  resolve_baseline_gen_dir
+  if [ -n "$BASELINE_GEN_DIR" ] && [ -d "$BASELINE_GEN_DIR/notes" ] \
+    && [ ! -L "$BASELINE_GEN_DIR/notes" ]; then
+    base_dir="$BASELINE_GEN_DIR/notes"
   fi
 
-  if [ -z "$base_dir" ] && [ -d "$DATA/memory/notes" ] && [ ! -L "$DATA/memory/notes" ]; then
-    base_dir="$DATA/memory/notes"
+  if [ -z "$base_dir" ] && [ -d "$MEMORY/notes" ] && [ ! -L "$MEMORY/notes" ]; then
+    base_dir="$MEMORY/notes"
   fi
 
   # If no baseline directory exists or baseline is the same directory as proposed generation

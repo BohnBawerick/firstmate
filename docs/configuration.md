@@ -169,7 +169,7 @@ The whole directory is gitignored and is created by `bin/fm-memory-migrate.sh`, 
 Completed tasks deposit candidate findings and tactical gotchas into `data/memory/drop/<task-id>.md` through `bin/fm-memory-drop.sh`.
 Generations of memory live under `data/memory/gen/<N>/` and are activated atomically by pointing `data/memory/HEAD` at the active generation.
 Every proposed generation must pass the mechanical verifier in `bin/fm-memory-verify.sh` before `bin/fm-memory-publish.sh` will update `data/memory/HEAD`.
-The verifier enforces four safety properties: working memory must fit within `config/startup-memory-budget` with its catalog intact, every note and a non-empty `core.md` must cite at least one existing file on disk, standing captain preferences in `data/captain.md` must be preserved in `core.md`, and single-generation deletions cannot exceed the diff bounds cap or remove every baseline note.
+The verifier enforces four safety properties: working memory must fit within `config/startup-memory-budget` with its catalog intact, every note and a non-empty `core.md` must cite at least one existing file on disk, the standing constitution in force must survive into the generation, taking `data/captain.md` as the baseline while it carries preferences and the published generation's `core.md` once it does not, and single-generation deletions cannot exceed the diff bounds cap or remove every baseline note.
 There is no shared notes directory by captain decision.
 
 Session start injects this memory through `bin/fm-memory-compile.sh`, which selects a core, a catalog of every note, and the notes whose triggers match live fleet work, and refuses to emit more than the startup memory budget below allows.

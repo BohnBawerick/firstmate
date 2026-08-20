@@ -148,7 +148,9 @@ if [ -n "$EXPLICIT_MEMORY_DIR" ]; then
   [ -d "$EXPLICIT_MEMORY_DIR" ] || die "memory directory not found: $EXPLICIT_MEMORY_DIR"
   MEMORY="$EXPLICIT_MEMORY_DIR"
   NOTES_DIR="$MEMORY/notes"
-  if [ "$MEMORY" = "$DATA" ] || [ "${MEMORY#"$DATA/"}" != "$MEMORY" ]; then
+  if [ "$MEMORY" = "$DATA" ]; then
+    REL_LABEL="data"
+  elif [ "${MEMORY#"$DATA/"}" != "$MEMORY" ]; then
     REL_LABEL="data/${MEMORY#"$DATA/"}"
   else
     REL_LABEL="$MEMORY"
