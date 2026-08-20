@@ -55,9 +55,10 @@
 # worker as live (block), which is fail-safe for "never dream while a worker may
 # be active". Dream tasks are identified by the
 # conventional fm-dream- prefix on the task id and are excluded from the
-# live-worker count. A missing FM_HOME or a home with no state/ or data/memory/
-# reports not-due with a reason rather than a hard error, so the watch can sit
-# on a not-yet-initialized home without alarming.
+# live-worker count. A missing FM_HOME, a home with no state/ or data/memory/, or
+# a home whose data/memory is a symlink reports not-due with a reason rather than
+# a hard error, so the watch can sit on a not-yet-initialized or unevaluable home
+# without alarming.
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -262,6 +263,14 @@ DROP_DIR="$MEMORY/drop"
 # --- check -------------------------------------------------------------------
 
 if [ "$CMD" = check ]; then
+  if [ -L "$MEMORY" ]; then
+    # A symlinked data/memory defeats the per-file guards below in one step: the
+    # tray and HEAD reached through the link are not themselves links, so this
+    # home would be judged due on another home's evidence. bin/fm-memory-verify.sh
+    # refuses the same shape rather than issuing a verdict through the link.
+    printf 'DREAM_DUE: not-due reason=data/memory is a symlink; refusing to evaluate through it\n'
+    exit 1
+  fi
   if [ ! -d "$MEMORY" ]; then
     printf 'DREAM_DUE: not-due reason=no data/memory directory\n'
     exit 1

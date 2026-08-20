@@ -126,6 +126,23 @@ test_watch_due_on_unconsumed_drop() {
   pass 'watch reports due when the drop tray holds an unconsumed candidate'
 }
 
+test_watch_refuses_a_symlinked_memory_dir() {
+  local home other out rc
+  home=$(new_home watch-symlink-memory)
+  other=$(new_home watch-symlink-memory-other)
+  printf -- '- another home candidate\n' > "$other/data/memory/drop/cand.md"
+  # A link over data/memory bypasses the per-file tray and HEAD guards in one
+  # step, so this home would otherwise be judged due on another home's evidence.
+  rm -rf "$home/data/memory"
+  ln -s "$other/data/memory" "$home/data/memory"
+  out=$(FM_HOME="$home" "$WATCH" check 2>&1); rc=$?
+  [ "$rc" -eq 1 ] || fail "a symlinked data/memory produced a verdict (exit $rc): $out"
+  assert_contains "$out" 'DREAM_DUE: not-due' 'a symlinked data/memory did not report not-due'
+  assert_contains "$out" 'symlink' 'the refusal did not name the symlink'
+  assert_absent "$home/state/.dream-due" 'a refused evaluation left a due marker'
+  pass 'watch refuses to evaluate through a symlinked data/memory'
+}
+
 test_watch_due_on_stale_head() {
   local home out rc
   home=$(new_home watch-stale-head)
@@ -630,6 +647,7 @@ test_dreamer_brief_refuses_ship_mode
 test_dreamer_brief_accepts_herdr_lab
 test_watch_not_due_on_empty_home
 test_watch_due_on_unconsumed_drop
+test_watch_refuses_a_symlinked_memory_dir
 test_watch_due_on_stale_head
 test_watch_not_due_on_fresh_head
 test_watch_blocked_by_live_non_dreamer_worker
