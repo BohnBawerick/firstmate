@@ -11,6 +11,15 @@ EXT="$ROOT/.pi/extensions/fm-primary-pi-watch.ts"
 # from a clean checkout with no tracked .opencode/package.json. The warning is
 # unrelated to plugin output, which the assertions intentionally require empty.
 export NODE_NO_WARNINGS=1
+# The watch extensions arm their watcher through `bash -lc`, so every arm child
+# first runs the caller's login profile. A developer or CI profile can take a
+# second or more, which outruns the readiness budgets these tests set and makes
+# the hung-successor assertions race process startup instead of the behavior
+# under test. Point HOME at an empty fixture directory so the login shell has a
+# deterministic, near-zero startup cost.
+HOME="$TMP_ROOT/login-home"
+export HOME
+mkdir -p "$HOME"
 
 install_pi_watch_extension_fixture() {
   local repo=$1
@@ -1338,14 +1347,22 @@ const hooks = await mod.FmPrimaryWatchArm({
 const event = { event: { type: "session.idle", properties: { sessionID: "session-test" } } };
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, "999999\n");
 await hooks.event(event);
-await new Promise((resolve) => setTimeout(resolve, 120));
+// The hook decides asynchronously and the foreign-lock decision itself runs
+// `git` and walks the parent chain with `ps`, so watch the whole window rather
+// than sampling once: an arm that leaks through fails here immediately.
+for (let i = 0; i < 50 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
 if (existsSync(process.env.FM_ARM_LOG)) {
   console.error("watch arm ran without owning the session lock");
   process.exit(1);
 }
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
-await hooks.event(event);
+// Re-fire idle the way OpenCode does until the arm lands. Arming is idempotent,
+// and re-firing means a still-in-flight foreign-lock decision cannot absorb the
+// owning session's event and leave the watcher unarmed.
 for (let i = 0; i < 250 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
+  await hooks.event(event);
   await new Promise((resolve) => setTimeout(resolve, 20));
 }
 if (!existsSync(process.env.FM_ARM_LOG)) {
