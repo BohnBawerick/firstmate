@@ -26,7 +26,7 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | `fm-backlog-handoff.sh`  | Validate and delegate queued backlog-item moves into a secondmate home               |
 | `fm-backlog-receive.sh`  | Idempotently ingest one confined remote handoff outbox through tasks-axi             |
 | `fm-decision-hold.sh`    | Create, verify, complete, close, and repair durable captain-held decisions       |
-| `fm-brief.sh`            | Scaffold ship (explicit `--mode`), scout, secondmate-charter, and Herdr-lab briefs   |
+| `fm-brief.sh`            | Scaffold ship (explicit `--mode`), scout, dreamer, secondmate-charter, and Herdr-lab briefs |
 | `fm-herdr-lab.sh`        | Provision and guardedly operate an isolated, never-default Herdr lab session         |
 | `fm-install-herdr.sh`    | Install CI's exact-version Herdr pin with official asset URL, SHA-256, and protocol checks |
 | `fm-install-treehouse.sh`| Install CI's exact-version Treehouse pin for real-Herdr E2E that needs spawn worktrees |
@@ -126,3 +126,5 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | `fm-memory-drop.sh`      | Deposit candidate claims from completed tasks into the drop tray `data/memory/drop/` |
 | `fm-memory-verify.sh`    | Mechanical safety verifier and generation publication guard for `data/memory/`      |
 | `fm-memory-publish.sh`   | Verify and atomically update `data/memory/HEAD` to point to a proposed generation    |
+| `fm-dreamer-watch.sh`    | Evaluate whether an offline dream pass is due and arm its idle-notification watch    |
+| `fm-dreamer-grade.sh`    | Grade a proposed memory generation against the rubric and scaffold the grader scout |

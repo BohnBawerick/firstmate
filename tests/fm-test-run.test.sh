@@ -95,6 +95,7 @@ init_changed_fixture_repo() {
   chmod +x "$repo/bin/fm-test-run.sh"
   for script in \
     fm-brief.test.sh \
+    fm-dreamer.test.sh \
     fm-ask-user-authority.test.sh \
     fm-cd-pretool-check.test.sh \
     fm-daemon.test.sh \
@@ -117,6 +118,7 @@ init_changed_fixture_repo() {
   : >"$repo/tests/lib.sh"
   : >"$repo/tests/fm-backend-herdr-eventwait.test.py"
   : >"$repo/bin/fm-supervisor-target-lib.sh"
+  : >"$repo/bin/fm-brief.sh"
   : >"$repo/bin/fm-memory-verify.sh"
   : >"$repo/bin/fm-memory-drop.sh"
   : >"$repo/bin/unmapped-source.sh"
@@ -161,6 +163,15 @@ test_changed_dependency_selection_and_unmapped_failure() {
   assert_contains "$listed" "tests/fm-afk-return.test.sh" "supervisor target selects afk coverage"
   git -C "$repo" add bin/fm-supervisor-target-lib.sh
   git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm supervisor-change
+
+  printf '\n' >>"$repo/bin/fm-brief.sh"
+  listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
+  assert_contains "$listed" "tests/fm-brief.test.sh" \
+    "brief source selects its own coverage"
+  assert_contains "$listed" "tests/fm-dreamer.test.sh" \
+    "brief source selects the dreamer-brief coverage it is the only source of"
+  git -C "$repo" add bin/fm-brief.sh
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm brief-change
 
   printf '\n' >>"$repo/bin/fm-memory-verify.sh"
   printf '\n' >>"$repo/bin/fm-memory-drop.sh"
