@@ -55,6 +55,12 @@ set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+# shellcheck source=bin/fm-classify-lib.sh
+. "$SCRIPT_DIR/fm-classify-lib.sh"
+# The scaffolded brief must speak this home's status vocabulary, not a literal:
+# bin/fm-classify-lib.sh owns the declared-external-wait verb, and the watcher
+# and daemon compare an appended verb against that same value.
+PAUSED_VERB=${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 MEMORY="$DATA/memory"
@@ -334,7 +340,7 @@ point data/memory/HEAD anywhere. Do NOT address the captain.
 3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
 4. Report status by appending one line:
    \`echo "{state}: {one short line}" >> $STATUS_FILE\`
-   States: working, needs-decision, blocked, paused, done, failed.
+   States: working, needs-decision, blocked, $PAUSED_VERB, done, failed.
    Each append wakes firstmate, so report sparingly: only phase changes a supervisor would act on.
 5. If you hit the same obstacle twice, append \`blocked: {why}\` and stop.
 6. If a decision belongs above you, append \`needs-decision: {summary}\` and stop.

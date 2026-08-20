@@ -104,6 +104,22 @@ test_dreamer_brief_accepts_herdr_lab() {
   pass 'dreamer brief composes with --herdr-lab'
 }
 
+test_grader_scout_brief_renders_the_configured_pause_verb() {
+  local home brief
+  home=$(new_home grade-scout-pause-verb)
+  # The emitted brief is the agent-facing status contract, and the watcher and
+  # daemon compare an appended verb against this home's configured value, so a
+  # hardcoded literal would make a deliberate wait read as a possible wedge.
+  FM_CLASSIFY_PAUSED_VERB=awaiting \
+    FM_HOME="$home" "$GRADE" scout grade-pause firstmate gen/0 gen/1 >/dev/null
+  brief="$home/data/grade-pause/brief.md"
+  assert_grep 'States: working, needs-decision, blocked, awaiting, done, failed.' "$brief" \
+    'grader scout brief did not render the configured pause verb in its states list'
+  assert_no_grep 'blocked, paused, done' "$brief" \
+    'grader scout brief still lists the default pause verb'
+  pass 'grade scout brief speaks the home configured pause vocabulary'
+}
+
 # --- 2. Idle dream evaluation (fm-dreamer-watch check) -----------------------
 
 test_watch_not_due_on_empty_home() {
@@ -658,6 +674,7 @@ test_full_dream_loop_integration() {
 test_dreamer_brief_scaffolds_contract
 test_dreamer_brief_refuses_ship_mode
 test_dreamer_brief_accepts_herdr_lab
+test_grader_scout_brief_renders_the_configured_pause_verb
 test_watch_not_due_on_empty_home
 test_watch_due_on_unconsumed_drop
 test_watch_refuses_a_symlinked_memory_dir

@@ -168,7 +168,7 @@ fi
 ID=${POS[0]}
 
 if [ "$KIND" = secondmate ] && [ "$HERDR_LAB" -eq 1 ]; then
-  echo "error: --herdr-lab applies only to crewmate ship or scout briefs" >&2
+  echo "error: --herdr-lab applies only to crewmate ship, scout, or dreamer briefs" >&2
   exit 1
 fi
 

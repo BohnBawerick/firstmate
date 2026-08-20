@@ -783,7 +783,7 @@ test_pause_verb_override_renders_all_brief_scaffolds() {
   home="$TMP_ROOT/pause-verb-home"
   mkdir -p "$home/data"
 
-  for kind in ship scout secondmate; do
+  for kind in ship scout dreamer secondmate; do
     id="brief-pause-verb-$kind"
     case "$kind" in
       ship)
@@ -793,6 +793,10 @@ test_pause_verb_override_renders_all_brief_scaffolds() {
       scout)
         FM_HOME="$home" FM_CLASSIFY_PAUSED_VERB=awaiting \
           "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout >/dev/null 2>&1
+        ;;
+      dreamer)
+        FM_HOME="$home" FM_CLASSIFY_PAUSED_VERB=awaiting \
+          "$ROOT/bin/fm-brief.sh" "$id" firstmate --dreamer >/dev/null 2>&1
         ;;
       secondmate)
         FM_HOME="$home" FM_CLASSIFY_PAUSED_VERB=awaiting \
