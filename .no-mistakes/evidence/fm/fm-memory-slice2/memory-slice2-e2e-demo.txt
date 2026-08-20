@@ -1,0 +1,109 @@
+================================================================================
+FM MEMORY SLICE 2: DROP TRAY & PUBLICATION GUARD END-TO-END DEMO
+================================================================================
+
+1. Setting up a temporary Fleet home with initial configuration and captain rules...
+
+2. Capturing drop claims from completed task-101 via bin/fm-memory-drop.sh...
+drop: deposited candidate claims for task-101 to data/memory/drop/task-101.md (2 claim(s))
+
+3. Inspecting captured drop tray record in data/memory/drop/task-101.md:
+---
+task: task-101
+date: 2026-08-20
+project: fleet-memory
+report: reports/task-101.md
+commit: a1b2c3d
+---
+
+# Candidate claims: task-101
+
+- Atomic symlinks prevent partial reads during compiler execution.
+- Verifying diff bounds prevents catastrophic memory wipeout.
+
+4. Preparing proposed Generation gen-0002 with core.md and notes...
+catalog: published data/memory/gen-0002/catalog.md (1 note(s))
+
+5. Verifying proposed Generation gen-0002 via bin/fm-memory-verify.sh (Safety Guard)...
+VERIFYING GENERATION: gen-0002 (/tmp/fm-memory-demo.qTnZIj/data/memory/gen-0002)
+--------------------------------------------------------------------------------
+PASS budget: compiled bundle is 141 estimated tokens <= 5000 cap (core=72 catalog=69 status=within-budget)
+PASS citations: all claims cite existing sources (2 verified citations across 1 note(s))
+PASS constitution: standing preferences from data/captain.md are preserved in core.md
+PASS diff-bounds: initial generation (baseline has 0 notes)
+--------------------------------------------------------------------------------
+VERIFICATION PASSED: all 4 safety checks passed
+
+6. Atomically publishing Generation gen-0002 via bin/fm-memory-publish.sh...
+VERIFYING GENERATION: gen-0002 (/tmp/fm-memory-demo.qTnZIj/data/memory/gen-0002)
+--------------------------------------------------------------------------------
+PASS budget: compiled bundle is 141 estimated tokens <= 5000 cap (core=72 catalog=69 status=within-budget)
+PASS citations: all claims cite existing sources (2 verified citations across 1 note(s))
+PASS constitution: standing preferences from data/captain.md are preserved in core.md
+PASS diff-bounds: initial generation (baseline has 0 notes)
+--------------------------------------------------------------------------------
+VERIFICATION PASSED: all 4 safety checks passed
+memory: published generation gen-0002 to data/memory/HEAD
+
+7. Verifying HEAD pointer in data/memory/HEAD:
+-rw-rw-r-- 1 paiva paiva 9 Aug 20 09:08 /tmp/fm-memory-demo.qTnZIj/data/memory/HEAD
+HEAD content: gen-0002
+
+8. Compiling memory bundle with active HEAD generation (matching trigger atomic):
+COMPILED WORKING MEMORY (data/memory/gen-0002)
+--------------------------------------------------------------------------------
+Compiled by bin/fm-memory-compile.sh against a 5000-estimated-token cap.
+This is the whole startup memory surface: it is selected and capped, not dumped.
+The catalog lists every note that exists, so when a title below matches what
+this turn needs and its body was not injected, read that file by its path.
+
+core: data/memory/gen-0002/core.md
+--------------------------------------------------------------------------------
+# Captain Directives
+(source: data/captain.md)
+- Always run targeted tests before asking for code review.
+- Never commit AWS or GCP credentials into source control.
+- Ensure all bash scripts use set -euo pipefail.
+
+catalog (compiled from data/memory/gen-0002/notes/)
+--------------------------------------------------------------------------------
+<!-- compiled by bin/fm-memory-compile.sh from data/memory/gen-0002/notes/ -->
+
+- Atomic symlinks prevent partial reads during compiler execution (atomic-symlinks.md | atomic, symlink, publish | 2026-08-20)
+
+hot note: notes/atomic-symlinks.md
+--------------------------------------------------------------------------------
+---
+title: Atomic symlinks prevent partial reads during compiler execution
+triggers: atomic, symlink, publish, compiler
+updated: 2026-08-20
+sources: data/memory/drop/task-101.md
+---
+Atomic symlinks prevent partial reads during compiler execution.
+Use ln -sfn followed by mv -T for atomic pointer replacement.
+
+MEMORY_NOTICE: data/captain.md is still present (63 estimated tokens) and is NOT injected because data/memory/gen-0002/core.md takes precedence. Fold standing preferences into data/memory/gen-0002/core.md, or remove data/captain.md.
+
+MEMORY_ACCOUNTING: budget=5000 core=72 catalog=69 hot_notes=1 hot_notes_tokens=103 notes_total=1 hot_dropped=0 injected_total=244 status=within-budget
+
+9. Demonstrating safety guard rejection on illegal generation (e.g. dropped constitution rule and missing citations):
+catalog: published data/memory/gen-0003-bad/catalog.md (1 note(s))
+VERIFYING GENERATION: gen-0003-bad (/tmp/fm-memory-demo.qTnZIj/data/memory/gen-0003-bad)
+--------------------------------------------------------------------------------
+PASS budget: compiled bundle is 77 estimated tokens <= 5000 cap (core=30 catalog=47 status=within-budget)
+FAIL citations: note notes/uncited-note.md has no citations or source metadata
+FAIL citations: core.md has no citations or source metadata
+FAIL constitution: standing preference rule from the published core.md was silently dropped or truncated in core.md: "Always run targeted tests before asking for code review."
+FAIL constitution: standing preference rule from the published core.md was silently dropped or truncated in core.md: "Never commit AWS or GCP credentials into source control."
+FAIL constitution: standing preference rule from the published core.md was silently dropped or truncated in core.md: "Ensure all bash scripts use set -euo pipefail."
+FAIL diff-bounds: proposed generation deletes every one of the 1 baseline note(s)
+--------------------------------------------------------------------------------
+VERIFICATION FAILED: 3 check(s) failed
+
+Publish was successfully rejected by fm-memory-verify guard as expected.
+
+10. Confirming HEAD still points to valid gen-0002:
+HEAD is still: gen-0002
+
+================================================================================
+End-to-end demonstration completed successfully.
