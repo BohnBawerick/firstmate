@@ -64,6 +64,12 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
+# Exported, not just assigned: `arm` execs bin/fm-procevent-when.sh, which
+# resolves the home it registers the watch in from the environment. Without the
+# export, a resolved or --home-pinned value would stay invisible to that child
+# and the spec would land in whatever home the child resolved on its own, while
+# the registered argv still evaluated the pinned one.
+export FM_HOME
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 MEMORY="$DATA/memory"

@@ -264,6 +264,19 @@ test_watch_home_flag_pins_the_evaluated_home() {
   pass 'check --home evaluates the pinned home, not the ambient FM_HOME'
 }
 
+test_watch_arm_registers_into_the_pinned_home() {
+  local pinned out rc
+  pinned=$(new_home watch-arm-pinned)
+  # With no ambient FM_HOME at all, the registration must still land in the
+  # pinned home: a spec registered elsewhere is never reconciled by the home
+  # whose drops and HEAD its own condition argv evaluates.
+  out=$(env -u FM_HOME "$WATCH" arm --home "$pinned" 2>&1); rc=$?
+  [ "$rc" -eq 0 ] || fail "arm into a pinned home failed (exit $rc): $out"
+  assert_present "$pinned/state/when/when-dream-due.spec" \
+    "arm did not register the watch in the pinned home: $out"
+  pass 'arm registers the watch in the home it pins, with no ambient FM_HOME'
+}
+
 test_watch_mark_due_home_flag_writes_into_the_pinned_home() {
   local pinned ambient
   pinned=$(new_home watch-mark-pinned)
@@ -657,6 +670,7 @@ test_watch_counts_a_remote_worker_as_live
 test_watch_accepts_a_symlinked_home
 test_watch_arm_refuses_a_missing_home
 test_watch_home_flag_pins_the_evaluated_home
+test_watch_arm_registers_into_the_pinned_home
 test_watch_mark_due_home_flag_writes_into_the_pinned_home
 test_watch_mark_due_writes_durable_marker
 test_watch_arm_dry_run_prints_argv
