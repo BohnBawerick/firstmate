@@ -22,6 +22,13 @@ function runProcess(command, args, input = "") {
     });
     child.on("error", () => resolve({ code: 0, stdout: "", stderr: "" }));
     child.on("close", (code) => resolve({ code: code ?? 0, stdout, stderr }));
+    // A guard child may exit before it drains stdin (bin/fm-turnend-guard.sh
+    // rejects bad usage with exit 2 before its `cat`, and any child can lose
+    // the race between spawn and this write). The payload write then fails
+    // EPIPE, and an unhandled stream "error" event would take the whole
+    // OpenCode host process down. The child's exit code and stderr carry the
+    // guard verdict, so a payload the child never wanted is safe to drop.
+    child.stdin.on("error", () => {});
     child.stdin.end(input);
   });
 }

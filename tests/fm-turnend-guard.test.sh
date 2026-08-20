@@ -968,6 +968,119 @@ EOF
   pass ".opencode primary plugin: guard path is anchored to worktree, not directory"
 }
 
+# A turn-end guard child is free to exit before it reads the payload:
+# bin/fm-turnend-guard.sh rejects bad usage with exit 2 before its `cat`, and
+# even a draining guard can win the race between spawn and the adapter's write.
+# The write then fails EPIPE. Both adapters must absorb that and still report
+# the guard's verdict, because an unhandled stream error takes the whole harness
+# host process down with it. The guard fixture below exits without reading
+# stdin, and both tests fire many turn-ends at once so the EPIPE race is
+# effectively certain to be lost at least once per run.
+GUARD_STDIN_RACE_TURNS=40
+
+install_undrained_guard() {
+  local repo=$1
+  # /bin/sh, not bash: the shorter the child lives, the more often the adapter's
+  # payload write lands after the child has already dropped its read end.
+  cat > "$repo/bin/fm-turnend-guard.sh" <<'SH'
+#!/bin/sh
+exit 2
+SH
+  chmod +x "$repo/bin/fm-turnend-guard.sh"
+}
+
+test_opencode_plugin_survives_guard_that_never_reads_stdin() {
+  local plugin repo out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-turnend-guard.js"
+  [ -f "$plugin" ] || fail "tracked OpenCode primary plugin is missing"
+  repo="$TMP_ROOT/opencode-guard-stdin-race"
+  mkdir -p "$repo/bin"
+  install_undrained_guard "$repo"
+  out=$(NODE_NO_WARNINGS=1 PLUGIN="$plugin" WORKTREE="$repo" TURNS="$GUARD_STDIN_RACE_TURNS" node 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+let prompts = 0;
+let lastPrompt = "";
+const client = {
+  session: {
+    promptAsync: async (request) => {
+      prompts += 1;
+      lastPrompt = request.body.parts[0].text;
+    },
+  },
+};
+const hooks = await mod.FmPrimaryTurnendGuard({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+const turns = Number(process.env.TURNS);
+await Promise.all(
+  Array.from({ length: turns }, () =>
+    hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } })),
+);
+if (prompts !== turns) {
+  console.error(`guard verdict lost: ${prompts} of ${turns} turn-ends followed up`);
+  process.exit(1);
+}
+if (!lastPrompt.includes("TURN WOULD END BLIND")) {
+  console.error(`missing blind-turn prompt: ${lastPrompt}`);
+  process.exit(1);
+}
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode plugin must survive a guard that exits before reading its payload"
+  [ -z "$out" ] || fail "OpenCode guard stdin-race test printed output: $out"
+  pass ".opencode primary plugin: a guard that never reads stdin still yields its verdict"
+}
+
+test_pi_extension_survives_guard_that_never_reads_stdin() {
+  local repo home ext out status
+  repo="$TMP_ROOT/pi-guard-stdin-race-root"
+  home="$TMP_ROOT/pi-guard-stdin-race-home"
+  ext="$repo/.pi/extensions/fm-primary-turnend-guard.ts"
+  mkdir -p "$repo/.pi/extensions/lib" "$repo/bin" "$home/state"
+  cp "$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" "$ext"
+  cp "$ROOT/.pi/extensions/lib/fm-operational-input.ts" "$repo/.pi/extensions/lib/fm-operational-input.ts"
+  cp "$ROOT/bin/fm-operational-input.sh" "$repo/bin/fm-operational-input.sh"
+  install_undrained_guard "$repo"
+  out=$(PLUGIN="$ext" FM_HOME="$home" TURNS="$GUARD_STDIN_RACE_TURNS" node --input-type=module 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+
+const handlers = new Map();
+let prompts = 0;
+let lastPrompt = "";
+const pi = {
+  on(event, handler) {
+    handlers.set(event, handler);
+  },
+  async sendUserMessage(message) {
+    prompts += 1;
+    lastPrompt = message;
+  },
+};
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+mod.default(pi);
+const settled = handlers.get("agent_settled");
+if (!settled) throw new Error("agent_settled handler was not registered");
+const turns = Number(process.env.TURNS);
+await Promise.all(Array.from({ length: turns }, () => settled({ type: "agent_settled" }, {})));
+if (prompts !== turns) {
+  throw new Error(`guard verdict lost: ${prompts} of ${turns} logical runs followed up`);
+}
+if (!lastPrompt.includes("TURN WOULD END BLIND")) {
+  throw new Error(`missing blind-turn prompt: ${lastPrompt}`);
+}
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "Pi extension must survive a guard that exits before reading its payload"
+  [ -z "$out" ] || fail "Pi guard stdin-race test printed output: $out"
+  pass ".pi primary extension: a guard that never reads stdin still yields its verdict"
+}
+
 test_pi_extension_injects_once_per_logical_agent_run() {
   local repo home ext log out status
   repo="$TMP_ROOT/pi-logical-run-root"
@@ -1885,6 +1998,8 @@ test_tracked_claude_entries_inert_under_grok
 test_codex_hook_uses_process_pwd_when_payload_cwd_is_outside_root
 test_codex_hook_ignores_nested_git_root_guard
 test_opencode_plugin_anchors_guard_to_worktree
+test_opencode_plugin_survives_guard_that_never_reads_stdin
+test_pi_extension_survives_guard_that_never_reads_stdin
 test_pi_extension_injects_once_per_logical_agent_run
 test_pi_extension_retries_after_followup_delivery_failure
 test_hook_claude_mode_reblocks_stop_hook_active_when_unhealthy

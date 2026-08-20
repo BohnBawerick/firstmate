@@ -163,6 +163,10 @@ function runGuard(): Promise<{ code: number; stderr: string }> {
     });
     child.on("error", () => resolveResult({ code: 0, stderr: "" }));
     child.on("close", (code) => resolveResult({ code: code ?? 0, stderr }));
+    // Same EPIPE tolerance the OpenCode plugin needs: a guard child that exits
+    // before draining stdin turns this write into an unhandled stream "error"
+    // event, which would kill the Pi host. The verdict is the exit code.
+    child.stdin.on("error", () => {});
     child.stdin.end('{"stop_hook_active":false}');
   });
 }
