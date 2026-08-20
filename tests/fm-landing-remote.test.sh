@@ -182,8 +182,9 @@ EOF
 
   assert_grep "repo set-default origin" "$log" \
     "apply did not point gh at origin, so gh pr create would still default elsewhere"
-  assert_grep "--yes init" "$log" \
-    "apply did not re-init no-mistakes without --fork-url"
+  if ! grep -Fxq 'init' "$log"; then
+    fail "apply did not re-init no-mistakes, so its stored PR target would still name the previous remote"
+  fi
   if grep -q 'fork-url' "$log"; then
     fail "no-mistakes init still passed --fork-url, so PRs would open on the parent"
   fi
