@@ -789,6 +789,37 @@ test_operating_picture_is_read_from_the_home_in_a_generation_home() {
   pass 'a generation home still reads the home-level data/memory/now.md'
 }
 
+test_an_explicit_memory_dir_never_reads_the_home_operating_picture() {
+  local home out
+  home=$(new_home now-explicit-dir)
+  mkdir -p "$home/data/memory/gen/1/notes"
+  printf '# core\n\nGENERATION-CORE-TEXT\n' > "$home/data/memory/gen/1/core.md"
+  write_now "$home" 2026-08-20 'HOME-LEVEL-PINS'
+
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context \
+    --memory-dir "$home/data/memory/gen/1")
+
+  assert_contains "$out" 'GENERATION-CORE-TEXT' 'the named generation core was not injected'
+  assert_not_contains "$out" 'HOME-LEVEL-PINS' \
+    'the home operating picture leaked into a compile of a named directory'
+  assert_not_contains "$out" 'operating picture' \
+    'a named directory with no now.md still emitted an operating picture section'
+  [ -z "$(accounting_field "$out" now)" ] \
+    || fail "the home operating picture was accounted against a named directory: $out"
+
+  # The named directory's own now.md is the one it reads.
+  printf -- '---\ndate: 2026-08-20\n---\n\nGENERATION-PINS\n' > "$home/data/memory/gen/1/now.md"
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context \
+    --memory-dir "$home/data/memory/gen/1")
+  assert_contains "$out" 'GENERATION-PINS' 'the named directory own now.md was not injected'
+  assert_contains "$out" 'operating picture: data/memory/gen/1/now.md' \
+    'the operating picture was not labelled with the named directory'
+  assert_not_contains "$out" 'HOME-LEVEL-PINS' \
+    'the home operating picture leaked in beside the named directory own now.md'
+
+  pass 'a compile of a named memory directory depends on that directory alone'
+}
+
 test_date_key_wins_over_updated_key_in_the_operating_picture() {
   local home out
   home=$(new_home now-date-precedence)
@@ -833,6 +864,10 @@ test_shipped_example_operating_picture_compiles() {
   example_date=$(awk 'NR > 1 && /^---[[:space:]]*$/ { exit } tolower($1) == "date:" { print $2; exit }' \
     "$ROOT/docs/examples/now.md")
   [ -n "$example_date" ] || fail 'docs/examples/now.md carries no date: key in its front matter'
+  case "$example_date" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+    *) fail "docs/examples/now.md carries a non-ISO date, so a captain copying it is stale on day one: $example_date" ;;
+  esac
 
   out=$(FM_MEMORY_TODAY_OVERRIDE="$example_date" compile "$home" --no-auto-context)
 
@@ -841,6 +876,14 @@ test_shipped_example_operating_picture_compiles() {
   assert_contains "$out" '# Operating picture' 'the example body was missing from the bundle'
   [ "$(accounting_field "$out" now)" -gt 0 ] \
     || fail "the example template was not accounted: $out"
+
+  # The same shipped file on any other day must trip the stale gate, so the
+  # date really is read rather than echoed back by the override.
+  out=$(FM_MEMORY_TODAY_OVERRIDE=1999-12-31 compile "$home" --no-auto-context)
+  assert_not_contains "$out" 'operating picture: data/memory/now.md' \
+    'the shipped example template was injected on a day it is not dated'
+  assert_contains "$out" "MEMORY_NOTICE: data/memory/now.md is dated $example_date (not today, 1999-12-31)" \
+    'the shipped example template did not trip the stale notice on another day'
 
   pass 'the shipped docs/examples/now.md template compiles as a valid operating picture'
 }
@@ -886,6 +929,7 @@ test_absent_now_md_produces_byte_identical_output_with_no_notice
 test_budget_cap_precedence_with_operating_picture
 test_oversized_operating_picture_is_dropped_but_the_catalog_survives
 test_operating_picture_is_read_from_the_home_in_a_generation_home
+test_an_explicit_memory_dir_never_reads_the_home_operating_picture
 test_date_key_wins_over_updated_key_in_the_operating_picture
 test_stale_operating_picture_notice_names_both_dates
 test_shipped_example_operating_picture_compiles

@@ -31,10 +31,13 @@
 #   now.md       the dated operating picture.  Carries this-shift pins and
 #                ceilings with a front matter date.  Injected only when dated
 #                today; a stale file is dropped and reported, while absence is
-#                silent.  It is read from data/memory/now.md in the home, never
-#                from the active generation, because it is perishable shift
-#                state rather than versioned knowledge: a published generation
-#                must not freeze it, and publishing must not discard it.
+#                silent.  It is read from data/memory/now.md in the home rather
+#                than from the generation HEAD names, because it is perishable
+#                shift state rather than versioned knowledge: a published
+#                generation must not freeze it, and publishing must not discard
+#                it.  --memory-dir and --gen move it to the named directory
+#                along with everything else, so verifying one generation stays
+#                a function of that generation alone.
 #   notes/*.md   atomic notes, one claim each.
 #   catalog.md   the regenerable index, one line per note: claim title, file
 #                name under notes/, first triggers, and updated date.
@@ -620,28 +623,36 @@ else
   NOTICES+=("MEMORY_NOTICE: no core memory - both $REL_LABEL/core.md and data/captain.md are ABSENT, so this home is running on the firstmate repo built-in defaults.")
 fi
 
-# The operating picture is home-level, exactly like the drop tray: it is read
-# from data/memory/now.md whatever generation HEAD points at, so a generation
-# home sees this shift's pins and a publish never freezes or discards them.
-NOW_ROOT_OK=1
-if [ -L "$DATA/memory" ] || [ ! -d "$DATA/memory" ]; then
-  NOW_ROOT_OK=0
+# The operating picture follows the directory the caller asked for, and only
+# falls back to the home-level data/memory/now.md when the caller asked for
+# nothing.  A named directory therefore compiles from itself alone, so
+# bin/fm-memory-verify.sh's budget gate on a proposed generation stays a
+# function of that generation and never of today's perishable shift file.
+NOW_DIR="$DATA/memory"
+NOW_REL="data/memory"
+NOW_DIR_OK=1
+if [ -n "$EXPLICIT_MEMORY_DIR" ]; then
+  NOW_DIR="$MEMORY"
+  NOW_REL="$REL_LABEL"
+  NOW_DIR_OK=$MEMORY_DIR_OK
+elif [ -L "$DATA/memory" ] || [ ! -d "$DATA/memory" ]; then
+  NOW_DIR_OK=0
 fi
 
-if [ "$NOW_ROOT_OK" -eq 1 ] && [ -L "$DATA/memory/now.md" ]; then
-  NOTICES+=("MEMORY_NOTICE: data/memory/now.md is a symlink, so nothing was read through it. Replace the symlink with a real file, or remove it.")
-elif [ "$NOW_ROOT_OK" -eq 1 ] && [ -f "$DATA/memory/now.md" ]; then
-  NOW_DATE=$(parse_now_date "$DATA/memory/now.md")
+if [ "$NOW_DIR_OK" -eq 1 ] && [ -L "$NOW_DIR/now.md" ]; then
+  NOTICES+=("MEMORY_NOTICE: $NOW_REL/now.md is a symlink, so nothing was read through it. Replace the symlink with a real file, or remove it.")
+elif [ "$NOW_DIR_OK" -eq 1 ] && [ -f "$NOW_DIR/now.md" ]; then
+  NOW_DATE=$(parse_now_date "$NOW_DIR/now.md")
   if is_today_date "$NOW_DATE"; then
     NOW_VALID=1
-    NOW_PATH="$DATA/memory/now.md"
-    NOW_LABEL="data/memory/now.md"
+    NOW_PATH="$NOW_DIR/now.md"
+    NOW_LABEL="$NOW_REL/now.md"
     NOW_TOKENS=$(tokens_of_file "$NOW_PATH")
   elif [ -n "$NOW_DATE" ]; then
     TODAY_DISP=$(get_today_display)
-    NOTICES+=("MEMORY_NOTICE: data/memory/now.md is dated $NOW_DATE (not today, $TODAY_DISP) and is NOT injected. Update it with this shift's pins and ceilings, or remove it.")
+    NOTICES+=("MEMORY_NOTICE: $NOW_REL/now.md is dated $NOW_DATE (not today, $TODAY_DISP) and is NOT injected. Update it with this shift's pins and ceilings, or remove it.")
   else
-    NOTICES+=("MEMORY_NOTICE: data/memory/now.md has no date in front matter and is NOT injected. Add a date (date: YYYY-MM-DD), or remove it.")
+    NOTICES+=("MEMORY_NOTICE: $NOW_REL/now.md has no date in front matter and is NOT injected. Add a date (date: YYYY-MM-DD), or remove it.")
   fi
 fi
 
@@ -738,13 +749,12 @@ else
 fi
 
 if [ "$CORE_OVER" -eq 1 ]; then
+  DROPPED_LIST='no catalog, no notes'
   if [ "$NOW_VALID" -eq 1 ]; then
-    printf '\nMEMORY_BUDGET_WARNING: the core alone is %s estimated tokens against a %s budget. It was printed in full and NOTHING else was: no operating picture, no catalog, no notes. Trim the core (%s/core.md, or data/captain.md when no core.md exists) or raise config/startup-memory-budget.\n' \
-      "$CORE_TOKENS" "$BUDGET" "$REL_LABEL"
-  else
-    printf '\nMEMORY_BUDGET_WARNING: the core alone is %s estimated tokens against a %s budget. It was printed in full and NOTHING else was: no catalog, no notes. Trim the core (%s/core.md, or data/captain.md when no core.md exists) or raise config/startup-memory-budget.\n' \
-      "$CORE_TOKENS" "$BUDGET" "$REL_LABEL"
+    DROPPED_LIST='no operating picture, no catalog, no notes'
   fi
+  printf '\nMEMORY_BUDGET_WARNING: the core alone is %s estimated tokens against a %s budget. It was printed in full and NOTHING else was: %s. Trim the core (%s/core.md, or data/captain.md when no core.md exists) or raise config/startup-memory-budget.\n' \
+    "$CORE_TOKENS" "$BUDGET" "$DROPPED_LIST" "$REL_LABEL"
 else
   if [ "$NOW_KEPT" -eq 1 ]; then
     printf '\noperating picture: %s\n%s\n' "$NOW_LABEL" "$RULE"
@@ -755,13 +765,14 @@ else
   fi
 
   if [ "$CATALOG_KEPT" -eq 0 ]; then
+    KEPT_LIST='the core plus catalog'
+    TRIM_LIST='the core'
     if [ "$NOW_KEPT" -eq 1 ]; then
-      printf '\nMEMORY_BUDGET_WARNING: the core plus operating picture plus catalog is %s estimated tokens against a %s budget, so the catalog and every note were dropped. Trim the core or operating picture or raise config/startup-memory-budget; until then this session cannot see what notes exist.\n' \
-        "$((TOTAL + CATALOG_TOKENS))" "$BUDGET"
-    else
-      printf '\nMEMORY_BUDGET_WARNING: the core plus catalog is %s estimated tokens against a %s budget, so the catalog and every note were dropped. Trim the core or raise config/startup-memory-budget; until then this session cannot see what notes exist.\n' \
-        "$((CORE_TOKENS + CATALOG_TOKENS))" "$BUDGET"
+      KEPT_LIST='the core plus operating picture plus catalog'
+      TRIM_LIST='the core or operating picture'
     fi
+    printf '\nMEMORY_BUDGET_WARNING: %s is %s estimated tokens against a %s budget, so the catalog and every note were dropped. Trim %s or raise config/startup-memory-budget; until then this session cannot see what notes exist.\n' \
+      "$KEPT_LIST" "$((TOTAL + CATALOG_TOKENS))" "$BUDGET" "$TRIM_LIST"
   else
     printf '\ncatalog (compiled from %s/notes/)\n%s\n' "$REL_LABEL" "$RULE"
     cat "$TMP/catalog"
