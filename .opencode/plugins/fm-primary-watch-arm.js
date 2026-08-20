@@ -111,6 +111,12 @@ function shouldArm(paths) {
   }
 }
 
+function parentPid(pid) {
+  const result = spawnSync("ps", ["-o", "ppid=", "-p", pid], { encoding: "utf8" });
+  if (result.status !== 0) return "";
+  return result.stdout.trim();
+}
+
 async function sessionOwnsLock(paths) {
   let lockPid = "";
   try {
@@ -122,9 +128,7 @@ async function sessionOwnsLock(paths) {
   let pid = String(process.pid);
   for (let i = 0; i < 8; i += 1) {
     if (pid === lockPid) return true;
-    const result = await runProcess("ps", ["-o", "ppid=", "-p", pid]);
-    if (result.code !== 0) return false;
-    pid = result.stdout.trim();
+    pid = parentPid(pid);
     if (!pid || pid === "1") return false;
   }
   return false;
@@ -302,7 +306,7 @@ function spawnArm(paths, sessionID, client, predecessorArmPid = "") {
     FM_CONFIG_OVERRIDE: paths.config,
     FM_WATCH_PREDECESSOR_ARM_PID: predecessorArmPid,
   };
-  const armChild = spawn("bash", ["-lc", 'config_dir="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"; [ -f "$config_dir/x-mode.env" ] && . "$config_dir/x-mode.env"; exec "$FM_ROOT_OVERRIDE/bin/fm-watch-arm.sh" --restart'], {
+  const armChild = spawn("bash", ["-c", 'config_dir="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"; [ -f "$config_dir/x-mode.env" ] && . "$config_dir/x-mode.env"; exec "$FM_ROOT_OVERRIDE/bin/fm-watch-arm.sh" --restart'], {
     cwd: paths.root,
     env,
     stdio: ["ignore", "pipe", "pipe"],
