@@ -120,7 +120,7 @@ default_branch() {
     return 0
   fi
   for branch in main master; do
-    if git -C "$PROJ" show-ref --verify --quiet "refs/heads/$branch"; then
+    if git -C "$PROJ" show-ref --verify --quiet "refs/heads/$branch" 2>/dev/null; then
       echo "$branch"
       return 0
     fi
