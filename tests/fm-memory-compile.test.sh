@@ -765,6 +765,19 @@ test_oversized_operating_picture_is_dropped_but_the_catalog_survives() {
     || fail "a dropped operating picture was still accounted: $out"
   [ "$(accounting_field "$out" status)" = capped ] \
     || fail "dropping the operating picture was not reported as capped: $out"
+  assert_contains "$out" 'The catalog and notes below were filled from what remains.' \
+    'the drop warning did not say the catalog was still filled'
+
+  # Room for the core alone: the picture is dropped and so is the catalog, so
+  # the warning must not promise a catalog that never follows.
+  printf '%s\n' "$core_tokens" > "$home/config/startup-memory-budget"
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context --context smalltrig)
+
+  assert_contains "$out" 'MEMORY_BUDGET_WARNING: the core plus operating picture is' \
+    'dropping the oversized operating picture was silent'
+  assert_not_contains "$out" 'Small claim' 'the catalog was injected without room'
+  assert_not_contains "$out" 'The catalog and notes below were filled from what remains.' \
+    'the drop warning promised a catalog that was dropped in the same compile'
 
   pass 'an operating picture too large to fit is dropped alone and never takes the catalog with it'
 }
