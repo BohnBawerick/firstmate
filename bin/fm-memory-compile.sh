@@ -28,6 +28,10 @@
 #                constitution by default and is used as the core when core.md
 #                is absent, so a home that never authors core.md loses nothing.
 #                core.md takes precedence the moment it exists.
+#   now.md       the dated operating picture.  Carries this-shift pins and
+#                ceilings with a front matter date.  Injected only when dated
+#                today; a stale file is dropped and reported, while absence is
+#                silent.
 #   notes/*.md   atomic notes, one claim each.
 #   catalog.md   the regenerable index, one line per note: claim title, file
 #                name under notes/, first triggers, and updated date.
@@ -45,14 +49,22 @@
 # Matching is case-insensitive and bounded by non-alphanumeric characters at
 # both ends, so `lint` matches `commands.lint` but not `linting`.
 #
+# OPERATING PICTURE FORMAT.  now.md opens with a YAML-style front matter block
+# delimited by a bare `---` on line 1 and the next bare `---`:
+#   date:     ISO date (YYYY-MM-DD), matched against today's date
+# An undated or stale now.md is never injected.
+#
 # SELECTION AND CAP.  config/startup-memory-budget owns the cap and
 # bin/fm-startup-memory-budget-lib.sh owns the ceil(UTF-8 bytes / 3) estimate.
 # This script accounts memory CONTENT bytes against that cap, exactly as
 # bin/fm-startup-memory-budget.sh report does, and excludes its own framing
-# lines.  Precedence under pressure is core, then catalog, then hot notes:
+# lines.  Precedence under pressure is core, then operating picture, then catalog,
+# then hot notes:
 #   - core is never dropped and never truncated;
 #   - core alone over budget prints core plus a loud MEMORY_BUDGET_WARNING and
-#     no catalog and no notes;
+#     no operating picture, no catalog, and no notes;
+#   - the operating picture (now.md) is kept ahead of the catalog when dated
+#     today, because a stale ceiling is the failure this tier exists to prevent;
 #   - the catalog is kept ahead of every hot note, because it is the thing that
 #     tells the next turn a note exists at all;
 #   - hot notes are added newest-updated first, and one that does not fit is
@@ -502,7 +514,67 @@ tokens_of_file() {
 CORE_PATH=
 CORE_LABEL=
 CORE_TOKENS=0
+NOW_PATH=
+NOW_LABEL=
+NOW_TOKENS=0
+NOW_VALID=0
+NOW_DATE=
 NOTICES=()
+
+parse_now_date() {
+  local path=$1
+  [ -f "$path" ] && [ ! -L "$path" ] || return 1
+  awk '
+    function clean(s) {
+      gsub(/\t/, " ", s)
+      sub(/^[[:space:]]+/, "", s)
+      sub(/[[:space:]]+$/, "", s)
+      gsub(/^["\047]+|["\047]+$/, "", s)
+      return s
+    }
+    BEGIN { fm = 0; date = "" }
+    FNR == 1 {
+      if ($0 ~ /^---[[:space:]]*$/) { fm = 1; next }
+      exit
+    }
+    fm && $0 ~ /^---[[:space:]]*$/ { exit }
+    fm {
+      if (match($0, /^[A-Za-z_][A-Za-z0-9_-]*:[[:space:]]*/)) {
+        key = tolower(substr($0, 1, index($0, ":") - 1))
+        val = clean(substr($0, RLENGTH + 1))
+        if (key == "date" || key == "updated") {
+          date = val
+        }
+      }
+    }
+    END {
+      print date
+    }
+  ' "$path"
+}
+
+is_today_date() {
+  local d=$1 today_utc today_local
+  [ -n "$d" ] || return 1
+  if [ -n "${FM_MEMORY_TODAY_OVERRIDE:-${FM_MEMORY_NOW_DATE:-}}" ]; then
+    [ "$d" = "${FM_MEMORY_TODAY_OVERRIDE:-${FM_MEMORY_NOW_DATE:-}}" ] && return 0
+    return 1
+  fi
+  today_utc=$(date -u +%Y-%m-%d 2>/dev/null || true)
+  today_local=$(date +%Y-%m-%d 2>/dev/null || true)
+  if [ "$d" = "$today_utc" ] || [ "$d" = "$today_local" ]; then
+    return 0
+  fi
+  return 1
+}
+
+get_today_display() {
+  if [ -n "${FM_MEMORY_TODAY_OVERRIDE:-${FM_MEMORY_NOW_DATE:-}}" ]; then
+    printf '%s' "${FM_MEMORY_TODAY_OVERRIDE:-${FM_MEMORY_NOW_DATE:-}}"
+    return
+  fi
+  date +%Y-%m-%d 2>/dev/null || date -u +%Y-%m-%d 2>/dev/null || printf 'today'
+}
 
 if [ "$NOTES_DIR_SYMLINK" -eq 1 ]; then
   NOTICES+=("MEMORY_NOTICE: $REL_LABEL/notes/ is a symlink, so no note was read through it. Any notes under it are NOT in this bundle and are reported here as absent. Replace the symlink with a real directory.")
@@ -534,6 +606,23 @@ else
   NOTICES+=("MEMORY_NOTICE: no core memory - both $REL_LABEL/core.md and data/captain.md are ABSENT, so this home is running on the firstmate repo built-in defaults.")
 fi
 
+if [ "$MEMORY_DIR_OK" -eq 1 ] && [ -L "$MEMORY/now.md" ]; then
+  NOTICES+=("MEMORY_NOTICE: $REL_LABEL/now.md is a symlink, so nothing was read through it. Replace the symlink with a real file, or remove it.")
+elif [ "$MEMORY_DIR_OK" -eq 1 ] && [ -f "$MEMORY/now.md" ]; then
+  NOW_DATE=$(parse_now_date "$MEMORY/now.md")
+  if is_today_date "$NOW_DATE"; then
+    NOW_VALID=1
+    NOW_PATH="$MEMORY/now.md"
+    NOW_LABEL="$REL_LABEL/now.md"
+    NOW_TOKENS=$(tokens_of_file "$NOW_PATH")
+  elif [ -n "$NOW_DATE" ]; then
+    TODAY_DISP=$(get_today_display)
+    NOTICES+=("MEMORY_NOTICE: $REL_LABEL/now.md is dated $NOW_DATE (not today, $TODAY_DISP) and is NOT injected. Update it with this shift's pins and ceilings, or remove it.")
+  else
+    NOTICES+=("MEMORY_NOTICE: $REL_LABEL/now.md has no date in front matter and is NOT injected. Add a date (date: YYYY-MM-DD), or remove it.")
+  fi
+fi
+
 render_catalog > "$TMP/catalog"
 CATALOG_TOKENS=$(tokens_of_file "$TMP/catalog")
 
@@ -549,17 +638,28 @@ if [ -f "$DATA/learnings.md" ] && [ ! -L "$DATA/learnings.md" ]; then
   NOTICES+=("MEMORY_NOTICE: data/learnings.md is still present (${LEARNINGS_TOKENS} estimated tokens) and is NOT injected. Migrate it into notes with bin/fm-memory-migrate.sh, or read it directly when a turn needs it.")
 fi
 
-# Precedence under pressure: core, then catalog, then hot notes.
+# Precedence under pressure: core, then operating picture, then catalog, then hot notes.
 TOTAL=$CORE_TOKENS
 CORE_OVER=0
+NOW_KEPT=0
 CATALOG_KEPT=1
+
 if ! fm_startup_memory_decimal_le "$TOTAL" "$BUDGET"; then
   CORE_OVER=1
   CATALOG_KEPT=0
-elif ! fm_startup_memory_decimal_le "$((TOTAL + CATALOG_TOKENS))" "$BUDGET"; then
+elif [ "$NOW_VALID" -eq 1 ] && ! fm_startup_memory_decimal_le "$((TOTAL + NOW_TOKENS))" "$BUDGET"; then
+  NOW_KEPT=0
   CATALOG_KEPT=0
 else
-  TOTAL=$((TOTAL + CATALOG_TOKENS))
+  if [ "$NOW_VALID" -eq 1 ]; then
+    NOW_KEPT=1
+    TOTAL=$((TOTAL + NOW_TOKENS))
+  fi
+  if ! fm_startup_memory_decimal_le "$((TOTAL + CATALOG_TOKENS))" "$BUDGET"; then
+    CATALOG_KEPT=0
+  else
+    TOTAL=$((TOTAL + CATALOG_TOKENS))
+  fi
 fi
 
 HOT_KEPT=0
@@ -613,22 +713,41 @@ fi
 if [ "$CORE_OVER" -eq 1 ]; then
   printf '\nMEMORY_BUDGET_WARNING: the core alone is %s estimated tokens against a %s budget. It was printed in full and NOTHING else was: no catalog, no notes. Trim the core (%s/core.md, or data/captain.md when no core.md exists) or raise config/startup-memory-budget.\n' \
     "$CORE_TOKENS" "$BUDGET" "$REL_LABEL"
-elif [ "$CATALOG_KEPT" -eq 0 ]; then
-  printf '\nMEMORY_BUDGET_WARNING: the core plus catalog is %s estimated tokens against a %s budget, so the catalog and every note were dropped. Trim the core or raise config/startup-memory-budget; until then this session cannot see what notes exist.\n' \
-    "$((CORE_TOKENS + CATALOG_TOKENS))" "$BUDGET"
+elif [ "$NOW_VALID" -eq 1 ] && [ "$NOW_KEPT" -eq 0 ]; then
+  printf '\nMEMORY_BUDGET_WARNING: the core plus operating picture is %s estimated tokens against a %s budget, so the operating picture, catalog, and every note were dropped. Trim the core or operating picture or raise config/startup-memory-budget.\n' \
+    "$((CORE_TOKENS + NOW_TOKENS))" "$BUDGET"
 else
-  printf '\ncatalog (compiled from %s/notes/)\n%s\n' "$REL_LABEL" "$RULE"
-  cat "$TMP/catalog"
+  if [ "$NOW_KEPT" -eq 1 ]; then
+    printf '\noperating picture: %s\n%s\n' "$NOW_LABEL" "$RULE"
+    if [ -s "$NOW_PATH" ]; then
+      cat "$NOW_PATH"
+    else
+      printf '(present, empty)\n'
+    fi
+  fi
 
-  while IFS= read -r base; do
-    [ -n "$base" ] || continue
-    printf '\nhot note: notes/%s\n%s\n' "$base" "$RULE"
-    cat "$NOTES_DIR/$base"
-  done < "$TMP/selected"
+  if [ "$CATALOG_KEPT" -eq 0 ]; then
+    if [ "$NOW_KEPT" -eq 1 ]; then
+      printf '\nMEMORY_BUDGET_WARNING: the core plus operating picture plus catalog is %s estimated tokens against a %s budget, so the catalog and every note were dropped. Trim the core or operating picture or raise config/startup-memory-budget; until then this session cannot see what notes exist.\n' \
+        "$((TOTAL + CATALOG_TOKENS))" "$BUDGET"
+    else
+      printf '\nMEMORY_BUDGET_WARNING: the core plus catalog is %s estimated tokens against a %s budget, so the catalog and every note were dropped. Trim the core or raise config/startup-memory-budget; until then this session cannot see what notes exist.\n' \
+        "$((CORE_TOKENS + CATALOG_TOKENS))" "$BUDGET"
+    fi
+  else
+    printf '\ncatalog (compiled from %s/notes/)\n%s\n' "$REL_LABEL" "$RULE"
+    cat "$TMP/catalog"
 
-  if [ "$HOT_DROPPED" -gt 0 ]; then
-    printf '\nMEMORY_BUDGET_NOTICE: %s trigger-matched note(s) did not fit the budget and were not injected. Every one of them is still listed in the catalog above; read it by path when its title matches.\n' \
-      "$HOT_DROPPED"
+    while IFS= read -r base; do
+      [ -n "$base" ] || continue
+      printf '\nhot note: notes/%s\n%s\n' "$base" "$RULE"
+      cat "$NOTES_DIR/$base"
+    done < "$TMP/selected"
+
+    if [ "$HOT_DROPPED" -gt 0 ]; then
+      printf '\nMEMORY_BUDGET_NOTICE: %s trigger-matched note(s) did not fit the budget and were not injected. Every one of them is still listed in the catalog above; read it by path when its title matches.\n' \
+        "$HOT_DROPPED"
+    fi
   fi
 fi
 
@@ -644,12 +763,19 @@ done
 STATUS=within-budget
 if [ "$CORE_OVER" -eq 1 ]; then
   STATUS=over-budget
+elif [ "$NOW_VALID" -eq 1 ] && [ "$NOW_KEPT" -eq 0 ]; then
+  STATUS=capped
 elif [ "$CATALOG_KEPT" -eq 0 ] || [ "$HOT_DROPPED" -gt 0 ]; then
   STATUS=capped
 fi
 
-printf '\nMEMORY_ACCOUNTING: budget=%s core=%s catalog=%s hot_notes=%s hot_notes_tokens=%s notes_total=%s hot_dropped=%s injected_total=%s status=%s\n' \
-  "$BUDGET" "$CORE_TOKENS" \
+NOW_ACC=""
+if [ "$NOW_VALID" -eq 1 ]; then
+  NOW_ACC=" now=$([ "$NOW_KEPT" -eq 1 ] && printf '%s' "$NOW_TOKENS" || printf '0')"
+fi
+
+printf '\nMEMORY_ACCOUNTING: budget=%s core=%s%s catalog=%s hot_notes=%s hot_notes_tokens=%s notes_total=%s hot_dropped=%s injected_total=%s status=%s\n' \
+  "$BUDGET" "$CORE_TOKENS" "$NOW_ACC" \
   "$([ "$CATALOG_KEPT" -eq 1 ] && printf '%s' "$CATALOG_TOKENS" || printf '0')" \
   "$HOT_KEPT" "$HOT_TOKENS" \
   "$(wc -l < "$TMP/inventory" | tr -d ' ')" \
