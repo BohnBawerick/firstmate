@@ -760,8 +760,12 @@ else
     printf '\noperating picture: %s\n%s\n' "$NOW_LABEL" "$RULE"
     cat "$NOW_PATH"
   elif [ "$NOW_OVER" -eq 1 ]; then
-    printf '\nMEMORY_BUDGET_WARNING: the core plus operating picture is %s estimated tokens against a %s budget, so the operating picture was dropped and this session is running without today'"'"'s pins and ceilings. The catalog and notes below were filled from what remains. Trim %s or raise config/startup-memory-budget.\n' \
-      "$((CORE_TOKENS + NOW_TOKENS))" "$BUDGET" "$NOW_LABEL"
+    NOW_OVER_REMAINDER=''
+    if [ "$CATALOG_KEPT" -eq 1 ]; then
+      NOW_OVER_REMAINDER=' The catalog and notes below were filled from what remains.'
+    fi
+    printf '\nMEMORY_BUDGET_WARNING: the core plus operating picture is %s estimated tokens against a %s budget, so the operating picture was dropped and this session is running without today'"'"'s pins and ceilings.%s Trim %s or raise config/startup-memory-budget.\n' \
+      "$((CORE_TOKENS + NOW_TOKENS))" "$BUDGET" "$NOW_OVER_REMAINDER" "$NOW_LABEL"
   fi
 
   if [ "$CATALOG_KEPT" -eq 0 ]; then

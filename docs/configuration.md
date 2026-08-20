@@ -175,7 +175,7 @@ Every proposed generation must pass the mechanical verifier in `bin/fm-memory-ve
 The verifier enforces four safety properties: working memory must fit within `config/startup-memory-budget` with its catalog intact, every note and a non-empty `core.md` must cite at least one existing file on disk, the standing constitution in force must survive into the generation, reading both the published generation and the proposed one through the compiler's own core precedence (`core.md` first, `data/captain.md` only when there is none), and single-generation deletions cannot exceed the diff bounds cap or remove every baseline note.
 There is no shared notes directory by captain decision.
 
-Session start injects this memory through `bin/fm-memory-compile.sh`, which selects a core, a catalog of every note, and the notes whose triggers match live fleet work, and refuses to emit more than the startup memory budget below allows.
+Session start injects this memory through `bin/fm-memory-compile.sh`, which selects a core, the dated operating picture when `data/memory/now.md` is dated today, a catalog of every note, and the notes whose triggers match live fleet work, and refuses to emit more than the startup memory budget below allows.
 When `data/memory/HEAD` is present, the compiler reads from that active generation directory; otherwise it reads directly from `data/memory/`.
 The budget caps the compiled memory bundle only; `data/captain-shared.md` is printed outside that cap.
 That script's header is the single owner of the note format, the trigger-matching rule, and the precedence that decides what is dropped first under budget pressure.
