@@ -23,11 +23,11 @@
 #      existing source file, report, or task record on disk. Incidental paths
 #      mentioned in prose are reported but do not block publication.
 #   3. Constitution: the standing constitution a session sees today must still
-#      be there tomorrow. Both sides are resolved by the same rule that
+#      be there tomorrow. Both sides are resolved by the one predicate
 #      bin/fm-memory-compile.sh applies to pick a core - the generation's own
-#      core.md, and data/captain.md only when it has none. Today's side is read
-#      from the generation data/memory/HEAD publishes, tomorrow's from the
-#      proposed generation;
+#      core.md whenever that file exists at all, and data/captain.md only when
+#      it does not. Today's side is read from the generation data/memory/HEAD
+#      publishes, tomorrow's from the proposed generation;
 #   4. Diff bounds: a single generation cannot replace or delete excessive
 #      proportions of memory (default: max 50% deletion of baseline notes) and
 #      can never delete every baseline note, however small the baseline is.
@@ -438,9 +438,13 @@ check_citations() {
 
 # --- 3. Standing Constitution Safety ----------------------------------------
 
-# usable_file <path>: a plain, non-empty, non-symlink regular file
-usable_file() {
-  [ -f "$1" ] && [ ! -L "$1" ] && [ -s "$1" ]
+# compiler_core_file <path>: exactly the test bin/fm-memory-compile.sh applies
+# when it picks a core, and nothing more. Emptiness is deliberately not part of
+# it: the compiler injects a 0-byte core.md and suppresses data/captain.md
+# behind it, so treating an empty core as "no core here" is what would let a
+# whole standing constitution vanish behind a PASS.
+compiler_core_file() {
+  [ -f "$1" ] && [ ! -L "$1" ]
 }
 
 # standing_core_for <generation-dir>: sets STANDING_CORE to the file
@@ -454,13 +458,13 @@ standing_core_for() {
   STANDING_CORE=""
   STANDING_CORE_IS_GEN=0
 
-  if [ -n "$1" ] && usable_file "$1/core.md"; then
+  if [ -n "$1" ] && compiler_core_file "$1/core.md"; then
     STANDING_CORE="$1/core.md"
     STANDING_CORE_IS_GEN=1
     return 0
   fi
 
-  if usable_file "$DATA/captain.md"; then
+  if compiler_core_file "$DATA/captain.md"; then
     STANDING_CORE="$DATA/captain.md"
     return 0
   fi

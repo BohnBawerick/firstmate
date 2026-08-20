@@ -992,6 +992,44 @@ test_constitution_guards_the_published_core_even_when_captain_md_exists() {
   pass 'the published core.md stays a constitution baseline even while data/captain.md exists'
 }
 
+test_constitution_treats_an_empty_core_as_the_core_the_compiler_injects() {
+  local home out rc
+  home=$(new_home constitution-empty-core 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+  printf '# Captain preferences\n- Never merge a PR without explicit captain approval.\n- Never force push to main under any circumstances.\n' \
+    > "$home/data/captain.md"
+
+  mkdir -p "$home/data/memory/gen/1/notes" "$home/data/memory/gen/2/notes"
+  printf '# Captain preferences\n<!-- source: data/source.md -->\n- Never merge a PR without explicit captain approval.\n- Never force push to main under any circumstances.\n' \
+    > "$home/data/memory/gen/1/core.md"
+  write_note "$home/data/memory/gen/1/notes" n1 'Note 1' 'one' 2026-08-20 'data/source.md'
+  FM_HOME="$home" "$PUBLISH" 1 >/dev/null
+  write_note "$home/data/memory/gen/2/notes" n1 'Note 1' 'one' 2026-08-20 'data/source.md'
+
+  # A 0-byte core.md is still the core: the compiler injects it and suppresses
+  # data/captain.md behind it, so the whole constitution leaves the surface.
+  : > "$home/data/memory/gen/2/core.md"
+
+  set +e
+  out=$(FM_HOME="$home" "$PUBLISH" 2 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "publish accepted a generation whose empty core.md erases the constitution: $out"
+  assert_contains "$out" 'FAIL constitution' 'an empty core.md was read as no core at all'
+  assert_contains "$out" 'Never force push to main under any circumstances' \
+    'the failure did not name a standing rule the empty core.md drops'
+  [ "$(head -n 1 "$home/data/memory/HEAD")" = "gen/1" ] || fail 'HEAD moved to the empty-core generation'
+
+  # The refusal matches what the compiler would really have injected.
+  out=$(FM_HOME="$home" "$COMPILE" compile --memory-dir "$home/data/memory/gen/2")
+  assert_contains "$out" 'core: data/memory/gen/2/core.md' \
+    'the compiler did not treat the empty core.md as the core'
+  assert_not_contains "$out" 'Never force push to main under any circumstances' \
+    'fixture assumption broken: the empty core.md did not drop the standing rules'
+
+  pass 'an empty core.md is the core the compiler injects, so it cannot silently erase the constitution'
+}
+
 # --- Run All Tests ----------------------------------------------------------
 
 test_drop_tray_capture_basic
@@ -1025,6 +1063,7 @@ test_constitution_uses_published_core_as_baseline_without_captain_md
 test_constitution_allows_a_generation_with_no_core_when_captain_md_supplies_it
 test_compile_labels_the_data_directory_without_doubling_the_path
 test_constitution_guards_the_published_core_even_when_captain_md_exists
+test_constitution_treats_an_empty_core_as_the_core_the_compiler_injects
 
 printf '# all fm-memory-verify tests passed\n'
 exit 0
