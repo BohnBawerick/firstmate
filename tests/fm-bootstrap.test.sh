@@ -1166,7 +1166,7 @@ ROWS
 OURS_URL=https://example.invalid/ours/firstmate.git
 PARENT_URL=https://example.invalid/parent/firstmate.git
 
-run_landing_remote_phase() {  # <case-name> <arrange-fn>
+run_landing_remote_phase() {  # <case-name> <arrange-fn> [env-vars...]
   local case_dir=$1 arrange=$2 fixture root home fakebin
   fixture=$(make_routine_bootstrap_fixture "$TMP_ROOT/$case_dir")
   root=${fixture%%|*}
@@ -1174,8 +1174,9 @@ run_landing_remote_phase() {  # <case-name> <arrange-fn>
   home=${fixture%%|*}
   fakebin=${fixture#*|}
   "$arrange" "$root"
-  PATH="$fakebin:$BASE_PATH" FM_BACKEND=tmux FM_HOME="$home" FM_ROOT_OVERRIDE="$root" \
-    FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh"
+  shift 2
+  env PATH="$fakebin:$BASE_PATH" FM_BACKEND=tmux FM_HOME="$home" FM_ROOT_OVERRIDE="$root" \
+    FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$@" "$ROOT/bin/fm-bootstrap.sh"
 }
 
 # A root with no remotes at all was never a fork checkout.
@@ -1218,6 +1219,28 @@ test_landing_remote_drift_is_reported_and_clears_when_repaired() {
     || fail "expected exactly one landing-remote line, got: $out"
   printf '%s\n' "$out" | grep -F -- "--ours $OURS_URL --upstream $PARENT_URL" >/dev/null \
     || fail "the drift line carried no repair naming both remotes, got: $out"
+
+  # Detect-only mode without the fleet lock prints advisory wording and no repair command.
+  out=$(run_landing_remote_phase landing-readonly arrange_unapplied_fork FM_BOOTSTRAP_DETECT_ONLY=1)
+  printf '%s\n' "$out" | grep -F 'LANDING_REMOTE: ' >/dev/null \
+    || fail "read-only bootstrap reported no landing-remote drift, got: $out"
+  printf '%s\n' "$out" | grep -F "$OURS_URL" >/dev/null \
+    || fail "read-only drift line did not name the fork remote, got: $out"
+  printf '%s\n' "$out" | grep -F "read-only session must leave remap work to the session holding the fleet lock" >/dev/null \
+    || fail "read-only drift line lacked advisory ownership wording, got: $out"
+  if printf '%s\n' "$out" | grep -F -- "--ours" >/dev/null; then
+    fail "read-only drift line printed an apply repair command: $out"
+  fi
+
+  # Detect-only mode WITH the fleet lock keeps the actionable repair command.
+  out=$(run_landing_remote_phase landing-locked arrange_unapplied_fork FM_BOOTSTRAP_DETECT_ONLY=1 FM_BOOTSTRAP_LOCKED=1)
+  printf '%s\n' "$out" | grep -F 'LANDING_REMOTE: ' >/dev/null \
+    || fail "locked detect-only bootstrap reported no landing-remote drift, got: $out"
+  printf '%s\n' "$out" | grep -F -- "--ours $OURS_URL --upstream $PARENT_URL" >/dev/null \
+    || fail "locked detect-only drift line carried no repair naming both remotes, got: $out"
+  if printf '%s\n' "$out" | grep -F "read-only session must leave" >/dev/null; then
+    fail "locked drift line wrongly printed advisory read-only wording: $out"
+  fi
 
   out=$(run_landing_remote_phase landing-nodefaults arrange_remotes_without_defaults)
   printf '%s\n' "$out" | grep -F 'LANDING_REMOTE: ' >/dev/null \

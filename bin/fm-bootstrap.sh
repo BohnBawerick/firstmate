@@ -90,8 +90,8 @@
 #          (PR-check migration, secondmate_sync, secondmate_liveness_sweep,
 #          secondmate_handoff_resume, x_mode_setup, fleet_sync) while still
 #          printing every read-only detect line
-#          above; the TANGLE line switches to advisory-only wording with no
-#          checkout command. Used by
+#          above; the TANGLE and LANDING_REMOTE lines switch to advisory-only
+#          wording with no checkout or remap command. Used by
 #          fm-session-start.sh's read-only path when another live session holds
 #          the fleet lock, so a second concurrent session never race-mutates
 #          PR-check artifacts, secondmate homes, pending handoff outboxes,
@@ -123,8 +123,9 @@
 #          because THIS session already ran them while holding the fleet lock,
 #          rather than because it has no lock at all. The two cases differ in
 #          exactly one place: repair ownership. A locked session is told to
-#          restore a tangled primary checkout itself, while an unlocked one is
-#          told to leave that work to the lock holder. Unset/0 (the default)
+#          restore a tangled primary checkout or remap drifted landing remotes
+#          itself, while an unlocked one is told to leave that work to the lock
+#          holder. Unset/0 (the default)
 #          keeps detect-only meaning unlocked, exactly as before.
 #        fm-bootstrap.sh install <tool>...
 #          Install the named tools (only ones the captain approved).
@@ -1192,7 +1193,14 @@ detect_local_config() {
     landing_drift=$("$SCRIPT_DIR/fm-landing-remote.sh" verify --repo "$FM_ROOT" 2>&1 >/dev/null) || {
       landing_drift=${landing_drift#error: }
       landing_drift=${landing_drift%%$'\n'*}
-      [ -z "$landing_drift" ] || echo "LANDING_REMOTE: $landing_drift"
+      if [ -n "$landing_drift" ]; then
+        if [ "${FM_BOOTSTRAP_DETECT_ONLY:-0}" = 1 ] && [ "${FM_BOOTSTRAP_LOCKED:-0}" != 1 ]; then
+          landing_drift_cause=${landing_drift%%; *}
+          echo "LANDING_REMOTE: $landing_drift_cause; read-only session must leave remap work to the session holding the fleet lock"
+        else
+          echo "LANDING_REMOTE: $landing_drift"
+        fi
+      fi
     }
   fi
   crew=
