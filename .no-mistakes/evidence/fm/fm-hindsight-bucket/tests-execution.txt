@@ -1,0 +1,11 @@
+FM_TEST_BEGIN 2026-08-20T05:38:54Z tests/fm-hindsight.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - corpus boundary enforcement rejects all files outside data/*/report.md and data/decisions/*.md
+ok - credential scanner skips document and never sends secrets to Hindsight
+ok - fire-and-forget retain on unreachable host returns immediately with zero measurable delay
+ok - synchronous retain formats document_id and payload correctly for reports and decisions
+ok - recall command outputs compact greppable results and supports --json
+ok - backfill detects already-retained documents and resumes by retaining only missing documents
+FM_TEST_END 2026-08-20T05:38:56Z tests/fm-hindsight.test.sh exit=0 duration_ms=1866 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=2023
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=1866 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-hindsight.test.sh duration_ms=1866

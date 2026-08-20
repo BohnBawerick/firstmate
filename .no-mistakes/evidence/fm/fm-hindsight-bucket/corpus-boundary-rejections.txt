@@ -1,0 +1,15 @@
+=== Corpus boundary rejection tests ===
+--- Testing data/captain.md ---
+REFUSED: path 'data/captain.md' is outside authorized Hindsight corpus (data/*/report.md and data/decisions/*.md only)
+--- Testing data/captain-shared.md ---
+REFUSED: path 'data/captain-shared.md' is outside authorized Hindsight corpus (data/*/report.md and data/decisions/*.md only)
+--- Testing data/memory/core.md ---
+REFUSED: path 'data/memory/core.md' is outside authorized Hindsight corpus (data/*/report.md and data/decisions/*.md only)
+--- Testing data/memory/notes/foo.md ---
+REFUSED: path 'data/memory/notes/foo.md' is outside authorized Hindsight corpus (data/*/report.md and data/decisions/*.md only)
+--- Testing data/backlog.md ---
+REFUSED: path 'data/backlog.md' is outside authorized Hindsight corpus (data/*/report.md and data/decisions/*.md only)
+--- Testing data/done-archive.md ---
+REFUSED: path 'data/done-archive.md' is outside authorized Hindsight corpus (data/*/report.md and data/decisions/*.md only)
+--- Testing state/task.meta ---
+REFUSED: path 'state/task.meta' is outside authorized Hindsight corpus (data/*/report.md and data/decisions/*.md only)

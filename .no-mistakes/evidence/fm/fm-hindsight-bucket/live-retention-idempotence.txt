@@ -1,0 +1,16 @@
+=== Retain report:fm-projects-symlink ===
+retained: report:fm-projects-symlink (data/fm-projects-symlink/report.md)
+=== Stats check ===
+{
+  "bank_id": "firstmate",
+  "total_documents": 144,
+  "total_nodes": 955
+}
+=== Retain again (idempotent) ===
+retained: report:fm-projects-symlink (data/fm-projects-symlink/report.md)
+=== Stats check ===
+{
+  "bank_id": "firstmate",
+  "total_documents": 144,
+  "total_nodes": 955
+}

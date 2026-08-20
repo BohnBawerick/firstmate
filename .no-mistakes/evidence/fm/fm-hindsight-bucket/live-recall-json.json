@@ -1,0 +1,632 @@
+{
+  "results": [
+    {
+      "id": "8354f733-df9e-4dcf-8731-f4f0ab8c9b63",
+      "text": "Captain delegated database architecture authority to firstmate (AI agent) with the requirement that the architecture be auditable, easy to inspect, easy to test, and easy to modify later. | When: Thursday, August 13, 2026 | Involving: Captain (delegator), firstmate (AI agent, delegate) | To establish standing authority for database architecture decisions in Healthlog.",
+      "type": "world",
+      "entities": [
+        "Healthlog",
+        "database architecture",
+        "captain",
+        "firstmate"
+      ],
+      "context": "decision record: database-architecture",
+      "occurred_start": "2026-08-13T00:00:00+00:00",
+      "occurred_end": "2026-08-13T00:00:00+00:00",
+      "mentioned_at": "2026-08-20T04:35:23.725571+00:00",
+      "document_id": "decision:database-architecture",
+      "metadata": {
+        "path": "data/decisions/database-architecture.md"
+      },
+      "chunk_id": "firstmate_decision:database-architecture_0",
+      "tags": [
+        "database-architecture",
+        "decision"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "a7df7251-5ed7-44a6-ade1-9ace6bfcfd3b",
+      "text": "Captain delegated database architecture authority to firstmate (AI agent) with the requirement that the architecture be auditable, easy to inspect, easy to test, and easy to modify later.",
+      "type": "observation",
+      "entities": [
+        "Healthlog",
+        "database architecture",
+        "captain",
+        "firstmate"
+      ],
+      "context": null,
+      "occurred_start": "2026-08-13T00:00:00+00:00",
+      "occurred_end": "2026-08-13T00:00:00+00:00",
+      "mentioned_at": "2026-08-20T04:35:23.725571+00:00",
+      "document_id": null,
+      "metadata": {},
+      "chunk_id": null,
+      "tags": [
+        "database-architecture",
+        "decision"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "c3a3e6d7-84bf-498c-b474-8a4ec9cac903",
+      "text": "After three concrete ingest shapes were named by the captain, the source registry stopped being orthogonal to accounts | When: 2026-08-20 | Involving: captain",
+      "type": "world",
+      "entities": [
+        "ingest shapes",
+        "source registry",
+        "captain",
+        "accounts"
+      ],
+      "context": "decision record: database-architecture",
+      "occurred_start": "2026-08-20T04:35:23.735571+00:00",
+      "occurred_end": "2026-08-20T04:35:23.735571+00:00",
+      "mentioned_at": "2026-08-20T04:35:23.735571+00:00",
+      "document_id": "decision:database-architecture",
+      "metadata": {
+        "path": "data/decisions/database-architecture.md"
+      },
+      "chunk_id": "firstmate_decision:database-architecture_1",
+      "tags": [
+        "database-architecture",
+        "decision"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "9de5eed2-97cc-4fd9-8c74-06ec80d7805b",
+      "text": "richest-record-wins requires knowing the physical device a row came from to be meaningful | When: 2026-08-20",
+      "type": "world",
+      "entities": [
+        "physical device",
+        "richest-record-wins"
+      ],
+      "context": "decision record: database-architecture",
+      "occurred_start": "2026-08-20T04:35:23.755571+00:00",
+      "occurred_end": "2026-08-20T04:35:23.755571+00:00",
+      "mentioned_at": "2026-08-20T04:35:23.755571+00:00",
+      "document_id": "decision:database-architecture",
+      "metadata": {
+        "path": "data/decisions/database-architecture.md"
+      },
+      "chunk_id": "firstmate_decision:database-architecture_1",
+      "tags": [
+        "database-architecture",
+        "decision"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "d7ffcc86-9004-4d76-9cff-bc4a5bf9f27b",
+      "text": "PR #11 satisfies all architectural, mathematical, and test suite requirements, is deemed safe to merge, and indicates readiness for integration.",
+      "type": "observation",
+      "entities": [
+        "PR #11",
+        "master",
+        "Scout",
+        "Independent Crewmate Worker"
+      ],
+      "context": null,
+      "occurred_start": "2026-08-15T00:00:00+00:00",
+      "occurred_end": "2026-08-15T00:00:00+00:00",
+      "mentioned_at": "2026-08-20T04:40:09.368150+00:00",
+      "document_id": null,
+      "metadata": {},
+      "chunk_id": null,
+      "tags": [
+        "report",
+        "hz-verify-score"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "43945980-145c-4423-a3a2-bfec7a31ec88",
+      "text": "The source registry was registered as hz-sources | When: 2026-08-20",
+      "type": "world",
+      "entities": [
+        "hz-sources",
+        "source registry"
+      ],
+      "context": "decision record: database-architecture",
+      "occurred_start": "2026-08-20T04:35:23.765571+00:00",
+      "occurred_end": "2026-08-20T04:35:23.765571+00:00",
+      "mentioned_at": "2026-08-20T04:35:23.765571+00:00",
+      "document_id": "decision:database-architecture",
+      "metadata": {
+        "path": "data/decisions/database-architecture.md"
+      },
+      "chunk_id": "firstmate_decision:database-architecture_1",
+      "tags": [
+        "database-architecture",
+        "decision"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "cb049ad4-c383-415c-b60d-4affc4292439",
+      "text": "google_takeout is a transport, not a device | When: 2026-08-20",
+      "type": "world",
+      "entities": [
+        "google_takeout"
+      ],
+      "context": "decision record: database-architecture",
+      "occurred_start": "2026-08-20T04:35:23.745571+00:00",
+      "occurred_end": "2026-08-20T04:35:23.745571+00:00",
+      "mentioned_at": "2026-08-20T04:35:23.745571+00:00",
+      "document_id": "decision:database-architecture",
+      "metadata": {
+        "path": "data/decisions/database-architecture.md"
+      },
+      "chunk_id": "firstmate_decision:database-architecture_1",
+      "tags": [
+        "database-architecture",
+        "decision"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "83ab46fe-459f-4647-8c51-2c8e21b88487",
+      "text": "PR #23 is safe to merge; it delivers complete, mathematically accurate hand-recomputable documentation for all Healthlog sleep metrics, executes the delete-or-compute sweep, preserves clean architectural seams, and passes all automated unit and browser test suites. | When: Thursday, August 20, 2026",
+      "type": "world",
+      "entities": [
+        "architectural seams",
+        "delete-or-compute sweep",
+        "browser test suites",
+        "PR #2",
+        "unit test suites",
+        "Healthlog"
+      ],
+      "context": "investigation report: hz-verify-method",
+      "occurred_start": "2026-08-20T04:42:06.470349+00:00",
+      "occurred_end": "2026-08-20T04:42:06.470349+00:00",
+      "mentioned_at": "2026-08-20T04:42:06.470349+00:00",
+      "document_id": "report:hz-verify-method",
+      "metadata": {
+        "path": "data/hz-verify-method/report.md"
+      },
+      "chunk_id": "firstmate_report:hz-verify-method_5",
+      "tags": [
+        "report",
+        "hz-verify-method"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "9321d310-d8c8-46b8-9b73-bec2776e26a9",
+      "text": "hz-backend/report.md §5.5 recommended implementing a source registry, which hz-accounts deferred as orthogonal to accounts | When: 2026-08-20",
+      "type": "world",
+      "entities": [
+        "hz-backend/report.md",
+        "hz-accounts",
+        "source registry",
+        "accounts"
+      ],
+      "context": "decision record: database-architecture",
+      "occurred_start": "2026-08-20T04:35:23.725571+00:00",
+      "occurred_end": "2026-08-20T04:35:23.725571+00:00",
+      "mentioned_at": "2026-08-20T04:35:23.725571+00:00",
+      "document_id": "decision:database-architecture",
+      "metadata": {
+        "path": "data/decisions/database-architecture.md"
+      },
+      "chunk_id": "firstmate_decision:database-architecture_1",
+      "tags": [
+        "database-architecture",
+        "decision"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "1a8560dd-79d4-4f04-b20f-6bc60bb1eea4",
+      "text": "Decided consequences: store.py remains the only write path; source is part of row identity allowing two sources covering one night to coexist as two rows; overlap resolved at read time via union then richest record wins; every write is an idempotent upsert enabling safe cheap re-import of whole archives. | Involving: firstmate (AI agent) | To maintain stable and reliable database architecture.",
+      "type": "world",
+      "entities": [
+        "upsert",
+        "store.py",
+        "source column",
+        "Healthlog",
+        "row identity"
+      ],
+      "context": "decision record: database-architecture",
+      "occurred_start": null,
+      "occurred_end": null,
+      "mentioned_at": "2026-08-20T04:35:23.755571+00:00",
+      "document_id": "decision:database-architecture",
+      "metadata": {
+        "path": "data/decisions/database-architecture.md"
+      },
+      "chunk_id": "firstmate_decision:database-architecture_0",
+      "tags": [
+        "database-architecture",
+        "decision"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "44e3e57d-2cdd-4128-97f7-1567ca18b8cf",
+      "text": "Evidence hierarchy shows timing is essentially exact but buried in products, sleep/wake detection has moderate sensitivity but low specificity (29-52%) yet shown as efficiency, 4-stage architecture has variable agreement (kappa 0.21-0.68) yet used as hypnogram centrepiece, composite scores lack validation yet are headline numbers.",
+      "type": "world",
+      "entities": [
+        "4-stage architecture",
+        "timing",
+        "composite score",
+        "products",
+        "sleep/wake detection"
+      ],
+      "context": "investigation report: hz-compete",
+      "occurred_start": null,
+      "occurred_end": null,
+      "mentioned_at": "2026-08-20T04:55:08.743433+00:00",
+      "document_id": "report:hz-compete",
+      "metadata": {
+        "path": "data/hz-compete/report.md"
+      },
+      "chunk_id": "firstmate_report:hz-compete_0",
+      "tags": [
+        "report",
+        "hz-compete"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "bdf72790-5f40-4ec2-afc2-713d8cb9d6fe",
+      "text": "Normalise every stream onto one clock at import before derivation, rather than correcting per-stream at read time; import entire dataset first then filter to find relevant data. | Involving: firstmate (AI agent) | To simplify ingest architecture and avoid per-stream corrections.",
+      "type": "experience",
+      "entities": [
+        "clock",
+        "fresh database",
+        "firstmate"
+      ],
+      "context": "decision record: round2-review",
+      "occurred_start": null,
+      "occurred_end": null,
+      "mentioned_at": "2026-08-20T04:44:43.473030+00:00",
+      "document_id": "decision:round2-review",
+      "metadata": {
+        "path": "data/decisions/round2-review.md"
+      },
+      "chunk_id": "firstmate_decision:round2-review_1",
+      "tags": [
+        "round2-review",
+        "decision"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "d4edb5ca-33ec-4d7d-8197-7ae88ffa87df",
+      "text": "The app must be ready to update for another user after receiving new user data from any of three ingest shapes: Garmin account export (file, full history, no vendor API), Google Health export (file, full history), or Google Health live connection (incremental, on top of either). | Involving: another user | To ensure app readiness for updates from diverse data sources.",
+      "type": "world",
+      "entities": [
+        "Garmin account export",
+        "Google Health live connection",
+        "Google Health export",
+        "another user",
+        "app"
+      ],
+      "context": "decision record: database-architecture",
+      "occurred_start": null,
+      "occurred_end": null,
+      "mentioned_at": "2026-08-20T04:35:23.745571+00:00",
+      "document_id": "decision:database-architecture",
+      "metadata": {
+        "path": "data/decisions/database-architecture.md"
+      },
+      "chunk_id": "firstmate_decision:database-architecture_0",
+      "tags": [
+        "database-architecture",
+        "decision"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "75454630-3d21-4b03-8d6d-f944b2083a4b",
+      "text": "The database architecture must satisfy four criteria: auditable (schema changes as numbered reversible pairs under deploy/migrations/, row identity includes source), easy to inspect (everything in Postgres reachable via psql, job queue as table), easy to test (behaviour that fails silently gets executable contract, DB-backed tests opt-in), easy to modify later (derived numbers computed at read time, overlapping records kept, definitions versioned). | Involving: firstmate (AI agent) | To ensure database architecture meets auditability, inspectability, testability, and modifiability.",
+      "type": "world",
+      "entities": [
+        "job queue",
+        "Postgres",
+        "DB-backed tests",
+        "source column",
+        "deploy/migrations/",
+        "database architecture"
+      ],
+      "context": "decision record: database-architecture",
+      "occurred_start": null,
+      "occurred_end": null,
+      "mentioned_at": "2026-08-20T04:35:23.735571+00:00",
+      "document_id": "decision:database-architecture",
+      "metadata": {
+        "path": "data/decisions/database-architecture.md"
+      },
+      "chunk_id": "firstmate_decision:database-architecture_0",
+      "tags": [
+        "database-architecture",
+        "decision"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "bf58beda-cf75-4f30-9ecd-7256a6e541f4",
+      "text": "PR #11 satisfies all architectural, mathematical, and test suite requirements and is safe to merge into the master branch.",
+      "type": "world",
+      "entities": [
+        "PR #11",
+        "master"
+      ],
+      "context": "investigation report: hz-verify-score",
+      "occurred_start": null,
+      "occurred_end": null,
+      "mentioned_at": "2026-08-20T04:40:09.368150+00:00",
+      "document_id": "report:hz-verify-score",
+      "metadata": {
+        "path": "data/hz-verify-score/report.md"
+      },
+      "chunk_id": "firstmate_report:hz-verify-score_3",
+      "tags": [
+        "report",
+        "hz-verify-score"
+      ],
+      "source_fact_ids": null
+    },
+    {
+      "id": "1c00d75f-7b5e-4952-88de-fb6018f617fc",
+      "text": "System adheres to a 'keep it very simple' principle: no row-level security at seven query sites, no Redis, no Celery, and no hosted authentication; each omission is argued against concretely in hz-accounts/report.md §5.3 and §7.2. | Involving: captain (or team) | to maintain architectural simplicity",
+      "type": "world",
+      "entities": [
+        "Redis",
+        "Celery",
+        "RLS",
+        "hosted auth"
+      ],
+      "context": "decision record: multi-user",
+      "occurred_start": null,
+      "occurred_end": null,
+      "mentioned_at": "2026-08-20T04:41:16.332189+00:00",
+      "document_id": "decision:multi-user",
+      "metadata": {
+        "path": "data/decisions/multi-user.md"
+      },
+      "chunk_id": "firstmate_decision:multi-user_0",
+      "tags": [
+        "multi-user",
+        "decision"
+      ],
+      "source_fact_ids": null
+    }
+  ],
+  "trace": null,
+  "entities": {
+    "Healthlog": {
+      "entity_id": "ad67c3a6-6057-44fc-a316-78bdfbaa6bd6",
+      "canonical_name": "Healthlog",
+      "observations": []
+    },
+    "database architecture": {
+      "entity_id": "bd469f05-0529-435f-a356-3e5ee81df5bf",
+      "canonical_name": "database architecture",
+      "observations": []
+    },
+    "captain": {
+      "entity_id": "c35295de-9d3a-43b8-8e46-3f1fbd7ee2fe",
+      "canonical_name": "captain",
+      "observations": []
+    },
+    "firstmate": {
+      "entity_id": "d06a2e42-a493-4af0-8815-ff8aa2c02ea5",
+      "canonical_name": "firstmate",
+      "observations": []
+    },
+    "ingest shapes": {
+      "entity_id": "1132f518-208f-4723-b521-44f2bf931f2d",
+      "canonical_name": "ingest shapes",
+      "observations": []
+    },
+    "source registry": {
+      "entity_id": "662b9c90-9794-48a6-b25b-35682e8007d2",
+      "canonical_name": "source registry",
+      "observations": []
+    },
+    "accounts": {
+      "entity_id": "ce516711-7f1d-40fe-9bee-eee401420a20",
+      "canonical_name": "accounts",
+      "observations": []
+    },
+    "physical device": {
+      "entity_id": "c4d8e443-e886-46d4-bbc1-970aabd1bc9d",
+      "canonical_name": "physical device",
+      "observations": []
+    },
+    "richest-record-wins": {
+      "entity_id": "f3ed1953-0509-4ed8-a3d4-8b4b2f673876",
+      "canonical_name": "richest-record-wins",
+      "observations": []
+    },
+    "PR #11": {
+      "entity_id": "094f7ac1-a782-496e-8388-c18883975bd3",
+      "canonical_name": "PR #11",
+      "observations": []
+    },
+    "master": {
+      "entity_id": "36c57ee7-0765-4abd-9db0-343f9dd2e258",
+      "canonical_name": "master",
+      "observations": []
+    },
+    "Scout": {
+      "entity_id": "7ef99ec6-f4f7-46cf-a899-0b80ca5188c5",
+      "canonical_name": "Scout",
+      "observations": []
+    },
+    "Independent Crewmate Worker": {
+      "entity_id": "8a2cbbb6-1e03-4b50-8d7d-15531d2a30b8",
+      "canonical_name": "Independent Crewmate Worker",
+      "observations": []
+    },
+    "hz-sources": {
+      "entity_id": "3f555151-4ca5-4f93-a5f2-1baf1981e613",
+      "canonical_name": "hz-sources",
+      "observations": []
+    },
+    "google_takeout": {
+      "entity_id": "5d2c7c78-4fcf-4328-adf0-fb4da5306ae4",
+      "canonical_name": "google_takeout",
+      "observations": []
+    },
+    "architectural seams": {
+      "entity_id": "266e20fd-0ba6-4080-84d4-6c4cd4695571",
+      "canonical_name": "architectural seams",
+      "observations": []
+    },
+    "delete-or-compute sweep": {
+      "entity_id": "361a36f1-4f32-46f1-b08c-f2333ad587c9",
+      "canonical_name": "delete-or-compute sweep",
+      "observations": []
+    },
+    "browser test suites": {
+      "entity_id": "67b73c81-999a-4858-aa51-2da4428c5976",
+      "canonical_name": "browser test suites",
+      "observations": []
+    },
+    "PR #2": {
+      "entity_id": "9cc6db70-2084-49f1-b321-e43af23a946c",
+      "canonical_name": "PR #2",
+      "observations": []
+    },
+    "unit test suites": {
+      "entity_id": "a56efa01-8dfd-4ef4-ba22-6898ea4824d8",
+      "canonical_name": "unit test suites",
+      "observations": []
+    },
+    "hz-backend/report.md": {
+      "entity_id": "1e7a568b-3d6d-40c1-b6de-06e5228b021d",
+      "canonical_name": "hz-backend/report.md",
+      "observations": []
+    },
+    "hz-accounts": {
+      "entity_id": "326dcabf-cbb6-42ba-8c89-7d50a244d9a2",
+      "canonical_name": "hz-accounts",
+      "observations": []
+    },
+    "upsert": {
+      "entity_id": "416a991f-9aed-476f-b4e0-72843b7a30f1",
+      "canonical_name": "upsert",
+      "observations": []
+    },
+    "store.py": {
+      "entity_id": "4f3ba75b-f51c-42fa-bcfe-8dc1c2afba81",
+      "canonical_name": "store.py",
+      "observations": []
+    },
+    "source column": {
+      "entity_id": "57846dca-5d3a-4da1-8f28-878589345a48",
+      "canonical_name": "source column",
+      "observations": []
+    },
+    "row identity": {
+      "entity_id": "b85b00ae-0293-42db-a3ad-163bc31cee41",
+      "canonical_name": "row identity",
+      "observations": []
+    },
+    "4-stage architecture": {
+      "entity_id": "3563b1ac-8ca1-4d82-89c6-ac0e7de32ffc",
+      "canonical_name": "4-stage architecture",
+      "observations": []
+    },
+    "timing": {
+      "entity_id": "8c1cfa0b-db1a-4140-b44d-887cdf1d90df",
+      "canonical_name": "timing",
+      "observations": []
+    },
+    "composite score": {
+      "entity_id": "92c05895-de1f-4897-8140-b3232612cff4",
+      "canonical_name": "composite score",
+      "observations": []
+    },
+    "products": {
+      "entity_id": "c86aad90-0f55-48ea-9c0c-0166f4271118",
+      "canonical_name": "products",
+      "observations": []
+    },
+    "sleep/wake detection": {
+      "entity_id": "edf60a6a-8053-4ec7-b67d-b45c2bbf8db9",
+      "canonical_name": "sleep/wake detection",
+      "observations": []
+    },
+    "clock": {
+      "entity_id": "67bdf2a2-3140-4da9-98dd-c65b89bd849a",
+      "canonical_name": "clock",
+      "observations": []
+    },
+    "fresh database": {
+      "entity_id": "953a636b-a0e9-4d69-ac29-a80bbe6daed7",
+      "canonical_name": "fresh database",
+      "observations": []
+    },
+    "Garmin account export": {
+      "entity_id": "71b74df9-6e82-438b-81b1-3371255a84a7",
+      "canonical_name": "Garmin account export",
+      "observations": []
+    },
+    "Google Health live connection": {
+      "entity_id": "9b2765de-9d63-4ab0-bcf6-857b0db20f3e",
+      "canonical_name": "Google Health live connection",
+      "observations": []
+    },
+    "Google Health export": {
+      "entity_id": "e0b7e719-3817-4429-a903-0245ec932474",
+      "canonical_name": "Google Health export",
+      "observations": []
+    },
+    "another user": {
+      "entity_id": "eb3570c6-db27-43af-99bd-8339d4dfc6d9",
+      "canonical_name": "another user",
+      "observations": []
+    },
+    "app": {
+      "entity_id": "f17704aa-48f0-4e08-9e1d-a47674efe8c8",
+      "canonical_name": "app",
+      "observations": []
+    },
+    "job queue": {
+      "entity_id": "1b74b375-4aea-47b9-9a4f-4ed94ffe2c58",
+      "canonical_name": "job queue",
+      "observations": []
+    },
+    "Postgres": {
+      "entity_id": "228d663f-3989-4bb0-acfd-ce06349a1893",
+      "canonical_name": "Postgres",
+      "observations": []
+    },
+    "DB-backed tests": {
+      "entity_id": "4adcb6b2-9824-47a7-bf71-45bcd1745a9b",
+      "canonical_name": "DB-backed tests",
+      "observations": []
+    },
+    "deploy/migrations/": {
+      "entity_id": "64e465c6-6f6d-4829-b48c-36b3147c889f",
+      "canonical_name": "deploy/migrations/",
+      "observations": []
+    },
+    "Redis": {
+      "entity_id": "03b26f90-2c37-4425-8ae5-76a841c177a1",
+      "canonical_name": "Redis",
+      "observations": []
+    },
+    "Celery": {
+      "entity_id": "dbcc047f-96ea-4f93-b1ac-1fe681d90653",
+      "canonical_name": "Celery",
+      "observations": []
+    },
+    "RLS": {
+      "entity_id": "dd40d127-b3f1-4939-ac8a-2d1a92aa2184",
+      "canonical_name": "RLS",
+      "observations": []
+    },
+    "hosted auth": {
+      "entity_id": "ede989be-a38d-4656-9f08-d06ce3b1c216",
+      "canonical_name": "hosted auth",
+      "observations": []
+    }
+  },
+  "chunks": null,
+  "source_facts": null
+}
