@@ -912,6 +912,64 @@ EOF
   pass "the drift check catches each single-key and single-remote drift after apply"
 }
 
+# bin/fm-bootstrap.sh relays a refusal from the drift check verbatim as its
+# LANDING_REMOTE remediation, so the command a refusal prints has to repair the
+# checkout when it is run exactly as printed.
+test_drift_refusal_prints_a_repair_that_actually_repairs() {
+  local rec dir ours parent clone fakebin log line repair_ours repair_upstream
+
+  rec=$(make_fork_fixture shape-remediation)
+  IFS='|' read -r dir ours parent clone <<EOF
+$rec
+EOF
+  fakebin=$(fm_fakebin "$dir/fake")
+  log="$dir/stub.log"
+  : > "$log"
+  install_careless_stubs "$fakebin" "$log"
+
+  if PATH="$fakebin:$PATH" "$LANDING" verify --repo "$clone" >/dev/null 2>"$dir/r1.err"; then
+    fail "the drift check passed the pre-apply fork checkout"
+  fi
+  [ "$(wc -l < "$dir/r1.err")" = 1 ] \
+    || fail "the refusal spans more than the single line the bootstrap relay keeps: $(cat "$dir/r1.err")"
+  line=$(cat "$dir/r1.err")
+  repair_ours=$(printf '%s\n' "$line" | sed -n 's/.*--ours \([^ ]*\).*/\1/p')
+  repair_upstream=$(printf '%s\n' "$line" | sed -n 's/.*--upstream \([^ ]*\).*/\1/p')
+  [ -n "$repair_ours" ] && [ -n "$repair_upstream" ] \
+    || fail "the refusal named no runnable apply invocation: $line"
+
+  PATH="$fakebin:$PATH" "$LANDING" apply \
+    --ours "$repair_ours" --upstream "$repair_upstream" --repo "$clone" \
+    >/dev/null 2>"$dir/r1.repair" \
+    || fail "the repair the refusal printed failed: $(cat "$dir/r1.repair")"
+  [ "$(git -C "$clone" remote get-url origin)" = "file://$ours" ] \
+    || fail "the printed repair left origin at $(git -C "$clone" remote get-url origin), not the landing remote file://$ours"
+  PATH="$fakebin:$PATH" "$LANDING" verify --repo "$clone" >/dev/null 2>"$dir/r1.after" \
+    || fail "the drift check still refuses after its own printed repair ran: $(cat "$dir/r1.after")"
+
+  # The config-drift refusals fill --ours from origin instead of from a fork
+  # remote, so run that branch through the same loop.
+  git -C "$clone" config --unset checkout.defaultRemote
+  if PATH="$fakebin:$PATH" "$LANDING" verify --repo "$clone" >/dev/null 2>"$dir/r2.err"; then
+    fail "the drift check passed a checkout whose checkout.defaultRemote left origin"
+  fi
+  line=$(cat "$dir/r2.err")
+  repair_ours=$(printf '%s\n' "$line" | sed -n 's/.*--ours \([^ ]*\).*/\1/p')
+  repair_upstream=$(printf '%s\n' "$line" | sed -n 's/.*--upstream \([^ ]*\).*/\1/p')
+  [ "$repair_ours" = "file://$ours" ] \
+    || fail "the config-drift refusal named --ours $repair_ours, not the landing remote file://$ours"
+  [ "$repair_upstream" = "file://$parent" ] \
+    || fail "the config-drift refusal named --upstream $repair_upstream, not the parent file://$parent"
+
+  PATH="$fakebin:$PATH" "$LANDING" apply \
+    --ours "$repair_ours" --upstream "$repair_upstream" --repo "$clone" \
+    >/dev/null 2>"$dir/r2.repair" \
+    || fail "the repair the config-drift refusal printed failed: $(cat "$dir/r2.repair")"
+  PATH="$fakebin:$PATH" "$LANDING" verify --repo "$clone" >/dev/null 2>"$dir/r2.after" \
+    || fail "the drift check still refuses after the config-drift repair ran: $(cat "$dir/r2.after")"
+  pass "each drift refusal prints an apply command that repairs the checkout it refused"
+}
+
 test_shape_verify_is_silent_for_a_clone_that_was_never_forked() {
   local dir clone rc
   dir="$TMP_ROOT/shape-plain"
@@ -952,5 +1010,6 @@ test_shape_verify_catches_an_unapplied_fork_checkout
 test_shape_verify_accepts_the_shape_apply_leaves
 test_shape_verify_catches_config_and_remote_drift_after_apply
 test_shape_verify_is_silent_for_a_clone_that_was_never_forked
+test_drift_refusal_prints_a_repair_that_actually_repairs
 
 echo "# all fm-landing-remote tests passed"
