@@ -1152,6 +1152,81 @@ ROWS
   pass "bootstrap validates crew-dispatch.json and reports malformed or unverified configs"
 }
 
+# apply is a one-off, so nothing re-asserts the landing remap after it runs.
+# Bootstrap is the only place a session start would notice the primary drifting
+# back toward the parent, so the relay is pinned here: the exact line, its
+# silence once the shape is repaired, and its silence for a root that never had
+# a parent at all. The remote URLs are inert fixtures; the check reads config
+# only and must never reach the network for this verdict.
+#
+# Each phase gets its OWN fixture. The routine fixture's secondmate convergence
+# writes inherited local material into its worktree on the first bootstrap, so a
+# second run against the same fixture reports a dirty tree and would mask what
+# these cases are actually asserting.
+OURS_URL=https://example.invalid/ours/firstmate.git
+PARENT_URL=https://example.invalid/parent/firstmate.git
+
+run_landing_remote_phase() {  # <case-name> <arrange-fn>
+  local case_dir=$1 arrange=$2 fixture root home fakebin
+  fixture=$(make_routine_bootstrap_fixture "$TMP_ROOT/$case_dir")
+  root=${fixture%%|*}
+  fixture=${fixture#*|}
+  home=${fixture%%|*}
+  fakebin=${fixture#*|}
+  "$arrange" "$root"
+  PATH="$fakebin:$BASE_PATH" FM_BACKEND=tmux FM_HOME="$home" FM_ROOT_OVERRIDE="$root" \
+    FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh"
+}
+
+# A root with no remotes at all was never a fork checkout.
+arrange_no_remotes() { :; }
+
+# Exactly the shape apply exists to remove: origin is the parent and our tree is
+# parked on a fork remote.
+arrange_unapplied_fork() {
+  git -C "$1" remote add origin "$PARENT_URL"
+  git -C "$1" remote add fork "$OURS_URL"
+}
+
+# The remotes are right but the git defaults are not, which is still enough to
+# push or open a PR on the parent.
+arrange_remotes_without_defaults() {
+  git -C "$1" remote add origin "$OURS_URL"
+  git -C "$1" remote add upstream "$PARENT_URL"
+}
+
+# The full shape apply leaves behind.
+arrange_fully_applied() {
+  arrange_remotes_without_defaults "$1"
+  git -C "$1" config checkout.defaultRemote origin
+  git -C "$1" config remote.pushDefault origin
+  git -C "$1" config remote.origin.gh-resolved base
+}
+
+test_landing_remote_drift_is_reported_and_clears_when_repaired() {
+  local out
+
+  out=$(run_landing_remote_phase landing-none arrange_no_remotes)
+  [ -z "$out" ] || fail "a root with no remotes should stay silent, got: $out"
+
+  out=$(run_landing_remote_phase landing-unapplied arrange_unapplied_fork)
+  printf '%s\n' "$out" | grep -F 'LANDING_REMOTE: ' >/dev/null \
+    || fail "an un-remapped primary reported no landing-remote drift, got: $out"
+  printf '%s\n' "$out" | grep -F "$OURS_URL" >/dev/null \
+    || fail "the drift line did not name the fork remote that proves apply never ran, got: $out"
+  [ "$(printf '%s\n' "$out" | grep -cF 'LANDING_REMOTE: ')" = 1 ] \
+    || fail "expected exactly one landing-remote line, got: $out"
+
+  out=$(run_landing_remote_phase landing-nodefaults arrange_remotes_without_defaults)
+  printf '%s\n' "$out" | grep -F 'LANDING_REMOTE: ' >/dev/null \
+    || fail "a primary with upstream but no landing git defaults reported no drift, got: $out"
+
+  out=$(run_landing_remote_phase landing-applied arrange_fully_applied)
+  [ -z "$out" ] || fail "a correctly remapped primary should stay silent, got: $out"
+
+  pass "bootstrap reports landing-remote drift on the primary and clears it once the remap is in place"
+}
+
 test_bootstrap_reporting
 test_no_mistakes_min_version
 test_gh_axi_min_version
@@ -1180,3 +1255,4 @@ test_network_phases_record_per_step_elapsed_times
 test_tasks_axi_verdict_handoff_is_consumed_once
 test_crew_dispatch_active_rules_are_verbose_bootstrap_info
 test_crew_dispatch_validation
+test_landing_remote_drift_is_reported_and_clears_when_repaired

@@ -182,8 +182,10 @@ EOF
 
   assert_grep "repo set-default origin" "$log" \
     "apply did not point gh at origin, so gh pr create would still default elsewhere"
-  assert_grep "--yes init" "$log" \
-    "apply did not re-init no-mistakes without --fork-url"
+  # The stub logs its whole argument list, so an exact-line match pins the call
+  # to a bare `init` and refutes every extra flag at once, not only --fork-url.
+  grep -qxF init "$log" \
+    || fail "apply did not re-init no-mistakes with a bare init: $(cat "$log")"
   if grep -q 'fork-url' "$log"; then
     fail "no-mistakes init still passed --fork-url, so PRs would open on the parent"
   fi
@@ -801,6 +803,137 @@ SH
   pass "a rollback restores local config only and never copies a global value in"
 }
 
+# The drift check is what a session start actually runs, and it never carries
+# --ours. Each case below is a real way a primary drifts back toward the parent,
+# and each must be caught with no landing URL in hand and no network.
+test_shape_verify_catches_an_unapplied_fork_checkout() {
+  local rec dir ours parent clone
+  rec=$(make_fork_fixture shape-unapplied)
+  IFS='|' read -r dir ours parent clone <<EOF
+$rec
+EOF
+  # Exactly the pre-apply shape: origin is the parent, our tree is parked on a
+  # fork remote. The drift check has no --ours and must still refuse it.
+  if "$LANDING" verify --repo "$clone" >/dev/null 2>"$dir/shape.err"; then
+    fail "the drift check passed a checkout whose origin is still the parent"
+  fi
+  assert_grep "fork remote" "$dir/shape.err" \
+    "the drift check did not name the leftover fork remote that proves apply never ran"
+  assert_grep "apply" "$dir/shape.err" \
+    "the drift check did not name the command that repairs the checkout"
+  pass "the drift check refuses an un-remapped fork checkout with no --ours"
+}
+
+test_shape_verify_accepts_the_shape_apply_leaves() {
+  local rec dir ours parent clone fakebin log rc
+  rec=$(make_fork_fixture shape-applied)
+  IFS='|' read -r dir ours parent clone <<EOF
+$rec
+EOF
+  fakebin=$(fm_fakebin "$dir/fake")
+  log="$dir/stub.log"
+  : > "$log"
+  install_careless_stubs "$fakebin" "$log"
+
+  PATH="$fakebin:$PATH" "$LANDING" apply \
+    --ours "file://$ours" \
+    --upstream "file://$parent" \
+    --repo "$clone" >/dev/null 2>&1 \
+    || fail "apply should remap origin onto the landing remote"
+
+  set +e
+  PATH="$fakebin:$PATH" "$LANDING" verify --repo "$clone" \
+    > "$dir/shape.out" 2>"$dir/shape.err"
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "the drift check rejected the shape apply itself just produced"
+  grep -qxF "origin=file://$ours" "$dir/shape.out" \
+    || fail "the drift check did not report the landing origin it accepted: $(cat "$dir/shape.out")"
+  grep -qxF "upstream=file://$parent" "$dir/shape.out" \
+    || fail "the drift check did not report the parent it accepted as upstream: $(cat "$dir/shape.out")"
+  pass "the drift check accepts the shape apply leaves behind"
+}
+
+test_shape_verify_catches_config_and_remote_drift_after_apply() {
+  local rec dir ours parent clone fakebin log
+  rec=$(make_fork_fixture shape-drift)
+  IFS='|' read -r dir ours parent clone <<EOF
+$rec
+EOF
+  fakebin=$(fm_fakebin "$dir/fake")
+  log="$dir/stub.log"
+  : > "$log"
+  install_careless_stubs "$fakebin" "$log"
+
+  PATH="$fakebin:$PATH" "$LANDING" apply \
+    --ours "file://$ours" \
+    --upstream "file://$parent" \
+    --repo "$clone" >/dev/null 2>&1 \
+    || fail "apply should remap origin onto the landing remote"
+
+  # Each of these alone sends a branch, a push, or a PR to the parent, so each
+  # alone must fail the check. Restore the applied shape between cases so the
+  # assertion pins the one invariant it names rather than riding on a previous
+  # failure.
+  git -C "$clone" config --unset checkout.defaultRemote
+  if PATH="$fakebin:$PATH" "$LANDING" verify --repo "$clone" >/dev/null 2>"$dir/d1.err"; then
+    fail "the drift check passed a checkout whose checkout.defaultRemote left origin"
+  fi
+  assert_grep "checkout.defaultRemote" "$dir/d1.err" \
+    "the drift check did not name the default-remote key that drifted"
+  git -C "$clone" config checkout.defaultRemote origin
+
+  git -C "$clone" config remote.pushDefault upstream
+  if PATH="$fakebin:$PATH" "$LANDING" verify --repo "$clone" >/dev/null 2>"$dir/d2.err"; then
+    fail "the drift check passed a checkout whose pushes default to the parent"
+  fi
+  assert_grep "remote.pushDefault" "$dir/d2.err" \
+    "the drift check did not name the push-default key that drifted"
+  git -C "$clone" config remote.pushDefault origin
+
+  git -C "$clone" config --unset remote.origin.gh-resolved
+  if PATH="$fakebin:$PATH" "$LANDING" verify --repo "$clone" >/dev/null 2>"$dir/d3.err"; then
+    fail "the drift check passed a checkout where gh would rank upstream above origin"
+  fi
+  assert_grep "gh" "$dir/d3.err" \
+    "the drift check did not name the missing gh default"
+  git -C "$clone" config remote.origin.gh-resolved base
+
+  git -C "$clone" remote set-url origin "file://$parent"
+  if PATH="$fakebin:$PATH" "$LANDING" verify --repo "$clone" >/dev/null 2>"$dir/d4.err"; then
+    fail "the drift check passed a checkout whose origin was moved back onto the parent"
+  fi
+  assert_grep "third-party parent" "$dir/d4.err" \
+    "the drift check did not name origin and upstream collapsing onto one remote"
+  git -C "$clone" remote set-url origin "file://$ours"
+
+  PATH="$fakebin:$PATH" "$LANDING" verify --repo "$clone" >/dev/null 2>&1 \
+    || fail "the restored applied shape no longer passes, so the cases above proved nothing"
+  pass "the drift check catches each single-key and single-remote drift after apply"
+}
+
+test_shape_verify_is_silent_for_a_clone_that_was_never_forked() {
+  local dir clone rc
+  dir="$TMP_ROOT/shape-plain"
+  mkdir -p "$dir"
+  fm_git_init_commit "$dir/seed"
+  git clone --quiet --bare "$dir/seed" "$dir/ours.git"
+  git clone --quiet "file://$dir/ours.git" "$dir/clone"
+  clone="$dir/clone"
+  if git -C "$clone" remote get-url upstream >/dev/null 2>&1; then
+    fail "the plain-clone fixture already had an upstream, so it proves nothing"
+  fi
+
+  set +e
+  "$LANDING" verify --repo "$clone" > "$dir/shape.out" 2>"$dir/shape.err"
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "the drift check reported drift in a clone that never had a parent"
+  [ ! -s "$dir/shape.err" ] \
+    || fail "the drift check warned about a single-remote clone: $(cat "$dir/shape.err")"
+  pass "the drift check stays silent for a clone with no parent to be remapped away from"
+}
+
 test_careless_path_without_apply_names_parent
 test_apply_makes_careless_branch_and_default_repo_land_on_ours
 test_apply_with_existing_upstream_refreshes_tracking_refs
@@ -815,5 +948,9 @@ test_apply_fails_when_gh_records_a_different_default
 test_a_failed_apply_leaves_no_gh_default_on_an_unrenamed_origin
 test_a_signal_during_the_remap_restores_and_fails
 test_restore_does_not_write_global_config_into_the_repo
+test_shape_verify_catches_an_unapplied_fork_checkout
+test_shape_verify_accepts_the_shape_apply_leaves
+test_shape_verify_catches_config_and_remote_drift_after_apply
+test_shape_verify_is_silent_for_a_clone_that_was_never_forked
 
 echo "# all fm-landing-remote tests passed"

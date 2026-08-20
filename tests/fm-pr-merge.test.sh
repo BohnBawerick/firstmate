@@ -14,6 +14,9 @@
 #   (f) malformed PR URL fails fast without calling gh-axi
 #   (g) explicit merge method is not overridden by the default --squash
 #   (h) repo override args fail fast because the repo comes from the URL
+# The firstmate-repo branch below is decided by the shared predicate in
+# bin/fm-self-repo-lib.sh, whose own contract is pinned in
+# tests/fm-merge-local.test.sh.
 set -u
 
 # shellcheck source=tests/lib.sh

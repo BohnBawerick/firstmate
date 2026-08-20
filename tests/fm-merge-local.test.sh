@@ -7,6 +7,7 @@
 #   (a) fast-forwards a clean local-only project branch
 #   (b) fast-forwards a no-mistakes task on Firstmate's own repository (FM_ROOT)
 #   (c) fast-forwards a direct-PR task on Firstmate's own repository (FM_ROOT)
+#   (c2) fast-forwards when that repository is reached through a symlinked path
 #   (d) refuses a no-mistakes task on an ordinary project (not local-only)
 #   (e) refuses a direct-PR task on an ordinary project (not local-only)
 #   (f) refuses when task meta is missing
@@ -15,10 +16,18 @@
 #   (i) refuses when project checkout is not on its default branch
 #   (j) refuses when project checkout is dirty
 #   (k) refuses when branch has diverged (not a fast-forward)
+#
+# "Firstmate's own repository" is one shared predicate, bin/fm-self-repo-lib.sh,
+# used identically by fm-merge-local.sh, fm-pr-merge.sh, fm-fleet-sync.sh, and
+# fm-spawn.sh. Each of those has its own case for the branch it takes; this
+# suite, the lightest of the four, also pins the predicate's own contract so a
+# change to it has one owner test rather than four indirect ones.
 set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=bin/fm-self-repo-lib.sh
+. "$ROOT/bin/fm-self-repo-lib.sh"
 fm_git_identity fmtest fmtest@example.invalid
 
 MERGE_LOCAL="$ROOT/bin/fm-merge-local.sh"
@@ -31,6 +40,48 @@ make_repo() {
   echo "initial" > "$dir/file.txt"
   git -C "$dir" add file.txt
   git -C "$dir" commit --quiet -m "initial commit"
+}
+
+test_shared_firstmate_repo_predicate_contract() {
+  local case_dir root home other
+  case_dir="$TMP_ROOT/predicate-contract"
+  root="$case_dir/root"
+  home="$case_dir/home"
+  other="$case_dir/other"
+  mkdir -p "$root" "$home" "$other"
+  ln -s "$root" "$case_dir/root-link"
+  ln -s "$home" "$case_dir/home-link"
+
+  fm_is_firstmate_repo "$root" "$root" "$home" \
+    || fail "the code root was not recognized as firstmate's own repository"
+  fm_is_firstmate_repo "$home" "$root" "$home" \
+    || fail "the operational home was not recognized as firstmate's own repository"
+  fm_is_firstmate_repo "$case_dir/root-link" "$root" "$home" \
+    || fail "a symlinked code root was not recognized as firstmate's own repository"
+  fm_is_firstmate_repo "$root" "$case_dir/root-link" "$home" \
+    || fail "a symlinked FM_ROOT did not match the real code root"
+  fm_is_firstmate_repo "$case_dir/home-link" "$root" "$home" \
+    || fail "a symlinked operational home was not recognized as firstmate's own repository"
+  fm_is_firstmate_repo "$root/" "$root" "$home" \
+    || fail "a trailing slash defeated the code-root match"
+  fm_is_firstmate_repo "$root/../root" "$root" "$home" \
+    || fail "a .. segment defeated the code-root match"
+
+  # An ordinary project must never take a firstmate branch, and neither must an
+  # empty project field: an unreadable or missing project is not a licence to
+  # merge into, skip syncing, or reset the fleet's own tree.
+  ! fm_is_firstmate_repo "$other" "$root" "$home" \
+    || fail "an ordinary project directory was mistaken for firstmate's own repository"
+  ! fm_is_firstmate_repo "" "$root" "$home" \
+    || fail "an empty project directory was mistaken for firstmate's own repository"
+
+  # Two different paths that both fail to resolve must stay different. Collapsing
+  # an unresolvable path to the empty string would make every missing project
+  # match every other one.
+  ! fm_is_firstmate_repo "$case_dir/absent-a" "$case_dir/absent-b" "$case_dir/absent-c" \
+    || fail "two different unresolvable paths compared equal"
+
+  pass "the shared firstmate-repo predicate matches by physical path and nothing else"
 }
 
 test_fast_forward_local_only_project() {
@@ -145,6 +196,48 @@ test_fast_forward_direct_pr_firstmate_repo() {
   assert_grep "merged fm/task-fm2 into local main" "$case_dir/stdout" \
     "firstmate direct-PR: success message was not printed"
   pass "fm-merge-local fast-forwards a direct-PR task on Firstmate's own repository"
+}
+
+test_fast_forward_symlinked_firstmate_repo() {
+  local case_dir fm_root fm_link state_dir rc before after
+  case_dir="$TMP_ROOT/fm-symlinked"
+  fm_root="$case_dir/firstmate"
+  fm_link="$case_dir/firstmate-link"
+  state_dir="$case_dir/state"
+  mkdir -p "$state_dir"
+  make_repo "$fm_root" main
+  ln -s "$fm_root" "$fm_link"
+
+  git -C "$fm_root" checkout -b fm/task-fm-link --quiet
+  echo "firstmate feature" >> "$fm_root/file.txt"
+  git -C "$fm_root" commit --quiet -am "firstmate fix"
+  git -C "$fm_root" checkout main --quiet
+
+  # The task records the project through a symlink while the home names the real
+  # path. Only a physical-path comparison sees these as one repository; a literal
+  # one would refuse this merge as a PR-mode task on an ordinary project, and the
+  # approved firstmate merge would never reach the running tree.
+  fm_write_meta "$state_dir/task-fm-link.meta" \
+    "window=fm-task-fm-link" \
+    "worktree=$case_dir/wt" \
+    "project=$fm_link" \
+    "kind=ship" \
+    "mode=no-mistakes"
+
+  before=$(git -C "$fm_root" rev-parse HEAD)
+
+  set +e
+  FM_ROOT_OVERRIDE="$fm_root" \
+  FM_HOME="$fm_root" \
+  FM_STATE_OVERRIDE="$state_dir" \
+    "$MERGE_LOCAL" task-fm-link > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "symlinked firstmate repo: fm-merge-local should succeed: $(cat "$case_dir/stderr")"
+  after=$(git -C "$fm_root" rev-parse HEAD)
+  [ "$before" != "$after" ] || fail "symlinked firstmate repo: default branch was not advanced"
+  pass "fm-merge-local recognizes Firstmate's own repository reached through a symlink"
 }
 
 test_refuses_no_mistakes_ordinary_project() {
@@ -398,9 +491,11 @@ test_refuses_diverged_branch() {
   pass "fm-merge-local refuses when branch has diverged (not a fast-forward)"
 }
 
+test_shared_firstmate_repo_predicate_contract
 test_fast_forward_local_only_project
 test_fast_forward_no_mistakes_firstmate_repo
 test_fast_forward_direct_pr_firstmate_repo
+test_fast_forward_symlinked_firstmate_repo
 test_refuses_no_mistakes_ordinary_project
 test_refuses_direct_pr_ordinary_project
 test_refuses_missing_meta

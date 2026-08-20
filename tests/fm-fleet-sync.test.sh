@@ -21,6 +21,9 @@
 # worktree dir as its cwd also blocks removal (the clone-dir liveness check); a
 # transient lock that self-clears is retried without a force-remove; and any
 # non-packed-refs.lock fetch failure keeps today's behavior with no retry.
+# The firstmate-home skip below is decided by the shared predicate in
+# bin/fm-self-repo-lib.sh, whose own contract is pinned in
+# tests/fm-merge-local.test.sh.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -381,6 +384,23 @@ test_firstmate_home_skipped() {
   pass "firstmate home is skipped (manual sync), not flagged STUCK"
 }
 
+test_symlinked_firstmate_home_skipped() {
+  local home link out
+  home=$(new_home)
+  git init -q "$home"
+  link="$home-link"
+  ln -s "$home" "$link"
+  # The registry can name the home through a symlink while FM_HOME names the real
+  # path. If the shared predicate stopped resolving physical paths, this clone
+  # would look like an ordinary project and the sync would fetch and fast-forward
+  # firstmate's own checkout from origin.
+  out=$(run_sync "$home" "$link")
+
+  assert_contains "$out" "skipped: firstmate home (upstream sync is manual)" \
+    "a symlinked firstmate home was not recognized as firstmate's own repository"
+  pass "a firstmate home reached through a symlink is still skipped, not synced"
+}
+
 test_single_project_by_bare_name_resolves() {
   local home out
   home=$(new_home)
@@ -625,6 +645,7 @@ test_already_current_unchanged
 test_no_origin_skipped
 test_local_only_skipped
 test_firstmate_home_skipped
+test_symlinked_firstmate_home_skipped
 test_single_project_by_bare_name_resolves
 test_single_project_by_bare_name_ignores_cwd_shadow
 test_single_project_by_projects_relative_name_resolves

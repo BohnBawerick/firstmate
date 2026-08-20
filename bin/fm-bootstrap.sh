@@ -13,6 +13,7 @@
 #                 "FLEET_SYNC: <repo>: skipped|recovered|STUCK: <detail>",
 #                 "PR_CHECK_MIGRATION: <private remediation>",
 #                 "TANGLE: <remediation>",
+#                 "LANDING_REMOTE: <drift>; <remediation>",
 #                 "SECONDMATE_SYNC: secondmate <id>: skipped: <reason>",
 #                 "NUDGE_SECONDMATES: secondmate <id>: send failed: <reason>",
 #                 "BOOTSTRAP_INFO: nudged fm-<id> with '<message>'",
@@ -48,6 +49,12 @@
 #          A TANGLE line means the firstmate primary checkout (FM_ROOT) is stranded
 #          on a feature branch instead of its default branch - a crewmate's work
 #          landed in the primary instead of its own worktree; restore it per the line.
+#          A LANDING_REMOTE line means the primary's remotes no longer have the
+#          shape bin/fm-landing-remote.sh apply leaves behind, so git, gh, or
+#          no-mistakes could send a branch, a push, or a PR to the third-party
+#          parent. That check is bin/fm-landing-remote.sh verify with no --ours,
+#          it needs no network, and it is silent for a single-remote clone that
+#          never had a parent to be remapped away from.
 #          treehouse is also MISSING when its installed version lacks
 #          "treehouse get --lease" support.
 #          no-mistakes is also MISSING when its installed version is older than
@@ -1172,6 +1179,21 @@ detect_local_config() {
     else
       echo "TANGLE: primary checkout on feature branch '$tangle_branch' (expected '$tangle_default'); the work is safe on that ref - restore the primary with: git -C $FM_ROOT checkout $tangle_default, then re-validate the branch in a proper worktree"
     fi
+  fi
+  # Landing-remote drift: apply is a one-off the operator runs on the primary,
+  # so nothing re-asserts it afterwards. Surface a primary whose remotes drifted
+  # back toward the parent - or that was never remapped at all - here, where the
+  # session already reads every other local hazard. bin/fm-landing-remote.sh is
+  # the one owner of the shape; this only relays its refusal.
+  # Silent for a root that is not a git checkout at all, exactly as the tangle
+  # check above is: that is a different problem and this check has nothing to say
+  # about it.
+  if git -C "$FM_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    landing_drift=$("$SCRIPT_DIR/fm-landing-remote.sh" verify --repo "$FM_ROOT" 2>&1 >/dev/null) || {
+      landing_drift=${landing_drift#error: }
+      landing_drift=${landing_drift%%$'\n'*}
+      [ -z "$landing_drift" ] || echo "LANDING_REMOTE: $landing_drift"
+    }
   fi
   crew=
   [ -f "$CONFIG/crew-harness" ] && crew=$(tr -d '[:space:]' < "$CONFIG/crew-harness" || true)
