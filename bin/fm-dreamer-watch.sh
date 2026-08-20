@@ -42,7 +42,8 @@
 #                           the watch does not depend on the runner environment.
 #   --head-age <hours>      HEAD age threshold (default: FM_DREAM_HEAD_AGE_HOURS
 #                           or 12)
-#   --interval <secs>       arm only: when poll cadence (default 3600)
+#   --interval <secs>       arm only: when poll cadence (default:
+#                           FM_DREAM_WATCH_INTERVAL or 3600)
 #   --stable <n>            arm only: consecutive true polls before firing
 #                           (default 2)
 #   --dry-run               arm only: print the when registration argv without

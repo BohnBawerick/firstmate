@@ -169,6 +169,8 @@ The whole directory is gitignored and is created by `bin/fm-memory-migrate.sh`, 
 Completed tasks deposit candidate findings and tactical gotchas into `data/memory/drop/<task-id>.md` through `bin/fm-memory-drop.sh`.
 Generations of memory live under `data/memory/gen/<N>/` and are activated atomically by pointing `data/memory/HEAD` at the active generation.
 Every proposed generation must pass the mechanical verifier in `bin/fm-memory-verify.sh` before `bin/fm-memory-publish.sh` will update `data/memory/HEAD`.
+A generation is produced by an offline dreamer pass, an ephemeral scout scaffolded with `bin/fm-brief.sh <task-id> <repo-name> --dreamer`, whose brief owns the read scope and the contract that it never edits published memory in place, never takes the session lock, and never addresses the captain.
+`bin/fm-dreamer-watch.sh` decides when such a pass is due and can arm the idle notification for it, and `bin/fm-dreamer-grade.sh` grades a proposed generation against the rubric before firstmate publishes it; each script's header owns its exact commands, thresholds, and rubric checks.
 The verifier enforces four safety properties: working memory must fit within `config/startup-memory-budget` with its catalog intact, every note and a non-empty `core.md` must cite at least one existing file on disk, the standing constitution in force must survive into the generation, reading both the published generation and the proposed one through the compiler's own core precedence (`core.md` first, `data/captain.md` only when there is none), and single-generation deletions cannot exceed the diff bounds cap or remove every baseline note.
 There is no shared notes directory by captain decision.
 
@@ -595,6 +597,8 @@ FM_CHECK_TIMEOUT=30     # seconds allowed per slow check script
 FM_PROCEVENT_MAX_OUTPUT_BYTES=1048576   # bound on one captured process-to-event result
 FM_PROCEVENT_CLAIM_ROOT=                # machine-wide source claim root; default $XDG_STATE_HOME/firstmate/procevent-claims
 FM_WHEN_OUTPUT_TAIL_BYTES=8192          # bound on the command-output tail inside one condition->action outcome document
+FM_DREAM_HEAD_AGE_HOURS=12              # data/memory/HEAD age past which bin/fm-dreamer-watch.sh reports a dream pass due; --head-age overrides it
+FM_DREAM_WATCH_INTERVAL=3600            # seconds between polls of the armed dream-due condition watch; --interval overrides it
 FM_CODEX_WATCH_CHECKPOINT=180   # seconds per foreground watcher checkpoint in Codex primary supervision
 FM_CREW_STATE_NM_TIMEOUT=10   # seconds allowed per no-mistakes query inside fm-crew-state.sh
 FM_TEARDOWN_NM_TIMEOUT=10    # seconds allowed per no-mistakes query or abort inside fm-teardown.sh
