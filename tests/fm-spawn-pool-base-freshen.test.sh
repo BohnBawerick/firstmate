@@ -6,6 +6,9 @@
 # These tests drive the real spawn path with a fake terminal, then prove it
 # starts the worker from the fetched origin/main tip or stops when origin is
 # unreachable.
+# The firstmate-on-itself base choice below is decided by the shared predicate
+# in bin/fm-self-repo-lib.sh, whose own contract is pinned in
+# tests/fm-merge-local.test.sh.
 set -u
 
 # shellcheck source=tests/lib.sh

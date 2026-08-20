@@ -166,6 +166,8 @@ On Firstmate's own repository that tip is the primary's local default-branch com
 On every other project the worktree fetches origin and resets to that remote default-branch tip.
 Its header owns the exact refusal mechanics, while `tests/fm-spawn-pool-base-freshen.test.sh` owns the portable regression coverage.
 `bin/fm-landing-remote.sh` is the owner of remapping `origin` onto the repository work lands on so `git`, `gh`, and no-mistakes default to that tree instead of a parent remote.
+Its `verify` is the read-only half of that ownership, and `bin/fm-bootstrap.sh` runs it against the primary at every session start so a checkout that drifted back toward the parent, or was never remapped, is surfaced instead of discovered by a misdirected PR.
+The four decisions that branch on "is this project firstmate's own repository?" share one physical-path predicate in `bin/fm-self-repo-lib.sh`, because a project that counts as firstmate for the spawn base but not for the merge, or the reverse, is how unreviewed upstream work reaches a ship branch.
 
 The firstmate repo has one extra exposure because it can dispatch crewmates to work on itself.
 Its operating checkout (`FM_ROOT`) and the disposable crewmate worktrees are all linked git worktrees of the same repository, so the valid discriminator is branch state, not whether the checkout is linked.

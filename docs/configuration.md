@@ -42,6 +42,11 @@ The git defaults it sets are exactly `checkout.defaultRemote` and `remote.pushDe
 `apply` is a no-op that touches the network not at all once origin, upstream, the git defaults, and the `gh` default are already in place, so a correctly remapped primary still applies cleanly while offline.
 Do not rewrite remotes from a linked worktree; the configuration is shared with the primary.
 
+`apply` is a one-off, so nothing re-asserts the remap afterwards, and `verify` is the read-only check that closes that gap.
+Given `--ours` it is an identity check on `origin`; with no `--ours` it asserts the shape `apply` leaves behind without needing to know which repository is ours, and needs no network in either mode.
+`bin/fm-bootstrap.sh` runs the second form against the firstmate primary at every session start and relays a refusal as one `LANDING_REMOTE:` line, so a checkout that drifted back toward the parent - or that was never remapped at all - is surfaced there rather than discovered by a branch, a push, or a PR that went to the wrong repository.
+A clone with neither an `upstream` nor a `fork` remote never had a parent to be remapped away from, so the check passes silently for it.
+
 ## Pi Calm preference (config/calm)
 
 The Pi Calm extension stores the captain's home-local presentation choice in gitignored `config/calm` under the effective Firstmate home, resolved from `FM_HOME`, then `FM_ROOT_OVERRIDE`, then the tracked code root derived from the extension path, or under `FM_CONFIG_OVERRIDE` when that test and specialized-setup override is present.
@@ -579,7 +584,7 @@ FM_ZELLIJ_SESSION=firstmate  # zellij-only: named session for normal backend ops
 CMUX_SOCKET_PASSWORD=   # cmux-only: socket password fallback when config/cmux-socket-password is absent (docs/cmux-backend.md)
 FM_SESSION_START_STATUS_TAIL=5   # state/*.status lines printed per task in the session-start digest; each line is capped by bin/fm-line-cap-lib.sh
 FM_SESSION_START_QUEUED_LIMIT=20   # plain queued backlog rows in the session-start digest; in-flight, held, and blocked rows are never bounded and done rows are never listed
-FM_BOOTSTRAP_DETECT_ONLY=0   # internal/read-only session-start mode: skip bootstrap's mutating sweeps and print advisory TANGLE wording
+FM_BOOTSTRAP_DETECT_ONLY=0   # internal/read-only session-start mode: skip bootstrap's mutating sweeps and print advisory TANGLE and LANDING_REMOTE wording
 FM_BOOTSTRAP_NETWORK=all   # internal session-start phase split: all, skip (local steps only), or only (network steps only); see bin/fm-bootstrap.sh
 FM_STARTUP_NETWORK_TIMEOUT=120   # seconds bounding the whole deferred network stage; hitting it prints an actionable NETWORK_CHECKS line
 FM_TASKS_AXI_COMPATIBLE=   # internal one-hop handoff of an already-computed tasks-axi compatibility verdict (0 or 1); consumed when bin/fm-tasks-axi-lib.sh is sourced

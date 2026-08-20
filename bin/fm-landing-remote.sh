@@ -11,7 +11,7 @@
 # Usage:
 #   fm-landing-remote.sh apply --ours <url> --upstream <url> [--repo <dir>]
 #   fm-landing-remote.sh status [--repo <dir>]
-#   fm-landing-remote.sh verify --ours <url> [--repo <dir>]
+#   fm-landing-remote.sh verify [--ours <url>] [--repo <dir>]
 #
 # apply rewrites remotes in the named checkout so `origin` is --ours and
 # `upstream` is --upstream, refetches `origin` on every path that decides to
@@ -48,8 +48,23 @@
 # status prints the current origin, upstream, leftover fork remote, and the gh
 # default gh recorded locally in `remote.origin.gh-resolved`; it needs no
 # network.
-# verify exits 0 only when origin matches --ours; otherwise it exits 1 and
-# names the remote it actually found.
+# verify has two modes and needs no network in either.
+# With --ours it is an identity check: it exits 0 only when origin matches that
+# URL, and otherwise exits 1 naming the remote it actually found.
+# Without --ours it is the runtime drift check, for callers that know a checkout
+# must have been remapped but do not carry the landing URL - bin/fm-bootstrap.sh
+# runs it against the firstmate primary at every session start. It asserts the
+# shape apply guarantees, without needing to know which repository is ours:
+# `upstream` present and distinct from `origin`, no leftover `fork` remote, both
+# git defaults pointed at `origin`, and gh's recorded default on `origin` when gh
+# is installed. Applicability is decided by the checkout, not by a flag: a clone
+# with neither `upstream` nor `fork` was never a fork checkout, so the remap does
+# not apply to it and the check passes silently. A `fork` remote is the exact
+# pre-apply shape and apply always removes it, so its presence means origin may
+# still be the parent. Each refusal names the one broken invariant on a single
+# stderr line so a caller can embed it in its own diagnostic, and closes with an
+# apply command carrying the --ours and --upstream URLs the checkout itself
+# states, so the printed repair runs as printed.
 #
 # URL comparison is spelling-tolerant for the GitHub https / ssh / trailing
 # .git forms. apply is a no-op, and touches the network not at all, once origin,
@@ -406,10 +421,73 @@ cmd_status() {
   printf 'gh-default=%s\n' "${gh_default:-absent}"
 }
 
+# Every refusal below is relayed verbatim by bin/fm-bootstrap.sh as the
+# LANDING_REMOTE remediation, so the repair it names has to run as printed.
+# apply takes both URLs, so fill them from what the checkout already states and
+# fall back to a named placeholder only for a URL the checkout cannot supply.
+landing_remote_repair_command() {
+  local ours=$1 parent=$2 restore_from=${3:-}
+  if [ -n "$restore_from" ]; then
+    printf 'run git remote rename %s origin, then fm-landing-remote.sh apply --ours %s --upstream %s on the primary checkout' \
+      "$restore_from" "${ours:-<the landing repository url>}" "${parent:-<the third-party parent url>}"
+  else
+    printf 'run fm-landing-remote.sh apply --ours %s --upstream %s on the primary checkout' \
+      "${ours:-<the landing repository url>}" "${parent:-<the third-party parent url>}"
+  fi
+}
+
+# The invariants apply leaves behind, expressed without the landing URL. Reading
+# only what the checkout already states keeps this runnable from any caller that
+# knows a remap was owed but does not carry --ours, and keeps it offline.
+verify_remapped_shape() {
+  local origin upstream fork_url fork_parent
+
+  origin=$(remote_url origin)
+  upstream=$(remote_url upstream)
+  fork_url=$(remote_url fork)
+
+  if [ -z "$upstream" ] && [ -z "$fork_url" ]; then
+    # Single-remote clone: nothing was ever forked here, so there is no remap to
+    # have run and no drift to report.
+    printf 'origin=%s\n' "${origin:-absent}"
+    return 0
+  fi
+  if [ -z "$origin" ]; then
+    local restore_from
+    if [ -n "$fork_url" ]; then
+      restore_from="fork"
+    else
+      restore_from="upstream"
+    fi
+    fail "origin remote is absent, so nothing names the repository work lands on; $(landing_remote_repair_command "$fork_url" "$upstream" "$restore_from")"
+  fi
+  if [ -n "$fork_url" ]; then
+    fork_parent=${upstream:-$origin}
+    fail "a fork remote at $fork_url still exists beside origin $origin, which is the shape apply exists to remove, so origin may still be the third-party parent; $(landing_remote_repair_command "$fork_url" "$fork_parent")"
+  fi
+  if urls_equal "$origin" "$upstream"; then
+    fail "origin and upstream both name $origin, so work would branch from and open PRs on the third-party parent; $(landing_remote_repair_command "" "$origin")"
+  fi
+  if [ "$(git_config_get_local checkout.defaultRemote)" != origin ]; then
+    fail "checkout.defaultRemote is not origin while upstream $upstream exists, so an ambiguous branch name can resolve against the parent; $(landing_remote_repair_command "$origin" "$upstream")"
+  fi
+  if [ "$(git_config_get_local remote.pushDefault)" != origin ]; then
+    fail "remote.pushDefault is not origin while upstream $upstream exists, so a push can land on the parent; $(landing_remote_repair_command "$origin" "$upstream")"
+  fi
+  if ! gh_default_is_origin; then
+    fail "gh has no recorded default of origin while upstream $upstream exists, and gh ranks upstream above origin, so a flagless 'gh pr create' can open the PR on the parent; $(landing_remote_repair_command "$origin" "$upstream")"
+  fi
+  printf 'origin=%s\n' "$origin"
+  printf 'upstream=%s\n' "$upstream"
+}
+
 cmd_verify() {
   local origin
-  [ -n "$OURS" ] || fail "verify requires --ours <url>"
   require_repo
+  if [ -z "$OURS" ]; then
+    verify_remapped_shape
+    return 0
+  fi
   origin=$(remote_url origin)
   [ -n "$origin" ] || fail "origin remote is absent"
   if urls_equal "$origin" "$OURS"; then

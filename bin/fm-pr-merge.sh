@@ -17,6 +17,8 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
+# shellcheck source=bin/fm-self-repo-lib.sh
+. "$SCRIPT_DIR/fm-self-repo-lib.sh"
 
 if [ "$#" -lt 2 ]; then
   echo "error: invalid PR merge request" >&2
@@ -84,11 +86,6 @@ fi
 gh-axi pr merge "$PR_NUMBER" --repo "$PR_OWNER/$PR_REPO" "${merge_args[@]+"${merge_args[@]}"}" "$@"
 
 PROJ=$(grep '^project=' "$META" | cut -d= -f2- || true)
-if [ -n "$PROJ" ] && [ -d "$PROJ" ]; then
-  proj_real=$(cd "$PROJ" 2>/dev/null && pwd -P || printf '%s\n' "$PROJ")
-  root_real=$(cd "$FM_ROOT" 2>/dev/null && pwd -P || printf '%s\n' "$FM_ROOT")
-  home_real=$(cd "$FM_HOME" 2>/dev/null && pwd -P || printf '%s\n' "$FM_HOME")
-  if [ "$proj_real" = "$root_real" ] || [ "$proj_real" = "$home_real" ]; then
-    "$SCRIPT_DIR/fm-merge-local.sh" "$ID"
-  fi
+if [ -n "$PROJ" ] && [ -d "$PROJ" ] && fm_is_firstmate_repo "$PROJ" "$FM_ROOT" "$FM_HOME"; then
+  "$SCRIPT_DIR/fm-merge-local.sh" "$ID"
 fi
