@@ -123,6 +123,8 @@ fi
 
 # Canonical check: generation directory must not be a symlink
 [ ! -L "$GEN_DIR" ] || die "generation directory is a symlink: '$GEN_DIR'"
+[ ! -L "$GEN_DIR/notes" ] \
+  || die "proposed generation's notes/ is a symlink, which the compiler refuses to read: '$GEN_DIR/notes'"
 
 # bin/fm-memory-compile.sh resolves data/memory/HEAD relative to data/memory,
 # so the identifier written there is derived once from the canonical location
@@ -156,6 +158,33 @@ trap cleanup EXIT INT TERM
 # data/memory/HEAD currently publishes, or to data/memory when HEAD names
 # nothing resolvable. Both the constitution and the diff-bounds check need the
 # same answer to "what is live right now", so it is resolved in one place.
+# dir_inside_memory <dir>: true when the directory physically lives under
+# data/memory. A path can name only real directories at its two ends and still
+# be a link in the middle, so containment is settled physically.
+dir_inside_memory() {
+  local d_phys root_phys
+  d_phys=$(cd "$1" 2>/dev/null && pwd -P) || return 1
+  root_phys=$(cd "$MEMORY" 2>/dev/null && pwd -P) || return 1
+  case "$d_phys" in
+    "$root_phys"|"$root_phys"/*) return 0 ;;
+  esac
+  return 1
+}
+
+# compiler_notes_dir <generation-dir>: sets NOTES_DIR_FOR to the notes directory
+# bin/fm-memory-compile.sh would enumerate for that generation, and returns
+# non-zero when it would enumerate nothing. A symlinked notes/ is refused there,
+# so counting notes through one here would measure a bound over notes no session
+# will ever see.
+NOTES_DIR_FOR=""
+compiler_notes_dir() {
+  NOTES_DIR_FOR=""
+  [ -n "$1" ] || return 1
+  [ -d "$1/notes" ] && [ ! -L "$1/notes" ] || return 1
+  NOTES_DIR_FOR="$1/notes"
+  return 0
+}
+
 BASELINE_GEN_DIR=""
 resolve_baseline_gen_dir() {
   local head_target
@@ -166,9 +195,11 @@ resolve_baseline_gen_dir() {
     case "$head_target" in
       ''|*..*|/*) ;;
       *)
-        if [ -d "$MEMORY/$head_target" ] && [ ! -L "$MEMORY/$head_target" ]; then
+        if [ -d "$MEMORY/$head_target" ] && [ ! -L "$MEMORY/$head_target" ] \
+          && dir_inside_memory "$MEMORY/$head_target"; then
           BASELINE_GEN_DIR="$MEMORY/$head_target"
-        elif [ -d "$MEMORY/gen/$head_target" ] && [ ! -L "$MEMORY/gen/$head_target" ]; then
+        elif [ -d "$MEMORY/gen/$head_target" ] && [ ! -L "$MEMORY/gen/$head_target" ] \
+          && dir_inside_memory "$MEMORY/gen/$head_target"; then
           BASELINE_GEN_DIR="$MEMORY/gen/$head_target"
         fi
         ;;
@@ -381,11 +412,11 @@ tally_citations() {
 }
 
 check_citations() {
-  local notes_dir="$GEN_DIR/notes" note_count=0 valid_citations=0 note
+  local note_count=0 valid_citations=0 note
   local file_err=0
 
-  if [ -d "$notes_dir" ] && [ ! -L "$notes_dir" ]; then
-    for note in "$notes_dir"/*.md; do
+  if compiler_notes_dir "$GEN_DIR"; then
+    for note in "$NOTES_DIR_FOR"/*.md; do
       [ -f "$note" ] && [ ! -L "$note" ] || continue
       note_count=$((note_count + 1))
       local note_slug
@@ -486,7 +517,7 @@ check_constitution() {
   fi
 
   if [ -z "$baseline_file" ]; then
-    printf 'PASS constitution: no standing baseline on disk; data/captain.md is absent or empty and no published generation carries a core.md\n'
+    printf 'PASS constitution: no standing baseline on disk; data/captain.md is absent and no published generation carries a core.md\n'
     return 0
   fi
 
@@ -577,13 +608,12 @@ check_diff_bounds() {
   local base_count=0 gen_count=0 deleted_count=0 modified_count=0 added_count=0
 
   resolve_baseline_gen_dir
-  if [ -n "$BASELINE_GEN_DIR" ] && [ -d "$BASELINE_GEN_DIR/notes" ] \
-    && [ ! -L "$BASELINE_GEN_DIR/notes" ]; then
-    base_dir="$BASELINE_GEN_DIR/notes"
+  if compiler_notes_dir "$BASELINE_GEN_DIR"; then
+    base_dir="$NOTES_DIR_FOR"
   fi
 
-  if [ -z "$base_dir" ] && [ -d "$MEMORY/notes" ] && [ ! -L "$MEMORY/notes" ]; then
-    base_dir="$MEMORY/notes"
+  if [ -z "$base_dir" ] && compiler_notes_dir "$MEMORY"; then
+    base_dir="$NOTES_DIR_FOR"
   fi
 
   # If no baseline directory exists or baseline is the same directory as proposed generation
@@ -608,8 +638,8 @@ check_diff_bounds() {
   fi
 
   # Collect proposed generation note names
-  if [ -d "$GEN_DIR/notes" ]; then
-    for note in "$GEN_DIR/notes"/*.md; do
+  if compiler_notes_dir "$GEN_DIR"; then
+    for note in "$NOTES_DIR_FOR"/*.md; do
       [ -f "$note" ] && [ ! -L "$note" ] || continue
       gen_notes+=("$(basename "$note")")
       gen_count=$((gen_count + 1))

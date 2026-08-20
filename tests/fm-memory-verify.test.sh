@@ -1030,6 +1030,81 @@ test_constitution_treats_an_empty_core_as_the_core_the_compiler_injects() {
   pass 'an empty core.md is the core the compiler injects, so it cannot silently erase the constitution'
 }
 
+# --- 11. Symlinked Notes And Intermediate Path Components --------------------
+
+test_verify_refuses_a_generation_whose_notes_dir_is_a_symlink() {
+  local home out rc
+  home=$(new_home notes-symlink 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+
+  mkdir -p "$home/data/memory/gen/1/notes" "$home/data/memory/gen/2"
+  printf '# Core\n<!-- source: data/source.md -->\n- Rule A\n' > "$home/data/memory/gen/1/core.md"
+  cp "$home/data/memory/gen/1/core.md" "$home/data/memory/gen/2/core.md"
+  write_note "$home/data/memory/gen/1/notes" n1 'Note 1' 'one' 2026-08-01 'data/source.md'
+  write_note "$home/data/memory/gen/1/notes" n2 'Note 2' 'two' 2026-08-02 'data/source.md'
+  write_note "$home/data/memory/gen/1/notes" n3 'Note 3' 'three' 2026-08-03 'data/source.md'
+  FM_HOME="$home" "$PUBLISH" 1 >/dev/null
+
+  # Carrying notes forward by linking the previous generation's directory: the
+  # compiler refuses to read it, so every note leaves the session surface.
+  ln -s ../1/notes "$home/data/memory/gen/2/notes"
+
+  set +e
+  out=$(FM_HOME="$home" "$PUBLISH" 2 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "publish accepted a generation whose notes/ is a symlink: $out"
+  assert_contains "$out" "notes/ is a symlink" 'the refusal did not name the symlinked notes directory'
+  [ "$(head -n 1 "$home/data/memory/HEAD")" = "gen/1" ] || fail 'HEAD moved to the symlinked-notes generation'
+
+  # The compiler agrees the notes are unreadable, and says so rather than
+  # reporting the home as noteless.
+  out=$(FM_HOME="$home" "$COMPILE" compile --memory-dir "$home/data/memory/gen/2")
+  assert_contains "$out" 'notes_total=0' 'fixture assumption broken: the compiler read the symlinked notes'
+  assert_contains "$out" 'MEMORY_NOTICE: data/memory/gen/2/notes/ is a symlink' \
+    'the compiler reported an empty note set without explaining the symlink'
+
+  # A real directory holding the same notes publishes normally.
+  rm "$home/data/memory/gen/2/notes"
+  mkdir -p "$home/data/memory/gen/2/notes"
+  cp "$home/data/memory/gen/1/notes"/*.md "$home/data/memory/gen/2/notes/"
+  out=$(FM_HOME="$home" "$PUBLISH" 2) \
+    || fail "publish refused a generation carrying the notes forward as real files: $out"
+  [ "$(head -n 1 "$home/data/memory/HEAD")" = "gen/2" ] || fail 'HEAD did not advance to gen/2'
+
+  pass 'a generation whose notes/ is a symlink is refused instead of counted as fully populated'
+}
+
+test_compile_refuses_a_generation_reached_through_an_intermediate_symlink() {
+  local home outside out rc
+  home=$(new_home intermediate-symlink 7500)
+  outside="$TMP_ROOT/intermediate-symlink-outside"
+  printf 'SOURCE\n' > "$home/data/source.md"
+
+  # data/memory and the leaf generation are both real directories; only the
+  # component between them is a link, so a per-component test never sees it.
+  mkdir -p "$outside/1/notes"
+  ln -s "$outside" "$home/data/memory/gen"
+  printf '# Core\n<!-- source: data/source.md -->\n- OUT-OF-HOME-CORE-BODY\n' > "$outside/1/core.md"
+  write_note "$outside/1/notes" n1 'Outside Note' 'outside' 2026-08-20 'data/source.md'
+  printf 'gen/1\n' > "$home/data/memory/HEAD"
+
+  out=$(FM_HOME="$home" "$COMPILE" compile)
+  assert_not_contains "$out" 'OUT-OF-HOME-CORE-BODY' \
+    'the compiler injected a core read from outside the home'
+  assert_contains "$out" 'is reached through a symlink' \
+    'the empty bundle did not explain that the path leaves the home'
+
+  set +e
+  out=$(FM_HOME="$home" "$COMPILE" catalog 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "catalog mode published outside the home: $out"
+  assert_absent "$outside/1/catalog.md" 'catalog was written outside the home'
+
+  pass 'a generation reached through an intermediate symlink is refused, not reported as in-home'
+}
+
 # --- Run All Tests ----------------------------------------------------------
 
 test_drop_tray_capture_basic
@@ -1064,6 +1139,8 @@ test_constitution_allows_a_generation_with_no_core_when_captain_md_supplies_it
 test_compile_labels_the_data_directory_without_doubling_the_path
 test_constitution_guards_the_published_core_even_when_captain_md_exists
 test_constitution_treats_an_empty_core_as_the_core_the_compiler_injects
+test_verify_refuses_a_generation_whose_notes_dir_is_a_symlink
+test_compile_refuses_a_generation_reached_through_an_intermediate_symlink
 
 printf '# all fm-memory-verify tests passed\n'
 exit 0

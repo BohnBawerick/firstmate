@@ -188,21 +188,43 @@ fi
 # is data/memory whenever the resolved directory was reached by traversing it.
 MEMORY_DIR_OK=1
 MEMORY_SYMLINK_PATH=""
+MEMORY_SYMLINK_HOW="is a symlink"
+
+# Logical paths answer "does this claim to be inside data/memory", which is the
+# question the guard is about; `pwd -P` would resolve the very link being
+# looked for. Physical paths then answer "and is it really there".
+MEMORY_LOGICAL=$(cd "$MEMORY" 2>/dev/null && pwd) || MEMORY_LOGICAL=""
+MEMORY_ROOT_LOGICAL=$(cd "$DATA/memory" 2>/dev/null && pwd) || MEMORY_ROOT_LOGICAL=""
+MEMORY_UNDER_ROOT=0
+if [ -n "$MEMORY_LOGICAL" ] && [ -n "$MEMORY_ROOT_LOGICAL" ]; then
+  case "$MEMORY_LOGICAL" in
+    "$MEMORY_ROOT_LOGICAL"|"$MEMORY_ROOT_LOGICAL"/*) MEMORY_UNDER_ROOT=1 ;;
+  esac
+fi
+
 if [ -L "$MEMORY" ]; then
   MEMORY_DIR_OK=0
   MEMORY_SYMLINK_PATH="$REL_LABEL"
-elif [ -L "$DATA/memory" ]; then
-  # Both sides are normalised to a logical absolute path before the prefix test,
-  # so no spelling of the same directory can slip past it. `pwd` is used rather
-  # than `pwd -P` on purpose: the question is whether the link was traversed,
-  # which resolving the link away would erase.
-  MEMORY_LOGICAL=$(cd "$MEMORY" 2>/dev/null && pwd) || MEMORY_LOGICAL=""
-  MEMORY_ROOT_LOGICAL=$(cd "$DATA/memory" 2>/dev/null && pwd) || MEMORY_ROOT_LOGICAL=""
-  if [ -n "$MEMORY_LOGICAL" ] && [ -n "$MEMORY_ROOT_LOGICAL" ]; then
-    case "$MEMORY_LOGICAL" in
-      "$MEMORY_ROOT_LOGICAL"|"$MEMORY_ROOT_LOGICAL"/*)
+elif [ "$MEMORY_UNDER_ROOT" -eq 1 ] && [ -L "$DATA/memory" ]; then
+  MEMORY_DIR_OK=0
+  MEMORY_SYMLINK_PATH="data/memory"
+elif [ "$MEMORY_UNDER_ROOT" -eq 1 ]; then
+  # A path can name only real directories at its two ends and still be a link
+  # in the middle, so containment is settled physically rather than by testing
+  # components one at a time.
+  MEMORY_PHYSICAL=$(cd "$MEMORY" 2>/dev/null && pwd -P) || MEMORY_PHYSICAL=""
+  MEMORY_ROOT_PHYSICAL=$(cd "$DATA/memory" 2>/dev/null && pwd -P) || MEMORY_ROOT_PHYSICAL=""
+  if [ -z "$MEMORY_PHYSICAL" ] || [ -z "$MEMORY_ROOT_PHYSICAL" ]; then
+    MEMORY_DIR_OK=0
+    MEMORY_SYMLINK_PATH="$REL_LABEL"
+    MEMORY_SYMLINK_HOW="could not be resolved"
+  else
+    case "$MEMORY_PHYSICAL" in
+      "$MEMORY_ROOT_PHYSICAL"|"$MEMORY_ROOT_PHYSICAL"/*) ;;
+      *)
         MEMORY_DIR_OK=0
-        MEMORY_SYMLINK_PATH="data/memory"
+        MEMORY_SYMLINK_PATH="$REL_LABEL"
+        MEMORY_SYMLINK_HOW="is reached through a symlink and does not live under data/memory"
         ;;
     esac
   fi
@@ -223,10 +245,15 @@ trap cleanup EXIT INT TERM
 # Every note is read by ONE awk pass rather than one process per note: this runs
 # on the session-start critical path, and a home with fifty notes paid for two
 # hundred processes when each note was measured and formatted on its own.
+NOTES_DIR_SYMLINK=0
 note_inventory() {
   local path count=0
   [ "$MEMORY_DIR_OK" -eq 1 ] || return 0
-  [ -d "$NOTES_DIR" ] && [ ! -L "$NOTES_DIR" ] || return 0
+  if [ -L "$NOTES_DIR" ]; then
+    NOTES_DIR_SYMLINK=1
+    return 0
+  fi
+  [ -d "$NOTES_DIR" ] || return 0
   : > "$TMP/notepaths"
   for path in "$NOTES_DIR"/*.md; do
     [ -f "$path" ] && [ ! -L "$path" ] || continue
@@ -357,7 +384,7 @@ if [ "$MODE" = catalog ]; then
     cat "$TMP/catalog"
     exit 0
   fi
-  [ "$MEMORY_DIR_OK" -eq 1 ] || die "$MEMORY_SYMLINK_PATH is a symlink; refusing to publish through it"
+  [ "$MEMORY_DIR_OK" -eq 1 ] || die "$MEMORY_SYMLINK_PATH $MEMORY_SYMLINK_HOW; refusing to publish through it"
   [ -d "$MEMORY" ] || mkdir -p "$MEMORY" || die "could not create $MEMORY"
   if [ -L "$MEMORY/catalog.md" ]; then
     die "$REL_LABEL/catalog.md is a symlink; refusing to publish through it"
@@ -467,8 +494,12 @@ CORE_LABEL=
 CORE_TOKENS=0
 NOTICES=()
 
+if [ "$NOTES_DIR_SYMLINK" -eq 1 ]; then
+  NOTICES+=("MEMORY_NOTICE: $REL_LABEL/notes/ is a symlink, so no note was read through it. Any notes under it are NOT in this bundle and are reported here as absent. Replace the symlink with a real directory.")
+fi
+
 if [ "$MEMORY_DIR_OK" -eq 0 ]; then
-  NOTICES+=("MEMORY_NOTICE: $MEMORY_SYMLINK_PATH is a symlink, so nothing was read through it. Any core, catalog and notes under it are NOT in this bundle and are reported here as absent. Replace the symlink with a real directory.")
+  NOTICES+=("MEMORY_NOTICE: $MEMORY_SYMLINK_PATH $MEMORY_SYMLINK_HOW, so nothing was read through it. Any core, catalog and notes under it are NOT in this bundle and are reported here as absent. Replace the symlink with a real directory.")
 fi
 
 if [ -n "$HEAD_UNRESOLVED" ]; then
