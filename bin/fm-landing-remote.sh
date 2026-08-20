@@ -62,7 +62,9 @@
 # not apply to it and the check passes silently. A `fork` remote is the exact
 # pre-apply shape and apply always removes it, so its presence means origin may
 # still be the parent. Each refusal names the one broken invariant on a single
-# stderr line so a caller can embed it in its own diagnostic.
+# stderr line so a caller can embed it in its own diagnostic, and closes with an
+# apply command carrying the --ours and --upstream URLs the checkout itself
+# states, so the printed repair runs as printed.
 #
 # URL comparison is spelling-tolerant for the GitHub https / ssh / trailing
 # .git forms. apply is a no-op, and touches the network not at all, once origin,
@@ -419,11 +421,21 @@ cmd_status() {
   printf 'gh-default=%s\n' "${gh_default:-absent}"
 }
 
+# Every refusal below is relayed verbatim by bin/fm-bootstrap.sh as the
+# LANDING_REMOTE remediation, so the repair it names has to run as printed.
+# apply takes both URLs, so fill them from what the checkout already states and
+# fall back to a named placeholder only for a URL the checkout cannot supply.
+landing_remote_repair_command() {
+  local ours=$1 parent=$2
+  printf 'run fm-landing-remote.sh apply --ours %s --upstream %s on the primary checkout' \
+    "${ours:-<the landing repository url>}" "${parent:-<the third-party parent url>}"
+}
+
 # The invariants apply leaves behind, expressed without the landing URL. Reading
 # only what the checkout already states keeps this runnable from any caller that
 # knows a remap was owed but does not carry --ours, and keeps it offline.
 verify_remapped_shape() {
-  local origin upstream fork_url
+  local origin upstream fork_url fork_parent
 
   origin=$(remote_url origin)
   upstream=$(remote_url upstream)
@@ -435,21 +447,24 @@ verify_remapped_shape() {
     printf 'origin=%s\n' "${origin:-absent}"
     return 0
   fi
-  [ -n "$origin" ] || fail "origin remote is absent"
+  if [ -z "$origin" ]; then
+    fail "origin remote is absent, so nothing names the repository work lands on; $(landing_remote_repair_command "$fork_url" "$upstream")"
+  fi
   if [ -n "$fork_url" ]; then
-    fail "a fork remote at $fork_url still exists beside origin $origin, which is the shape apply exists to remove, so origin may still be the third-party parent; run fm-landing-remote.sh apply on the primary checkout"
+    fork_parent=${upstream:-$origin}
+    fail "a fork remote at $fork_url still exists beside origin $origin, which is the shape apply exists to remove, so origin may still be the third-party parent; $(landing_remote_repair_command "$fork_url" "$fork_parent")"
   fi
   if urls_equal "$origin" "$upstream"; then
-    fail "origin and upstream both name $origin, so work would branch from and open PRs on the third-party parent; run fm-landing-remote.sh apply on the primary checkout"
+    fail "origin and upstream both name $origin, so work would branch from and open PRs on the third-party parent; $(landing_remote_repair_command "" "$origin")"
   fi
   if [ "$(git_config_get_local checkout.defaultRemote)" != origin ]; then
-    fail "checkout.defaultRemote is not origin while upstream $upstream exists, so an ambiguous branch name can resolve against the parent; run fm-landing-remote.sh apply on the primary checkout"
+    fail "checkout.defaultRemote is not origin while upstream $upstream exists, so an ambiguous branch name can resolve against the parent; $(landing_remote_repair_command "$origin" "$upstream")"
   fi
   if [ "$(git_config_get_local remote.pushDefault)" != origin ]; then
-    fail "remote.pushDefault is not origin while upstream $upstream exists, so a push can land on the parent; run fm-landing-remote.sh apply on the primary checkout"
+    fail "remote.pushDefault is not origin while upstream $upstream exists, so a push can land on the parent; $(landing_remote_repair_command "$origin" "$upstream")"
   fi
   if ! gh_default_is_origin; then
-    fail "gh has no recorded default of origin while upstream $upstream exists, and gh ranks upstream above origin, so a flagless 'gh pr create' can open the PR on the parent; run fm-landing-remote.sh apply on the primary checkout"
+    fail "gh has no recorded default of origin while upstream $upstream exists, and gh ranks upstream above origin, so a flagless 'gh pr create' can open the PR on the parent; $(landing_remote_repair_command "$origin" "$upstream")"
   fi
   printf 'origin=%s\n' "$origin"
   printf 'upstream=%s\n' "$upstream"

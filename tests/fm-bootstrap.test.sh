@@ -1216,10 +1216,14 @@ test_landing_remote_drift_is_reported_and_clears_when_repaired() {
     || fail "the drift line did not name the fork remote that proves apply never ran, got: $out"
   [ "$(printf '%s\n' "$out" | grep -cF 'LANDING_REMOTE: ')" = 1 ] \
     || fail "expected exactly one landing-remote line, got: $out"
+  printf '%s\n' "$out" | grep -F -- "--ours $OURS_URL --upstream $PARENT_URL" >/dev/null \
+    || fail "the drift line carried no repair naming both remotes, got: $out"
 
   out=$(run_landing_remote_phase landing-nodefaults arrange_remotes_without_defaults)
   printf '%s\n' "$out" | grep -F 'LANDING_REMOTE: ' >/dev/null \
     || fail "a primary with upstream but no landing git defaults reported no drift, got: $out"
+  printf '%s\n' "$out" | grep -F -- "--ours $OURS_URL --upstream $PARENT_URL" >/dev/null \
+    || fail "the config-drift line carried no repair naming both remotes, got: $out"
 
   out=$(run_landing_remote_phase landing-applied arrange_fully_applied)
   [ -z "$out" ] || fail "a correctly remapped primary should stay silent, got: $out"
