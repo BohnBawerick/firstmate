@@ -31,7 +31,10 @@
 #   now.md       the dated operating picture.  Carries this-shift pins and
 #                ceilings with a front matter date.  Injected only when dated
 #                today; a stale file is dropped and reported, while absence is
-#                silent.
+#                silent.  It is read from data/memory/now.md in the home, never
+#                from the active generation, because it is perishable shift
+#                state rather than versioned knowledge: a published generation
+#                must not freeze it, and publishing must not discard it.
 #   notes/*.md   atomic notes, one claim each.
 #   catalog.md   the regenerable index, one line per note: claim title, file
 #                name under notes/, first triggers, and updated date.
@@ -52,6 +55,11 @@
 # OPERATING PICTURE FORMAT.  now.md opens with a YAML-style front matter block
 # delimited by a bare `---` on line 1 and the next bare `---`:
 #   date:     ISO date (YYYY-MM-DD), matched against today's date
+#   updated:  the same ISO date under the note format's key name, read only as a
+#             fallback when no `date:` key is present, so `date:` always wins
+# Today is the local host date (`date +%Y-%m-%d`), one clock rather than two, so
+# the window a file stays valid for is never wider than a day.
+# FM_MEMORY_TODAY_OVERRIDE replaces that date and exists so a test can pin it.
 # An undated or stale now.md is never injected.
 #
 # SELECTION AND CAP.  config/startup-memory-budget owns the cap and
@@ -65,6 +73,9 @@
 #     no operating picture, no catalog, and no notes;
 #   - the operating picture (now.md) is kept ahead of the catalog when dated
 #     today, because a stale ceiling is the failure this tier exists to prevent;
+#   - an operating picture that does not fit beside the core is dropped with a
+#     loud MEMORY_BUDGET_WARNING and the fill continues, so the newest tier can
+#     never blank the catalog the way one oversized file otherwise would;
 #   - the catalog is kept ahead of every hot note, because it is the thing that
 #     tells the next turn a note exists at all;
 #   - hot notes are added newest-updated first, and one that does not fit is
@@ -532,7 +543,7 @@ parse_now_date() {
       gsub(/^["\047]+|["\047]+$/, "", s)
       return s
     }
-    BEGIN { fm = 0; date = "" }
+    BEGIN { fm = 0; date = ""; fallback = ""; have_date = 0 }
     FNR == 1 {
       if ($0 ~ /^---[[:space:]]*$/) { fm = 1; next }
       exit
@@ -542,38 +553,41 @@ parse_now_date() {
       if (match($0, /^[A-Za-z_][A-Za-z0-9_-]*:[[:space:]]*/)) {
         key = tolower(substr($0, 1, index($0, ":") - 1))
         val = clean(substr($0, RLENGTH + 1))
-        if (key == "date" || key == "updated") {
+        if (key == "date") {
           date = val
+          have_date = 1
+        } else if (key == "updated" && !have_date) {
+          fallback = val
         }
       }
     }
     END {
-      print date
+      print have_date ? date : fallback
     }
   ' "$path"
 }
 
+# Today is settled once, from the local host clock the captain reads, so the
+# validity window is exactly one day everywhere rather than widening wherever
+# local time and UTC disagree.
+TODAY_DATE="${FM_MEMORY_TODAY_OVERRIDE:-}"
+if [ -z "$TODAY_DATE" ]; then
+  TODAY_DATE=$(date +%Y-%m-%d 2>/dev/null || true)
+fi
+
 is_today_date() {
-  local d=$1 today_utc today_local
+  local d=$1
   [ -n "$d" ] || return 1
-  if [ -n "${FM_MEMORY_TODAY_OVERRIDE:-${FM_MEMORY_NOW_DATE:-}}" ]; then
-    [ "$d" = "${FM_MEMORY_TODAY_OVERRIDE:-${FM_MEMORY_NOW_DATE:-}}" ] && return 0
-    return 1
-  fi
-  today_utc=$(date -u +%Y-%m-%d 2>/dev/null || true)
-  today_local=$(date +%Y-%m-%d 2>/dev/null || true)
-  if [ "$d" = "$today_utc" ] || [ "$d" = "$today_local" ]; then
-    return 0
-  fi
-  return 1
+  [ -n "$TODAY_DATE" ] || return 1
+  [ "$d" = "$TODAY_DATE" ]
 }
 
 get_today_display() {
-  if [ -n "${FM_MEMORY_TODAY_OVERRIDE:-${FM_MEMORY_NOW_DATE:-}}" ]; then
-    printf '%s' "${FM_MEMORY_TODAY_OVERRIDE:-${FM_MEMORY_NOW_DATE:-}}"
+  if [ -n "$TODAY_DATE" ]; then
+    printf '%s' "$TODAY_DATE"
     return
   fi
-  date +%Y-%m-%d 2>/dev/null || date -u +%Y-%m-%d 2>/dev/null || printf 'today'
+  printf 'today'
 }
 
 if [ "$NOTES_DIR_SYMLINK" -eq 1 ]; then
@@ -606,20 +620,28 @@ else
   NOTICES+=("MEMORY_NOTICE: no core memory - both $REL_LABEL/core.md and data/captain.md are ABSENT, so this home is running on the firstmate repo built-in defaults.")
 fi
 
-if [ "$MEMORY_DIR_OK" -eq 1 ] && [ -L "$MEMORY/now.md" ]; then
-  NOTICES+=("MEMORY_NOTICE: $REL_LABEL/now.md is a symlink, so nothing was read through it. Replace the symlink with a real file, or remove it.")
-elif [ "$MEMORY_DIR_OK" -eq 1 ] && [ -f "$MEMORY/now.md" ]; then
-  NOW_DATE=$(parse_now_date "$MEMORY/now.md")
+# The operating picture is home-level, exactly like the drop tray: it is read
+# from data/memory/now.md whatever generation HEAD points at, so a generation
+# home sees this shift's pins and a publish never freezes or discards them.
+NOW_ROOT_OK=1
+if [ -L "$DATA/memory" ] || [ ! -d "$DATA/memory" ]; then
+  NOW_ROOT_OK=0
+fi
+
+if [ "$NOW_ROOT_OK" -eq 1 ] && [ -L "$DATA/memory/now.md" ]; then
+  NOTICES+=("MEMORY_NOTICE: data/memory/now.md is a symlink, so nothing was read through it. Replace the symlink with a real file, or remove it.")
+elif [ "$NOW_ROOT_OK" -eq 1 ] && [ -f "$DATA/memory/now.md" ]; then
+  NOW_DATE=$(parse_now_date "$DATA/memory/now.md")
   if is_today_date "$NOW_DATE"; then
     NOW_VALID=1
-    NOW_PATH="$MEMORY/now.md"
-    NOW_LABEL="$REL_LABEL/now.md"
+    NOW_PATH="$DATA/memory/now.md"
+    NOW_LABEL="data/memory/now.md"
     NOW_TOKENS=$(tokens_of_file "$NOW_PATH")
   elif [ -n "$NOW_DATE" ]; then
     TODAY_DISP=$(get_today_display)
-    NOTICES+=("MEMORY_NOTICE: $REL_LABEL/now.md is dated $NOW_DATE (not today, $TODAY_DISP) and is NOT injected. Update it with this shift's pins and ceilings, or remove it.")
+    NOTICES+=("MEMORY_NOTICE: data/memory/now.md is dated $NOW_DATE (not today, $TODAY_DISP) and is NOT injected. Update it with this shift's pins and ceilings, or remove it.")
   else
-    NOTICES+=("MEMORY_NOTICE: $REL_LABEL/now.md has no date in front matter and is NOT injected. Add a date (date: YYYY-MM-DD), or remove it.")
+    NOTICES+=("MEMORY_NOTICE: data/memory/now.md has no date in front matter and is NOT injected. Add a date (date: YYYY-MM-DD), or remove it.")
   fi
 fi
 
@@ -642,18 +664,23 @@ fi
 TOTAL=$CORE_TOKENS
 CORE_OVER=0
 NOW_KEPT=0
+NOW_OVER=0
 CATALOG_KEPT=1
 
 if ! fm_startup_memory_decimal_le "$TOTAL" "$BUDGET"; then
   CORE_OVER=1
   CATALOG_KEPT=0
-elif [ "$NOW_VALID" -eq 1 ] && ! fm_startup_memory_decimal_le "$((TOTAL + NOW_TOKENS))" "$BUDGET"; then
-  NOW_KEPT=0
-  CATALOG_KEPT=0
 else
   if [ "$NOW_VALID" -eq 1 ]; then
-    NOW_KEPT=1
-    TOTAL=$((TOTAL + NOW_TOKENS))
+    if fm_startup_memory_decimal_le "$((TOTAL + NOW_TOKENS))" "$BUDGET"; then
+      NOW_KEPT=1
+      TOTAL=$((TOTAL + NOW_TOKENS))
+    else
+      # One oversized operating picture is dropped on its own and the fill goes
+      # on, so it can never take the catalog - the only thing that tells the
+      # next turn a note exists - down with it.
+      NOW_OVER=1
+    fi
   fi
   if ! fm_startup_memory_decimal_le "$((TOTAL + CATALOG_TOKENS))" "$BUDGET"; then
     CATALOG_KEPT=0
@@ -711,19 +738,20 @@ else
 fi
 
 if [ "$CORE_OVER" -eq 1 ]; then
-  printf '\nMEMORY_BUDGET_WARNING: the core alone is %s estimated tokens against a %s budget. It was printed in full and NOTHING else was: no catalog, no notes. Trim the core (%s/core.md, or data/captain.md when no core.md exists) or raise config/startup-memory-budget.\n' \
-    "$CORE_TOKENS" "$BUDGET" "$REL_LABEL"
-elif [ "$NOW_VALID" -eq 1 ] && [ "$NOW_KEPT" -eq 0 ]; then
-  printf '\nMEMORY_BUDGET_WARNING: the core plus operating picture is %s estimated tokens against a %s budget, so the operating picture, catalog, and every note were dropped. Trim the core or operating picture or raise config/startup-memory-budget.\n' \
-    "$((CORE_TOKENS + NOW_TOKENS))" "$BUDGET"
+  if [ "$NOW_VALID" -eq 1 ]; then
+    printf '\nMEMORY_BUDGET_WARNING: the core alone is %s estimated tokens against a %s budget. It was printed in full and NOTHING else was: no operating picture, no catalog, no notes. Trim the core (%s/core.md, or data/captain.md when no core.md exists) or raise config/startup-memory-budget.\n' \
+      "$CORE_TOKENS" "$BUDGET" "$REL_LABEL"
+  else
+    printf '\nMEMORY_BUDGET_WARNING: the core alone is %s estimated tokens against a %s budget. It was printed in full and NOTHING else was: no catalog, no notes. Trim the core (%s/core.md, or data/captain.md when no core.md exists) or raise config/startup-memory-budget.\n' \
+      "$CORE_TOKENS" "$BUDGET" "$REL_LABEL"
+  fi
 else
   if [ "$NOW_KEPT" -eq 1 ]; then
     printf '\noperating picture: %s\n%s\n' "$NOW_LABEL" "$RULE"
-    if [ -s "$NOW_PATH" ]; then
-      cat "$NOW_PATH"
-    else
-      printf '(present, empty)\n'
-    fi
+    cat "$NOW_PATH"
+  elif [ "$NOW_OVER" -eq 1 ]; then
+    printf '\nMEMORY_BUDGET_WARNING: the core plus operating picture is %s estimated tokens against a %s budget, so the operating picture was dropped and this session is running without today'"'"'s pins and ceilings. The catalog and notes below were filled from what remains. Trim %s or raise config/startup-memory-budget.\n' \
+      "$((CORE_TOKENS + NOW_TOKENS))" "$BUDGET" "$NOW_LABEL"
   fi
 
   if [ "$CATALOG_KEPT" -eq 0 ]; then
@@ -763,9 +791,7 @@ done
 STATUS=within-budget
 if [ "$CORE_OVER" -eq 1 ]; then
   STATUS=over-budget
-elif [ "$NOW_VALID" -eq 1 ] && [ "$NOW_KEPT" -eq 0 ]; then
-  STATUS=capped
-elif [ "$CATALOG_KEPT" -eq 0 ] || [ "$HOT_DROPPED" -gt 0 ]; then
+elif [ "$NOW_OVER" -eq 1 ] || [ "$CATALOG_KEPT" -eq 0 ] || [ "$HOT_DROPPED" -gt 0 ]; then
   STATUS=capped
 fi
 
