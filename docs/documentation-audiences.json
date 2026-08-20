@@ -257,6 +257,10 @@
       "audience": "operator-example"
     },
     {
+      "path": "docs/examples/now.md",
+      "audience": "operator-example"
+    },
+    {
       "path": "docs/examples/wedge-alarm",
       "audience": "operator-example"
     },

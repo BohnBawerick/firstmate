@@ -25,6 +25,18 @@ new_home() {
   printf '%s\n' "$home"
 }
 
+# write_now <home> <date> [content] [key]
+write_now() {
+  local home=$1 date=$2 content=${3:-"STANDING-NOW-TEXT"} key=${4:-"date"}
+  mkdir -p "$home/data/memory"
+  {
+    printf -- '---\n'
+    printf '%s: %s\n' "$key" "$date"
+    printf -- '---\n\n'
+    printf '%s\n' "$content"
+  } > "$home/data/memory/now.md"
+}
+
 # write_note <home> <slug> <title> <triggers> <updated> [padding-lines]
 write_note() {
   local home=$1 slug=$2 title=$3 triggers=$4 updated=$5 pad=${6:-0} i
@@ -561,6 +573,176 @@ test_migration_on_a_home_with_no_learnings_still_builds_the_layout() {
   pass 'a home with no learnings file still gets a compilable data/memory/ layout'
 }
 
+# --- operating picture (now.md) --------------------------------------------
+
+test_operating_picture_dated_today_is_injected_ahead_of_catalog() {
+  local home out core_pos now_pos cat_pos
+  home=$(new_home now-today)
+  printf '# core\n\nSTANDING-CORE-TEXT\n' > "$home/data/memory/core.md"
+  write_now "$home" 2026-08-20 'PINS-AND-CEILINGS-TEXT'
+  write_note "$home" matched 'A matched claim' 'healthlog' 2026-08-18
+  printf -- '- healthlog [no-mistakes] - a project\n' > "$home/data/projects.md"
+
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home")
+
+  assert_contains "$out" 'STANDING-CORE-TEXT' 'core.md body was not injected'
+  assert_contains "$out" 'PINS-AND-CEILINGS-TEXT' 'now.md body was not injected'
+  assert_contains "$out" 'operating picture: data/memory/now.md' 'operating picture header was missing'
+  assert_contains "$out" 'A matched claim' 'catalog was missing'
+  assert_contains "$out" 'BODY-OF-matched' 'matched note was missing'
+
+  core_pos=$(printf '%s\n' "$out" | grep -n '^core:' | cut -d: -f1)
+  now_pos=$(printf '%s\n' "$out" | grep -n '^operating picture:' | cut -d: -f1)
+  cat_pos=$(printf '%s\n' "$out" | grep -n '^catalog ' | cut -d: -f1)
+
+  [ -n "$core_pos" ] && [ -n "$now_pos" ] && [ -n "$cat_pos" ] \
+    || fail "could not find positions in output: $out"
+  [ "$core_pos" -lt "$now_pos" ] \
+    || fail "expected core ($core_pos) before operating picture ($now_pos)"
+  [ "$now_pos" -lt "$cat_pos" ] \
+    || fail "expected operating picture ($now_pos) before catalog ($cat_pos)"
+
+  [ "$(accounting_field "$out" status)" = within-budget ] \
+    || fail "expected within-budget status: $out"
+
+  # Test with updated: in front matter as well
+  write_now "$home" 2026-08-20 'UPDATED-PINS-TEXT' updated
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home")
+  assert_contains "$out" 'UPDATED-PINS-TEXT' 'now.md with updated: key was not injected'
+
+  pass 'a now.md dated today appears in the bundle, clearly delimited, ahead of the catalog'
+}
+
+test_operating_picture_dated_other_day_is_dropped_and_reports_why() {
+  local home out
+  home=$(new_home now-stale)
+  printf '# core\n\nSTANDING-CORE-TEXT\n' > "$home/data/memory/core.md"
+  write_now "$home" 2026-08-19 'YESTERDAYS-CEILINGS'
+  write_note "$home" matched 'A matched claim' 'healthlog' 2026-08-18
+  printf -- '- healthlog [no-mistakes] - a project\n' > "$home/data/projects.md"
+
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home")
+
+  assert_contains "$out" 'STANDING-CORE-TEXT' 'core.md body was not injected'
+  assert_not_contains "$out" 'YESTERDAYS-CEILINGS' 'stale now.md body was injected'
+  assert_not_contains "$out" 'operating picture:' 'operating picture section was present for stale file'
+  assert_contains "$out" 'MEMORY_NOTICE: data/memory/now.md is dated 2026-08-19' \
+    'bundle did not explain why stale now.md was dropped'
+  assert_contains "$out" 'not today' 'stale notice did not mention today date'
+  assert_contains "$out" 'A matched claim' 'catalog was dropped when now.md was stale'
+  assert_contains "$out" 'BODY-OF-matched' 'matched note was dropped when now.md was stale'
+
+  pass 'a now.md dated any other day does not appear in the bundle, and the bundle says why'
+}
+
+test_operating_picture_with_no_date_is_dropped_and_reports_why() {
+  local home out
+  home=$(new_home now-nodate)
+  printf '# core\n\nSTANDING-CORE-TEXT\n' > "$home/data/memory/core.md"
+  printf '# Operating picture\n\nUNDATED-CEILINGS\n' > "$home/data/memory/now.md"
+
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context)
+
+  assert_not_contains "$out" 'UNDATED-CEILINGS' 'undated now.md body was injected'
+  assert_not_contains "$out" 'operating picture:' 'operating picture section was present for undated file'
+  assert_contains "$out" 'MEMORY_NOTICE: data/memory/now.md has no date in front matter' \
+    'bundle did not explain why undated now.md was dropped'
+
+  pass 'a now.md with no date in front matter is dropped and reported'
+}
+
+test_absent_now_md_produces_byte_identical_output_with_no_notice() {
+  local home out
+  home=$(new_home now-absent)
+  printf '# core\n\nSTANDING-CORE-TEXT\n' > "$home/data/memory/core.md"
+  write_note "$home" matched 'A matched claim' 'healthlog' 2026-08-18
+
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context)
+
+  assert_not_contains "$out" 'now.md' 'absent now.md was mentioned in output'
+  assert_not_contains "$out" 'operating picture' 'absent now.md produced operating picture section'
+
+  pass 'no now.md produces output with no notice or operating picture section'
+}
+
+test_budget_cap_precedence_with_operating_picture() {
+  local home out full core_tokens now_tokens catalog_tokens small_tokens budget
+  home=$(new_home budget-now 1000000)
+  printf '# core\n\nSTANDING-CORE-TEXT\n' > "$home/data/memory/core.md"
+  write_now "$home" 2026-08-20 'NOW-PINS-TEXT'
+  write_note "$home" big 'Big claim' 'bigtrig' 2026-08-18 200
+  write_note "$home" small 'Small claim' 'smalltrig' 2026-08-17 1
+
+  full=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context --context 'bigtrig smalltrig')
+  [ "$(accounting_field "$full" hot_notes)" = 2 ] \
+    || fail "an unconstrained compile did not take both matched notes: $full"
+  core_tokens=$(accounting_field "$full" core)
+  catalog_tokens=$(accounting_field "$full" catalog)
+  small_tokens=$(accounting_field "$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context --context smalltrig)" hot_notes_tokens)
+  now_tokens=$(accounting_field "$full" now)
+
+  [ -n "$now_tokens" ] && [ "$now_tokens" -gt 0 ] \
+    || fail "now_tokens was not accounted: $full"
+
+  # Case 1: Budget fits core + now + catalog + small note. Big note dropped.
+  budget=$((core_tokens + now_tokens + catalog_tokens + small_tokens))
+  printf '%s\n' "$budget" > "$home/config/startup-memory-budget"
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context --context 'bigtrig smalltrig')
+  assert_contains "$out" 'STANDING-CORE-TEXT' 'core was dropped'
+  assert_contains "$out" 'NOW-PINS-TEXT' 'now was dropped'
+  assert_contains "$out" 'Big claim' 'catalog was dropped'
+  assert_contains "$out" 'BODY-OF-small' 'small note was dropped'
+  assert_not_contains "$out" 'BODY-OF-big' 'big note was injected over budget'
+  [ "$(accounting_field "$out" status)" = capped ] \
+    || fail "dropping a note was not reported as capped: $out"
+
+  # Case 2: Budget fits core + now, but NOT catalog. Catalog and notes dropped, now kept.
+  printf '%s\n' "$((core_tokens + now_tokens))" > "$home/config/startup-memory-budget"
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context --context 'bigtrig smalltrig')
+  assert_contains "$out" 'STANDING-CORE-TEXT' 'core was dropped'
+  assert_contains "$out" 'NOW-PINS-TEXT' 'now was dropped when catalog had no room'
+  assert_not_contains "$out" 'Big claim' 'catalog was injected without room'
+  assert_contains "$out" 'MEMORY_BUDGET_WARNING:' 'dropping catalog was silent'
+
+  # Case 3: Budget fits core, but NOT now. Now, catalog, and notes dropped. Core alone kept.
+  printf '%s\n' "$core_tokens" > "$home/config/startup-memory-budget"
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context --context 'bigtrig smalltrig')
+  assert_contains "$out" 'STANDING-CORE-TEXT' 'core was dropped'
+  assert_not_contains "$out" 'NOW-PINS-TEXT' 'now was injected without room'
+  assert_not_contains "$out" 'Big claim' 'catalog was injected without room'
+  assert_contains "$out" 'MEMORY_BUDGET_WARNING:' 'dropping now was silent'
+  [ "$(accounting_field "$out" status)" = capped ] \
+    || fail "dropping now was not reported as capped: $out"
+
+  # Case 4: Not even room for core. Core alone printed with loud over-budget warning.
+  printf '1\n' > "$home/config/startup-memory-budget"
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context --context 'bigtrig smalltrig')
+  assert_contains "$out" 'STANDING-CORE-TEXT' 'over-budget core was dropped'
+  assert_contains "$out" 'MEMORY_BUDGET_WARNING: the core alone is' \
+    'over-budget core did not emit warning'
+  assert_not_contains "$out" 'NOW-PINS-TEXT' 'now was injected with over-budget core'
+  [ "$(accounting_field "$out" status)" = over-budget ] \
+    || fail "over-budget core did not report over-budget: $out"
+
+  pass 'the budget cap drops notes first, then catalog, then operating picture, and never core'
+}
+
+test_symlinked_now_md_is_guarded() {
+  local home out outside
+  home=$(new_home now-symlink)
+  printf 'CORE\n' > "$home/data/memory/core.md"
+  outside="$TMP_ROOT/outside-now.md"
+  printf -- '---\ndate: 2026-08-20\n---\nOUTSIDE-NOW-SECRET\n' > "$outside"
+  ln -s "$outside" "$home/data/memory/now.md"
+
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context)
+  assert_not_contains "$out" 'OUTSIDE-NOW-SECRET' 'symlinked now.md was read'
+  assert_contains "$out" 'MEMORY_NOTICE: data/memory/now.md is a symlink' \
+    'symlinked now.md did not emit notice'
+
+  pass 'a symlinked now.md is skipped rather than followed'
+}
+
 test_bundle_is_core_catalog_and_matched_notes_only
 test_core_falls_back_to_captain_then_reports_absence
 test_core_shadowing_captain_emits_notice
@@ -579,5 +761,11 @@ test_migration_freezes_and_archives_before_removing_the_original
 test_migration_dry_run_and_keep_learnings_write_nothing_away
 test_migration_refuses_to_remove_history_it_could_not_archive
 test_migration_on_a_home_with_no_learnings_still_builds_the_layout
+test_operating_picture_dated_today_is_injected_ahead_of_catalog
+test_operating_picture_dated_other_day_is_dropped_and_reports_why
+test_operating_picture_with_no_date_is_dropped_and_reports_why
+test_absent_now_md_produces_byte_identical_output_with_no_notice
+test_budget_cap_precedence_with_operating_picture
+test_symlinked_now_md_is_guarded
 
 echo '# all fm-memory-compile tests passed'

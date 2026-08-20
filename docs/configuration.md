@@ -163,8 +163,9 @@ Shared captain preferences that apply across secondmate domains live only in the
 
 ## Compiled working memory (data/memory/)
 
-Fleet-local operational facts and gotchas live locally as one atomic note per claim under `data/memory/notes/`, alongside an optional standing constitution in `data/memory/core.md`, the regenerable index `data/memory/catalog.md`, and the never-injected candidate tray `data/memory/drop/`.
+Fleet-local operational facts and gotchas live locally as one atomic note per claim under `data/memory/notes/`, alongside an optional standing constitution in `data/memory/core.md`, the dated operating picture `data/memory/now.md`, the regenerable index `data/memory/catalog.md`, and the never-injected candidate tray `data/memory/drop/`.
 The standing constitution `data/memory/core.md` holds standing preferences, authority boundaries, and core guidelines with a 1,500-2,500 estimated-token target.
+The dated operating picture `data/memory/now.md` holds perishable shift pins and ceilings with a front matter date, and is injected only when dated today.
 The whole directory is gitignored and is created by `bin/fm-memory-migrate.sh`, which also splits a home's legacy `data/learnings.md` into notes and freezes the original under `data/memory/raw/` before archiving it to `data/memory-archive.md`.
 Completed tasks deposit candidate findings and tactical gotchas into `data/memory/drop/<task-id>.md` through `bin/fm-memory-drop.sh`.
 Generations of memory live under `data/memory/gen/<N>/` and are activated atomically by pointing `data/memory/HEAD` at the active generation.
