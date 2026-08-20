@@ -941,6 +941,57 @@ test_compile_labels_the_data_directory_without_doubling_the_path() {
   pass 'a memory directory that is data/ itself is labelled data, not data/ plus its absolute path'
 }
 
+test_constitution_guards_the_published_core_even_when_captain_md_exists() {
+  local home out rc
+  home=$(new_home constitution-both-sources 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+
+  # data/captain.md carries one rule; the published core.md carries that rule
+  # plus a second one that lives nowhere else.
+  printf '# Captain preferences\n- Never merge a PR without explicit captain approval.\n' \
+    > "$home/data/captain.md"
+  mkdir -p "$home/data/memory/gen/1/notes" "$home/data/memory/gen/2/notes"
+  printf '# Captain preferences\n<!-- source: data/source.md -->\n- Never merge a PR without explicit captain approval.\n- Never force push to main under any circumstances.\n' \
+    > "$home/data/memory/gen/1/core.md"
+  write_note "$home/data/memory/gen/1/notes" n1 'Note 1' 'one' 2026-08-20 'data/source.md'
+  FM_HOME="$home" "$PUBLISH" 1 >/dev/null
+  write_note "$home/data/memory/gen/2/notes" n1 'Note 1' 'one' 2026-08-20 'data/source.md'
+
+  # Dropping to the captain.md fallback silently loses the second rule.
+  set +e
+  out=$(FM_HOME="$home" "$PUBLISH" 2 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "publish accepted a generation that drops a published standing rule: $out"
+  assert_contains "$out" 'FAIL constitution' 'the published core.md was not used as a baseline'
+  assert_contains "$out" 'Never force push to main under any circumstances' \
+    'the failure did not name the rule that only the published core.md carried'
+  [ "$(head -n 1 "$home/data/memory/HEAD")" = "gen/1" ] || fail 'HEAD moved despite the dropped rule'
+
+  # Writing a core.md that keeps only the captain rule loses it just the same.
+  printf '# Captain preferences\n<!-- source: data/source.md -->\n- Never merge a PR without explicit captain approval.\n' \
+    > "$home/data/memory/gen/2/core.md"
+  set +e
+  out=$(FM_HOME="$home" "$PUBLISH" 2 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "publish accepted a core.md that drops a published standing rule: $out"
+  assert_contains "$out" 'Never force push to main under any circumstances' \
+    'the published core.md stopped being the baseline once a core.md was written'
+
+  # Carrying both rules forward publishes, and the compiled surface keeps them.
+  printf '# Captain preferences\n<!-- source: data/source.md -->\n- Never merge a PR without explicit captain approval.\n- Never force push to main under any circumstances.\n- Always run the validation gate before delivery.\n' \
+    > "$home/data/memory/gen/2/core.md"
+  out=$(FM_HOME="$home" "$PUBLISH" 2) \
+    || fail "publish refused a generation that preserves both standing rules: $out"
+  [ "$(head -n 1 "$home/data/memory/HEAD")" = "gen/2" ] || fail 'HEAD did not advance to gen/2'
+  out=$(FM_HOME="$home" "$COMPILE" compile)
+  assert_contains "$out" 'Never force push to main under any circumstances' \
+    'the compiled bundle lost a standing rule the verifier had accepted'
+
+  pass 'the published core.md stays a constitution baseline even while data/captain.md exists'
+}
+
 # --- Run All Tests ----------------------------------------------------------
 
 test_drop_tray_capture_basic
@@ -973,6 +1024,7 @@ test_drop_tray_keeps_a_claims_file_final_line_without_a_newline
 test_constitution_uses_published_core_as_baseline_without_captain_md
 test_constitution_allows_a_generation_with_no_core_when_captain_md_supplies_it
 test_compile_labels_the_data_directory_without_doubling_the_path
+test_constitution_guards_the_published_core_even_when_captain_md_exists
 
 printf '# all fm-memory-verify tests passed\n'
 exit 0

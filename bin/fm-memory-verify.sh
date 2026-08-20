@@ -23,11 +23,11 @@
 #      existing source file, report, or task record on disk. Incidental paths
 #      mentioned in prose are reported but do not block publication.
 #   3. Constitution: the standing constitution a session sees today must still
-#      be there tomorrow. The baseline is data/captain.md when it carries
-#      standing preferences, otherwise the core.md of the published generation
-#      named by data/memory/HEAD. The proposed surface is the generation's
-#      core.md, or data/captain.md when the generation has none, mirroring the
-#      precedence bin/fm-memory-compile.sh applies;
+#      be there tomorrow. Both sides are resolved by the same rule that
+#      bin/fm-memory-compile.sh applies to pick a core - the generation's own
+#      core.md, and data/captain.md only when it has none. Today's side is read
+#      from the generation data/memory/HEAD publishes, tomorrow's from the
+#      proposed generation;
 #   4. Diff bounds: a single generation cannot replace or delete excessive
 #      proportions of memory (default: max 50% deletion of baseline notes) and
 #      can never delete every baseline note, however small the baseline is.
@@ -443,23 +443,41 @@ usable_file() {
   [ -f "$1" ] && [ ! -L "$1" ] && [ -s "$1" ]
 }
 
+# standing_core_for <generation-dir>: sets STANDING_CORE to the file
+# bin/fm-memory-compile.sh would inject as that generation's core, and
+# STANDING_CORE_IS_GEN to 1 when it is the generation's own core.md. Both the
+# live and the proposed side must be resolved by this one rule: resolving them
+# differently is what lets a rule that lives in only one of them disappear.
+STANDING_CORE=""
+STANDING_CORE_IS_GEN=0
+standing_core_for() {
+  STANDING_CORE=""
+  STANDING_CORE_IS_GEN=0
+
+  if [ -n "$1" ] && usable_file "$1/core.md"; then
+    STANDING_CORE="$1/core.md"
+    STANDING_CORE_IS_GEN=1
+    return 0
+  fi
+
+  if usable_file "$DATA/captain.md"; then
+    STANDING_CORE="$DATA/captain.md"
+    return 0
+  fi
+
+  return 1
+}
+
 check_constitution() {
-  local captain_file="$DATA/captain.md"
-  local gen_core="$GEN_DIR/core.md"
   local baseline_file="" baseline_label="" target_file="" target_label=""
 
-  # The baseline is whatever standing constitution is in force right now:
-  # data/captain.md while it still carries preferences, and otherwise the
-  # core.md of the generation data/memory/HEAD currently publishes.
-  if usable_file "$captain_file"; then
-    baseline_file="$captain_file"
-    baseline_label='data/captain.md'
-  else
-    resolve_baseline_gen_dir
-    if [ -n "$BASELINE_GEN_DIR" ] && [ "$BASELINE_GEN_DIR" != "$GEN_DIR" ] \
-      && usable_file "$BASELINE_GEN_DIR/core.md"; then
-      baseline_file="$BASELINE_GEN_DIR/core.md"
+  resolve_baseline_gen_dir
+  if standing_core_for "$BASELINE_GEN_DIR"; then
+    baseline_file="$STANDING_CORE"
+    if [ "$STANDING_CORE_IS_GEN" -eq 1 ]; then
       baseline_label='the published core.md'
+    else
+      baseline_label='data/captain.md'
     fi
   fi
 
@@ -468,15 +486,13 @@ check_constitution() {
     return 0
   fi
 
-  # bin/fm-memory-compile.sh injects the generation's core.md when it has one
-  # and falls back to data/captain.md when it does not, so the surface a future
-  # session will actually read is what has to preserve the baseline.
-  if usable_file "$gen_core"; then
-    target_file="$gen_core"
-    target_label='core.md'
-  elif usable_file "$captain_file"; then
-    target_file="$captain_file"
-    target_label='data/captain.md (the compiler core while the generation has no core.md)'
+  if standing_core_for "$GEN_DIR"; then
+    target_file="$STANDING_CORE"
+    if [ "$STANDING_CORE_IS_GEN" -eq 1 ]; then
+      target_label='core.md'
+    else
+      target_label='data/captain.md (the compiler core while the generation has no core.md)'
+    fi
   else
     printf 'FAIL constitution: %s carries standing preferences but the proposed generation has no core.md and no data/captain.md to fall back to\n' \
       "$baseline_label" >&2
