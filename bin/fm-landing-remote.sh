@@ -387,7 +387,7 @@ refresh_no_mistakes() {
     echo "warning: no-mistakes is not on PATH; after origin points at the landing remote, run: no-mistakes init" >&2
     return 0
   fi
-  ( cd "$REPO" && no-mistakes init ) || return 1
+  ( cd "$REPO" && no-mistakes --yes init ) || return 1
 }
 
 cmd_status() {
