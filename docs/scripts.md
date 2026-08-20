@@ -126,3 +126,5 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | `fm-memory-drop.sh`      | Deposit candidate claims from completed tasks into the drop tray `data/memory/drop/` |
 | `fm-memory-verify.sh`    | Mechanical safety verifier and generation publication guard for `data/memory/`      |
 | `fm-memory-publish.sh`   | Verify and atomically update `data/memory/HEAD` to point to a proposed generation    |
+| `fm-dreamer-watch.sh`    | Evaluate whether an offline dream pass is due and arm its idle-notification watch    |
+| `fm-dreamer-grade.sh`    | Grade a proposed memory generation against the rubric and scaffold the grader scout |

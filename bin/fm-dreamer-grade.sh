@@ -30,6 +30,10 @@
 #        still hold in the new core; a new statement that reverses a standing
 #        rule (a negation of a rule's own wording, or an outright removal) is
 #        rejected as a contradiction with standing rules.
+#   A statement the old generation already carries verbatim is not a proposed
+#   statement and is not inspected by (2) or (3): the mechanical verifier
+#   requires every standing rule to survive, so a preserved rule must not be
+#   read as a new claim about itself.
 #   The rubric flags (2) and (3) with evidence; the final PASS/FAIL for the
 #   whole generation requires (1) to pass and no (3) contradictions. Flags of
 #   type (2) are surfaced for the grader scout to decide, because only a fresh
@@ -166,40 +170,108 @@ is_scrap_statement() {
 
 # --- contradiction with standing rules ---------------------------------------
 #
-# contradicts_standing <old-core> <new-core> <line>: returns 0 when <line> (a
-# new-core statement) reverses a standing bullet rule in the old core. It
-# compares the new statement against each old bullet rule's substantive
-# keywords; a new statement that negates a rule is flagged. This is heuristic
-# and surfaces evidence for the grader; a true removal is already caught by the
-# mechanical constitution check (which requires every standing rule to survive).
-contradicts_standing() {
-  local old_file=$1 line=$2 rule clean keywords kw matched neg
-  [ -f "$old_file" ] && [ ! -L "$old_file" ] || return 1
-  while IFS= read -r rule; do
+# The old core's statements are parsed once into STANDING_KEYWORDS, one
+# space-separated keyword list per rule, so the per-statement check below costs
+# no subprocess at all. Re-parsing per statement is quadratic in core size and
+# makes `grade` look hung on a realistic constitution.
+STANDING_KEYWORDS=()
+
+# load_standing_rules <old-core>: fill STANDING_KEYWORDS from the old core's
+# statements. A statement contributes its substantive words (four characters or
+# more), lowercased, with bullet markers and punctuation stripped.
+load_standing_rules() {
+  local old_file=$1 rule clean keywords
+  [ -n "$old_file" ] && [ -f "$old_file" ] && [ ! -L "$old_file" ] || return 0
+  while IFS= read -r rule || [ -n "$rule" ]; do
     clean=$(printf '%s\n' "$rule" | sed -e 's/^[[:space:]]*[-*][[:space:]]*//' -e 's/[[:space:]]*$//')
     [ -n "$clean" ] || continue
     [ "${#clean}" -ge 5 ] || continue
     keywords=$(printf '%s\n' "$clean" | LC_ALL=C tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' ' ' | awk '{ for(i=1;i<=NF;i++) if(length($i)>=4) printf "%s ", $i }')
     [ -n "$keywords" ] || continue
+    STANDING_KEYWORDS+=("$keywords")
+  done < "$old_file"
+}
+
+# contradicts_standing <lowercased-statement>: returns 0 when the statement
+# reverses a standing rule loaded by load_standing_rules: it shares the rule's
+# substance (two or more of the rule's keywords) and negates it. The statement
+# is matched lowercased throughout, so an ordinary sentence-case "Never ..." is
+# caught exactly like a lowercase one. This is heuristic and surfaces evidence
+# for the grader; a true removal is already caught by the mechanical
+# constitution check (which requires every standing rule to survive).
+contradicts_standing() {
+  local line_lc=$1 keywords kw matched neg i=0
+  while [ "$i" -lt "${#STANDING_KEYWORDS[@]}" ]; do
+    keywords=${STANDING_KEYWORDS[$i]}
+    i=$((i + 1))
     # Count how many of the old rule's keywords the new statement echoes.
     matched=0
     for kw in $keywords; do
-      case "$(printf '%s\n' "$line" | LC_ALL=C tr '[:upper:]' '[:lower:]')" in
+      case "$line_lc" in
         *"$kw"*) matched=$((matched + 1)) ;;
       esac
     done
     # A contradiction is a new statement that shares the rule's substance but
     # reverses it: an explicit "never" / "do not" / "no longer" against a
     # standing "always" / "do" rule.
-    if [ "$matched" -ge 2 ]; then
-      for neg in 'never' 'do not' 'no longer' 'must not' 'refuse to'; do
-        case "$line" in
-          *"$neg"*) return 0 ;;
-        esac
-      done
-    fi
-  done < "$old_file"
+    [ "$matched" -ge 2 ] || continue
+    for neg in 'never' 'do not' 'no longer' 'must not' 'refuse to'; do
+      case "$line_lc" in
+        *"$neg"*) return 0 ;;
+      esac
+    done
+  done
   return 1
+}
+
+# --- statement inspection ----------------------------------------------------
+#
+# inspect_statements <old-file> <new-file> <label>: run the scrap and
+# contradiction checks over the statements the new file adds or changes. A line
+# the old file already carries verbatim is not a proposed statement and is
+# skipped: the mechanical verifier REQUIRES every standing rule to survive into
+# the new generation, so inspecting a preserved rule would make the grader
+# reject exactly the input the verifier demands. Headings, source markers, and
+# note frontmatter are metadata rather than claims and are skipped too. An empty
+# <old-file> means every statement in <new-file> is new.
+inspect_statements() {
+  local old_file=$1 new_file=$2 label=$3
+  local line line_lc haystack="" in_frontmatter=0 first=1
+  [ -f "$new_file" ] && [ ! -L "$new_file" ] || return 0
+  if [ -n "$old_file" ] && [ -f "$old_file" ] && [ ! -L "$old_file" ]; then
+    haystack=$'\n'"$(cat "$old_file")"$'\n'
+  fi
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$first" -eq 1 ]; then
+      first=0
+      if [ "$line" = '---' ]; then
+        in_frontmatter=1
+        continue
+      fi
+    fi
+    if [ "$in_frontmatter" -eq 1 ]; then
+      [ "$line" = '---' ] && in_frontmatter=0
+      continue
+    fi
+    [ -n "$line" ] || continue
+    case "$line" in
+      '#'*|'---'*|'<!--'*|' '*|$'\t'*) continue ;;
+    esac
+    if [ -n "$haystack" ]; then
+      case "$haystack" in
+        *$'\n'"$line"$'\n'*) continue ;;
+      esac
+    fi
+    if is_scrap_statement "$line"; then
+      printf 'WARN grade: possible tactical scrap in %s: %s\n' "$label" "$line" >&2
+      GRADE_WARNINGS=$((GRADE_WARNINGS + 1))
+    fi
+    line_lc=$(printf '%s\n' "$line" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+    if contradicts_standing "$line_lc"; then
+      printf 'FAIL grade: %s contradicts a standing rule: %s\n' "$label" "$line" >&2
+      ERRORS=$((ERRORS + 1))
+    fi
+  done < "$new_file"
 }
 
 if [ "$CMD" = scout ]; then
@@ -289,25 +361,26 @@ NEW_CORE=""
 [ -f "$NEW_DIR/core.md" ] && [ ! -L "$NEW_DIR/core.md" ] && NEW_CORE="$NEW_DIR/core.md"
 [ -z "$NEW_CORE" ] && [ -f "$DATA/captain.md" ] && [ ! -L "$DATA/captain.md" ] && NEW_CORE="$DATA/captain.md"
 
-if [ -n "$OLD_CORE" ] && [ -n "$NEW_CORE" ] && [ "$OLD_CORE" != "$NEW_CORE" ]; then
-  # Core changed: inspect every new statement for scraps and contradictions.
-  while IFS= read -r line || [ -n "$line" ]; do
-    [ -n "$line" ] || continue
-    case "$line" in
-      '#'*|'---'*|''|' '*|$'\t'*) continue ;;
-    esac
-    if is_scrap_statement "$line"; then
-      printf 'WARN grade: possible tactical scrap in new core: %s\n' "$line" >&2
-      GRADE_WARNINGS=$((GRADE_WARNINGS + 1))
-    fi
-    if contradicts_standing "$OLD_CORE" "$line"; then
-      printf 'FAIL grade: new core contradicts a standing rule: %s\n' "$line" >&2
-      ERRORS=$((ERRORS + 1))
-    fi
-  done < "$NEW_CORE"
+load_standing_rules "$OLD_CORE"
+
+if [ -n "$NEW_CORE" ] && [ "$OLD_CORE" != "$NEW_CORE" ]; then
+  inspect_statements "$OLD_CORE" "$NEW_CORE" "new core"
 else
   printf 'INFO grade: no core change to rubric (new core resolves to %s)\n' \
     "${NEW_CORE:-ABSENT}" >&2
+fi
+
+# The same rubric runs over the generation's notes, because a claim smuggled
+# into a note is published to every session exactly as a core statement is.
+# A note the old generation already carries verbatim contributes no statement.
+if [ -d "$NEW_DIR/notes" ] && [ ! -L "$NEW_DIR/notes" ]; then
+  for note in "$NEW_DIR"/notes/*.md; do
+    [ -f "$note" ] && [ ! -L "$note" ] || continue
+    note_name=$(basename "$note")
+    old_note="$OLD_DIR/notes/$note_name"
+    [ -f "$old_note" ] && [ ! -L "$old_note" ] || old_note=""
+    inspect_statements "$old_note" "$note" "changed note notes/$note_name"
+  done
 fi
 
 if [ "$ERRORS" -gt 0 ]; then

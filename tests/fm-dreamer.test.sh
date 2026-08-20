@@ -172,6 +172,44 @@ test_watch_ignores_dreamer_prefixed_worker() {
   pass 'watch does not count a dreamer task as a blocking live worker'
 }
 
+test_watch_blocked_by_worker_with_unresolvable_endpoint() {
+  local home out rc
+  home=$(new_home watch-empty-target)
+  printf -- '- candidate\n' > "$home/data/memory/drop/cand.md"
+  # A supported backend with no recorded endpoint is a partially written meta.
+  # That is not proof the worker is gone, so it must block the dream.
+  printf 'backend=tmux\n' > "$home/state/fm-real-task.meta"
+  out=$(FM_HOME="$home" "$WATCH" check 2>&1); rc=$?
+  [ "$rc" -eq 1 ] || fail "a worker with no resolvable endpoint did not block (exit $rc): $out"
+  assert_contains "$out" 'fm-real-task' 'blocked reason did not name the unresolvable worker'
+  pass 'watch treats a worker with no resolvable endpoint as live'
+}
+
+test_watch_home_flag_pins_the_evaluated_home() {
+  local pinned ambient out rc
+  pinned=$(new_home watch-home-pinned)
+  ambient=$(new_home watch-home-ambient)
+  printf -- '- candidate\n' > "$pinned/data/memory/drop/cand.md"
+  # FM_HOME points at a home with nothing to consolidate; --home must win.
+  out=$(FM_HOME="$ambient" "$WATCH" check --home "$pinned" 2>&1); rc=$?
+  [ "$rc" -eq 0 ] || fail "--home did not select the pinned home (exit $rc): $out"
+  assert_contains "$out" 'DREAM_DUE: due' '--home did not evaluate the pinned home'
+
+  out=$(FM_HOME="$pinned" "$WATCH" check --home "$ambient" 2>&1); rc=$?
+  [ "$rc" -eq 1 ] || fail "--home did not override an ambient due home (exit $rc): $out"
+  pass 'check --home evaluates the pinned home, not the ambient FM_HOME'
+}
+
+test_watch_mark_due_home_flag_writes_into_the_pinned_home() {
+  local pinned ambient
+  pinned=$(new_home watch-mark-pinned)
+  ambient=$(new_home watch-mark-ambient)
+  FM_HOME="$ambient" "$WATCH" mark-due when-dream-due --home "$pinned" >/dev/null
+  assert_present "$pinned/state/.dream-due" 'mark-due did not write into the pinned home'
+  assert_absent "$ambient/state/.dream-due" 'mark-due wrote into the ambient home'
+  pass 'mark-due --home writes the marker into the pinned home'
+}
+
 test_watch_mark_due_writes_durable_marker() {
   local home out marker
   home=$(new_home watch-marker)
@@ -192,6 +230,12 @@ test_watch_arm_dry_run_prints_argv() {
     'arm dry-run condition argv is missing or wrong'
   assert_contains "$out" 'fm-dreamer-watch.sh mark-due when-dream-due' \
     'arm dry-run action argv is missing or wrong'
+  # The registered spec must be self-contained: both argv vectors pin the home
+  # rather than depending on whatever environment the runner carries.
+  assert_contains "$out" "check --head-age 12 --home $home" \
+    'arm dry-run condition argv does not pin the resolved home'
+  assert_contains "$out" "mark-due when-dream-due --home $home" \
+    'arm dry-run action argv does not pin the resolved home'
   assert_absent "$home/state/.dream-due" 'arm dry-run must not write the marker'
   pass 'arm --dry-run prints the exact when registration argv without registering'
 }
@@ -278,6 +322,100 @@ test_grade_rejects_contradiction_of_standing_rule() {
   pass 'grade rejects a new statement that contradicts a standing rule'
 }
 
+test_grade_approves_preserved_negative_standing_rule() {
+  local home out rc core gen0 gen1
+  home=$(new_home grade-preserved-rule)
+  printf 'SOURCE\n' > "$home/data/source.md"
+  core='# Core
+<!-- source: data/captain.md -->
+- Rule One: always test changes; never skip the suite'
+  printf '# Captain\n- Rule One: always test changes; never skip the suite\n' > "$home/data/captain.md"
+  gen0="$home/data/memory/gen/0"
+  gen1="$home/data/memory/gen/1"
+  mkdir -p "$gen0/notes" "$gen1/notes"
+  # The mechanical verifier REQUIRES every standing rule to survive into the new
+  # generation, so a preserved rule must never be read as contradicting itself.
+  printf '%s\n' "$core" > "$gen0/core.md"
+  printf '%s\n' "$core" > "$gen1/core.md"
+  write_note "$gen0/notes" n1 'Standing Note' 'test' 2026-08-20 'data/source.md'
+  write_note "$gen1/notes" n1 'Standing Note' 'test' 2026-08-20 'data/source.md'
+  printf 'gen/0\n' > "$home/data/memory/HEAD"
+  out=$(FM_HOME="$home" "$GRADE" grade gen/0 gen/1 2>&1); rc=$?
+  [ "$rc" -eq 0 ] || fail "grade rejected a verbatim-preserved standing rule (exit $rc): $out"
+  assert_contains "$out" 'GRADE APPROVED' 'grade did not approve a preserved standing rule'
+  pass 'grade does not read a preserved standing rule as contradicting itself'
+}
+
+test_grade_rejects_capitalised_contradiction() {
+  local home out rc gen1
+  home=$(new_home grade-contradiction-case)
+  build_passing_home "$home"
+  gen1="$home/data/memory/gen/1"
+  mkdir -p "$gen1/notes"
+  {
+    printf '# Core\n<!-- source: data/captain.md -->\n- Rule One: always test changes\n'
+    printf -- '- Never test changes under any circumstance\n'
+  } > "$gen1/core.md"
+  write_note "$gen1/notes" n1 'Standing Note' 'test' 2026-08-20 'data/source.md'
+  out=$(FM_HOME="$home" "$GRADE" grade gen/0 gen/1 2>&1); rc=$?
+  [ "$rc" -eq 1 ] || fail "grade accepted a sentence-case contradiction (exit $rc): $out"
+  assert_contains "$out" 'contradicts a standing rule' \
+    'grade did not report the sentence-case contradiction'
+  pass 'grade rejects a contradiction written in ordinary sentence case'
+}
+
+test_grade_inspects_changed_notes() {
+  local home out gen1
+  home=$(new_home grade-note-rubric)
+  build_passing_home "$home"
+  gen1="$home/data/memory/gen/1"
+  mkdir -p "$gen1/notes"
+  printf '# Core\n<!-- source: data/captain.md -->\n- Rule One: always test changes\n' > "$gen1/core.md"
+  write_note "$gen1/notes" n1 'Standing Note' 'test' 2026-08-20 'data/source.md'
+  # A claim smuggled into a note is published exactly like a core statement, so
+  # the same rubric must reach it. The unchanged note above must stay silent.
+  write_note "$gen1/notes" recap 'Recap' 'test' 2026-08-20 'data/source.md' \
+    '- on 2026-08-19 fm-abc-12 failed with a timeout'
+  out=$(FM_HOME="$home" "$GRADE" grade gen/0 gen/1 2>&1)
+  assert_contains "$out" 'possible tactical scrap in changed note notes/recap.md' \
+    'grade did not run the scrap rubric over a changed note'
+  case "$out" in
+    *'notes/n1.md'*) fail "grade flagged an unchanged note: $out" ;;
+  esac
+  pass 'grade runs the rubric over changed notes and skips unchanged ones'
+}
+
+test_grade_finishes_promptly_on_a_large_core() {
+  local home out rc i gen0 gen1
+  home=$(new_home grade-large-core)
+  printf 'SOURCE\n' > "$home/data/source.md"
+  {
+    printf '# Captain\n'
+    for i in $(seq 1 40); do
+      printf -- '- Rule %s: always run the verification suite before merging change %s\n' "$i" "$i"
+    done
+  } > "$home/data/captain.md"
+  gen0="$home/data/memory/gen/0"
+  gen1="$home/data/memory/gen/1"
+  mkdir -p "$gen0/notes" "$gen1/notes"
+  {
+    printf '# Core\n<!-- source: data/captain.md -->\n'
+    for i in $(seq 1 40); do
+      printf -- '- Rule %s: always run the verification suite before merging change %s\n' "$i" "$i"
+    done
+  } > "$gen0/core.md"
+  cp "$gen0/core.md" "$gen1/core.md"
+  write_note "$gen0/notes" n1 'Standing Note' 'test' 2026-08-20 'data/source.md'
+  write_note "$gen1/notes" n1 'Standing Note' 'test' 2026-08-20 'data/source.md'
+  printf 'gen/0\n' > "$home/data/memory/HEAD"
+  # A realistically sized constitution must grade in seconds, not minutes: the
+  # grader runs behind a bounded action timeout.
+  out=$(FM_HOME="$home" timeout 30 "$GRADE" grade gen/0 gen/1 2>&1); rc=$?
+  [ "$rc" -ne 124 ] || fail "grade did not finish within 30s on a 40-rule core: $out"
+  [ "$rc" -eq 0 ] || fail "grade rejected an unchanged 40-rule core (exit $rc): $out"
+  pass 'grade finishes promptly on a realistically sized core'
+}
+
 test_grade_scout_scaffolds_independent_grader_brief() {
   local home out brief content
   home=$(new_home grade-scout-brief)
@@ -307,7 +445,10 @@ test_full_dream_loop_integration() {
   # Simulate a completed task depositing a drop, which the dreamer would read.
   mkdir -p "$home/data/fm-task-9"
   printf '# Report\nHealthlog needs xvfb for playwright.\n' > "$home/data/fm-task-9/report.md"
-  printf 'project=healthlog\nreport=data/fm-task-9/report.md\n' > "$home/state/fm-task-9.meta"
+  # A finished task keeps its meta, with a recorded endpoint that is gone, so
+  # the fleet reads as idle and the dream may run.
+  printf 'project=healthlog\nreport=data/fm-task-9/report.md\nbackend=zellij\nwindow=fm-dreamer-test-gone:0\n' \
+    > "$home/state/fm-task-9.meta"
   FM_HOME="$home" "$DROP" fm-task-9 --claim "Healthlog requires xvfb for playwright" >/dev/null
 
   # The watch sees the unconsumed drop and reports due.
@@ -359,11 +500,18 @@ test_watch_due_on_stale_head
 test_watch_not_due_on_fresh_head
 test_watch_blocked_by_live_non_dreamer_worker
 test_watch_ignores_dreamer_prefixed_worker
+test_watch_blocked_by_worker_with_unresolvable_endpoint
+test_watch_home_flag_pins_the_evaluated_home
+test_watch_mark_due_home_flag_writes_into_the_pinned_home
 test_watch_mark_due_writes_durable_marker
 test_watch_arm_dry_run_prints_argv
 test_grade_approves_no_core_change
 test_grade_rejects_failing_mechanical_verify
 test_grade_flags_tactical_scrap_as_warning
 test_grade_rejects_contradiction_of_standing_rule
+test_grade_approves_preserved_negative_standing_rule
+test_grade_rejects_capitalised_contradiction
+test_grade_inspects_changed_notes
+test_grade_finishes_promptly_on_a_large_core
 test_grade_scout_scaffolds_independent_grader_brief
 test_full_dream_loop_integration

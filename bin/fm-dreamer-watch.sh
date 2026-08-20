@@ -5,11 +5,12 @@
 # Usage:
 #   fm-dreamer-watch.sh check [options]
 #   fm-dreamer-watch.sh arm [options]
-#   fm-dreamer-watch.sh mark-due <source-id>
+#   fm-dreamer-watch.sh mark-due <source-id> [options]
 #   fm-dreamer-watch.sh -h | --help
 #
 # check
-#   Evaluate the dream-due condition for the home selected by FM_HOME and print
+#   Evaluate the dream-due condition for the home selected by --home, or by
+#   FM_HOME when no --home is given, and print
 #   one machine-readable verdict line:
 #     DREAM_DUE: due reason=<one-line reason>
 #     DREAM_DUE: not-due reason=<one-line reason>
@@ -34,7 +35,11 @@
 #   idempotent and reversible (removing the marker file), so it is a legal when
 #   action. The runner captures its output and wakes firstmate.
 #
-# OPTIONS (check and arm):
+# OPTIONS (all commands accept --home; the rest apply to check and arm):
+#   --home <path>           the firstmate home to evaluate, pinned explicitly
+#                           instead of inherited from FM_HOME. `arm` places its
+#                           own resolved home in both registered argv vectors so
+#                           the watch does not depend on the runner environment.
 #   --head-age <hours>      HEAD age threshold (default: FM_DREAM_HEAD_AGE_HOURS
 #                           or 12)
 #   --interval <secs>       arm only: when poll cadence (default 3600)
@@ -73,6 +78,7 @@ die() {
   exit 2
 }
 
+HOME_OPT=""
 HEAD_AGE_HOURS=${FM_DREAM_HEAD_AGE_HOURS:-12}
 INTERVAL=${FM_DREAM_WATCH_INTERVAL:-3600}
 STABLE=2
@@ -88,6 +94,11 @@ esac
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --home)
+      [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+      HOME_OPT="$2"; shift 2 ;;
+    --home=*)
+      HOME_OPT=${1#*=}; shift ;;
     --head-age)
       [ "$#" -ge 2 ] || { usage >&2; exit 2; }
       HEAD_AGE_HOURS="$2"; shift 2 ;;
@@ -129,6 +140,23 @@ case "$STABLE" in
   ''|*[!0-9]*) die "invalid --stable: '$STABLE' (expected an integer)" ;;
 esac
 [ "$STABLE" -ge 1 ] || die "--stable must be at least 1"
+
+# An explicit --home is authoritative for every path this script reads or
+# writes, so a registered watch evaluates the home it was armed for no matter
+# what environment the runner happens to carry.
+if [ -n "$HOME_OPT" ]; then
+  case "$HOME_OPT" in
+    /*) ;;
+    *) HOME_OPT=$(CDPATH='' cd -- "$HOME_OPT" 2>/dev/null && pwd -P) \
+         || die "--home is not a reachable directory" ;;
+  esac
+  [ -d "$HOME_OPT" ] && [ ! -L "$HOME_OPT" ] \
+    || die "--home must name an existing directory, got '$HOME_OPT'"
+  FM_HOME=$HOME_OPT
+  STATE="$FM_HOME/state"
+  DATA="$FM_HOME/data"
+  MEMORY="$DATA/memory"
+fi
 
 # --- mark-due ----------------------------------------------------------------
 
@@ -200,7 +228,10 @@ live_workers() {
         continue
         ;;
     esac
-    if [ -n "$target" ] && fm_backend_target_exists "$backend" "$target" "fm-$id" >/dev/null 2>&1; then
+    # An empty target is a meta with no resolvable endpoint (for example a
+    # partially written meta with no window= key). That is not proof the worker
+    # is gone, so it counts as live, like an unsupported backend.
+    if [ -z "$target" ] || fm_backend_target_exists "$backend" "$target" "fm-$id" >/dev/null 2>&1; then
       printf '%s\n' "$id"
       live=1
     fi
@@ -236,13 +267,15 @@ fi
 # --- arm ---------------------------------------------------------------------
 
 # The when condition argv must be exact and deterministic: run this script's
-# `check` with the resolved home and threshold. The action argv is `mark-due`
-# with the resolved source id. Both argv vectors are executed directly by the
-# runner with no shell, so each token is passed as its own argument.
+# `check` with the resolved home and threshold, both pinned as explicit tokens
+# so the registered spec is self-contained. The action argv is `mark-due` with
+# the resolved source id and the same pinned home. Both argv vectors are
+# executed directly by the runner with no shell, so each token is passed as its
+# own argument.
 WHEN_NAME="dream-due"
-CONDITION_ARGV=("$SCRIPT_DIR/fm-dreamer-watch.sh" check --head-age "$HEAD_AGE_HOURS")
+CONDITION_ARGV=("$SCRIPT_DIR/fm-dreamer-watch.sh" check --head-age "$HEAD_AGE_HOURS" --home "$FM_HOME")
 SOURCE_ID="when-dream-due"
-ACTION_ARGV=("$SCRIPT_DIR/fm-dreamer-watch.sh" mark-due "$SOURCE_ID")
+ACTION_ARGV=("$SCRIPT_DIR/fm-dreamer-watch.sh" mark-due "$SOURCE_ID" --home "$FM_HOME")
 
 if [ "$DRY_RUN" -eq 1 ]; then
   printf 'would arm: bin/fm-procevent-when.sh arm %s --interval %s --stable %s --condition' \
