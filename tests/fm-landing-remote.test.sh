@@ -917,6 +917,7 @@ EOF
 # checkout when it is run exactly as printed.
 test_drift_refusal_prints_a_repair_that_actually_repairs() {
   local rec dir ours parent clone fakebin log line repair_ours repair_upstream
+  local restore_remote
 
   rec=$(make_fork_fixture shape-remediation)
   IFS='|' read -r dir ours parent clone <<EOF
@@ -967,6 +968,34 @@ EOF
     || fail "the repair the config-drift refusal printed failed: $(cat "$dir/r2.repair")"
   PATH="$fakebin:$PATH" "$LANDING" verify --repo "$clone" >/dev/null 2>"$dir/r2.after" \
     || fail "the drift check still refuses after the config-drift repair ran: $(cat "$dir/r2.after")"
+
+  # The origin-absent refusal names the git remote rename command that restores
+  # origin before running apply.
+  git -C "$clone" remote rename origin fork
+  if PATH="$fakebin:$PATH" "$LANDING" verify --repo "$clone" >/dev/null 2>"$dir/r3.err"; then
+    fail "the drift check passed a checkout whose origin was absent"
+  fi
+  [ "$(wc -l < "$dir/r3.err")" = 1 ] \
+    || fail "the origin-absent refusal spans more than the single line the bootstrap relay keeps: $(cat "$dir/r3.err")"
+  line=$(cat "$dir/r3.err")
+  restore_remote=$(printf '%s\n' "$line" | sed -n 's/.*git remote rename \([^ ]*\) origin.*/\1/p')
+  repair_ours=$(printf '%s\n' "$line" | sed -n 's/.*--ours \([^ ]*\).*/\1/p')
+  repair_upstream=$(printf '%s\n' "$line" | sed -n 's/.*--upstream \([^ ]*\).*/\1/p')
+  [ "$restore_remote" = fork ] \
+    || fail "the origin-absent refusal did not name restoring origin from fork: $line"
+  [ "$repair_ours" = "file://$ours" ] \
+    || fail "the origin-absent refusal named --ours $repair_ours, not the landing remote file://$ours"
+  [ "$repair_upstream" = "file://$parent" ] \
+    || fail "the origin-absent refusal named --upstream $repair_upstream, not the parent file://$parent"
+
+  git -C "$clone" remote rename "$restore_remote" origin \
+    || fail "the restore command the refusal printed failed"
+  PATH="$fakebin:$PATH" "$LANDING" apply \
+    --ours "$repair_ours" --upstream "$repair_upstream" --repo "$clone" \
+    >/dev/null 2>"$dir/r3.repair" \
+    || fail "the repair the origin-absent refusal printed failed: $(cat "$dir/r3.repair")"
+  PATH="$fakebin:$PATH" "$LANDING" verify --repo "$clone" >/dev/null 2>"$dir/r3.after" \
+    || fail "the drift check still refuses after the origin-absent repair ran: $(cat "$dir/r3.after")"
   pass "each drift refusal prints an apply command that repairs the checkout it refused"
 }
 

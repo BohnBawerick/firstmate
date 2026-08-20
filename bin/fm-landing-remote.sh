@@ -426,9 +426,14 @@ cmd_status() {
 # apply takes both URLs, so fill them from what the checkout already states and
 # fall back to a named placeholder only for a URL the checkout cannot supply.
 landing_remote_repair_command() {
-  local ours=$1 parent=$2
-  printf 'run fm-landing-remote.sh apply --ours %s --upstream %s on the primary checkout' \
-    "${ours:-<the landing repository url>}" "${parent:-<the third-party parent url>}"
+  local ours=$1 parent=$2 restore_from=${3:-}
+  if [ -n "$restore_from" ]; then
+    printf 'run git remote rename %s origin, then fm-landing-remote.sh apply --ours %s --upstream %s on the primary checkout' \
+      "$restore_from" "${ours:-<the landing repository url>}" "${parent:-<the third-party parent url>}"
+  else
+    printf 'run fm-landing-remote.sh apply --ours %s --upstream %s on the primary checkout' \
+      "${ours:-<the landing repository url>}" "${parent:-<the third-party parent url>}"
+  fi
 }
 
 # The invariants apply leaves behind, expressed without the landing URL. Reading
@@ -448,7 +453,13 @@ verify_remapped_shape() {
     return 0
   fi
   if [ -z "$origin" ]; then
-    fail "origin remote is absent, so nothing names the repository work lands on; $(landing_remote_repair_command "$fork_url" "$upstream")"
+    local restore_from
+    if [ -n "$fork_url" ]; then
+      restore_from="fork"
+    else
+      restore_from="upstream"
+    fi
+    fail "origin remote is absent, so nothing names the repository work lands on; $(landing_remote_repair_command "$fork_url" "$upstream" "$restore_from")"
   fi
   if [ -n "$fork_url" ]; then
     fork_parent=${upstream:-$origin}
