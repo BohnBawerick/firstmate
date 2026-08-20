@@ -172,6 +172,53 @@ test_watch_ignores_dreamer_prefixed_worker() {
   pass 'watch does not count a dreamer task as a blocking live worker'
 }
 
+test_watch_counts_a_remote_worker_as_live() {
+  local home out rc notmux
+  home=$(new_home watch-remote-worker)
+  printf -- '- candidate\n' > "$home/data/memory/drop/cand.md"
+  # A remote worker's local meta carries the placeholder window=remote:<id> and
+  # records the real endpoint on another host. Probing the placeholder with the
+  # local backend proves nothing about the worker.
+  printf 'window=remote:fm-sm-1\nendpoint_task_id=fm-sm-1\nkind=secondmate\n' \
+    > "$home/state/fm-sm-1.meta"
+  printf 'remote_host=nas\nremote_backend=tmux\nremote_target=fm:1.0\n' \
+    >> "$home/state/fm-sm-1.meta"
+  # No local tmux server, so a local probe of the placeholder can only fail.
+  notmux="$TMP_ROOT/watch-remote-worker-tmux"
+  mkdir -p "$notmux"
+  out=$(FM_HOME="$home" TMUX_TMPDIR="$notmux" "$WATCH" check 2>&1); rc=$?
+  [ "$rc" -eq 1 ] || fail "a live remote worker did not block the dream (exit $rc): $out"
+  assert_contains "$out" 'fm-sm-1' 'blocked reason did not name the remote worker'
+  pass 'watch counts a remote worker as live rather than probing it locally'
+}
+
+test_watch_accepts_a_symlinked_home() {
+  local home link out rc
+  home=$(new_home watch-symlink-home)
+  printf -- '- candidate\n' > "$home/data/memory/drop/cand.md"
+  link="$TMP_ROOT/watch-symlink-home-link"
+  ln -s "$home" "$link"
+
+  out=$(FM_HOME="$link" "$WATCH" check --home "$link" 2>&1); rc=$?
+  [ "$rc" -eq 0 ] || fail "check refused a symlinked home (exit $rc): $out"
+  assert_contains "$out" 'DREAM_DUE: due' 'check did not evaluate the symlinked home'
+
+  # arm must register a spec its own check accepts, so it pins the resolved
+  # physical home rather than the symlink it was handed.
+  out=$(FM_HOME="$link" "$WATCH" arm --dry-run)
+  assert_contains "$out" "--home $home" 'arm did not pin the resolved physical home'
+  pass 'a symlinked home is resolved rather than refused'
+}
+
+test_watch_arm_refuses_a_missing_home() {
+  local out rc
+  out=$(FM_HOME="$TMP_ROOT/watch-no-such-home" "$WATCH" arm --dry-run 2>&1); rc=$?
+  [ "$rc" -eq 2 ] || fail "arm on a missing home did not exit 2 (exit $rc): $out"
+  assert_contains "$out" 'not an existing directory' \
+    'arm did not explain the refusal of a missing home'
+  pass 'arm refuses to register a watch whose home does not exist'
+}
+
 test_watch_blocked_by_worker_with_unresolvable_endpoint() {
   local home out rc
   home=$(new_home watch-empty-target)
@@ -416,6 +463,93 @@ test_grade_finishes_promptly_on_a_large_core() {
   pass 'grade finishes promptly on a realistically sized core'
 }
 
+test_grade_approves_a_rule_echoing_the_citation_marker() {
+  local home out rc gen1
+  home=$(new_home grade-citation-marker)
+  build_passing_home "$home"
+  gen1="$home/data/memory/gen/1"
+  mkdir -p "$gen1/notes"
+  # The `<!-- source: ... -->` marker is mandatory in a non-empty core, and it
+  # is not a standing rule. A new durable rule that happens to echo its words
+  # must not be rejected as contradicting it.
+  {
+    printf '# Core\n<!-- source: data/captain.md -->\n- Rule One: always test changes\n'
+    printf -- '- Never write a claim without a resolvable source in the data tree\n'
+  } > "$gen1/core.md"
+  write_note "$gen1/notes" n1 'Standing Note' 'test' 2026-08-20 'data/source.md'
+  out=$(FM_HOME="$home" "$GRADE" grade gen/0 gen/1 2>&1); rc=$?
+  [ "$rc" -eq 0 ] || fail "grade rejected a rule echoing the citation marker (exit $rc): $out"
+  assert_contains "$out" 'GRADE APPROVED' 'grade did not approve a legitimate new rule'
+  pass 'grade treats only bullet rules as standing rules'
+}
+
+test_grade_rejects_an_indented_contradiction() {
+  local home out rc gen1
+  home=$(new_home grade-indented-contradiction)
+  build_passing_home "$home"
+  gen1="$home/data/memory/gen/1"
+  mkdir -p "$gen1/notes"
+  # A nested bullet is an ordinary constitution form and the verifier reads it
+  # as a standing rule, so indentation must not bypass the rubric.
+  {
+    printf '# Core\n<!-- source: data/captain.md -->\n- Rule One: always test changes\n'
+    printf -- '  - never test changes under any circumstance\n'
+  } > "$gen1/core.md"
+  write_note "$gen1/notes" n1 'Standing Note' 'test' 2026-08-20 'data/source.md'
+  out=$(FM_HOME="$home" "$GRADE" grade gen/0 gen/1 2>&1); rc=$?
+  [ "$rc" -eq 1 ] || fail "an indented contradiction bypassed the rubric (exit $rc): $out"
+  assert_contains "$out" 'contradicts a standing rule' \
+    'grade did not report the indented contradiction'
+  pass 'grade inspects indented bullets like top-level ones'
+}
+
+test_grade_surfaces_verifier_diagnostics() {
+  local home out gen1
+  home=$(new_home grade-verify-diagnostics)
+  build_passing_home "$home"
+  gen1="$home/data/memory/gen/1"
+  mkdir -p "$gen1/notes"
+  # Deleting every baseline note fails diff-bounds inside the verifier.
+  printf '# Core\n<!-- source: data/captain.md -->\n- Rule One: always test changes\n' > "$gen1/core.md"
+  out=$(FM_HOME="$home" "$GRADE" grade gen/0 gen/1 2>&1)
+  assert_contains "$out" 'FAIL diff-bounds' \
+    'grade swallowed the verifier diagnostic that explains the failure'
+  pass 'grade surfaces which mechanical check failed and why'
+}
+
+test_grade_reports_a_bad_diff_ratio_as_a_usage_error() {
+  local home out rc
+  home=$(new_home grade-bad-ratio)
+  build_passing_home "$home"
+  out=$(FM_HOME="$home" "$GRADE" grade gen/0 gen/0 --max-diff-ratio 400 2>&1); rc=$?
+  [ "$rc" -eq 2 ] || fail "a bad --max-diff-ratio did not exit 2 (exit $rc): $out"
+  assert_contains "$out" 'max-diff-ratio' 'grade did not name the offending flag'
+  assert_not_contains "$out" 'fails the mechanical verifier' \
+    'a bad flag was reported as a memory-safety failure'
+  pass 'grade reports a bad --max-diff-ratio as a usage error'
+}
+
+test_grade_scout_status_command_survives_a_space_in_the_home() {
+  local home spaced out brief cmd
+  home=$(new_home grade-scout-quoting)
+  spaced="$home/a home with spaces"
+  mkdir -p "$spaced/config" "$spaced/data" "$spaced/state"
+  printf '7500\n' > "$spaced/config/startup-memory-budget"
+  out=$(FM_HOME="$spaced" "$GRADE" scout grade-space firstmate gen/0 gen/1)
+  brief="$spaced/data/grade-space/brief.md"
+  assert_present "$brief" 'grader scout brief was not written'
+  # The brief is a generated agent-facing contract: the status command it emits
+  # must run as written. Execute it exactly as the agent would.
+  # shellcheck disable=SC2016 # The backticks are literal sed pattern text: the brief wraps its status command in markdown backticks.
+  cmd=$(sed -n 's/^[[:space:]]*`\(echo .*\)`$/\1/p' "$brief")
+  [ -n "$cmd" ] || fail "no status-report command found in the scaffolded brief"
+  cmd=${cmd//\{state\}/done}
+  bash -c "$cmd" || fail "the scaffolded status command failed to run: $cmd"
+  assert_present "$spaced/state/grade-space.status" \
+    'the status command did not append into the home with a space'
+  pass 'grade scout emits a status command that survives a space in the home path'
+}
+
 test_grade_scout_scaffolds_independent_grader_brief() {
   local home out brief content
   home=$(new_home grade-scout-brief)
@@ -501,6 +635,9 @@ test_watch_not_due_on_fresh_head
 test_watch_blocked_by_live_non_dreamer_worker
 test_watch_ignores_dreamer_prefixed_worker
 test_watch_blocked_by_worker_with_unresolvable_endpoint
+test_watch_counts_a_remote_worker_as_live
+test_watch_accepts_a_symlinked_home
+test_watch_arm_refuses_a_missing_home
 test_watch_home_flag_pins_the_evaluated_home
 test_watch_mark_due_home_flag_writes_into_the_pinned_home
 test_watch_mark_due_writes_durable_marker
@@ -513,5 +650,10 @@ test_grade_approves_preserved_negative_standing_rule
 test_grade_rejects_capitalised_contradiction
 test_grade_inspects_changed_notes
 test_grade_finishes_promptly_on_a_large_core
+test_grade_approves_a_rule_echoing_the_citation_marker
+test_grade_rejects_an_indented_contradiction
+test_grade_surfaces_verifier_diagnostics
+test_grade_reports_a_bad_diff_ratio_as_a_usage_error
+test_grade_scout_status_command_survives_a_space_in_the_home
 test_grade_scout_scaffolds_independent_grader_brief
 test_full_dream_loop_integration

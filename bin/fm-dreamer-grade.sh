@@ -48,7 +48,8 @@
 #
 # OPTIONS (grade):
 #   --max-diff-ratio <pct>  passed through to the mechanical verifier (default 50)
-#   --dry-run               verify without publishing (passed to the verifier)
+#   --dry-run               forwarded to the verifier for call-site symmetry with
+#                           publish; grade never publishes, so it changes nothing
 #   -h, --help              show this help message
 set -eu
 
@@ -66,6 +67,12 @@ usage() {
 die() {
   printf 'fm-dreamer-grade: %s\n' "$1" >&2
   exit 2
+}
+
+shell_quote() {
+  printf "'"
+  printf '%s' "$1" | sed "s/'/'\\\\''/g"
+  printf "'"
 }
 
 CMD=""
@@ -177,8 +184,13 @@ is_scrap_statement() {
 STANDING_KEYWORDS=()
 
 # load_standing_rules <old-core>: fill STANDING_KEYWORDS from the old core's
-# statements. A statement contributes its substantive words (four characters or
-# more), lowercased, with bullet markers and punctuation stripped.
+# standing rules. A standing rule is a bullet line, exactly the predicate
+# bin/fm-memory-verify.sh's constitution check uses, so the grader and the
+# verifier cannot disagree about what a rule is. A heading, a prose line, or the
+# mandatory `<!-- source: ... -->` citation marker is not a rule, and loading one
+# as a rule would hard-reject any new statement that echoes two of its words.
+# A rule contributes its substantive words (four characters or more), lowercased,
+# with bullet markers and punctuation stripped.
 load_standing_rules() {
   local old_file=$1 rule clean keywords
   [ -n "$old_file" ] && [ -f "$old_file" ] && [ ! -L "$old_file" ] || return 0
@@ -189,7 +201,7 @@ load_standing_rules() {
     keywords=$(printf '%s\n' "$clean" | LC_ALL=C tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' ' ' | awk '{ for(i=1;i<=NF;i++) if(length($i)>=4) printf "%s ", $i }')
     [ -n "$keywords" ] || continue
     STANDING_KEYWORDS+=("$keywords")
-  done < "$old_file"
+  done < <(grep '^[[:space:]]*[-*][[:space:]]' "$old_file" || true)
 }
 
 # contradicts_standing <lowercased-statement>: returns 0 when the statement
@@ -227,8 +239,11 @@ contradicts_standing() {
 # --- statement inspection ----------------------------------------------------
 #
 # inspect_statements <old-file> <new-file> <label>: run the scrap and
-# contradiction checks over the statements the new file adds or changes. A line
-# the old file already carries verbatim is not a proposed statement and is
+# contradiction checks over the statements the new file adds or changes. Every
+# line is compared and reported with its surrounding whitespace stripped, so a
+# nested bullet is inspected like a top-level one (bin/fm-memory-verify.sh
+# treats both as standing rules) and a pure re-indentation is not a new claim.
+# A statement the old file already carries is not a proposed statement and is
 # skipped: the mechanical verifier REQUIRES every standing rule to survive into
 # the new generation, so inspecting a preserved rule would make the grader
 # reject exactly the input the verifier demands. Headings, source markers, and
@@ -236,39 +251,41 @@ contradicts_standing() {
 # <old-file> means every statement in <new-file> is new.
 inspect_statements() {
   local old_file=$1 new_file=$2 label=$3
-  local line line_lc haystack="" in_frontmatter=0 first=1
+  local line statement statement_lc haystack="" in_frontmatter=0 first=1
   [ -f "$new_file" ] && [ ! -L "$new_file" ] || return 0
   if [ -n "$old_file" ] && [ -f "$old_file" ] && [ ! -L "$old_file" ]; then
-    haystack=$'\n'"$(cat "$old_file")"$'\n'
+    haystack=$'\n'"$(sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$old_file")"$'\n'
   fi
   while IFS= read -r line || [ -n "$line" ]; do
+    statement=${line#"${line%%[![:space:]]*}"}
+    statement=${statement%"${statement##*[![:space:]]}"}
     if [ "$first" -eq 1 ]; then
       first=0
-      if [ "$line" = '---' ]; then
+      if [ "$statement" = '---' ]; then
         in_frontmatter=1
         continue
       fi
     fi
     if [ "$in_frontmatter" -eq 1 ]; then
-      [ "$line" = '---' ] && in_frontmatter=0
+      [ "$statement" = '---' ] && in_frontmatter=0
       continue
     fi
-    [ -n "$line" ] || continue
-    case "$line" in
-      '#'*|'---'*|'<!--'*|' '*|$'\t'*) continue ;;
+    [ -n "$statement" ] || continue
+    case "$statement" in
+      '#'*|'---'*|'<!--'*) continue ;;
     esac
     if [ -n "$haystack" ]; then
       case "$haystack" in
-        *$'\n'"$line"$'\n'*) continue ;;
+        *$'\n'"$statement"$'\n'*) continue ;;
       esac
     fi
-    if is_scrap_statement "$line"; then
-      printf 'WARN grade: possible tactical scrap in %s: %s\n' "$label" "$line" >&2
+    if is_scrap_statement "$statement"; then
+      printf 'WARN grade: possible tactical scrap in %s: %s\n' "$label" "$statement" >&2
       GRADE_WARNINGS=$((GRADE_WARNINGS + 1))
     fi
-    line_lc=$(printf '%s\n' "$line" | LC_ALL=C tr '[:upper:]' '[:lower:]')
-    if contradicts_standing "$line_lc"; then
-      printf 'FAIL grade: %s contradicts a standing rule: %s\n' "$label" "$line" >&2
+    statement_lc=$(printf '%s\n' "$statement" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+    if contradicts_standing "$statement_lc"; then
+      printf 'FAIL grade: %s contradicts a standing rule: %s\n' "$label" "$statement" >&2
       ERRORS=$((ERRORS + 1))
     fi
   done < "$new_file"
@@ -281,7 +298,7 @@ if [ "$CMD" = scout ]; then
   fi
   BRIEF="$DATA/$TASK_ID/brief.md"
   mkdir -p "$DATA/$TASK_ID"
-  STATUS_FILE="$STATE/$TASK_ID.status"
+  STATUS_FILE=$(shell_quote "$STATE/$TASK_ID.status")
   cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
 
@@ -332,6 +349,14 @@ fi
 
 # --- grade -------------------------------------------------------------------
 
+# The ratio is validated here, before delegating, so a bad flag is reported as a
+# usage error instead of reaching the operator as a memory-safety failure.
+case "$MAX_DIFF_RATIO" in
+  ''|*[!0-9]*) die "invalid --max-diff-ratio: '$MAX_DIFF_RATIO' (expected integer percentage 1-100)" ;;
+esac
+[ "$MAX_DIFF_RATIO" -ge 1 ] && [ "$MAX_DIFF_RATIO" -le 100 ] \
+  || die "--max-diff-ratio must be between 1 and 100, got '$MAX_DIFF_RATIO'"
+
 resolve_gen_dir "$OLD_TARGET" || die "old generation target does not resolve: '$OLD_TARGET'"
 OLD_DIR=$GEN_DIR_RESOLVED
 resolve_gen_dir "$NEW_TARGET" || die "new generation target does not resolve: '$NEW_TARGET'"
@@ -345,8 +370,9 @@ VERIFY_ARGS=("$SCRIPT_DIR/fm-memory-verify.sh" verify "$NEW_DIR" --max-diff-rati
 if [ "$DRY_RUN" -eq 1 ]; then
   VERIFY_ARGS+=("--dry-run")
 fi
-if ! "${VERIFY_ARGS[@]}" >/dev/null 2>&1; then
+if ! VERIFY_OUT=$("${VERIFY_ARGS[@]}" 2>&1); then
   printf 'FAIL grade: proposed generation fails the mechanical verifier\n' >&2
+  printf '%s\n' "$VERIFY_OUT" >&2
   ERRORS=$((ERRORS + 1))
 else
   printf 'PASS grade: proposed generation passes the mechanical verifier\n'

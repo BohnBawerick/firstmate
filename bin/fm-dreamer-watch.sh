@@ -50,9 +50,10 @@
 #
 # A worker is live when its state/<id>.meta endpoint exists via
 # bin/fm-backend.sh's fm_backend_target_exists - the same liveness read the
-# session-start fleet digest uses. An unsupported backend or an unresolvable
-# endpoint treats that worker as live (block), which is fail-safe for "never
-# dream while a worker may be active". Dream tasks are identified by the
+# session-start fleet digest uses. An unsupported backend, an unresolvable
+# endpoint, or a remote worker whose endpoint lives on another host treats that
+# worker as live (block), which is fail-safe for "never dream while a worker may
+# be active". Dream tasks are identified by the
 # conventional fm-dream- prefix on the task id and are excluded from the
 # live-worker count. A missing FM_HOME or a home with no state/ or data/memory/
 # reports not-due with a reason rather than a hard error, so the watch can sit
@@ -76,6 +77,18 @@ usage() {
 die() {
   printf 'fm-dreamer-watch: %s\n' "$1" >&2
   exit 2
+}
+
+# resolve_home <path>: print the physical directory a home names, resolving a
+# symlinked home rather than refusing it. A symlinked home is ordinary and every
+# other firstmate script accepts one; refusing it here would let `arm` register
+# a spec whose own `check` then exits 2, which the when runner counts as a
+# condition ERROR against its error budget instead of a plain false.
+resolve_home() {
+  local raw=$1 resolved
+  resolved=$(CDPATH='' cd -- "$raw" 2>/dev/null && pwd -P) || return 1
+  [ -n "$resolved" ] || return 1
+  printf '%s' "$resolved"
 }
 
 HOME_OPT=""
@@ -145,14 +158,8 @@ esac
 # writes, so a registered watch evaluates the home it was armed for no matter
 # what environment the runner happens to carry.
 if [ -n "$HOME_OPT" ]; then
-  case "$HOME_OPT" in
-    /*) ;;
-    *) HOME_OPT=$(CDPATH='' cd -- "$HOME_OPT" 2>/dev/null && pwd -P) \
-         || die "--home is not a reachable directory" ;;
-  esac
-  [ -d "$HOME_OPT" ] && [ ! -L "$HOME_OPT" ] \
+  FM_HOME=$(resolve_home "$HOME_OPT") \
     || die "--home must name an existing directory, got '$HOME_OPT'"
-  FM_HOME=$HOME_OPT
   STATE="$FM_HOME/state"
   DATA="$FM_HOME/data"
   MEMORY="$DATA/memory"
@@ -209,7 +216,7 @@ head_is_stale() {
 # supported backend whose target does not exist counts as dead, because an
 # unsupported backend returning "no" is not proof the worker is idle.
 live_workers() {
-  local meta id backend target live=0
+  local meta id backend target remote_host live=0
   [ -d "$STATE" ] || return 0
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] || continue
@@ -217,6 +224,17 @@ live_workers() {
     case "$id" in
       fm-dream-*) continue ;;
     esac
+    # A remote worker records its real endpoint in remote_backend/remote_target
+    # on another host, and its local window= is the placeholder remote:<id>.
+    # Probing that placeholder with the local backend proves nothing, and a real
+    # probe would need an SSH round trip this bounded local condition must not
+    # take, so a remote worker counts as live.
+    remote_host=$(fm_meta_get "$meta" remote_host)
+    if [ -n "$remote_host" ]; then
+      printf '%s\n' "$id"
+      live=1
+      continue
+    fi
     backend=$(fm_backend_of_meta "$meta")
     target=$(fm_backend_target_of_meta "$meta")
     case "$backend" in
@@ -268,10 +286,16 @@ fi
 
 # The when condition argv must be exact and deterministic: run this script's
 # `check` with the resolved home and threshold, both pinned as explicit tokens
-# so the registered spec is self-contained. The action argv is `mark-due` with
+# so the registered spec is self-contained. The home is resolved and validated
+# here, at registration time, with the same rule `check --home` applies, so a
+# spec that `check` would reject can never be registered. The action argv is `mark-due` with
 # the resolved source id and the same pinned home. Both argv vectors are
 # executed directly by the runner with no shell, so each token is passed as its
 # own argument.
+ARM_HOME_RAW=$FM_HOME
+FM_HOME=$(resolve_home "$ARM_HOME_RAW") \
+  || die "cannot arm: the home to watch is not an existing directory: '$ARM_HOME_RAW'"
+
 WHEN_NAME="dream-due"
 CONDITION_ARGV=("$SCRIPT_DIR/fm-dreamer-watch.sh" check --head-age "$HEAD_AGE_HOURS" --home "$FM_HOME")
 SOURCE_ID="when-dream-due"
