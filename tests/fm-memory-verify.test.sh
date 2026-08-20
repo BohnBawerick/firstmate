@@ -1105,6 +1105,84 @@ test_compile_refuses_a_generation_reached_through_an_intermediate_symlink() {
   pass 'a generation reached through an intermediate symlink is refused, not reported as in-home'
 }
 
+test_diff_bounds_baseline_is_what_the_live_generation_shows() {
+  local home out live_notes
+  home=$(new_home diff-bounds-stale-baseline 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+
+  # The layout a migrated home reaches once a first generation is published
+  # without carrying the flat notes forward: data/memory/notes/ still holds the
+  # legacy files, but the live generation is what a session actually reads.
+  mkdir -p "$home/data/memory/notes" "$home/data/memory/gen/1" "$home/data/memory/gen/2/notes"
+  write_note "$home/data/memory/notes" old1 'Legacy 1' 'legacy' 2026-08-01 'data/source.md'
+  write_note "$home/data/memory/notes" old2 'Legacy 2' 'legacy' 2026-08-02 'data/source.md'
+  write_note "$home/data/memory/notes" old3 'Legacy 3' 'legacy' 2026-08-03 'data/source.md'
+  printf '# Core\n<!-- source: data/source.md -->\n- Rule A\n' > "$home/data/memory/gen/1/core.md"
+  cp "$home/data/memory/gen/1/core.md" "$home/data/memory/gen/2/core.md"
+  printf 'gen/1\n' > "$home/data/memory/HEAD"
+
+  # The published generation carries no notes, so no session sees the legacy set.
+  live_notes=$(FM_HOME="$home" "$COMPILE" compile | grep '^MEMORY_ACCOUNTING:')
+  assert_contains "$live_notes" 'notes_total=0' \
+    'fixture assumption broken: the live generation exposes the legacy notes'
+
+  # gen/2 adds two notes and deletes nothing a session can see.
+  write_note "$home/data/memory/gen/2/notes" new1 'Fresh 1' 'fresh' 2026-08-20 'data/source.md'
+  write_note "$home/data/memory/gen/2/notes" new2 'Fresh 2' 'fresh' 2026-08-21 'data/source.md'
+
+  out=$(FM_HOME="$home" "$PUBLISH" 2) \
+    || fail "publish refused a generation that deletes nothing a session sees: $out"
+  assert_contains "$out" 'PASS diff-bounds' 'diff-bounds bounded the change against notes the compiler ignores'
+  [ "$(head -n 1 "$home/data/memory/HEAD")" = "gen/2" ] || fail 'HEAD did not advance to gen/2'
+
+  # Deleting notes the live generation really does show is still refused.
+  mkdir -p "$home/data/memory/gen/3"
+  printf '# Core\n<!-- source: data/source.md -->\n- Rule A\n' > "$home/data/memory/gen/3/core.md"
+  mkdir -p "$home/data/memory/gen/3/notes"
+  write_note "$home/data/memory/gen/3/notes" other 'Other' 'other' 2026-08-22 'data/source.md'
+  if out=$(FM_HOME="$home" "$VERIFY" 3 2>&1); then
+    fail "verify accepted a generation that deletes every live baseline note: $out"
+  fi
+  assert_contains "$out" 'FAIL diff-bounds' 'the deletion floor stopped applying to the live baseline'
+
+  pass 'diff-bounds measures the notes the live generation shows, not a stale data/memory/notes'
+}
+
+test_catalog_mode_refuses_to_publish_over_a_symlinked_notes_dir() {
+  local home out rc body
+  home=$(new_home catalog-symlinked-notes 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+
+  mkdir -p "$home/data/memory/gen/1/notes" "$home/data/memory/gen/2"
+  printf '# Core\n<!-- source: data/source.md -->\n- Rule A\n' > "$home/data/memory/gen/1/core.md"
+  cp "$home/data/memory/gen/1/core.md" "$home/data/memory/gen/2/core.md"
+  write_note "$home/data/memory/gen/1/notes" n1 'Note 1' 'one' 2026-08-01 'data/source.md'
+  write_note "$home/data/memory/gen/1/notes" n2 'Note 2' 'two' 2026-08-02 'data/source.md'
+  ln -s ../1/notes "$home/data/memory/gen/2/notes"
+
+  # data/memory/gen/2/catalog.md is the compiler's own generated index, so its
+  # body is a contract this test may read.
+  printf 'PRE-EXISTING INDEX\n' > "$home/data/memory/gen/2/catalog.md"
+
+  set +e
+  out=$(FM_HOME="$home" "$COMPILE" catalog --memory-dir "$home/data/memory/gen/2" 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "catalog mode published an empty index over a symlinked notes/: $out"
+  assert_contains "$out" 'notes/ is a symlink' 'the refusal did not name the symlinked notes directory'
+
+  body=$(cat "$home/data/memory/gen/2/catalog.md")
+  assert_contains "$body" 'PRE-EXISTING INDEX' 'the previous catalog was destroyed by a refused publish'
+
+  # --dry-run still renders, but says why the listing is empty.
+  out=$(FM_HOME="$home" "$COMPILE" catalog --memory-dir "$home/data/memory/gen/2" --dry-run 2>&1) \
+    || fail "catalog --dry-run failed on a symlinked notes/: $out"
+  assert_contains "$out" 'MEMORY_NOTICE: data/memory/gen/2/notes/ is a symlink' \
+    'dry run rendered an empty catalog without explaining the symlink'
+
+  pass 'catalog mode refuses to overwrite an index with one that would claim the generation has no notes'
+}
+
 # --- Run All Tests ----------------------------------------------------------
 
 test_drop_tray_capture_basic
@@ -1141,6 +1219,8 @@ test_constitution_guards_the_published_core_even_when_captain_md_exists
 test_constitution_treats_an_empty_core_as_the_core_the_compiler_injects
 test_verify_refuses_a_generation_whose_notes_dir_is_a_symlink
 test_compile_refuses_a_generation_reached_through_an_intermediate_symlink
+test_diff_bounds_baseline_is_what_the_live_generation_shows
+test_catalog_mode_refuses_to_publish_over_a_symlinked_notes_dir
 
 printf '# all fm-memory-verify tests passed\n'
 exit 0

@@ -31,6 +31,8 @@
 #   4. Diff bounds: a single generation cannot replace or delete excessive
 #      proportions of memory (default: max 50% deletion of baseline notes) and
 #      can never delete every baseline note, however small the baseline is.
+#      The baseline is the notes the live generation shows a session, so notes
+#      the compiler does not read cannot bound what a new generation may drop.
 #
 # The generation must live under data/memory: data/memory/HEAD holds the
 # data/memory-relative identifier, which is the only form the compiler resolves.
@@ -607,12 +609,13 @@ check_diff_bounds() {
   local base_dir="" base_notes=() gen_notes=() note
   local base_count=0 gen_count=0 deleted_count=0 modified_count=0 added_count=0
 
+  # The baseline is whatever the live generation shows a session, and nothing
+  # else. resolve_baseline_gen_dir already falls back to data/memory when
+  # data/memory/HEAD names nothing, so a second fallback here would only fire
+  # when HEAD does resolve, and would then bound the change against notes the
+  # compiler already ignores.
   resolve_baseline_gen_dir
   if compiler_notes_dir "$BASELINE_GEN_DIR"; then
-    base_dir="$NOTES_DIR_FOR"
-  fi
-
-  if [ -z "$base_dir" ] && compiler_notes_dir "$MEMORY"; then
     base_dir="$NOTES_DIR_FOR"
   fi
 

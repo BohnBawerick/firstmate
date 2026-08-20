@@ -381,10 +381,14 @@ note_inventory > "$TMP/inventory"
 if [ "$MODE" = catalog ]; then
   render_catalog > "$TMP/catalog"
   if [ "$DRY_RUN" -eq 1 ]; then
+    [ "$NOTES_DIR_SYMLINK" -eq 0 ] || printf 'MEMORY_NOTICE: %s/notes/ is a symlink, so no note was read through it and this catalog lists none. Replace the symlink with a real directory.\n' \
+      "$REL_LABEL" >&2
     cat "$TMP/catalog"
     exit 0
   fi
   [ "$MEMORY_DIR_OK" -eq 1 ] || die "$MEMORY_SYMLINK_PATH $MEMORY_SYMLINK_HOW; refusing to publish through it"
+  [ "$NOTES_DIR_SYMLINK" -eq 0 ] \
+    || die "$REL_LABEL/notes/ is a symlink, so no note was read through it; refusing to publish a catalog that would claim this generation has none"
   [ -d "$MEMORY" ] || mkdir -p "$MEMORY" || die "could not create $MEMORY"
   if [ -L "$MEMORY/catalog.md" ]; then
     die "$REL_LABEL/catalog.md is a symlink; refusing to publish through it"
