@@ -38,6 +38,8 @@ PROJECTS="${FM_PROJECTS_OVERRIDE:-$FM_HOME/projects}"
 # Inert unless FM_TIMING_LOG names a file; only the deferred network stage sets it.
 # shellcheck source=bin/fm-timing-lib.sh
 . "$SCRIPT_DIR/fm-timing-lib.sh"
+# shellcheck source=bin/fm-self-repo-lib.sh
+. "$SCRIPT_DIR/fm-self-repo-lib.sh"
 FM_LOCK_LOG_PREFIX=fleet-sync
 "$FM_ROOT/bin/fm-guard.sh" || true
 
@@ -304,10 +306,7 @@ sync_project() {
     echo "$label: skipped: not a git repo"
     return 0
   fi
-  proj_real=$(cd "$PROJ" 2>/dev/null && pwd -P || printf '%s\n' "$PROJ")
-  root_real=$(cd "$FM_ROOT" 2>/dev/null && pwd -P || printf '%s\n' "$FM_ROOT")
-  home_real=$(cd "$FM_HOME" 2>/dev/null && pwd -P || printf '%s\n' "$FM_HOME")
-  if [ "$proj_real" = "$root_real" ] || [ "$proj_real" = "$home_real" ]; then
+  if fm_is_firstmate_repo "$PROJ" "$FM_ROOT" "$FM_HOME"; then
     echo "$label: skipped: firstmate home (upstream sync is manual)"
     return 0
   fi

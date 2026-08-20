@@ -16,6 +16,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+# shellcheck source=bin/fm-self-repo-lib.sh
+. "$SCRIPT_DIR/fm-self-repo-lib.sh"
 "$FM_ROOT/bin/fm-guard.sh" || true
 ID=${1:?usage: fm-merge-local.sh <task-id>}
 META="$STATE/$ID.meta"
@@ -24,20 +26,7 @@ META="$STATE/$ID.meta"
 PROJ=$(grep '^project=' "$META" | cut -d= -f2-)
 MODE=$(grep '^mode=' "$META" | cut -d= -f2- || true)
 
-canonical_dir() {
-  local target=$1
-  ( cd "$target" 2>/dev/null && pwd -P ) || printf '%s\n' "$target"
-}
-
-is_firstmate_repo() {
-  local proj_real root_real home_real
-  proj_real=$(canonical_dir "$PROJ")
-  root_real=$(canonical_dir "$FM_ROOT")
-  home_real=$(canonical_dir "$FM_HOME")
-  [ "$proj_real" = "$root_real" ] || [ "$proj_real" = "$home_real" ]
-}
-
-if [ "$MODE" != "local-only" ] && ! is_firstmate_repo; then
+if [ "$MODE" != "local-only" ] && ! fm_is_firstmate_repo "$PROJ" "$FM_ROOT" "$FM_HOME"; then
   echo "error: task $ID is mode=$MODE on $PROJ, not local-only; merge PR tasks with bin/fm-pr-merge.sh <id> <PR url> after approval" >&2
   exit 1
 fi
