@@ -25,15 +25,20 @@ new_home() {
   printf '%s\n' "$home"
 }
 
-# write_now <home> <date> [content] [key]
+# write_now <home> <date> [content] [key] [padding-lines]
 write_now() {
-  local home=$1 date=$2 content=${3:-"STANDING-NOW-TEXT"} key=${4:-"date"}
+  local home=$1 date=$2 content=${3:-"STANDING-NOW-TEXT"} key=${4:-"date"} pad=${5:-0} i
   mkdir -p "$home/data/memory"
   {
     printf -- '---\n'
     printf '%s: %s\n' "$key" "$date"
     printf -- '---\n\n'
     printf '%s\n' "$content"
+    i=0
+    while [ "$i" -lt "$pad" ]; do
+      printf 'pinned ceiling %s aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n' "$i"
+      i=$((i + 1))
+    done
   } > "$home/data/memory/now.md"
 }
 
@@ -661,6 +666,8 @@ test_absent_now_md_produces_byte_identical_output_with_no_notice() {
 
   assert_not_contains "$out" 'now.md' 'absent now.md was mentioned in output'
   assert_not_contains "$out" 'operating picture' 'absent now.md produced operating picture section'
+  [ -z "$(accounting_field "$out" now)" ] \
+    || fail "absent now.md added a now= field to MEMORY_ACCOUNTING: $out"
 
   pass 'no now.md produces output with no notice or operating picture section'
 }
@@ -704,13 +711,15 @@ test_budget_cap_precedence_with_operating_picture() {
   assert_not_contains "$out" 'Big claim' 'catalog was injected without room'
   assert_contains "$out" 'MEMORY_BUDGET_WARNING:' 'dropping catalog was silent'
 
-  # Case 3: Budget fits core, but NOT now. Now, catalog, and notes dropped. Core alone kept.
+  # Case 3: Budget fits core and nothing else. Now, catalog, and notes dropped.
   printf '%s\n' "$core_tokens" > "$home/config/startup-memory-budget"
   out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context --context 'bigtrig smalltrig')
   assert_contains "$out" 'STANDING-CORE-TEXT' 'core was dropped'
   assert_not_contains "$out" 'NOW-PINS-TEXT' 'now was injected without room'
   assert_not_contains "$out" 'Big claim' 'catalog was injected without room'
   assert_contains "$out" 'MEMORY_BUDGET_WARNING:' 'dropping now was silent'
+  [ "$(accounting_field "$out" now)" = 0 ] \
+    || fail "a dropped operating picture was still accounted: $out"
   [ "$(accounting_field "$out" status)" = capped ] \
     || fail "dropping now was not reported as capped: $out"
 
@@ -725,6 +734,115 @@ test_budget_cap_precedence_with_operating_picture() {
     || fail "over-budget core did not report over-budget: $out"
 
   pass 'the budget cap drops notes first, then catalog, then operating picture, and never core'
+}
+
+test_oversized_operating_picture_is_dropped_but_the_catalog_survives() {
+  local home full core_tokens catalog_tokens now_tokens out
+  home=$(new_home now-oversized 1000000)
+  printf '# core\n\nSTANDING-CORE-TEXT\n' > "$home/data/memory/core.md"
+  write_now "$home" 2026-08-20 'NOW-PINS-TEXT' date 400
+  write_note "$home" small 'Small claim' 'smalltrig' 2026-08-17 1
+
+  full=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context --context smalltrig)
+  core_tokens=$(accounting_field "$full" core)
+  catalog_tokens=$(accounting_field "$full" catalog)
+  now_tokens=$(accounting_field "$full" now)
+  [ "$now_tokens" -gt "$catalog_tokens" ] \
+    || fail "the oversized operating picture was not larger than the catalog: $full"
+
+  # Room for core plus catalog, but not for core plus operating picture.
+  printf '%s\n' "$((core_tokens + catalog_tokens))" > "$home/config/startup-memory-budget"
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context --context smalltrig)
+
+  assert_contains "$out" 'STANDING-CORE-TEXT' 'core was dropped'
+  assert_not_contains "$out" 'NOW-PINS-TEXT' 'the oversized operating picture was injected'
+  assert_contains "$out" 'MEMORY_BUDGET_WARNING: the core plus operating picture is' \
+    'dropping the oversized operating picture was silent'
+  assert_contains "$out" 'Small claim' 'the catalog went down with the operating picture'
+  [ "$(accounting_field "$out" catalog)" = "$catalog_tokens" ] \
+    || fail "the catalog was not accounted after the operating picture was dropped: $out"
+  [ "$(accounting_field "$out" now)" = 0 ] \
+    || fail "a dropped operating picture was still accounted: $out"
+  [ "$(accounting_field "$out" status)" = capped ] \
+    || fail "dropping the operating picture was not reported as capped: $out"
+
+  pass 'an operating picture too large to fit is dropped alone and never takes the catalog with it'
+}
+
+test_operating_picture_is_read_from_the_home_in_a_generation_home() {
+  local home out
+  home=$(new_home now-generation)
+  mkdir -p "$home/data/memory/gen/1/notes"
+  printf '# core\n\nGENERATION-CORE-TEXT\n' > "$home/data/memory/gen/1/core.md"
+  printf 'gen/1\n' > "$home/data/memory/HEAD"
+  write_now "$home" 2026-08-20 'HOME-LEVEL-PINS'
+
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context)
+
+  assert_contains "$out" 'COMPILED WORKING MEMORY (data/memory/gen/1)' \
+    'the generation was not the compiled memory directory'
+  assert_contains "$out" 'GENERATION-CORE-TEXT' 'the generation core was not injected'
+  assert_contains "$out" 'operating picture: data/memory/now.md' \
+    'the home-level operating picture was not injected in a generation home'
+  assert_contains "$out" 'HOME-LEVEL-PINS' 'the home-level operating picture body was missing'
+
+  pass 'a generation home still reads the home-level data/memory/now.md'
+}
+
+test_date_key_wins_over_updated_key_in_the_operating_picture() {
+  local home out
+  home=$(new_home now-date-precedence)
+  printf '# core\n\nSTANDING-CORE-TEXT\n' > "$home/data/memory/core.md"
+  {
+    printf -- '---\n'
+    printf 'date: 2026-08-20\n'
+    printf 'updated: 2020-01-01\n'
+    printf -- '---\n\n'
+    printf 'DATE-KEY-PINS\n'
+  } > "$home/data/memory/now.md"
+
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context)
+
+  assert_contains "$out" 'DATE-KEY-PINS' 'an updated: key overrode the authoritative date: key'
+  assert_not_contains "$out" 'MEMORY_NOTICE: data/memory/now.md is dated' \
+    'a now.md with an authoritative date: key was reported stale'
+
+  pass 'the date: key is authoritative over updated: in the operating picture'
+}
+
+test_stale_operating_picture_notice_names_both_dates() {
+  local home out
+  home=$(new_home now-stale-dates)
+  printf '# core\n\nSTANDING-CORE-TEXT\n' > "$home/data/memory/core.md"
+  write_now "$home" 2026-08-19 'YESTERDAYS-CEILINGS'
+
+  out=$(FM_MEMORY_TODAY_OVERRIDE=2026-08-20 compile "$home" --no-auto-context)
+
+  assert_contains "$out" 'MEMORY_NOTICE: data/memory/now.md is dated 2026-08-19 (not today, 2026-08-20)' \
+    'the stale notice did not name both the file date and today'
+
+  pass 'the stale operating picture notice names the date the file carries and today'
+}
+
+test_shipped_example_operating_picture_compiles() {
+  local home example_date out
+  home=$(new_home now-example)
+  printf '# core\n\nSTANDING-CORE-TEXT\n' > "$home/data/memory/core.md"
+  cp "$ROOT/docs/examples/now.md" "$home/data/memory/now.md"
+
+  example_date=$(awk 'NR > 1 && /^---[[:space:]]*$/ { exit } tolower($1) == "date:" { print $2; exit }' \
+    "$ROOT/docs/examples/now.md")
+  [ -n "$example_date" ] || fail 'docs/examples/now.md carries no date: key in its front matter'
+
+  out=$(FM_MEMORY_TODAY_OVERRIDE="$example_date" compile "$home" --no-auto-context)
+
+  assert_contains "$out" 'operating picture: data/memory/now.md' \
+    'the shipped example template was not injected on the date it carries'
+  assert_contains "$out" '# Operating picture' 'the example body was missing from the bundle'
+  [ "$(accounting_field "$out" now)" -gt 0 ] \
+    || fail "the example template was not accounted: $out"
+
+  pass 'the shipped docs/examples/now.md template compiles as a valid operating picture'
 }
 
 test_symlinked_now_md_is_guarded() {
@@ -766,6 +884,11 @@ test_operating_picture_dated_other_day_is_dropped_and_reports_why
 test_operating_picture_with_no_date_is_dropped_and_reports_why
 test_absent_now_md_produces_byte_identical_output_with_no_notice
 test_budget_cap_precedence_with_operating_picture
+test_oversized_operating_picture_is_dropped_but_the_catalog_survives
+test_operating_picture_is_read_from_the_home_in_a_generation_home
+test_date_key_wins_over_updated_key_in_the_operating_picture
+test_stale_operating_picture_notice_names_both_dates
+test_shipped_example_operating_picture_compiles
 test_symlinked_now_md_is_guarded
 
 echo '# all fm-memory-compile tests passed'
