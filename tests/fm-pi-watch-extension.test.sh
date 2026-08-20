@@ -1360,7 +1360,7 @@ if (existsSync(process.env.FM_ARM_LOG)) {
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 // Re-fire idle the way OpenCode does until the arm lands. Arming is idempotent,
 // and re-firing means a still-in-flight foreign-lock decision cannot absorb the
-// owning session's event and leave the watcher unarmed.
+// event of the owning session and leave the watcher unarmed.
 for (let i = 0; i < 250 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
   await hooks.event(event);
   await new Promise((resolve) => setTimeout(resolve, 20));
