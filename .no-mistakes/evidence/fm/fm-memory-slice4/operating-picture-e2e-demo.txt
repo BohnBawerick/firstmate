@@ -1,0 +1,211 @@
+=== FIRSTMATE NOW.MD OPERATING PICTURE VERIFICATION TRANSCRIPT ===
+
+--- 1. CLI --help documentation of operating picture tier ---
+fm-memory-compile.sh - compile the capped startup working-memory bundle.
+
+Usage:
+  fm-memory-compile.sh [compile] [--memory-dir <path>] [--gen <N>]
+                       [--context <text>]... [--context-file <path>]...
+                       [--no-auto-context]
+  fm-memory-compile.sh catalog [--memory-dir <path>] [--gen <N>] [--dry-run]
+  fm-memory-compile.sh -h | --help
+
+`compile` writes the bundle to stdout and never writes to disk, so a
+read-only session can run it, and it follows data/memory/HEAD to the active
+generation.  `catalog` republishes data/memory/catalog.md
+from data/memory/notes/ for grep and for the captain's own reading, and it
+indexes data/memory unless --memory-dir or --gen names another directory:
+publishing an index is a write, so it targets what the caller asked for
+rather than whatever generation happens to be live.  The
+injected catalog is always rendered fresh from the notes, so a stale file on
+disk costs nothing, is reported, and is never trusted.
+
+WHY THIS EXISTS.  Session start used to print data/captain.md and
+data/learnings.md whole, so the startup memory surface grew without any read
+path that could refuse it.  This script is that refusal: it selects
+...
+
+--- 2. Compiling bundle with now.md dated today (2026-08-20) ---
+COMPILED WORKING MEMORY (data/memory)
+--------------------------------------------------------------------------------
+Compiled by bin/fm-memory-compile.sh against a 4000-estimated-token cap.
+This is the whole startup memory surface: it is selected and capped, not dumped.
+The catalog lists every note that exists, so when a title below matches what
+this turn needs and its body was not injected, read that file by its path.
+
+core: data/memory/core.md
+--------------------------------------------------------------------------------
+# Core
+Standing operational constitution.
+
+operating picture: data/memory/now.md
+--------------------------------------------------------------------------------
+---
+date: 2026-08-20
+---
+# Operating picture
+- Ceiling: 3 workers
+- Pin: release cut
+
+catalog (compiled from data/memory/notes/)
+--------------------------------------------------------------------------------
+<!-- compiled by bin/fm-memory-compile.sh from data/memory/notes/ -->
+
+- Alpha note (claim1.md | alpha | 2026-08-20)
+
+hot note: notes/claim1.md
+--------------------------------------------------------------------------------
+---
+title: Alpha note
+triggers: alpha
+updated: 2026-08-20
+---
+Alpha gotchas.
+
+MEMORY_NOTICE: data/memory/catalog.md is ABSENT. The catalog in this bundle was rendered fresh from data/memory/notes/; publish the file with bin/fm-memory-compile.sh catalog.
+
+MEMORY_ACCOUNTING: budget=4000 core=14 now=29 catalog=39 hot_notes=1 hot_notes_tokens=26 notes_total=1 hot_dropped=0 injected_total=108 status=within-budget
+
+--- 3. Compiling bundle with stale now.md (dated 2026-08-19, today=2026-08-20) ---
+COMPILED WORKING MEMORY (data/memory)
+--------------------------------------------------------------------------------
+Compiled by bin/fm-memory-compile.sh against a 4000-estimated-token cap.
+This is the whole startup memory surface: it is selected and capped, not dumped.
+The catalog lists every note that exists, so when a title below matches what
+this turn needs and its body was not injected, read that file by its path.
+
+core: data/memory/core.md
+--------------------------------------------------------------------------------
+# Core
+Standing operational constitution.
+
+catalog (compiled from data/memory/notes/)
+--------------------------------------------------------------------------------
+<!-- compiled by bin/fm-memory-compile.sh from data/memory/notes/ -->
+
+- Alpha note (claim1.md | alpha | 2026-08-20)
+
+hot note: notes/claim1.md
+--------------------------------------------------------------------------------
+---
+title: Alpha note
+triggers: alpha
+updated: 2026-08-20
+---
+Alpha gotchas.
+
+MEMORY_NOTICE: data/memory/now.md is dated 2026-08-19 (not today, 2026-08-20) and is NOT injected. Update it with this shift's pins and ceilings, or remove it.
+
+MEMORY_NOTICE: data/memory/catalog.md is ABSENT. The catalog in this bundle was rendered fresh from data/memory/notes/; publish the file with bin/fm-memory-compile.sh catalog.
+
+MEMORY_ACCOUNTING: budget=4000 core=14 catalog=39 hot_notes=1 hot_notes_tokens=26 notes_total=1 hot_dropped=0 injected_total=79 status=within-budget
+
+--- 4. Compiling bundle with undated now.md ---
+COMPILED WORKING MEMORY (data/memory)
+--------------------------------------------------------------------------------
+Compiled by bin/fm-memory-compile.sh against a 4000-estimated-token cap.
+This is the whole startup memory surface: it is selected and capped, not dumped.
+The catalog lists every note that exists, so when a title below matches what
+this turn needs and its body was not injected, read that file by its path.
+
+core: data/memory/core.md
+--------------------------------------------------------------------------------
+# Core
+Standing operational constitution.
+
+catalog (compiled from data/memory/notes/)
+--------------------------------------------------------------------------------
+<!-- compiled by bin/fm-memory-compile.sh from data/memory/notes/ -->
+
+- Alpha note (claim1.md | alpha | 2026-08-20)
+
+hot note: notes/claim1.md
+--------------------------------------------------------------------------------
+---
+title: Alpha note
+triggers: alpha
+updated: 2026-08-20
+---
+Alpha gotchas.
+
+MEMORY_NOTICE: data/memory/now.md has no date in front matter and is NOT injected. Add a date (date: YYYY-MM-DD), or remove it.
+
+MEMORY_NOTICE: data/memory/catalog.md is ABSENT. The catalog in this bundle was rendered fresh from data/memory/notes/; publish the file with bin/fm-memory-compile.sh catalog.
+
+MEMORY_ACCOUNTING: budget=4000 core=14 catalog=39 hot_notes=1 hot_notes_tokens=26 notes_total=1 hot_dropped=0 injected_total=79 status=within-budget
+
+--- 5. Compiling bundle with absent now.md (silent, no operating picture notice) ---
+COMPILED WORKING MEMORY (data/memory)
+--------------------------------------------------------------------------------
+Compiled by bin/fm-memory-compile.sh against a 4000-estimated-token cap.
+This is the whole startup memory surface: it is selected and capped, not dumped.
+The catalog lists every note that exists, so when a title below matches what
+this turn needs and its body was not injected, read that file by its path.
+
+core: data/memory/core.md
+--------------------------------------------------------------------------------
+# Core
+Standing operational constitution.
+
+catalog (compiled from data/memory/notes/)
+--------------------------------------------------------------------------------
+<!-- compiled by bin/fm-memory-compile.sh from data/memory/notes/ -->
+
+- Alpha note (claim1.md | alpha | 2026-08-20)
+
+hot note: notes/claim1.md
+--------------------------------------------------------------------------------
+---
+title: Alpha note
+triggers: alpha
+updated: 2026-08-20
+---
+Alpha gotchas.
+
+MEMORY_NOTICE: data/memory/catalog.md is ABSENT. The catalog in this bundle was rendered fresh from data/memory/notes/; publish the file with bin/fm-memory-compile.sh catalog.
+
+MEMORY_ACCOUNTING: budget=4000 core=14 catalog=39 hot_notes=1 hot_notes_tokens=26 notes_total=1 hot_dropped=0 injected_total=79 status=within-budget
+
+--- 6. Compiling bundle using docs/examples/now.md template ---
+COMPILED WORKING MEMORY (data/memory)
+--------------------------------------------------------------------------------
+Compiled by bin/fm-memory-compile.sh against a 4000-estimated-token cap.
+This is the whole startup memory surface: it is selected and capped, not dumped.
+The catalog lists every note that exists, so when a title below matches what
+this turn needs and its body was not injected, read that file by its path.
+
+core: data/memory/core.md
+--------------------------------------------------------------------------------
+# Core
+Standing operational constitution.
+
+operating picture: data/memory/now.md
+--------------------------------------------------------------------------------
+---
+date: 2026-08-20
+---
+
+# Operating picture
+
+- Ceiling: at most 3 crewmates running at once today, so a fourth task waits.
+- Freeze: no deploy to production until the maintenance window closes at 18:00.
+- Pin: the release branch is cut, so land fixes only, no refactors.
+
+catalog (compiled from data/memory/notes/)
+--------------------------------------------------------------------------------
+<!-- compiled by bin/fm-memory-compile.sh from data/memory/notes/ -->
+
+- Alpha note (claim1.md | alpha | 2026-08-20)
+
+hot note: notes/claim1.md
+--------------------------------------------------------------------------------
+---
+title: Alpha note
+triggers: alpha
+updated: 2026-08-20
+---
+Alpha gotchas.
+
+MEMORY_NOTICE: data/memory/catalog.md is ABSENT. The catalog in this bundle was rendered fresh from data/memory/notes/; publish the file with bin/fm-memory-compile.sh catalog.
+
+MEMORY_ACCOUNTING: budget=4000 core=14 now=91 catalog=39 hot_notes=1 hot_notes_tokens=26 notes_total=1 hot_dropped=0 injected_total=170 status=within-budget
