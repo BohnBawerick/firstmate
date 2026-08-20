@@ -11,6 +11,16 @@ EXT="$ROOT/.pi/extensions/fm-primary-pi-watch.ts"
 # from a clean checkout with no tracked .opencode/package.json. The warning is
 # unrelated to plugin output, which the assertions intentionally require empty.
 export NODE_NO_WARNINGS=1
+# The watch plugins spawn every arm child through `bash -lc`, so the login
+# dotfiles of whoever runs the suite sit on the critical path of each spawn.
+# Those dotfiles cost hundreds of milliseconds on real developer and CI
+# accounts, which races the compressed readiness and retirement budgets these
+# tests set (FM_PI_ARM_READY_TIMEOUT_MS and friends): the arm child is then
+# SIGTERMed before it reaches its fixture state, and successor counts drift.
+# Point HOME at an empty fixture directory so login startup stays bounded and
+# the arm assertions stay deterministic on every machine.
+mkdir -p "$TMP_ROOT/login-home"
+export HOME="$TMP_ROOT/login-home"
 
 install_pi_watch_extension_fixture() {
   local repo=$1
@@ -486,6 +496,9 @@ test_pi_unretired_successor_falls_back_without_retry() {
   plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
   cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
 #!/usr/bin/env bash
+# Ignore TERM before any other work so the successor arm cannot be retired in
+# the window between process start and its own trap statement.
+trap '' TERM INT
 if [ -f "$FM_ARM_LOG" ]; then
   count=$(wc -l < "$FM_ARM_LOG" | tr -d '[:space:]')
 else
@@ -497,7 +510,6 @@ if [ "$count" -eq 0 ]; then
   printf 'signal: synthetic wake\n'
   exit 0
 fi
-trap '' TERM INT
 printf 'arm=%s\n' "$$" >> "${FM_ARM_LOG:?}"
 while [ ! -e "$FM_RELEASE_FILE" ]; do sleep 0.1; done
 SH
@@ -1338,13 +1350,14 @@ const hooks = await mod.FmPrimaryWatchArm({
 const event = { event: { type: "session.idle", properties: { sessionID: "session-test" } } };
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, "999999\n");
 await hooks.event(event);
-await new Promise((resolve) => setTimeout(resolve, 120));
+await globalThis.__firstmateOpenCodeWatchArm?.ensureArmed("session-test");
 if (existsSync(process.env.FM_ARM_LOG)) {
   console.error("watch arm ran without owning the session lock");
   process.exit(1);
 }
 writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
 await hooks.event(event);
+await globalThis.__firstmateOpenCodeWatchArm?.ensureArmed("session-test");
 for (let i = 0; i < 250 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
   await new Promise((resolve) => setTimeout(resolve, 20));
 }
@@ -1663,6 +1676,9 @@ test_opencode_unretired_successor_falls_back_without_retry() {
   : > "$home/state/task.meta"
   cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
 #!/usr/bin/env bash
+# Ignore TERM before any other work so the successor arm cannot be retired in
+# the window between process start and its own trap statement.
+trap '' TERM INT
 if [ -f "$FM_ARM_LOG" ]; then
   count=$(wc -l < "$FM_ARM_LOG" | tr -d '[:space:]')
 else
@@ -1674,7 +1690,6 @@ if [ "$count" -eq 0 ]; then
   printf 'signal: synthetic wake\n'
   exit 0
 fi
-trap '' TERM INT
 printf 'arm=%s\n' "$$" >> "${FM_ARM_LOG:?}"
 while [ ! -e "$FM_RELEASE_FILE" ]; do sleep 0.1; done
 SH
