@@ -9,8 +9,12 @@
 #   fm-memory-compile.sh -h | --help
 #
 # `compile` writes the bundle to stdout and never writes to disk, so a
-# read-only session can run it.  `catalog` republishes data/memory/catalog.md
-# from data/memory/notes/ for grep and for the captain's own reading; the
+# read-only session can run it, and it follows data/memory/HEAD to the active
+# generation.  `catalog` republishes data/memory/catalog.md
+# from data/memory/notes/ for grep and for the captain's own reading, and it
+# indexes data/memory unless --memory-dir or --gen names another directory:
+# publishing an index is a write, so it targets what the caller asked for
+# rather than whatever generation happens to be live.  The
 # injected catalog is always rendered fresh from the notes, so a stale file on
 # disk costs nothing, is reported, and is never trusted.
 #
@@ -155,7 +159,7 @@ if [ -n "$EXPLICIT_MEMORY_DIR" ]; then
   else
     REL_LABEL="$MEMORY"
   fi
-elif [ -f "$HEAD_FILE" ] && [ ! -L "$HEAD_FILE" ]; then
+elif [ "$MODE" = compile ] && [ -f "$HEAD_FILE" ] && [ ! -L "$HEAD_FILE" ]; then
   HEAD_TARGET=$(head -n 1 "$HEAD_FILE" | tr -d '\r\n[:space:]')
   case "$HEAD_TARGET" in
     '')
@@ -381,6 +385,8 @@ note_inventory > "$TMP/inventory"
 if [ "$MODE" = catalog ]; then
   render_catalog > "$TMP/catalog"
   if [ "$DRY_RUN" -eq 1 ]; then
+    [ "$MEMORY_DIR_OK" -eq 1 ] || printf 'MEMORY_NOTICE: %s %s, so nothing was read through it and this catalog lists none. Replace the symlink with a real directory.\n' \
+      "$MEMORY_SYMLINK_PATH" "$MEMORY_SYMLINK_HOW" >&2
     [ "$NOTES_DIR_SYMLINK" -eq 0 ] || printf 'MEMORY_NOTICE: %s/notes/ is a symlink, so no note was read through it and this catalog lists none. Replace the symlink with a real directory.\n' \
       "$REL_LABEL" >&2
     cat "$TMP/catalog"

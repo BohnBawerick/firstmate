@@ -27,7 +27,9 @@
 #      bin/fm-memory-compile.sh applies to pick a core - the generation's own
 #      core.md whenever that file exists at all, and data/captain.md only when
 #      it does not. Today's side is read from the generation data/memory/HEAD
-#      publishes, tomorrow's from the proposed generation;
+#      publishes, tomorrow's from the proposed generation. A standing rule
+#      counts as preserved only when its wording survives inside one statement
+#      of the proposed core, not merely somewhere in the document;
 #   4. Diff bounds: a single generation cannot replace or delete excessive
 #      proportions of memory (default: max 50% deletion of baseline notes) and
 #      can never delete every baseline note, however small the baseline is.
@@ -546,6 +548,21 @@ check_constitution() {
   local missing=0 heading rule clean_rule core_text
   core_text=$(LC_ALL=C tr '[:upper:]' '[:lower:]' < "$target_file")
 
+  # One standing statement per line, continuations folded in, so a rule counts
+  # as preserved only when its wording survives inside a single statement.
+  # Scoring against the whole document instead lets vocabulary scattered across
+  # unrelated rules stand in for the rule that was deleted.
+  awk '
+    function flush() { if (block != "") { print block; block = "" } }
+    /^[[:space:]]*$/ { flush(); next }
+    /^[[:space:]]*[-*][[:space:]]/ { flush(); block = $0; next }
+    /^#/ { flush(); block = $0; next }
+    { block = (block == "" ? $0 : block " " $0) }
+    END { flush() }
+  ' > "$TMP/core_blocks" <<CORE_BLOCKS
+$core_text
+CORE_BLOCKS
+
   # 1. Check headings
   while IFS= read -r heading; do
     [ -n "$heading" ] || continue
@@ -577,17 +594,30 @@ check_constitution() {
     keywords=$(printf '%s\n' "$clean_rule" | LC_ALL=C tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' ' ' | awk '{ for(i=1;i<=NF;i++) if(length($i)>=4) printf "%s ", $i }')
     [ -n "$keywords" ] || continue
 
-    # Check if key tokens are present in core.md
-    local token match_count=0 total_tokens=0
+    local token total_tokens=0
     for token in $keywords; do
       total_tokens=$((total_tokens + 1))
-      case "$core_text" in
-        *"$token"*) match_count=$((match_count + 1)) ;;
-      esac
     done
+    [ "$total_tokens" -gt 0 ] || continue
 
-    # If less than half of the rule's keywords are present, flag as potentially dropped rule
-    if [ "$total_tokens" -gt 0 ] && [ "$match_count" -lt "$(( (total_tokens + 1) / 2 ))" ]; then
+    # The best single standing statement has to carry the rule, not the document
+    local needed=$(( (total_tokens + 1) / 2 ))
+    local match_count=0 block_hits target_block
+    while IFS= read -r target_block || [ -n "$target_block" ]; do
+      [ -n "$target_block" ] || continue
+      block_hits=0
+      for token in $keywords; do
+        case "$target_block" in
+          *"$token"*) block_hits=$((block_hits + 1)) ;;
+        esac
+      done
+      if [ "$block_hits" -gt "$match_count" ]; then
+        match_count=$block_hits
+        [ "$match_count" -lt "$needed" ] || break
+      fi
+    done < "$TMP/core_blocks"
+
+    if [ "$match_count" -lt "$needed" ]; then
       printf 'FAIL constitution: standing preference rule from %s was silently dropped or truncated in %s: "%s"\n' \
         "$baseline_label" "$target_label" "$clean_rule" >&2
       missing=$((missing + 1))

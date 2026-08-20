@@ -660,11 +660,11 @@ test_catalog_mode_reports_the_generation_it_wrote() {
   write_note "$gen_dir/notes" n1 'Catalogued Note' 'catalogued' 2026-08-20 'data/source.md'
   FM_HOME="$home" "$PUBLISH" 1 >/dev/null
 
-  out=$(FM_HOME="$home" "$COMPILE" catalog)
+  out=$(FM_HOME="$home" "$COMPILE" catalog --memory-dir "$gen_dir")
   assert_contains "$out" 'catalog: published data/memory/gen/1/catalog.md' \
     'catalog mode named a path it did not write'
-  assert_present "$gen_dir/catalog.md" 'catalog was not written into the active generation'
-  assert_absent "$home/data/memory/catalog.md" 'catalog was written outside the active generation'
+  assert_present "$gen_dir/catalog.md" 'catalog was not written into the named generation'
+  assert_absent "$home/data/memory/catalog.md" 'catalog was written outside the named generation'
 
   # data/memory/gen/1/catalog.md is the compiler's own generated output, so its
   # provenance header is part of that generated contract.
@@ -1095,8 +1095,10 @@ test_compile_refuses_a_generation_reached_through_an_intermediate_symlink() {
   assert_contains "$out" 'is reached through a symlink' \
     'the empty bundle did not explain that the path leaves the home'
 
+  # catalog never follows HEAD, so the out-of-home path has to be named for it
+  # to be reachable at all; naming it is still refused.
   set +e
-  out=$(FM_HOME="$home" "$COMPILE" catalog 2>&1)
+  out=$(FM_HOME="$home" "$COMPILE" catalog --memory-dir "$home/data/memory/gen/1" 2>&1)
   rc=$?
   set -e
   [ "$rc" -ne 0 ] || fail "catalog mode published outside the home: $out"
@@ -1183,6 +1185,133 @@ test_catalog_mode_refuses_to_publish_over_a_symlinked_notes_dir() {
   pass 'catalog mode refuses to overwrite an index with one that would claim the generation has no notes'
 }
 
+# --- 12. Catalog Target, Drop Metadata And Constitution Scoping --------------
+
+test_catalog_indexes_data_memory_unless_a_directory_is_named() {
+  local home out catalog_body
+  home=$(new_home catalog-default-target 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+
+  mkdir -p "$home/data/memory/notes" "$home/data/memory/gen/1/notes"
+  write_note "$home/data/memory/notes" flat 'Flat Note' 'flat' 2026-08-20 'data/source.md'
+  printf '# Core\n<!-- source: data/source.md -->\n- Rule A\n' > "$home/data/memory/gen/1/core.md"
+  write_note "$home/data/memory/gen/1/notes" gen1 'Generation Note' 'gen' 2026-08-20 'data/source.md'
+  printf 'gen/1\n' > "$home/data/memory/HEAD"
+
+  # Publishing an index is a write, so with no directory named it indexes
+  # data/memory rather than following HEAD into the live generation.
+  out=$(FM_HOME="$home" "$COMPILE" catalog)
+  assert_contains "$out" 'catalog: published data/memory/catalog.md (1 note(s))' \
+    'catalog followed data/memory/HEAD instead of indexing data/memory'
+  assert_present "$home/data/memory/catalog.md" 'data/memory/catalog.md was not written'
+  assert_absent "$home/data/memory/gen/1/catalog.md" 'catalog was written into the live generation'
+
+  # data/memory/catalog.md is the compiler's own generated index, so its body
+  # is a contract this test may read.
+  catalog_body=$(cat "$home/data/memory/catalog.md")
+  assert_contains "$catalog_body" 'Flat Note' 'the index does not list the notes it indexed'
+  assert_not_contains "$catalog_body" 'Generation Note' 'the index listed notes from another directory'
+
+  # compile still follows HEAD, which is what session start needs.
+  out=$(FM_HOME="$home" "$COMPILE" compile)
+  assert_contains "$out" 'COMPILED WORKING MEMORY (data/memory/gen/1)' \
+    'compile stopped following data/memory/HEAD'
+
+  pass 'catalog indexes data/memory unless a directory is named, while compile still follows HEAD'
+}
+
+test_migrate_indexes_the_notes_it_wrote() {
+  local home out
+  home=$(new_home migrate-catalog 7500)
+  local migrate="$ROOT/bin/fm-memory-migrate.sh"
+
+  # A home that already publishes a generation, then migrates legacy learnings
+  # into the flat data/memory/notes/ directory.
+  mkdir -p "$home/data/memory/gen/1/notes"
+  printf 'SOURCE\n' > "$home/data/source.md"
+  write_note "$home/data/memory/gen/1/notes" gen1 'Generation Note' 'gen' 2026-08-20 'data/source.md'
+  printf 'gen/1\n' > "$home/data/memory/HEAD"
+  printf '## Always run lint before push\n\nDetail one.\n\n## Never rebase a shared branch\n\nDetail two.\n' \
+    > "$home/data/learnings.md"
+
+  out=$(FM_HOME="$home" "$migrate" 2>&1) \
+    || fail "migrate failed on a home with a published generation: $out"
+  assert_contains "$out" 'migrate: 2 note(s) created' 'migrate did not create the expected notes'
+  assert_contains "$out" 'catalog: published data/memory/catalog.md (2 note(s))' \
+    'migrate indexed a directory other than the one it wrote to'
+  assert_present "$home/data/memory/catalog.md" 'the notes migrate created were left unindexed'
+  assert_absent "$home/data/memory/gen/1/catalog.md" \
+    'migrate published its catalog into the live generation'
+
+  pass 'migrate indexes the notes directory it wrote to, not whatever generation is live'
+}
+
+test_drop_tray_keeps_metadata_across_reruns() {
+  local home drop_file content out
+  home=$(new_home drop-metadata-rerun)
+  assert_absent "$home/state/fm-task-meta.meta" 'fixture unexpectedly provided a task meta file'
+
+  FM_HOME="$home" "$DROP" fm-task-meta \
+    --project alpha --commit deadbeef --claim "First finding" >/dev/null
+
+  # A rerun that supplies only a new claim must not drop the provenance the
+  # first run recorded.
+  out=$(FM_HOME="$home" "$DROP" fm-task-meta --claim "Second finding")
+  assert_contains "$out" '(2 claim(s))' "drop lost a claim across the rerun: $out"
+
+  drop_file="$home/data/memory/drop/fm-task-meta.md"
+  content=$(cat "$drop_file")
+  assert_contains "$content" 'project: alpha' 'the rerun discarded the recorded project'
+  assert_contains "$content" 'commit: deadbeef' 'the rerun discarded the recorded commit pointer'
+  assert_contains "$content" '- First finding' 'the rerun discarded the first claim'
+  assert_contains "$content" '- Second finding' 'the rerun did not record the new claim'
+
+  # An explicit value still wins over the recorded one.
+  FM_HOME="$home" "$DROP" fm-task-meta --commit cafebabe --claim "Third finding" >/dev/null
+  content=$(cat "$drop_file")
+  assert_contains "$content" 'commit: cafebabe' 'an explicit commit did not override the recorded one'
+  assert_contains "$content" 'project: alpha' 'overriding the commit dropped the project'
+
+  pass 'a drop rerun keeps the project, report and commit the previous run recorded'
+}
+
+test_constitution_scores_a_rule_within_one_standing_statement() {
+  local home out rc
+  home=$(new_home constitution-block-scope 7500)
+  printf 'SOURCE\n' > "$home/data/source.md"
+
+  mkdir -p "$home/data/memory/gen/1/notes" "$home/data/memory/gen/2/notes"
+  printf '# Core\n<!-- source: data/source.md -->\n- Never force push to main under any circumstances.\n- Always ask the captain before merging a pull request.\n' \
+    > "$home/data/memory/gen/1/core.md"
+  write_note "$home/data/memory/gen/1/notes" n1 'Note 1' 'one' 2026-08-20 'data/source.md'
+  write_note "$home/data/memory/gen/2/notes" n1 'Note 1' 'one' 2026-08-20 'data/source.md'
+  FM_HOME="$home" "$PUBLISH" 1 >/dev/null
+
+  # The force-push rule is deleted; its vocabulary survives only scattered
+  # across unrelated statements.
+  printf '# Core\n<!-- source: data/source.md -->\n- Never open a PR without tests.\n- Force a rebuild when caches go stale.\n- Push to the release branch weekly.\n- Main dashboards live in Grafana.\n- Always ask the captain before merging a pull request.\n' \
+    > "$home/data/memory/gen/2/core.md"
+
+  set +e
+  out=$(FM_HOME="$home" "$PUBLISH" 2 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "publish accepted a deleted rule whose words are scattered elsewhere: $out"
+  assert_contains "$out" 'FAIL constitution' 'scattered vocabulary stood in for the deleted rule'
+  assert_contains "$out" 'Never force push to main under any circumstances' \
+    'the failure did not name the deleted standing rule'
+  [ "$(head -n 1 "$home/data/memory/HEAD")" = "gen/1" ] || fail 'HEAD moved despite the dropped rule'
+
+  # Carrying the rule forward, reworded but intact in one statement, passes.
+  printf '# Core\n<!-- source: data/source.md -->\n- Never force push to main under any circumstances whatsoever.\n- Always ask the captain before merging a pull request.\n' \
+    > "$home/data/memory/gen/2/core.md"
+  out=$(FM_HOME="$home" "$PUBLISH" 2) \
+    || fail "publish refused a generation that keeps the rule in one statement: $out"
+  [ "$(head -n 1 "$home/data/memory/HEAD")" = "gen/2" ] || fail 'HEAD did not advance to gen/2'
+
+  pass 'a standing rule must survive inside one statement, not as words scattered across the core'
+}
+
 # --- Run All Tests ----------------------------------------------------------
 
 test_drop_tray_capture_basic
@@ -1221,6 +1350,10 @@ test_verify_refuses_a_generation_whose_notes_dir_is_a_symlink
 test_compile_refuses_a_generation_reached_through_an_intermediate_symlink
 test_diff_bounds_baseline_is_what_the_live_generation_shows
 test_catalog_mode_refuses_to_publish_over_a_symlinked_notes_dir
+test_catalog_indexes_data_memory_unless_a_directory_is_named
+test_migrate_indexes_the_notes_it_wrote
+test_drop_tray_keeps_metadata_across_reruns
+test_constitution_scores_a_rule_within_one_standing_statement
 
 printf '# all fm-memory-verify tests passed\n'
 exit 0

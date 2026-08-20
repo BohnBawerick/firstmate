@@ -148,14 +148,30 @@ TARGET_FILE="$DROP_DIR/$TASK_ID.md"
 
 # Collect existing claims if target file already exists (idempotency)
 EXISTING_CLAIMS=()
+EXISTING_PROJECT=""
+EXISTING_REPORT=""
+EXISTING_COMMIT=""
 if [ -f "$TARGET_FILE" ] && [ ! -L "$TARGET_FILE" ]; then
   in_body=0
+  in_fm=0
   while IFS= read -r line || [ -n "$line" ]; do
     if [ "$line" = "---" ]; then
       if [ "$in_body" -eq 0 ]; then
         in_body=1
+        in_fm=1
+        continue
+      elif [ "$in_fm" -eq 1 ]; then
+        in_fm=0
         continue
       fi
+    fi
+    if [ "$in_fm" -eq 1 ]; then
+      case "$line" in
+        'project: '*) EXISTING_PROJECT=${line#project: } ;;
+        'report: '*) EXISTING_REPORT=${line#report: } ;;
+        'commit: '*) EXISTING_COMMIT=${line#commit: } ;;
+      esac
+      continue
     fi
     if [ "$in_body" -ge 1 ]; then
       # If line is a bullet item
@@ -166,6 +182,13 @@ if [ -f "$TARGET_FILE" ] && [ ! -L "$TARGET_FILE" ]; then
     fi
   done < "$TARGET_FILE"
 fi
+
+# A rerun that does not re-supply metadata keeps what the previous run recorded.
+# The commit pointer is the provenance anchor a later curation pass needs, and
+# this tray is the only place it is captured.
+[ -n "$PROJECT" ] || PROJECT="$EXISTING_PROJECT"
+[ -n "$REPORT" ] || REPORT="$EXISTING_REPORT"
+[ -n "$COMMIT" ] || COMMIT="$EXISTING_COMMIT"
 
 # Merge claims with deduplication. The seen-set is newline delimited because a
 # claim is always a single line, so no claim can straddle the delimiter and be
