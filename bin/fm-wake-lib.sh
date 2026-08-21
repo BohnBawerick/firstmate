@@ -1228,6 +1228,38 @@ fm_wake_status_append_self_announced() {  # <state> <status-file> <line>
   return 0
 }
 
+# Retire window-keyed and task-keyed watcher internals for a task being torn down:
+#   - .seen-* status and turn-ended signal markers
+#   - .hb-surfaced-* heartbeat push transition markers
+#   - .stale-*, .stale-since-*, .hash-*, .count-*, .wedge-escalations-*, .paused-* window markers
+# This ensures a torn-down task's pane/window cannot leave leftover hash/stale
+# state behind to falsely produce stale wakes after cleanup.
+fm_wake_retire_task_markers() {  # <state> <task-id> [<window-target>]
+  local state=$1 id=$2 target=${3:-} key hb_key seen_status seen_turnend
+  [ -n "$state" ] && [ -n "$id" ] || return 0
+  seen_status=$(fm_wake_signal_seen_path "$state" "$state/$id.status")
+  seen_turnend=$(fm_wake_signal_seen_path "$state" "$state/$id.turn-ended")
+  hb_key=$(printf '%s' "$id" | tr ':/.' '___')
+  rm -f -- \
+    "$seen_status" \
+    "$seen_turnend" \
+    "$state/.hb-surfaced-$id" \
+    "$state/.hb-surfaced-$hb_key" 2>/dev/null || true
+  if [ -n "$target" ]; then
+    key=$(printf '%s' "$target" | tr ':/.' '___')
+    rm -f -- \
+      "$state/.stale-$key" \
+      "$state/.stale-since-$key" \
+      "$state/.hash-$key" \
+      "$state/.count-$key" \
+      "$state/.wedge-escalations-$key" \
+      "$state/.paused-$key" \
+      "$state/.paused-rechecked-$key" \
+      "$state/.paused-resurfaced-$key" 2>/dev/null || true
+  fi
+  return 0
+}
+
 # Map one structurally valid signal key to its home-local status filename.
 # Queue payload text is intentionally ignored: it is display data, not a path
 # authority. The caller still verifies the resulting regular file immediately

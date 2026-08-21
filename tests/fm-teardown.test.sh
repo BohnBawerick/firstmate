@@ -1378,6 +1378,62 @@ SH
   pass "herdr teardown removes pane-owned escalation dedupe state"
 }
 
+test_teardown_retires_window_and_task_watcher_markers() {
+  local case_dir f
+  case_dir=$(make_case window-marker-retire)
+  write_meta "$case_dir" local-only ship
+  sed -i.bak 's/^window=.*/window=default:w4W:pM/' "$case_dir/state/task-x1.meta"
+  rm -f "$case_dir/state/task-x1.meta.bak"
+  printf '%s\n' \
+    'backend=herdr' \
+    'herdr_session=default' \
+    'herdr_workspace_id=w4W' \
+    'herdr_tab_id=w4W:tM' \
+    'herdr_pane_id=w4W:pM' >> "$case_dir/state/task-x1.meta"
+  cat > "$case_dir/fakebin/herdr" <<SH
+#!/usr/bin/env bash
+case "\${1:-} \${2:-}" in
+  "session list") printf '%s\n' '{"sessions":[{"name":"default","running":true,"socket_path":"$case_dir/herdr.sock"}]}' ;;
+  "status --json") printf '%s\n' '{"server":{"running":true}}' ;;
+  "pane get") printf '%s\n' '{"error":{"code":"pane_not_found"}}'; exit 1 ;;
+  *) exit 0 ;;
+esac
+SH
+  chmod +x "$case_dir/fakebin/herdr"
+
+  # Populate window-keyed and task-keyed watcher internal markers.
+  : > "$case_dir/state/.stale-default_w4W_pM"
+  : > "$case_dir/state/.stale-since-default_w4W_pM"
+  : > "$case_dir/state/.hash-default_w4W_pM"
+  : > "$case_dir/state/.count-default_w4W_pM"
+  : > "$case_dir/state/.wedge-escalations-default_w4W_pM"
+  : > "$case_dir/state/.paused-default_w4W_pM"
+  : > "$case_dir/state/.paused-rechecked-default_w4W_pM"
+  : > "$case_dir/state/.paused-resurfaced-default_w4W_pM"
+  : > "$case_dir/state/.seen-task-x1_status"
+  : > "$case_dir/state/.seen-task-x1_turn-ended"
+  : > "$case_dir/state/.hb-surfaced-task-x1"
+
+  run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "window-marker-retire: forced teardown failed: $(cat "$case_dir/stderr")"
+
+  for f in \
+    "$case_dir/state/.stale-default_w4W_pM" \
+    "$case_dir/state/.stale-since-default_w4W_pM" \
+    "$case_dir/state/.hash-default_w4W_pM" \
+    "$case_dir/state/.count-default_w4W_pM" \
+    "$case_dir/state/.wedge-escalations-default_w4W_pM" \
+    "$case_dir/state/.paused-default_w4W_pM" \
+    "$case_dir/state/.paused-rechecked-default_w4W_pM" \
+    "$case_dir/state/.paused-resurfaced-default_w4W_pM" \
+    "$case_dir/state/.seen-task-x1_status" \
+    "$case_dir/state/.seen-task-x1_turn-ended" \
+    "$case_dir/state/.hb-surfaced-task-x1"; do
+    [ ! -e "$f" ] || fail "window-marker-retire: teardown left $(basename "$f") behind"
+  done
+  pass "teardown retires window-keyed and task-keyed watcher internal markers"
+}
+
 # Flat (non-projected) Herdr endpoint whose fake pane exists until a locked
 # close removes it. The socket path is case-local so the derived presentation
 # lock never collides with another test or a real fleet session.
@@ -2621,6 +2677,7 @@ test_no_mistakes_truly_unpushed_refuses
 test_local_only_force_overrides_unpushed
 test_teardown_missing_busy_sidecar_completes
 test_herdr_teardown_clears_escalation_marker
+test_teardown_retires_window_and_task_watcher_markers
 test_herdr_flat_teardown_refuses_orphaning_records_then_retry_completes
 test_herdr_flat_teardown_refuses_records_on_unparseable_presence
 test_herdr_flat_teardown_preflight_refuses_before_changes

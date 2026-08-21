@@ -10,7 +10,7 @@
 // callbacks from a prior generation are no-ops against the active replacement.
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
@@ -121,6 +121,18 @@ function pidAlive(pid: string): boolean {
   try {
     process.kill(Number(pid), 0);
     return true;
+  } catch {
+    return false;
+  }
+}
+
+// While state/.afk exists, the away daemon (bin/fm-supervise-daemon.sh) owns
+// fleet supervision, triage, and wake escalation. The Pi extension must not
+// spawn competing watcher children or deliver duplicate watcher wakes to the
+// primary session while away mode is active.
+function isAfkActive(): boolean {
+  try {
+    return existsSync(`${state}/.afk`);
   } catch {
     return false;
   }
@@ -243,7 +255,7 @@ export default function (pi: ExtensionAPI) {
     message: string,
     recovery?: { generation: string; watcherPid: string },
   ): Promise<void> {
-    if (!generationIsLive(owner)) return;
+    if (!generationIsLive(owner) || isAfkActive()) return;
     const content = encodeFirstmateOperationalInput(
       "watcher",
       `FIRSTMATE WATCHER WAKE: ${message}\n\nRun bin/fm-wake-drain.sh first and handle the queued wake. Watcher continuity is extension-owned.`,
@@ -313,13 +325,15 @@ export default function (pi: ExtensionAPI) {
   }> {
     let failure = "";
     for (let attempt = 0; attempt <= retryLimit; attempt += 1) {
-      if (!generationIsLive(owner)) return { failure: "" };
+      if (!generationIsLive(owner) || isAfkActive()) return { failure: "" };
       const replacement = startArm(owner, predecessorArmPid);
+      if (isAfkActive()) return { failure: "" };
       const successorChild = owner.child;
       if (replacement.ok && successorChild && await waitForReadiness(successorChild)) {
         return { failure: "", recovery: armRecovery.get(successorChild) };
       }
       if (replacement.ok) {
+        if (isAfkActive()) return { failure: "" };
         failure = "watcher: FAILED - Pi extension could not verify a ready successor watcher";
         if (!(await retireArm(successorChild))) {
           return {
@@ -339,7 +353,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   function scheduleRetry(owner: SessionGeneration, message: string, predecessorArmPid: string): void {
-    if (!generationIsLive(owner) || owner.child || owner.retryTimer) return;
+    if (!generationIsLive(owner) || owner.child || owner.retryTimer || isAfkActive()) return;
     const ownership = lockOwnership();
     if (ownership !== "owned") {
       surfaceFailure(owner, `watcher: FAILED - Pi extension cannot restore continuity because this session no longer owns the lock\n${message}`);
@@ -352,9 +366,9 @@ export default function (pi: ExtensionAPI) {
     }
     const timer = setTimeout(() => {
       if (owner.retryTimer === timer) owner.retryTimer = null;
-      if (!generationIsLive(owner)) return;
+      if (!generationIsLive(owner) || isAfkActive()) return;
       const result = startArm(owner, predecessorArmPid);
-      if (!result.ok) {
+      if (!result.ok && !isAfkActive()) {
         surfaceFailure(owner, `watcher: FAILED - Pi extension could not launch a continuity retry\n${result.message}`);
       }
     }, retryDelay(owner.retryFailures));
@@ -364,6 +378,12 @@ export default function (pi: ExtensionAPI) {
 
   function startArm(owner: SessionGeneration, predecessorArmPid = ""): ArmResult {
     if (!generationIsLive(owner)) return { ok: false, message: shuttingDownMessage };
+    if (isAfkActive()) {
+      return {
+        ok: true,
+        message: "watcher: away mode active - supervise daemon owns watcher supervision",
+      };
+    }
     const ownership = lockOwnership();
     if (ownership === "other") return { ok: false, message: "watcher: read-only - session lock is held by another firstmate session" };
     if (ownership === "missing") {
@@ -445,6 +465,7 @@ export default function (pi: ExtensionAPI) {
       settleReadiness(false);
       releaseChild();
       if (!generationIsLive(owner)) return;
+      if (isAfkActive()) return;
       const classification = classifyClose(stdout, stderr, code, signal);
       const predecessor = String(armChild.pid ?? "");
       if (classification.kind === "actionable") {
@@ -453,7 +474,7 @@ export default function (pi: ExtensionAPI) {
         void (async () => {
           const restoration = await restoreAfterActionableClose(owner, predecessor);
           if (generationIsLive(owner)) owner.restoring = false;
-          if (!generationIsLive(owner)) return;
+          if (!generationIsLive(owner) || isAfkActive()) return;
           const message = restoration.failure ? `${classification.message}\n\n${restoration.failure}` : classification.message;
           await sendWake(owner, message, restoration.recovery);
         })().catch(() => {
@@ -469,7 +490,7 @@ export default function (pi: ExtensionAPI) {
       resolveClosed();
       settleReadiness(false);
       releaseChild();
-      if (!generationIsLive(owner)) return;
+      if (!generationIsLive(owner) || isAfkActive()) return;
       if (owner.restoring) return;
       scheduleRetry(owner, `watcher: FAILED - Pi extension arm child ${id} failed: ${error.message}`, String(armChild.pid ?? ""));
     });

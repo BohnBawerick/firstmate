@@ -1074,6 +1074,107 @@ EOF
   pass "Pi session transitions use a generation owner across /new /resume /fork, stale callbacks, and quit"
 }
 
+test_pi_away_mode_suppresses_wake_delivery_and_rearm() {
+  local repo home plugin log stop out status
+  repo="$TMP_ROOT/pi-afk-suppress-root"
+  home="$TMP_ROOT/pi-afk-suppress-home"
+  log="$TMP_ROOT/pi-afk-suppress.log"
+  stop="$TMP_ROOT/pi-afk-suppress.stop"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  install_pi_watch_extension_fixture "$repo"
+  plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'arm %s\n' "$$" >> "${FM_ARM_LOG:?}"
+if [ -n "${FM_WATCH_PREDECESSOR_ARM_PID:-}" ]; then
+  printf 'successor for %s\n' "$FM_WATCH_PREDECESSOR_ARM_PID" >> "${FM_ARM_LOG:?}"
+fi
+printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+trap 'exit 0' TERM INT
+while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.02; done
+printf 'stale: default:w4W:pM\n'
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" node --input-type=module 2>&1 <<'EOF'
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+let tool = null;
+let prompt = "";
+const pi = {
+  on() {},
+  registerCommand() {},
+  registerTool(candidate) {
+    if (candidate.name === "fm_watch_arm_pi") tool = candidate;
+  },
+  sendUserMessage: async (message) => {
+    prompt = message;
+  },
+};
+const afkPath = `${process.env.FM_HOME}/state/.afk`;
+const lockPath = `${process.env.FM_HOME}/state/.lock`;
+writeFileSync(lockPath, `${process.pid}\n`);
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+mod.default(pi);
+if (!tool) throw new Error("Pi watch tool was not registered");
+
+// (1) While state/.afk is present, startArm returns away-mode guidance and spawns no child.
+writeFileSync(afkPath, `${Date.now()}\n`);
+const afkArm = await tool.execute("tool-call-afk", {}, undefined, undefined, {});
+if (afkArm.details?.ok !== true || !afkArm.details.message.includes("away mode active")) {
+  throw new Error(`afk arm returned unexpected result: ${JSON.stringify(afkArm.details)}`);
+}
+if (existsSync(process.env.FM_ARM_LOG)) {
+  throw new Error("arm child was launched while state/.afk existed");
+}
+
+// (2) Start an arm child with .afk absent, then set .afk before the child closes with an actionable wake.
+unlinkSync(afkPath);
+const normalArm = await tool.execute("tool-call-normal", {}, undefined, undefined, {});
+if (normalArm.details?.ok !== true || !normalArm.details.message.includes("started Pi extension arm child")) {
+  throw new Error(`normal arm failed: ${JSON.stringify(normalArm.details)}`);
+}
+for (let i = 0; i < 250 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+if (!existsSync(process.env.FM_ARM_LOG)) throw new Error("arm child did not start");
+
+// Now activate away mode before child closes.
+writeFileSync(afkPath, `${Date.now()}\n`);
+// Signal child to close with actionable wake.
+writeFileSync(process.env.FM_STOP_FILE, "stop\n");
+
+// Wait for child to exit.
+await new Promise((resolve) => setTimeout(resolve, 200));
+
+// Assert no prompt was delivered into the Pi session.
+if (prompt) {
+  throw new Error(`prompt was delivered during away mode: ${prompt}`);
+}
+
+// Assert no successor child was launched while .afk is active.
+const logLines = readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n");
+const armEntries = logLines.filter((line) => line.startsWith("arm "));
+if (armEntries.length !== 1) {
+  throw new Error(`unexpected successor launch during away mode: ${logLines.join(" | ")}`);
+}
+
+// (3) Clear away mode and re-arm. It starts the child normally.
+unlinkSync(afkPath);
+if (existsSync(process.env.FM_STOP_FILE)) unlinkSync(process.env.FM_STOP_FILE);
+const resumedArm = await tool.execute("tool-call-resumed", {}, undefined, undefined, {});
+if (resumedArm.details?.ok !== true || !resumedArm.details.message.includes("started Pi extension arm child")) {
+  throw new Error(`resumed arm failed: ${JSON.stringify(resumedArm.details)}`);
+}
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "Pi watcher extension must stand down and suppress wake delivery/re-arm while away mode is active"
+  [ -z "$out" ] || fail "Pi away-mode test printed output: $out"
+  pass "Pi extension stands down and suppresses wake delivery while away mode is active"
+}
+
 test_pi_process_exit_cleanup_listener_lifecycle() {
   local repo home plugin out status
   repo="$TMP_ROOT/pi-exit-listener-root"
@@ -2163,6 +2264,7 @@ test_pi_established_empty_close_honors_retry_limit
 test_pi_actionable_close_rechecks_session_lock
 test_pi_arm_distinguishes_session_lock_ownership
 test_pi_session_transition_generation_owner
+test_pi_away_mode_suppresses_wake_delivery_and_rearm
 test_pi_process_exit_cleanup_listener_lifecycle
 test_pi_process_exit_cleanup_stops_arm_child
 test_opencode_plugin_package_boundary_is_explicit_esm
