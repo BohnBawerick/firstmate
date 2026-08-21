@@ -932,6 +932,33 @@ fm_remote_job_reload_launchagent() { # <account-home> <uid>
   fi
 }
 
+# Stop every Linux worker supervisor launched from <root>, by pid. owned_alive
+# reads worker.pid (the serving child). When that file is stale, a later start
+# would leave the old supervisor running in its own process group; under load
+# that duplicates into dozens of supervisors that never share the job queue.
+fm_remote_job_stop_stray_linux_workers() { # <root>
+  local root=$1 uid pid cmdline worker proc
+  uid=$(id -u 2>/dev/null || true)
+  case "$uid" in ''|*[!0-9]*) return 0 ;; esac
+  root=${root%/}
+  [ -n "$root" ] || return 0
+  worker="$root/bin/fm-remote-job-worker.sh"
+  for proc in /proc/[0-9]*; do
+    pid=${proc#/proc/}
+    case "$pid" in ''|*[!0-9]*) continue ;; esac
+    [ -r "$proc/cmdline" ] || continue
+    [ "$(awk '/^Uid:/{print $2; exit}' "$proc/status" 2>/dev/null)" = "$uid" ] || continue
+    cmdline=$(tr '\0' ' ' < "$proc/cmdline" 2>/dev/null) || continue
+    case "$cmdline" in
+      *"$worker --serve"*) continue ;;
+      *"$worker"*)
+        fm_remote_job_stop_worker_tree "$pid" || true
+        kill -KILL "$pid" 2>/dev/null || true
+        ;;
+    esac
+  done
+}
+
 fm_remote_job_start_linux_worker() { # <remote-root> <account-home>
   local root=$1 account_home=$2 worker pid
   worker="$root/bin/fm-remote-job-worker.sh"
@@ -953,6 +980,7 @@ fm_remote_job_start_linux_worker() { # <remote-root> <account-home>
     wait "$pid" 2>/dev/null || true
     FM_REMOTE_JOB_REPAIRED=1
   fi
+  fm_remote_job_stop_stray_linux_workers "$root"
   # Job control puts the worker tree in its own process group, so a later stop
   # can signal every descendant at once without ever reaching the caller's own
   # group. Without this the group of a leaked worker is the launching command's.

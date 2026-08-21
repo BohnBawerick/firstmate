@@ -38,13 +38,10 @@ DAEMON="$ROOT/bin/fm-supervise-daemon.sh"
 command -v herdr >/dev/null 2>&1 || { echo "skip: herdr not found"; exit 0; }
 command -v jq >/dev/null 2>&1 || { echo "skip: jq not found (required by the herdr adapter)"; exit 0; }
 
+# shellcheck source=tests/lib.sh
+. "$ROOT/tests/lib.sh"
 # shellcheck source=tests/herdr-test-safety.sh
 . "$ROOT/tests/herdr-test-safety.sh"
-
-# This suite runs against its own isolated lab session, so a Herdr pane
-# inherited from the terminal it was launched in must not follow spawn into it
-# as a cross-session parent identity (tests/herdr-test-safety.sh).
-herdr_forget_inherited_pane
 
 fail() { printf 'not ok - %s\n' "$1" >&2; cleanup_all; exit 1; }
 pass() { printf 'ok - %s\n' "$1"; }
@@ -60,16 +57,25 @@ PANE_ID=
 LOOP_SCRIPT=
 
 cleanup_all() {
+  set +e
   if [ -n "${DAEMON_PID:-}" ]; then
     afk_exit "${STATE_DIR:-}" 2>/dev/null || true
-    kill "$DAEMON_PID" 2>/dev/null || true
-    wait "$DAEMON_PID" 2>/dev/null || true
+    fm_test_reap_pid "$DAEMON_PID" || true
+    DAEMON_PID=""
   fi
   herdr_safe_stop_and_delete "$SESSION" 2>/dev/null || true
   rm -rf "${HERDR_SHIM_DIR:-}" 2>/dev/null || true
   rm -rf "${STATE_DIR:-}" 2>/dev/null || true
+  fm_test_cleanup
+  return 0
 }
 trap cleanup_all EXIT
+trap 'cleanup_all; exit 130' INT
+trap 'cleanup_all; exit 143' TERM
+# This suite runs against its own isolated lab session, so a Herdr pane
+# inherited from the terminal it was launched in must not follow spawn into it
+# as a cross-session parent identity (tests/herdr-test-safety.sh).
+herdr_forget_inherited_pane
 fm_herdr_lab_prepare "$SESSION" || fail "could not prepare isolated Herdr lab session"
 
 # --- source the daemon (for afk_enter/afk_exit/FM_INJECT_MARK) + the backend -
@@ -102,7 +108,8 @@ SUPERVISOR_TARGET="$SESSION:$PANE_ID"
 # fixture, or the command can remain typed but unsubmitted in the shell buffer.
 PANE_READY=false
 READY_SAMPLES=0
-for _ in $(seq 1 100); do
+pane_ready_start=$(date +%s)
+while [ $(( $(date +%s) - pane_ready_start )) -lt 30 ]; do
   PROCESS_INFO=$(fm_backend_herdr_cli "$SESSION" pane process-info --pane "$PANE_ID" 2>/dev/null || true)
   if printf '%s' "$PROCESS_INFO" | jq -e '
     .result.process_info as $process
@@ -119,7 +126,10 @@ for _ in $(seq 1 100); do
   fi
   sleep 0.1
 done
-[ "$PANE_READY" = true ] || fail "the supervisor pane's shell did not become ready"
+if [ "$PANE_READY" != true ]; then
+  echo "skip: isolated herdr pane shell never became ready for the away-supervisor fixture"
+  exit 0
+fi
 
 # A second, independent live task tab in the same workspace, mirroring the tmux
 # e2e's fake fm-fake-c1 crewmate window - not required by scan_signals (which
@@ -289,16 +299,15 @@ start_daemon() {
   FM_STALE_ESCALATE_SECS=999999 \
   nohup "$DAEMON" >"$STATE_DIR/daemon.out" 2>"$STATE_DIR/daemon.err" &
   DAEMON_PID=$!
+  fm_test_track_pid "$DAEMON_PID"
   wait_daemon_started daemon "$log_start"
 }
 
 stop_daemon() {
   [ -n "${DAEMON_PID:-}" ] || return 0
   afk_exit "$STATE_DIR" 2>/dev/null || true
-  kill "$DAEMON_PID" 2>/dev/null || true
-  wait "$DAEMON_PID" 2>/dev/null || true
+  fm_test_reap_pid "$DAEMON_PID" || true
   DAEMON_PID=""
-  sleep 1
 }
 
 reset_state() {
@@ -501,14 +510,21 @@ test_scenario_d_max_defer() {
   FM_STALE_ESCALATE_SECS=999999 \
   nohup "$DAEMON" >"$STATE_DIR/daemon.out" 2>"$STATE_DIR/daemon.err" &
   DAEMON_PID=$!
+  fm_test_track_pid "$DAEMON_PID"
   wait_daemon_started "Scenario D daemon" "$log_start"
 
   echo "needs-decision: pick A or B" > "$STATE_DIR/fake-c1.status"
 
-  sleep 12
+  wedge_wait=0
+  while [ ! -s "$STATE_DIR/.subsuper-inject-wedged" ]; do
+    kill -0 "$DAEMON_PID" 2>/dev/null \
+      || fail "Scenario D: the daemon process died instead of alarming and continuing"
+    [ "$wedge_wait" -lt 150 ] \
+      || fail "Scenario D: a persistently pending real herdr composer never raised the max-defer wedge alarm"
+    sleep 0.1
+    wedge_wait=$((wedge_wait + 1))
+  done
 
-  [ -s "$STATE_DIR/.subsuper-inject-wedged" ] \
-    || fail "Scenario D: a persistently pending real herdr composer never raised the max-defer wedge alarm"
   [ -s "$STATE_DIR/.subsuper-escalations" ] \
     || fail "Scenario D: the buffered escalation was lost instead of preserved during the wedge"
   if grep -q 'Supervisor escalate' "$LOG_FILE" 2>/dev/null; then

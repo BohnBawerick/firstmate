@@ -118,7 +118,10 @@ prime_seen() { # <state> <status>
   printf '%s' "$sig" > "$state/.seen-$(basename "$status" | tr '.' '_')"
 }
 
-reap() { kill "$1" 2>/dev/null || true; wait "$1" 2>/dev/null || true; }
+reap() {
+  fm_test_track_pid "$1"
+  fm_test_reap_pid "$1" || true
+}
 
 # The main retains a terminal presentation receipt until the corresponding wake
 # is handled and acknowledged.
@@ -331,7 +334,7 @@ test_nonterminal_and_captain_held_states_do_not_report() {
 # The actual watcher poll invokes the helper, while an idle secondmate remains
 # exempt from wedge escalation and emits no false wake.
 test_watcher_hook_and_idle_secondmate_exemption() {
-  local out pid i
+  local out pid i idle_start
   make_world watcher; write_child "$MAIN" child 'done: green'; prime_seen "$MAIN/state" "$MAIN/state/child.status"
   out="$WORLD/watch.out"
   PATH="$WORLD/fakebin:$PATH" FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" \
@@ -339,6 +342,7 @@ test_watcher_hook_and_idle_secondmate_exemption() {
     FM_FORGE_LOG="$WORLD/forge.log" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
     FM_FAKE_CREW_STATE='done' "$WATCH" > "$out" 2>&1 &
   pid=$!
+  fm_test_track_pid "$pid"
   i=0
   while [ "$i" -lt 40 ]; do
     kill -0 "$pid" 2>/dev/null || break
@@ -352,7 +356,14 @@ test_watcher_hook_and_idle_secondmate_exemption() {
   make_world idle-secondmate; bind_secondmate local; write_mate_meta; prime_seen "$MAIN/state" "$MAIN/state/mate.status"
   PATH="$WORLD/fakebin:$PATH" FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" FM_POLL=1 FM_SIGNAL_GRACE=1 \
     FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$WORLD/idle.out" 2>&1 &
-  pid=$!; sleep 2; kill -0 "$pid" 2>/dev/null || fail "idle secondmate watcher exited unexpectedly"; reap "$pid"
+  pid=$!
+  fm_test_track_pid "$pid"
+  idle_start=$(date +%s)
+  while [ $(( $(date +%s) - idle_start )) -lt 2 ]; do
+    kill -0 "$pid" 2>/dev/null || fail "idle secondmate watcher exited unexpectedly"
+    sleep 0.05
+  done
+  reap "$pid"
   grep -F 'stale:' "$WORLD/idle.out" >/dev/null && fail "idle secondmate was treated as a wedge"
   [ ! -s "$MAIN/state/.wake-queue" ] || fail "idle secondmate emitted a false wake"
   pass "watcher hook wakes for terminal loss and preserves idle secondmate exemption"
@@ -364,12 +375,13 @@ test_stalled_state_read_is_bounded_and_scan_progresses() {
   local started elapsed
   make_world bounded
   write_child "$MAIN" a 'working: state read will stall'
-  cat > "$WORLD/fakebin/fm-crew-state.sh" <<'SH'
+  cat > "$WORLD/fakebin/fm-crew-state.sh" <<SH
 #!/usr/bin/env bash
-if [ "$1" = a ]; then
+if [ "\$1" = a ]; then
+  printf '%s\\n' "\$\$" > "$WORLD/stalled.pid"
   sleep 30
 else
-  printf 'state: done · source: fake\n'
+  printf 'state: done · source: fake\\n'
 fi
 SH
   chmod +x "$WORLD/fakebin/fm-crew-state.sh"
@@ -378,6 +390,9 @@ SH
   FM_INACTIVE_RECONCILE_BUDGET_SECS=1 run_reconcile "$MAIN" --startup
   elapsed=$(( $(date +%s) - started ))
   [ "$elapsed" -le 3 ] || fail "stalled state read exceeded aggregate scan budget (${elapsed}s)"
+  if [ -s "$WORLD/stalled.pid" ]; then
+    reap "$(cat "$WORLD/stalled.pid")"
+  fi
 
   write_child "$MAIN" b 'done: green'
   FM_INACTIVE_RECONCILE_BUDGET_SECS=1 run_reconcile "$MAIN" --startup

@@ -6,6 +6,8 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 # shellcheck source=tests/remote-herdr-fixture.sh
 . "$(dirname "${BASH_SOURCE[0]}")/remote-herdr-fixture.sh"
+# shellcheck source=bin/fm-remote-job-lib.sh
+. "$ROOT/bin/fm-remote-job-lib.sh"
 
 command -v jq >/dev/null 2>&1 || { echo "skip: jq not found"; exit 0; }
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
@@ -26,29 +28,45 @@ TMUX_STATE="$TMP_ROOT/remote-tmux.state"
 CLAIMS="$TMP_ROOT/claims"
 mkdir -p "$PARENT/data" "$PARENT/state" "$PARENT/config" "$PARENT/projects" "$REMOTE_ROOT" "$CLAIMS"
 cleanup() {
-  local worker_pid='' wait_attempt=0
+  set +e
+  local worker_pid=''
   touch "$TMP_ROOT/provision.release" "$TMP_ROOT/seed.release" "$TMP_ROOT/handoff.release" \
     "$TMP_ROOT/inherit.release" "$TMP_ROOT/launch.release" 2>/dev/null || true
   FM_HOME="$PARENT" FM_PROCEVENT_CLAIM_ROOT="$CLAIMS" \
-    "$ROOT/bin/fm-procevent.sh" sweep-home >/dev/null 2>&1 || true
+    "$ROOT/bin/fm-procevent.sh" sweep-home >/dev/null 2>&1
   if [ -f "$TMP_ROOT/remote-jobs/worker.pid" ]; then
     worker_pid=$(cat "$TMP_ROOT/remote-jobs/worker.pid")
-    kill "$worker_pid" 2>/dev/null || true
-    while kill -0 "$worker_pid" 2>/dev/null && [ "$wait_attempt" -lt 100 ]; do
-      wait_attempt=$((wait_attempt + 1))
-      sleep 0.05
-    done
+    fm_remote_job_stop_worker_tree "$worker_pid"
+  fi
+  if [ -n "${REMOTE_ROOT:-}" ]; then
+    fm_remote_job_stop_stray_linux_workers "$REMOTE_ROOT"
   fi
   rm -rf -- "$TMP_ROOT"
+  return 0
 }
 trap cleanup EXIT
+
+# Wait until <path> exists, or fail. <live-pid> must stay alive while waiting.
+# Wall-clock bound, not a tick count: under load sleep 0.02 is not 0.02s, and
+# earlier inherited files traverse the remote job worker before captain-shared.md.
+wait_until_file() { # <path> <timeout-seconds> <live-pid> <exited-msg> <timeout-msg>
+  local path=$1 timeout=$2 pid=$3 exited_msg=$4 timeout_msg=$5 start now
+  start=$(date +%s)
+  while [ ! -f "$path" ]; do
+    kill -0 "$pid" 2>/dev/null || fail "$exited_msg"
+    now=$(date +%s)
+    [ $((now - start)) -lt "$timeout" ] || fail "$timeout_msg"
+    sleep 0.02
+  done
+}
 
 # Materialize the current branch as the remote host's tracked code root. The
 # fixture is a real git repository because provisioning and guarded sync exercise
 # the same clone and fast-forward path as a second Mac.
 (
   cd "$ROOT" || exit
-  tar --exclude=.git --exclude=.no-mistakes --exclude=data --exclude=state --exclude=config -cf - .
+  tar --exclude=.git --exclude=.no-mistakes --exclude=data --exclude=state --exclude=config \
+    --exclude=tests --exclude=docs --exclude=.github -cf - .
 ) | (cd "$REMOTE_ROOT" && tar -xf -)
 cat > "$REMOTE_ROOT/bin/tmux" <<SH
 #!/usr/bin/env bash
@@ -826,15 +844,11 @@ EOF
 FM_FAKE_SSH_MODE=inherit-block remote_env "$ROOT/bin/fm-spawn.sh" ios --secondmate \
   > "$TMP_ROOT/spawn-concurrent.out" 2>&1 &
 spawn_concurrent=$!
-spawn_inherit_wait=0
-# Earlier inherited files traverse the worker before captain-shared.md, so give
-# a loaded portable runner 30 seconds to reach this deliberately blocked write.
-while [ ! -f "$TMP_ROOT/inherit.entered" ]; do
-  kill -0 "$spawn_concurrent" 2>/dev/null || fail "remote spawn exited before its blocked inheritance write"
-  spawn_inherit_wait=$((spawn_inherit_wait + 1))
-  [ "$spawn_inherit_wait" -le 1500 ] || fail "remote spawn never reached its blocked inheritance write"
-  sleep 0.02
-done
+# Earlier inherited files traverse the worker before captain-shared.md. Wait on
+# the blocked write itself rather than a tick count that a loaded runner misses.
+wait_until_file "$TMP_ROOT/inherit.entered" 120 "$spawn_concurrent" \
+  "remote spawn exited before its blocked inheritance write" \
+  "remote spawn never reached its blocked inheritance write"
 cat > "$PARENT/data/captain-shared.md" <<'EOF'
 # Shared captain preferences
 This file is main-authoritative and maintained by the main firstmate.
@@ -923,15 +937,9 @@ EOF
 FM_FAKE_SSH_MODE=inherit-block remote_env "$ROOT/bin/fm-config-push.sh" \
   > "$TMP_ROOT/config-concurrent-first.out" 2>&1 &
 config_first=$!
-inherit_wait=0
-while [ ! -f "$TMP_ROOT/inherit.entered" ]; do
-  kill -0 "$config_first" 2>/dev/null || fail "first inheritance transaction exited before its blocked write"
-  inherit_wait=$((inherit_wait + 1))
-  # Match the earlier spawn/inheritance wait: a loaded portable runner can
-  # spend several seconds in the remote entrypoint before reaching this write.
-  [ "$inherit_wait" -le 1500 ] || fail "first inheritance transaction never reached its blocked write"
-  sleep 0.02
-done
+wait_until_file "$TMP_ROOT/inherit.entered" 120 "$config_first" \
+  "first inheritance transaction exited before its blocked write" \
+  "first inheritance transaction never reached its blocked write"
 cat > "$PARENT/data/captain-shared.md" <<'EOF'
 # Shared captain preferences
 This file is main-authoritative and maintained by the main firstmate.

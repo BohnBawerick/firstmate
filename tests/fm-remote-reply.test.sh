@@ -20,14 +20,20 @@ mkdir -p "$PARENT/data" "$PARENT/state" "$REMOTE/state" "$REMOTE/data/reply" "$C
 # stopping that pid alone leaves the supervisor to respawn - the leak
 # tests/fm-remote-job-orphan-reap.test.sh pins. Stop the whole worker tree.
 cleanup() {
-  local worker_pid=''
+  set +e
+  local worker_pid='' i=0
   FM_HOME="$PARENT" FM_PROCEVENT_CLAIM_ROOT="$CLAIMS" \
-    "$ROOT/bin/fm-procevent.sh" sweep-home >/dev/null 2>&1 || true
+    "$ROOT/bin/fm-procevent.sh" sweep-home >/dev/null 2>&1
   if [ -f "$TMP_ROOT/remote-jobs/worker.pid" ]; then
     worker_pid=$(cat "$TMP_ROOT/remote-jobs/worker.pid")
-    fm_remote_job_stop_worker_tree "$worker_pid" || true
+    fm_remote_job_stop_worker_tree "$worker_pid"
+    while [ -n "$worker_pid" ] && kill -0 "$worker_pid" 2>/dev/null && [ "$i" -lt 50 ]; do
+      i=$((i + 1))
+      sleep 0.05
+    done
   fi
   rm -rf -- "$TMP_ROOT"
+  return 0
 }
 trap cleanup EXIT
 

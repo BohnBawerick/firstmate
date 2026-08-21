@@ -61,6 +61,23 @@ wait_child() { # <pid> <seconds>
   return 1
 }
 
+# Wait until <pid> is no longer a child of this test shell. Linux reparents an
+# orphan to pid 1, but a child subreaper (WSL SessionLeader, systemd --user, a
+# harness) can adopt it instead. The leak this fixture needs is a worker that
+# outlived its launching helper, not a particular reaper pid.
+wait_orphaned_from_test() { # <pid> <seconds>
+  local pid=$1 deadline=$(( $(date +%s) + $2 )) ppid
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    alive "$pid" || return 1
+    ppid=$(ppid_of "$pid")
+    if [ -n "$ppid" ] && [ "$ppid" != "$$" ]; then
+      return 0
+    fi
+    sleep 0.05
+  done
+  return 1
+}
+
 # --- a real worker fixture, launched exactly the way fm-on's Linux start does -
 
 # build_remote_root <dir>: a minimal but genuine Firstmate code root carrying
@@ -123,8 +140,8 @@ SERVE=$(pgrep -P "$WORKER" | head -n 1)
   fail "the serving child is outside the worker's process group"
 pass "the Linux start path puts the whole worker tree in its own process group"
 
-[ "$(ppid_of "$WORKER")" = 1 ] ||
-  fail "the fixture worker is not orphaned to init, so this case does not reproduce the leak"
+wait_orphaned_from_test "$WORKER" 5 ||
+  fail "the fixture worker is still a child of the test shell (ppid=$(ppid_of "$WORKER"); test=$$), so this case does not reproduce a launcher that has exited"
 
 # The exact teardown shape that leaked in production: a fixture cleanup removes
 # the worker's state root and then stops only the single recorded worker pid -
@@ -137,7 +154,7 @@ kill -KILL "$SERVE" 2>/dev/null || true
 wait_gone "$SERVE" 10 || fail "the recorded serving child did not stop"
 alive "$WORKER" || fail "the fixture supervisor did not survive a lone child kill, so this case no longer covers the leak"
 wait_child "$WORKER" 15 || fail "the supervisor did not respawn after its recorded child pid was killed"
-pass "removing the state root and killing the recorded worker pid leaves the tree running at ppid 1"
+pass "removing the state root and killing the recorded worker pid leaves the tree running after the launcher has exited"
 
 # A worker whose code root is intact is never a reap candidate, which is what
 # keeps the account's healthy LaunchAgent worker out of scope.
@@ -203,3 +220,27 @@ pass "the reaper stops an abandoned worker's whole tree"
 out=$("$REAPER" 2>&1) || fail "a repeat reaper run failed: $out"
 assert_not_contains "$out" "$STALE" "the reaper reported an already-stopped worker"
 pass "the reaper is idempotent"
+
+# --- start must not stack supervisors when worker.pid is stale --------------
+
+CASE3="$TMP_ROOT/case3"
+mkdir -p "$CASE3/account"
+build_remote_root "$CASE3/remote-root"
+WORKER=$(start_worker "$CASE3/remote-root" "$CASE3/account" "$CASE3/remote-jobs") ||
+  fail "could not start the stale-pid fixture worker"
+track "$WORKER"
+wait_child "$WORKER" 10 || fail "the stale-pid fixture worker never started its serving child"
+SERVE=$(pgrep -P "$WORKER" | head -n 1)
+rm -f "$CASE3/remote-jobs/worker.pid"
+kill -KILL "$SERVE" 2>/dev/null || true
+wait_gone "$SERVE" 5 || fail "the recorded serving child did not stop"
+alive "$WORKER" || fail "the supervisor exited after its serving child was killed"
+REPLACEMENT=$(start_worker "$CASE3/remote-root" "$CASE3/account" "$CASE3/remote-jobs") ||
+  fail "could not start a replacement worker after worker.pid was removed"
+track "$REPLACEMENT"
+wait_orphaned_from_test "$REPLACEMENT" 5 ||
+  fail "the replacement worker is still a child of the test shell"
+[ "$REPLACEMENT" != "$WORKER" ] || fail "the replacement start returned the previous supervisor pid"
+alive "$REPLACEMENT" || fail "the replacement supervisor exited immediately"
+wait_gone "$WORKER" 10 || fail "a start with a stale pid file left the previous supervisor running"
+pass "a Linux start with a stale pid file stops the previous supervisor before launching another"

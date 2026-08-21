@@ -62,12 +62,14 @@ state_snapshot() {
   )
 }
 
-make_case() {
-  local name=$1 dir fakebin fake_root
-  dir="$TMP_ROOT/$name"
-  fakebin="$dir/fakebin"
-  fake_root="$dir/root"
-  mkdir -p "$dir/home/state" "$dir/home/data" "$dir/home/config" "$dir/wt" "$fakebin" "$fake_root/bin"
+MAKE_CASE_TEMPLATE=
+
+init_make_case_template() {
+  local t fakebin fake_root
+  t="$TMP_ROOT/.make-case-template"
+  fakebin="$t/fakebin"
+  fake_root="$t/root"
+  mkdir -p "$t/home/state" "$t/home/data" "$t/home/config" "$t/wt" "$fakebin" "$fake_root/bin"
   cat > "$fake_root/bin/fm-guard.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'guard\n' >> "$FM_TEST_GUARD_LOG"
@@ -100,10 +102,18 @@ printf '%s\n' "$*" >> "$FM_TEST_GLAB_LOG"
 printf 'title:\tfixture merge request\nstate:\t%s\nauthor:\tsomeone\n' "${FM_TEST_GLAB_STATE:-opened}"
 SH
   chmod +x "$fakebin/gh" "$fakebin/gh-axi" "$fakebin/glab"
-  : > "$dir/gh.log"
-  : > "$dir/gh-axi.log"
-  : > "$dir/glab.log"
-  : > "$dir/guard.log"
+  : > "$t/gh.log"
+  : > "$t/gh-axi.log"
+  : > "$t/glab.log"
+  : > "$t/guard.log"
+  MAKE_CASE_TEMPLATE=$t
+}
+
+make_case() {
+  local name=$1 dir
+  dir="$TMP_ROOT/$name"
+  [ -n "$MAKE_CASE_TEMPLATE" ] || init_make_case_template
+  cp -a "$MAKE_CASE_TEMPLATE" "$dir"
   printf '%s\n' "$dir"
 }
 
