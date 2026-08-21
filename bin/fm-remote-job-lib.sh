@@ -688,13 +688,36 @@ fm_remote_job_worker_ready_path() { printf '%s\n' "$FM_REMOTE_JOB_STATE/worker.r
 fm_remote_job_worker_identity_path() { printf '%s\n' "$FM_REMOTE_JOB_STATE/worker.identity"; }
 fm_remote_job_worker_lock_path() { printf '%s\n' "$FM_REMOTE_JOB_STATE/worker.lock"; }
 
-fm_remote_job_process_start() {
+# The wall-clock start stamp older records hold. procps derives it from a
+# sampled boot time, so a loaded machine reports it a second or more apart for
+# the same live process. Only read to recognize a record written before the
+# stable stamp below, and on platforms with no /proc to read.
+fm_remote_job_process_start_wall_clock() { # <pid>
   local pid=$1 ps_bin value
   if [ -x /bin/ps ]; then ps_bin=/bin/ps; elif [ -x /usr/bin/ps ]; then ps_bin=/usr/bin/ps; else return 1; fi
   value=$("$ps_bin" -p "$pid" -o lstart= 2>/dev/null) || return 1
   [ -n "$value" ] || return 1
   case "$value" in *$'\n'*|*$'\r'*) return 1 ;; esac
   printf '%s\n' "$value"
+}
+
+# The pid-reuse guard for a recorded owner, so reading it twice for the same
+# live process has to give the same answer. The kernel's own start tick never
+# moves; the drifting wall-clock form made a healthy lock owner read as a
+# different process, which left ensure starting a second worker that could
+# never take the lock from the first.
+fm_remote_job_process_start() { # <pid>
+  local pid=$1 value
+  if [ -r "/proc/$pid/stat" ]; then
+    # Field 22 is starttime. comm (field 2) is parenthesized and can hold
+    # spaces, so drop everything through its closing paren before counting.
+    value=$(awk '{ sub(/^.*\) /, ""); print $20 }' "/proc/$pid/stat" 2>/dev/null || true)
+    case "$value" in
+      ''|*[!0-9]*) : ;;
+      *) printf 'boot-tick:%s\n' "$value"; return 0 ;;
+    esac
+  fi
+  fm_remote_job_process_start_wall_clock "$pid"
 }
 
 fm_remote_job_process_command() {
@@ -798,7 +821,11 @@ fm_remote_job_lock_owner_matches_process() {
   [ "$pid" -gt 1 ] || return 1
   recorded_start=$(fm_remote_job_read_single_line "$lock/start" 256) || return 1
   actual_start=$(fm_remote_job_process_start "$pid") || return 1
-  [ "$recorded_start" = "$actual_start" ] || return 1
+  if [ "$recorded_start" != "$actual_start" ]; then
+    # A lock published before the stable stamp landed holds the wall-clock form.
+    actual_start=$(fm_remote_job_process_start_wall_clock "$pid") || return 1
+    [ "$recorded_start" = "$actual_start" ] || return 1
+  fi
   recorded_command=$(fm_remote_job_read_single_line "$lock/command" 8192) || return 1
   actual_command=$(fm_remote_job_process_command "$pid") || return 1
   [ "$recorded_command" = "$actual_command" ] || return 1

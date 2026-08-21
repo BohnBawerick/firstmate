@@ -140,6 +140,37 @@ JS
   pass "operational input: the OpenCode adapter constructs through the canonical owner"
 }
 
+# An encoder that exits before reading its input breaks the adapter's stdin
+# pipe. That EPIPE has to fail the one call, not the whole host process
+# (regression: it arrived as an unhandled 'error' event and killed the host).
+test_cross_language_adapter_survives_a_non_reading_encoder() {
+  local tmp result
+  tmp=$(fm_test_tmproot fm-operational-input-epipe)
+  mkdir -p "$tmp/bin"
+  cat > "$tmp/bin/fm-operational-input.sh" <<'SH'
+#!/usr/bin/env bash
+exit 1
+SH
+  chmod +x "$tmp/bin/fm-operational-input.sh"
+  result=$(HELPER="$ROOT/.opencode/plugins/lib/fm-operational-input.js" FIXTURE_ROOT="$tmp" \
+    node --input-type=module <<'JS' 2>&1
+import { pathToFileURL } from "node:url";
+const { encodeFirstmateOperationalInput } = await import(pathToFileURL(process.env.HELPER).href);
+// Larger than a pipe buffer, so the write cannot finish before the encoder exits.
+const body = "x".repeat(1024 * 1024);
+try {
+  await encodeFirstmateOperationalInput(process.env.FIXTURE_ROOT, "watcher", body);
+  process.stdout.write("resolved");
+} catch {
+  process.stdout.write("rejected");
+}
+JS
+  ) || fail "a non-reading encoder brought down the adapter's host process: $result"
+  [ "$result" = rejected ] \
+    || fail "the adapter did not report the failed encode: $result"
+  pass "operational input: a non-reading encoder fails one call, not the host process"
+}
+
 test_invalid_current_encodings_are_rejected() {
   local output
   output=$(printf 'body' | "$OWNER" encode legacy-operational 2>/dev/null) \
@@ -157,4 +188,5 @@ test_landed_untyped_prefix_is_explicitly_legacy
 test_isolated_legacy_matrix
 test_genuine_near_misses_remain_unclassified
 test_cross_language_adapter_uses_the_owner
+test_cross_language_adapter_survives_a_non_reading_encoder
 test_invalid_current_encodings_are_rejected

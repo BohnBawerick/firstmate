@@ -163,6 +163,10 @@ function runGuard(): Promise<{ code: number; stderr: string }> {
     });
     child.on("error", () => resolveResult({ code: 0, stderr: "" }));
     child.on("close", (code) => resolveResult({ code: code ?? 0, stderr }));
+    // A guard that exits without reading its input breaks this pipe mid-write.
+    // Without a listener that EPIPE is an unhandled 'error' event and takes the
+    // whole host process down. The guard's exit code and stderr still decide.
+    child.stdin.on("error", () => {});
     child.stdin.end('{"stop_hook_active":false}');
   });
 }

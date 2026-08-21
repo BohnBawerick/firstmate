@@ -143,6 +143,21 @@ worker_recover_quarantine() { # <account-home>
   rm -f -- "$WORKER_LOCK/quarantine"
 }
 
+# Every lock field is published by mv from a mktemp staging file created inside
+# the lock directory itself, so a worker killed between mktemp and mv leaves
+# that staging file behind. Reclaiming a proven-stale lock has to remove those
+# leftovers, otherwise the empty-directory rmdir below can never succeed and
+# every replacement worker wedges on a lock no live process owns.
+worker_remove_lock_staging_files() {
+  local file
+  for file in "$WORKER_LOCK"/.pid.* "$WORKER_LOCK"/.start.* "$WORKER_LOCK"/.command.* \
+    "$WORKER_LOCK"/.quarantine.*; do
+    [ -e "$file" ] || [ -L "$file" ] || continue
+    [ ! -L "$file" ] && [ -f "$file" ] || return 1
+    rm -f -- "$file" || return 1
+  done
+}
+
 worker_acquire_lock() {
   local account_home=$1 attempt=0
   while [ "$attempt" -lt 150 ]; do
@@ -164,6 +179,7 @@ worker_acquire_lock() {
     fi
     [ ! -L "$WORKER_LOCK/pid" ] && [ ! -L "$WORKER_LOCK/start" ] && [ ! -L "$WORKER_LOCK/command" ] || return 1
     rm -f -- "$WORKER_LOCK/pid" "$WORKER_LOCK/start" "$WORKER_LOCK/command" || return 1
+    worker_remove_lock_staging_files || return 1
     rmdir "$WORKER_LOCK" || return 1
   done
   return 1
@@ -292,7 +308,12 @@ worker_stop_active_execution() {
 }
 
 worker_shutdown() {
-  trap - HUP INT TERM
+  # Ignore, rather than default, so a repeat stop signal cannot kill this
+  # process part way through publishing the quarantine marker. A group stop
+  # already delivers TERM here and again from the restart supervisor, and a
+  # default disposition would leave the marker's staging file inside the lock.
+  # A wedged shutdown is still stoppable: the stop path escalates to KILL.
+  trap '' HUP INT TERM
   worker_publish_quarantine || {
     worker_error "cannot guard worker ownership for shutdown"
     trap worker_shutdown HUP INT TERM

@@ -234,6 +234,41 @@ assert_present "$ACTIVE_SIDE_EFFECT" "the active job was interrupted by the conc
 fm_remote_job_reap "$ACCOUNT_HOME" "$JOB_ID" || fail "the active readiness job could not be reaped"
 pass "active jobs keep the worker ready for concurrent requests"
 
+# The recorded start stamp is the pid-reuse guard for a lock owner, so reading
+# it again for the same live process has to give the same answer. The
+# wall-clock form procps reports is derived from a sampled boot time and moves
+# by a second or more while the machine is busy, which made a healthy owner
+# read as a different process: ensure then started a second worker beside the
+# first instead of replacing it, and that second worker could never take the
+# lock (regression: "remote job worker did not report ready after startup").
+OWNER_PID=$(cat "$STATE_ROOT/worker.lock/pid")
+STAMP_LOAD_PIDS=()
+for _ in 1 2; do
+  timeout 10 bash -c 'while :; do :; done' &
+  STAMP_LOAD_PIDS+=("$!")
+done
+STAMP_SEEN=$(for _ in $(seq 1 60); do fm_remote_job_process_start "$OWNER_PID"; done | sort -u | wc -l)
+for LOAD_PID in "${STAMP_LOAD_PIDS[@]}"; do
+  kill "$LOAD_PID" 2>/dev/null || true
+  wait "$LOAD_PID" 2>/dev/null || true
+done
+[ "$STAMP_SEEN" -eq 1 ] \
+  || fail "the owner start stamp reported $STAMP_SEEN values for one live process"
+fm_remote_job_lock_owner_matches_process "$ACCOUNT_HOME" \
+  || fail "a live lock owner stopped matching its own recorded identity"
+pass "one live process reports one start stamp while the machine is busy"
+
+# A lock published before the stable stamp landed holds the wall-clock form.
+# Its owner must still be recognized, or the upgrade itself wedges ownership.
+printf '%s\n' "$(fm_remote_job_process_start_wall_clock "$OWNER_PID")" \
+  > "$STATE_ROOT/worker.lock/start"
+fm_remote_job_lock_owner_matches_process "$ACCOUNT_HOME" \
+  || fail "a lock recorded in the older wall-clock form lost its live owner"
+[ "$FM_REMOTE_JOB_OWNER_PID" = "$OWNER_PID" ] \
+  || fail "the older wall-clock record resolved to the wrong owner pid"
+printf '%s\n' "$(fm_remote_job_process_start "$OWNER_PID")" > "$STATE_ROOT/worker.lock/start"
+pass "an ownership record from an older build still resolves its live owner"
+
 OLD_WORKER_PID=$(cat "$STATE_ROOT/worker.pid")
 printf '\n' >> "$REMOTE_ROOT/bin/fm-remote-job-worker.sh"
 fm_remote_job_ensure_worker "$REMOTE_ROOT" "$ACCOUNT_HOME" \
@@ -284,6 +319,30 @@ kill "$OTHER_PID" 2>/dev/null || true
 wait "$OTHER_PID" 2>/dev/null || true
 OTHER_PID=
 pass "stale ownership is reclaimed without signaling a reused pid"
+
+# Every lock field is published by mv from a staging file created inside the
+# lock itself, so a worker killed between the two leaves that staging file
+# behind. The lock is then owned by nobody and must still be reclaimable
+# (regression: rmdir refused the non-empty directory, so every replacement
+# worker wedged until its startup bound and fm-on reported no ready worker).
+STAGING_WORKER_PID=$(cat "$STATE_ROOT/worker.pid")
+fm_remote_job_stop_worker_tree "$STAGING_WORKER_PID" \
+  || fail "the staging-leak fixture could not stop the running worker"
+mkdir -p "$STATE_ROOT/worker.lock"
+printf 'active execution could not be confirmed stopped\n' \
+  > "$STATE_ROOT/worker.lock/.quarantine.aBcDeF"
+rm -f "$STATE_ROOT/worker.ready"
+touch -t 200001010000 "$STATE_ROOT/worker.lock"
+fm_remote_job_ensure_worker "$REMOTE_ROOT" "$ACCOUNT_HOME" \
+  || fail "$FM_REMOTE_JOB_ERROR"
+assert_absent "$STATE_ROOT/worker.lock/.quarantine.aBcDeF" \
+  "lock reclaim kept the killed worker's staging file"
+fm_remote_job_probe "$ACCOUNT_HOME" \
+  || fail "the replacement worker never published a readiness heartbeat"
+fm_remote_job_worker_identity_matches "$REMOTE_ROOT" "$ACCOUNT_HOME" \
+  || fail "staging-leak recovery did not start the current worker"
+NEW_WORKER_PID=$(cat "$STATE_ROOT/worker.pid")
+pass "a lock holding only a killed worker's staging file is reclaimed"
 
 FM_REMOTE_JOB_TIMEOUT=1
 fm_remote_job_stage "$ACCOUNT_HOME" "$REMOTE_ROOT" "$REMOTE_HOME" fm-timeout-job.sh < /dev/null > /dev/null

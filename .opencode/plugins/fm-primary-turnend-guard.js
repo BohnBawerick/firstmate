@@ -22,6 +22,10 @@ function runProcess(command, args, input = "") {
     });
     child.on("error", () => resolve({ code: 0, stdout: "", stderr: "" }));
     child.on("close", (code) => resolve({ code: code ?? 0, stdout, stderr }));
+    // A child that exits without reading its input breaks this pipe mid-write.
+    // Without a listener that EPIPE is an unhandled 'error' event and takes the
+    // whole host process down. The child's exit code and output still decide.
+    child.stdin.on("error", () => {});
     child.stdin.end(input);
   });
 }

@@ -25,6 +25,10 @@ export function encodeFirstmateOperationalInput(root, kind, content) {
       stderr += chunk.toString();
     });
     child.on("error", reject);
+    // An encoder that exits before reading its input breaks this pipe. Without
+    // a listener that EPIPE is an unhandled 'error' event and takes the whole
+    // host process down instead of rejecting this one call.
+    child.stdin.on("error", () => {});
     child.on("close", (code) => {
       if (code === 0 && stdout) {
         resolveResult(stdout);
