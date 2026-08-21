@@ -816,6 +816,44 @@ test_pause_verb_override_renders_all_brief_scaffolds() {
   pass "fm-brief.sh: custom pause verb renders in every scaffold"
 }
 
+test_status_protocol_shows_documented_decision_key_placement() {
+  local home kind id brief
+  home="$TMP_ROOT/decision-key-home"
+  mkdir -p "$home/data"
+
+  for kind in ship scout dreamer secondmate; do
+    id="brief-decision-key-$kind"
+    case "$kind" in
+      ship)
+        FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode no-mistakes >/dev/null 2>&1
+        ;;
+      scout)
+        FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout >/dev/null 2>&1
+        ;;
+      dreamer)
+        FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --dreamer >/dev/null 2>&1
+        ;;
+      secondmate)
+        FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" --secondmate --no-projects >/dev/null 2>&1
+        ;;
+    esac
+    brief="$home/data/$id/brief.md"
+    # shellcheck disable=SC2016 # Literal backticks and braces must remain unexpanded.
+    assert_grep '`needs-decision [key=<slug>]: {summary of options}`' "$brief" \
+      "$kind brief did not show the documented before-colon key on needs-decision"
+    # shellcheck disable=SC2016 # Literal backticks and braces must remain unexpanded.
+    assert_grep '`resolved [key=<slug>]: {how it cleared}`' "$brief" \
+      "$kind brief did not show the documented before-colon key on resolved"
+    # shellcheck disable=SC2016 # Literal backticks and braces must remain unexpanded.
+    assert_no_grep '`needs-decision: {summary of options}`' "$brief" \
+      "$kind brief still shows the colon-first needs-decision template"
+    # shellcheck disable=SC2016 # Literal backticks and braces must remain unexpanded.
+    assert_no_grep '`resolved: {how it cleared}`' "$brief" \
+      "$kind brief still shows the colon-first resolved template"
+  done
+  pass "fm-brief.sh: every scaffold shows documented [key=...] placement on needs-decision and resolved"
+}
+
 test_scout_and_secondmate_load_decision_hold_policy() {
   local home scout charter
   home="$TMP_ROOT/decision-policy-home"
@@ -943,6 +981,7 @@ test_secondmate_no_projects_charter
 test_secondmate_marked_request_reporting_contract
 test_secondmate_directory_paths_are_absolute_and_output_is_stable
 test_pause_verb_override_renders_all_brief_scaffolds
+test_status_protocol_shows_documented_decision_key_placement
 test_scout_and_secondmate_load_decision_hold_policy
 test_scout_and_secondmate_scaffold
 test_task_id_reuse_refused_and_preserves_retained_report
