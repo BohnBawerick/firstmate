@@ -1,0 +1,102 @@
+{
+  "families": [
+    {
+      "count": 1,
+      "duration_ms": 364346,
+      "failed": 0,
+      "name": "pr-forge"
+    },
+    {
+      "count": 1,
+      "duration_ms": 2824,
+      "failed": 0,
+      "name": "pure-contract-unit"
+    },
+    {
+      "count": 1,
+      "duration_ms": 30102,
+      "failed": 0,
+      "name": "real-herdr-gated"
+    },
+    {
+      "count": 3,
+      "duration_ms": 355939,
+      "failed": 0,
+      "name": "secondmate"
+    },
+    {
+      "count": 1,
+      "duration_ms": 19331,
+      "failed": 0,
+      "name": "watcher-wake-lock"
+    }
+  ],
+  "finished_at": "2026-08-21T13:03:31Z",
+  "run_id": "fm-test-run-1787316638116-1331087",
+  "scripts": [
+    {
+      "duration_ms": 2824,
+      "exit": 0,
+      "expected_gate_skip": "none",
+      "family": "pure-contract-unit",
+      "gate_skip": false,
+      "path": "tests/fm-brief.test.sh"
+    },
+    {
+      "duration_ms": 5043,
+      "exit": 0,
+      "expected_gate_skip": "none",
+      "family": "secondmate",
+      "gate_skip": false,
+      "path": "tests/fm-remote-job-orphan-reap.test.sh"
+    },
+    {
+      "duration_ms": 30102,
+      "exit": 0,
+      "expected_gate_skip": "herdr",
+      "family": "real-herdr-gated",
+      "gate_skip": true,
+      "path": "tests/fm-afk-inject-herdr-e2e.test.sh"
+    },
+    {
+      "duration_ms": 19331,
+      "exit": 0,
+      "expected_gate_skip": "none",
+      "family": "watcher-wake-lock",
+      "gate_skip": false,
+      "path": "tests/fm-inactive-reconcile.test.sh"
+    },
+    {
+      "duration_ms": 364346,
+      "exit": 0,
+      "expected_gate_skip": "none",
+      "family": "pr-forge",
+      "gate_skip": false,
+      "path": "tests/fm-pr-check-security.test.sh"
+    },
+    {
+      "duration_ms": 74482,
+      "exit": 0,
+      "expected_gate_skip": "none",
+      "family": "secondmate",
+      "gate_skip": false,
+      "path": "tests/fm-remote-reply.test.sh"
+    },
+    {
+      "duration_ms": 276414,
+      "exit": 0,
+      "expected_gate_skip": "none",
+      "family": "secondmate",
+      "gate_skip": false,
+      "path": "tests/fm-remote-secondmate-lifecycle-e2e.test.sh"
+    }
+  ],
+  "selection": "scripts",
+  "started_at": "2026-08-21T12:50:38Z",
+  "summary": {
+    "duration_ms": 772921,
+    "failed": 0,
+    "skipped_gate": 1,
+    "total": 7
+  }
+}
