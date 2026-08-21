@@ -15,6 +15,12 @@
 #   - <name> - <desc> (added <date>)                  -> no-mistakes off  (legacy default)
 #   - <name> [<mode>] - <desc> (added <date>)          -> <mode> off
 #   - <name> [<mode> +yolo] - <desc> (added <date>)    -> <mode> on
+#   - <name> [<mode> +yolo +hardened] - <desc> ...     -> <mode> on, quality hardened
+#
+# Bracket grammar: the first token that does not begin with "+" is the mode, and
+# every "+<flag>" token is position-independent. A "+<flag>" this version does not
+# recognize is ignored rather than refused, so an older firstmate reading a newer
+# registry keeps resolving the posture it does understand.
 #
 # Registered modes:
 #   no-mistakes            full pipeline -> PR -> configured merge authority (default)
@@ -30,12 +36,23 @@
 #   AGENTS.md section 7 is the single owner of authority exceptions, including
 #   ask-user contract expansion and stronger captain boundaries.
 #
+# +hardened = the registered quality posture. From the captain's side this is the
+#   fourth option on the same list he picks from when he registers a project, after
+#   no-mistakes, direct-PR and local-only; mechanically it is a separate token, so a
+#   hardened project still carries one of those modes too. It is read with --quality
+#   rather than through the two-word line, which is unchanged.
+#   Absent means "standard": the ordinary path, with no extra quality loop.
+#
 # --raw prints the registered annotation unmapped, so a caller that must tell a
 # conditional policy apart from a flat mode sees "no-mistakes-prod-only" itself.
 #
+# --quality prints ONE word instead, "standard" or "hardened". It is a separate
+# output path precisely so the two-word stdout contract above stays untouched.
+#
 # An unknown/missing project or unknown mode falls back to "no-mistakes off" and warns
-# to stderr, so a typo never silently drops the gate.
-# Usage: fm-project-mode.sh [--raw] <project-name>
+# to stderr, so a typo never silently drops the gate; --quality falls back to
+# "standard" on the same inputs.
+# Usage: fm-project-mode.sh [--raw] [--quality] <project-name>
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,50 +61,71 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 REG="$DATA/projects.md"
 RAW=0
-if [ "${1:-}" = "--raw" ]; then
-  RAW=1
-  shift
-fi
-NAME=${1:?usage: fm-project-mode.sh [--raw] <project-name>}
+QUALITY_ONLY=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --raw) RAW=1; shift ;;
+    --quality) QUALITY_ONLY=1; shift ;;
+    *) break ;;
+  esac
+done
+NAME=${1:?usage: fm-project-mode.sh [--raw] [--quality] <project-name>}
+
+# One owner of the output shape, so the two-word default and the one-word
+# --quality answer cannot drift apart across the fallback paths below.
+emit() {  # <mode> <yolo> <quality>
+  if [ "$QUALITY_ONLY" -eq 1 ]; then
+    echo "$3"
+  else
+    echo "$1 $2"
+  fi
+}
 
 if [ ! -f "$REG" ]; then
   echo "warn: no registry at $REG; defaulting $NAME to no-mistakes off" >&2
-  echo "no-mistakes off"
+  emit no-mistakes off standard
   exit 0
 fi
 
-# awk emits "<mode> <yolo>" (one line) or nothing if the project is absent.
+# awk emits "<mode> <yolo> <quality>" (one line) or nothing if the project is
+# absent. A "+<flag>" token is never a mode, in any position, so the mode is the
+# first bracket token that does not begin with "+".
 parsed=$(awk -v n="$NAME" '
   $1=="-" && $2==n {
-    mode="no-mistakes"; yolo="off";
+    mode="no-mistakes"; yolo="off"; quality="standard"; have_mode=0;
     if ($3 ~ /^\[/) {
       s="";
       for (i=3; i<=NF; i++) { s = s (s==""?"":" ") $i; if ($i ~ /\]$/) break }
       gsub(/^\[|\]$/, "", s);           # strip the surrounding brackets
       k = split(s, a, " ");
-      if (a[1] != "" && a[1] != "+yolo") mode = a[1];
-      for (j=1; j<=k; j++) if (a[j]=="+yolo") yolo="on";
+      for (j=1; j<=k; j++) {
+        if (a[j]=="+yolo") yolo="on";
+        else if (a[j]=="+hardened") quality="hardened";
+        else if (a[j] != "" && substr(a[j], 1, 1) != "+" && !have_mode) { mode=a[j]; have_mode=1 }
+      }
     }
-    print mode, yolo; exit
+    print mode, yolo, quality; exit
   }
 ' "$REG")
 
 if [ -z "$parsed" ]; then
   echo "warn: project \"$NAME\" not in registry; defaulting to no-mistakes off" >&2
-  echo "no-mistakes off"
+  emit no-mistakes off standard
   exit 0
 fi
 
-mode=${parsed%% *}
-yolo=${parsed##* }
+read -r mode yolo quality <<EOF
+$parsed
+EOF
 case "$mode" in
   no-mistakes|direct-PR|local-only|no-mistakes-prod-only) ;;
   *) echo "warn: unknown mode \"$mode\" for $NAME; defaulting to no-mistakes off" >&2; mode=no-mistakes; yolo=off ;;
 esac
 case "$yolo" in on|off) ;; *) yolo=off ;; esac
+case "$quality" in standard|hardened) ;; *) quality=standard ;; esac
 # A conditional policy is not a task mode. Mechanical callers get its most
 # rigorous leg; --raw callers get the annotation itself (see the header).
 if [ "$RAW" -eq 0 ] && [ "$mode" = no-mistakes-prod-only ]; then
   mode=no-mistakes
 fi
-echo "$mode $yolo"
+emit "$mode" "$yolo" "$quality"

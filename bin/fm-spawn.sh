@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Spawn a direct report: a crewmate in a treehouse or Orca worktree, or a
 # secondmate in its isolated firstmate home.
-# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>]
+# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--quality <standard|hardened>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>]
 #        fm-spawn.sh <task-id> <project-dir> --scout [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>]
 #        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
 #   --mode and --yolo are this task's delivery contract, REQUIRED for every ship
@@ -16,6 +16,15 @@
 #   loud one-line deviation notice is printed and the spawn continues.
 #   no-mistakes-prod-only is a registry policy rather than a task mode and is
 #   refused as a flag value.
+#   --quality is this task's quality posture, resolved at intake the same way from
+#   the project's registered "+hardened" annotation (bin/fm-project-mode.sh
+#   --quality). Unlike --mode it has a safe default, so it is optional on a ship
+#   spawn and defaults to standard, and it is refused on --scout and --secondmate
+#   spawns. A ship spawn reads the brief's "Quality contract: quality=<quality>"
+#   line and REFUSES a mismatch exactly as it does for the delivery line. An absent
+#   line reads as standard rather than as a legacy gap, so it agrees silently with
+#   --quality standard, while --quality hardened against a brief that never told
+#   the worker to run the loop is a refusal.
 #        fm-spawn.sh <task-id> --relaunch [--harness <name>] [--model <name>] [--effort <level>]
 #   --relaunch launches a replacement agent for an EXISTING task into that
 #   task's own recorded endpoint and worktree instead of creating either. It is
@@ -191,6 +200,11 @@
 # A ship task records the explicit mode/yolo it was passed; a secondmate spawn records
 # mode=secondmate, yolo=off, home=, and projects=; a scout records neither, and both the
 # success line and state/<id>.meta omit them.
+# A ship task additionally records quality= (the resolved posture) and base_sha= (the
+# commit its worktree starts from). base_sha is captured ONCE, at the fresh spawn, and
+# a relaunch reads it back rather than recapturing it: the hardened quality loop commits
+# each round, so a base recaptured later - or a gate reading HEAD~1 - would narrow its
+# view to the newest commits while still reporting success.
 # Every fresh spawn or relaunch records a new spawn_gen= incarnation token so durable
 # consumers can distinguish a replacement worker that reuses the same task id.
 # When the home session's frozen trace-context decision is enabled (see
@@ -287,6 +301,8 @@ EFFORT=
 BACKEND_ARG=
 MODE=
 YOLO=
+QUALITY=
+BASE_SHA=
 TRACEPARENT_ARG=
 HARNESS_SET=0
 MODEL_SET=0
@@ -294,6 +310,7 @@ EFFORT_SET=0
 BACKEND_SET=0
 MODE_SET=0
 YOLO_SET=0
+QUALITY_SET=0
 TRACEPARENT_SET=0
 RELAUNCH=0
 POS=()
@@ -310,6 +327,7 @@ for a in "$@"; do
       backend) BACKEND_ARG=$a; BACKEND_SET=1 ;;
       mode) MODE=$a; MODE_SET=1 ;;
       yolo) YOLO=$a; YOLO_SET=1 ;;
+      quality) QUALITY=$a; QUALITY_SET=1 ;;
       traceparent) TRACEPARENT_ARG=$a; TRACEPARENT_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
@@ -332,6 +350,8 @@ for a in "$@"; do
     --mode=*) MODE=${a#--mode=}; MODE_SET=1 ;;
     --yolo) want_value=yolo ;;
     --yolo=*) YOLO=${a#--yolo=}; YOLO_SET=1 ;;
+    --quality) want_value=quality ;;
+    --quality=*) QUALITY=${a#--quality=}; QUALITY_SET=1 ;;
     --traceparent) want_value=traceparent ;;
     --traceparent=*) TRACEPARENT_ARG=${a#--traceparent=}; TRACEPARENT_SET=1 ;;
     *) POS+=("$a") ;;
@@ -344,6 +364,7 @@ done
 [ "$BACKEND_SET" -eq 0 ] || [ -n "$BACKEND_ARG" ] || { echo "error: --backend requires a non-empty value" >&2; exit 1; }
 [ "$MODE_SET" -eq 0 ] || [ -n "$MODE" ] || { echo "error: --mode requires a non-empty value" >&2; exit 1; }
 [ "$YOLO_SET" -eq 0 ] || [ -n "$YOLO" ] || { echo "error: --yolo requires a non-empty value" >&2; exit 1; }
+[ "$QUALITY_SET" -eq 0 ] || [ -n "$QUALITY" ] || { echo "error: --quality requires a non-empty value" >&2; exit 1; }
 [ "$TRACEPARENT_SET" -eq 0 ] || [ -n "$TRACEPARENT_ARG" ] || { echo "error: --traceparent requires a non-empty value" >&2; exit 1; }
 # A parent-delivered carrier replaces this home's own resolution, so it is
 # refused unless it is a secondmate spawn carrying a strictly valid W3C value.
@@ -372,6 +393,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
   [ "$KIND_SET" -eq 0 ] || { echo "error: --relaunch reuses the task's recorded kind; --scout/--secondmate cannot override it" >&2; exit 1; }
   [ "$MODE_SET" -eq 0 ] || { echo "error: --relaunch reuses the task's recorded delivery mode; --mode cannot override it" >&2; exit 1; }
   [ "$YOLO_SET" -eq 0 ] || { echo "error: --relaunch reuses the task's recorded yolo posture; --yolo cannot override it" >&2; exit 1; }
+  [ "$QUALITY_SET" -eq 0 ] || { echo "error: --relaunch reuses the task's recorded quality posture; --quality cannot override it" >&2; exit 1; }
 else
   # Delivery contract (AGENTS.md section 7). A ship task's mode and yolo are
   # firstmate's per-task decision, so they are required and closed-set validated
@@ -397,6 +419,14 @@ else
       on|off) ;;
       *) echo "error: --yolo must be on or off (got '$YOLO')" >&2; exit 1 ;;
     esac
+    # Quality has a safe default, so it is optional; only its value is closed-set
+    # validated, because a typo must never quietly ship a task firstmate resolved
+    # as hardened down the standard path.
+    [ "$QUALITY_SET" -eq 1 ] || QUALITY=standard
+    case "$QUALITY" in
+      standard|hardened) ;;
+      *) echo "error: --quality must be one of standard, hardened (got '$QUALITY')" >&2; exit 1 ;;
+    esac
   else
     [ "$MODE_SET" -eq 0 ] || {
       echo "error: --mode applies only to ship spawns; a scout delivers a report and a secondmate records its own fixed posture" >&2
@@ -404,6 +434,10 @@ else
     }
     [ "$YOLO_SET" -eq 0 ] || {
       echo "error: --yolo applies only to ship spawns; a scout delivers a report and a secondmate records its own fixed posture" >&2
+      exit 1
+    }
+    [ "$QUALITY_SET" -eq 0 ] || {
+      echo "error: --quality applies only to ship spawns; a scout delivers a report and a secondmate records its own fixed posture" >&2
       exit 1
     }
   fi
@@ -770,6 +804,8 @@ spawn_abort_cleanup() {
             echo "kind=$KIND"
             [ -z "${MODE:-}" ] || echo "mode=$MODE"
             [ -z "${YOLO:-}" ] || echo "yolo=$YOLO"
+            [ -z "${QUALITY:-}" ] || echo "quality=$QUALITY"
+            [ -z "${BASE_SHA:-}" ] || echo "base_sha=$BASE_SHA"
             echo "tasktmp=${TASK_TMP:-}"
             echo "model=${MODEL:-default}"
             echo "effort=${EFFORT:-default}"
@@ -887,6 +923,7 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   # spanning several modes is two invocations rather than a silent mixed dispatch.
   [ "$MODE_SET" -eq 0 ] || shared_args+=(--mode "$MODE")
   [ "$YOLO_SET" -eq 0 ] || shared_args+=(--yolo "$YOLO")
+  [ "$QUALITY_SET" -eq 0 ] || shared_args+=(--quality "$QUALITY")
   for pair in "${POS[@]}"; do
     case "$pair" in
       *=*) : ;;
@@ -1031,6 +1068,15 @@ if [ "$RELAUNCH" -eq 1 ]; then
   [ -n "$KIND" ] || KIND=ship
   MODE=$(fm_meta_get "$RELAUNCH_META" mode)
   YOLO=$(fm_meta_get "$RELAUNCH_META" yolo)
+  # Read back, never recaptured: the loop's whole measurement is anchored on the
+  # base this task actually started from (see the header). A ship task recorded
+  # before quality existed carries no quality= line, and absent means standard -
+  # the same reading the brief check applies - so it is normalized here rather
+  # than left empty and refused against its own brief. Its base_sha stays absent
+  # rather than being invented from a HEAD the worker has already moved.
+  QUALITY=$(fm_meta_get "$RELAUNCH_META" quality)
+  [ "$KIND" != ship ] || [ -n "$QUALITY" ] || QUALITY=standard
+  BASE_SHA=$(fm_meta_get "$RELAUNCH_META" base_sha)
   RELAUNCH_WT=$(fm_meta_get "$RELAUNCH_META" worktree)
   [ -n "$RELAUNCH_WT" ] && [ -d "$RELAUNCH_WT" ] || {
     echo "error: task $ID's recorded worktree '${RELAUNCH_WT:-none}' is missing; refusing to relaunch without the local copy its work lives in" >&2
@@ -1724,6 +1770,17 @@ if [ "$KIND" = ship ]; then
     echo "warning: $BRIEF records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode $MODE - confirm its definition of done matches" >&2
   elif [ "$BRIEF_MODE" != "$MODE" ]; then
     echo "error: delivery mismatch for $ID: the brief says mode=$BRIEF_MODE but this spawn passed --mode $MODE; correct the flag or re-scaffold the brief so the worker's instructions and the task record agree" >&2
+    exit 1
+  fi
+  # The same agreement check for the quality posture. A standard brief carries no
+  # quality line at all, so an absent line IS the standard posture rather than a
+  # legacy gap: --quality standard agrees with it silently, and --quality hardened
+  # against a brief that never gave the worker the quality-gate section is the
+  # drift this refuses.
+  BRIEF_QUALITY=$(sed -n 's/^Quality contract: quality=\([^ ]*\).*$/\1/p' "$BRIEF" | head -n 1)
+  [ -n "$BRIEF_QUALITY" ] || BRIEF_QUALITY=standard
+  if [ "$BRIEF_QUALITY" != "$QUALITY" ]; then
+    echo "error: quality mismatch for $ID: the brief says quality=$BRIEF_QUALITY but this spawn passed --quality $QUALITY; correct the flag or re-scaffold the brief so the worker's instructions and the task record agree" >&2
     exit 1
   fi
   # The registry holds the captain's standing posture, so dropping below it is
@@ -2812,6 +2869,16 @@ else
   fi
 fi
 
+# The immutable anchor for a hardened task's quality loop, captured once, here,
+# while the worktree still sits on the base it was reset to. Every later phase
+# measures a diff against THIS commit; a relaunch reads it back from the record
+# above rather than recapturing it, because by then the loop has committed rounds
+# of its own and a fresh capture would narrow the gate while still reporting
+# success. A worktree git cannot read leaves it absent rather than wrong.
+if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" = ship ]; then
+  BASE_SHA=$(git -C "$WT" rev-parse HEAD 2>/dev/null || true)
+fi
+
 META_WINDOW=$T
 [ "$BACKEND" = orca ] && META_WINDOW=$W
 SPAWN_GEN="s$(date +%s).${BASHPID:-$$}.$RANDOM"
@@ -2826,7 +2893,7 @@ fi
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness kind mode yolo tasktmp model effort busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
+      split("window endpoint_task_id worktree project harness kind mode yolo quality base_sha tasktmp model effort busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
@@ -2841,6 +2908,8 @@ preserve_relaunch_meta() {
   echo "kind=$KIND"
   [ -z "$MODE" ] || echo "mode=$MODE"
   [ -z "$YOLO" ] || echo "yolo=$YOLO"
+  [ -z "$QUALITY" ] || echo "quality=$QUALITY"
+  [ -z "$BASE_SHA" ] || echo "base_sha=$BASE_SHA"
   echo "tasktmp=$TASK_TMP"
   echo "model=${MODEL:-default}"
   echo "effort=${EFFORT:-default}"
