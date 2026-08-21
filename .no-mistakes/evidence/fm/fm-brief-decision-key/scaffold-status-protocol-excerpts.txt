@@ -1,0 +1,30 @@
+=== SHIP BRIEF STATUS PROTOCOL EXCERPT (sample-ship) ===
+6. If a decision belongs above the implementation worker (product choices, destructive actions, ask-user findings),
+   append `needs-decision [key=<slug>]: {summary of options}` and stop. Firstmate will apply the configured authority and reply with the decision.
+   A decision or blocker you opened stays open until a `resolved` line carrying its exact key lands (e.g. `resolved [key=<slug>]: {how it cleared}`); a later `done:` or `working:` line never closes it, even when the answer is what started that work.
+   Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append `resolved: {how it cleared}` yourself (key it with `[key=<slug>]` if you opened it with one, omit it otherwise) as you resume.
+
+=== SCOUT BRIEF STATUS PROTOCOL EXCERPT (sample-scout) ===
+6. If a decision belongs to a human (product choices, destructive actions),
+   append `needs-decision [key=<slug>]: {summary of options}` and stop. Firstmate will reply with the decision.
+   A decision or blocker you opened stays open until a `resolved` line carrying its exact key lands (e.g. `resolved [key=<slug>]: {how it cleared}`); a later `done:` or `working:` line never closes it, even when the answer is what started that work.
+   Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append `resolved: {how it cleared}` yourself (key it with `[key=<slug>]` if you opened it with one, omit it otherwise) as you resume.
+
+=== DREAMER BRIEF STATUS PROTOCOL EXCERPT (sample-dreamer) ===
+6. If a decision belongs above you (product choices, destructive actions, ask-user findings),
+   append `needs-decision [key=<slug>]: {summary of options}` and stop. Firstmate will apply the configured authority and reply.
+   A decision or blocker you opened stays open until a `resolved` line carrying its exact key lands (e.g. `resolved [key=<slug>]: {how it cleared}`); a later `done:`
+   or `working:` line never closes it, even when the answer is what started that work.
+   Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply,
+   append `resolved: {how it cleared}` yourself (key it with `[key=<slug>]` if you opened it with one, omit it otherwise) as you resume.
+
+=== SECONDMATE CHARTER ESCALATION PROTOCOL EXCERPT (sample-secondmate) ===
+For a captain decision, append `needs-decision [key=<slug>]: {summary of options}`.
+This is also how you return the answer to a marked from-firstmate request above.
+A marked request requires one correlated answer after the work; it does not require a separate receipt or start acknowledgement.
+Never append `working:` merely to acknowledge receipt or announce that a marked request has started.
+When a routed-work phase has a supervisor-actionable material change worth reporting under the rule above, give that reported phase a stable key.
+If its first reportable event is `working [key=<work-slug>]: {material phase}`, use the same key on its later `paused`, `done`, `failed`, `needs-decision`, or `blocked` event so the earlier working phase is superseded.
+When a keyed phase ends without another reportable state, append `resolved [key=<work-slug>]: {why it is no longer active}`.
+`resolved` separately closes an escalated decision or blocker, and only a `resolved` line carrying that decision's exact key (e.g. `resolved [key=<slug>]: {how it cleared}`) closes it: a later `done` or `working` event never does, even when the answer is what started that work.
+The main firstmate's answer normally writes that closing line at answer time; when a blocker or wait clears WITHOUT an answer from the main firstmate, append `resolved: {how it cleared}` yourself (key it with `[key=<slug>]` if you opened it with one, omit it otherwise) as your domain resumes.
