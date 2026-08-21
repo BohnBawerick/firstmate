@@ -1,0 +1,57 @@
+===============================================================================
+DEMONSTRATION: Watcher Marker Retirement on Task Teardown (bin/fm-teardown.sh)
+===============================================================================
+
+Task ID: task-x1
+Window Target: default:w4W:pM (escaped marker key: default_w4W_pM)
+
+>>> [1] State Directory Contents BEFORE Teardown:
+-------------------------------------------------------------------------------
+.count-default_w4W_pM
+.hash-default_w4W_pM
+.hb-surfaced-task-x1
+.paused-default_w4W_pM
+.paused-rechecked-default_w4W_pM
+.paused-resurfaced-default_w4W_pM
+.seen-task-x1_status
+.seen-task-x1_turn-ended
+.stale-default_w4W_pM
+.stale-since-default_w4W_pM
+.wedge-escalations-default_w4W_pM
+task-x1.meta
+task-x1.status
+task-x1.turn-ended
+-------------------------------------------------------------------------------
+Observed: 11 active watcher internal markers + metadata / signal files present.
+
+>>> [2] Executing bin/fm-teardown.sh task-x1 --force...
+-------------------------------------------------------------------------------
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0J64T8WE5Y4MS4BP82SFGSW/.pi/extensions/fm-primary-turnend-guard.ts -e /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0J64T8WE5Y4MS4BP82SFGSW/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+teardown task-x1 complete (window default:w4W:pM, worktree /tmp/fm-teardown-marker-demo.SuPXdM/wt)
+Backlog: task-x1 just finished. Run tasks-axi done task-x1 --note "local main", then run tasks-axi ready for dependency-cleared candidates, check date gates, and dispatch only work whose blockers are gone and date is due.
+-------------------------------------------------------------------------------
+
+>>> [3] State Directory Contents AFTER Teardown:
+-------------------------------------------------------------------------------
+(No task-related markers or metadata remaining in state directory)
+-------------------------------------------------------------------------------
+
+>>> [4] Verification Checklist:
+  - Task metadata (task-x1.meta): RETIRED
+  - Task turn-ended (task-x1.turn-ended): RETIRED
+  - Status seen marker (.seen-task-x1_status): RETIRED
+  - Turn-ended seen marker (.seen-task-x1_turn-ended): RETIRED
+  - Heartbeat surfaced marker (.hb-surfaced-task-x1): RETIRED
+  - Window stale markers (.stale-default_w4W_pM, .stale-since-default_w4W_pM): RETIRED
+  - Window hash & count markers (.hash-default_w4W_pM, .count-default_w4W_pM): RETIRED
+  - Window wedge escalation marker (.wedge-escalations-default_w4W_pM): RETIRED
+  - Window pause markers (.paused-default_w4W_pM, .paused-rechecked-*, .paused-resurfaced-*): RETIRED
+
+Verdict: All 11 window-keyed and task-keyed watcher internal markers successfully retired.
+The torn-down task's pane/window cannot leave leftover hash/stale state behind to produce stale wakes.

@@ -1,0 +1,39 @@
+===============================================================================
+DEMONSTRATION: Pi Primary Watcher Extension Away-Mode (state/.afk) Awareness
+===============================================================================
+
+>>> Phase 1: Arming request while away mode (state/.afk) is ACTIVE
+state/.afk created. Calling fm_watch_arm_pi tool...
+Result ok: true
+Result message: watcher: away mode active - supervise daemon owns watcher supervision
+Total wake prompts delivered into Pi session: 0
+Verdict: Extension stood down without launching an arm process.
+
+>>> Phase 2: Arming request when away mode is INACTIVE (normal mode)
+state/.afk removed. Calling fm_watch_arm_pi tool...
+Result ok: true
+Result message: watcher: started Pi extension arm child 1; future ordinary re-arms are automatic; call fm_watch_arm_pi again only after a later notification says the cycle is missing, failed, or unhealthy
+Arm child 1 is running in background.
+
+>>> Phase 3: Away mode activated while arm child running -> actionable wake occurs
+Writing state/.afk...
+Arm child finishes with actionable wake (signal: task-1.status)...
+Total wake prompts delivered into Pi session during AFK: 0
+Verdict: Wake delivery and successor arm restart were BOTH suppressed by away mode.
+
+>>> Phase 4: Away mode cleared and watcher re-armed
+state/.afk removed. Re-arming Pi watcher extension...
+Result ok: true
+Result message: watcher: started Pi extension arm child 2; future ordinary re-arms are automatic; call fm_watch_arm_pi again only after a later notification says the cycle is missing, failed, or unhealthy
+Arm child 2 is running in background.
+
+>>> Phase 5: Actionable wake occurs while away mode is INACTIVE
+Arm child finishes with actionable wake (signal: task-1.status)...
+[Pi.sendUserMessage delivered wake prompt to primary session]:
+--------------------------------------------------------------------------------
+⁣FIRSTMATE_OP: v1 watcher: FIRSTMATE WATCHER WAKE: signal: /tmp/pi-afk-evid-1787318463124/home/state/task-1.status
+
+Run bin/fm-wake-drain.sh first and handle the queued wake. Watcher continuity is extension-owned.
+--------------------------------------------------------------------------------
+Total wake prompts delivered after normal mode wake: 1
+Verdict: Wake was successfully delivered into Pi session via sendUserMessage and successor continuity restored.
