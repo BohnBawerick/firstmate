@@ -381,7 +381,7 @@ hardened after the mode|- qproj [no-mistakes +hardened] - fixture (added 2026-01
 hardened after mode and yolo|- qproj [direct-PR +yolo +hardened] - fixture (added 2026-01-01)|hardened
 hardened between mode and yolo|- qproj [direct-PR +hardened +yolo] - fixture (added 2026-01-01)|hardened
 hardened before the mode|- qproj [+hardened local-only +yolo] - fixture (added 2026-01-01)|hardened
-hardened on a conditional policy|- qproj [no-mistakes-prod-only +hardened] - fixture (added 2026-01-01)|hardened
+hardened on a conditional policy is refused and drops to standard|- qproj [no-mistakes-prod-only +hardened] - fixture (added 2026-01-01)|standard
 an unrecognized flag is ignored, not refused|- qproj [direct-PR +from-the-future] - fixture (added 2026-01-01)|standard
 ROWS
   # An absent project and an absent registry both resolve to the safe posture
@@ -391,6 +391,52 @@ ROWS
   out=$(FM_HOME="$TMP_ROOT/project-quality/no-such-home" "$PROJECT_MODE" --quality qproj 2>/dev/null)
   [ "$out" = standard ] || fail "an absent registry resolved quality '$out', expected standard"
   pass "fm-project-mode: --quality reads +hardened from any bracket position and defaults to standard"
+}
+
+# The registry is the only way to turn the quality gate on, so this reader is where
+# the registration rule is backed mechanically
+# (.agents/skills/project-management/SKILL.md "Delivery posture"). +hardened rides a
+# flat mode; alongside the conditional policy it is refused, because a policy that
+# decides per task cannot carry one statable quality posture. The refusal follows the
+# unknown-mode precedent: warn on stderr, resolve to the safe value, leave the
+# two-word stdout its three callers parse alone, and exit 0.
+test_project_mode_refuses_hardened_on_the_conditional_policy() {
+  local home out err status label line quality words n=0
+  home="$TMP_ROOT/project-hardened-policy/home"
+  mkdir -p "$home/data"
+  while IFS='|' read -r label line quality words; do
+    [ -n "$label" ] || continue
+    n=$((n + 1))
+    printf '%s\n' "$line" > "$home/data/projects.md"
+    out=$(FM_HOME="$home" "$PROJECT_MODE" --quality qproj 2>/dev/null)
+    status=$?
+    expect_code 0 "$status" "$label: --quality exited non-zero"
+    [ "$out" = "$quality" ] || fail "$label: --quality printed '$out', expected '$quality'"
+    out=$(FM_HOME="$home" "$PROJECT_MODE" qproj 2>/dev/null)
+    [ "$out" = "$words" ] || fail "$label: the two-word stdout printed '$out', expected '$words'"
+    err=$(FM_HOME="$home" "$PROJECT_MODE" --quality qproj 2>&1 >/dev/null)
+    case "$label" in
+      refused*)
+        assert_contains "$err" "+hardened is refused" "$label: the refused combination printed no warning"
+        assert_contains "$err" "flat delivery mode" "$label: the warning did not say how to fix the registry line" ;;
+      *)
+        assert_not_contains "$err" "+hardened is refused" "$label: a legitimate registry line was warned about" ;;
+    esac
+  done <<'ROWS'
+hardened rides no-mistakes|- qproj [no-mistakes +hardened] - fixture (added 2026-01-01)|hardened|no-mistakes off
+hardened rides direct-PR|- qproj [direct-PR +hardened] - fixture (added 2026-01-01)|hardened|direct-PR off
+hardened rides local-only|- qproj [local-only +hardened] - fixture (added 2026-01-01)|hardened|local-only off
+hardened rides a flat mode with yolo|- qproj [direct-PR +yolo +hardened] - fixture (added 2026-01-01)|hardened|direct-PR on
+refused alongside the conditional policy|- qproj [no-mistakes-prod-only +hardened] - fixture (added 2026-01-01)|standard|no-mistakes off
+refused alongside the conditional policy with yolo|- qproj [no-mistakes-prod-only +yolo +hardened] - fixture (added 2026-01-01)|standard|no-mistakes on
+the conditional policy without hardened stays quiet|- qproj [no-mistakes-prod-only] - fixture (added 2026-01-01)|standard|no-mistakes off
+ROWS
+  # --raw still reports the registered annotation: only the quality posture drops.
+  printf '%s\n' '- qproj [no-mistakes-prod-only +hardened] - fixture (added 2026-01-01)' > "$home/data/projects.md"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" --raw qproj 2>/dev/null)
+  [ "$out" = "no-mistakes-prod-only off" ] \
+    || fail "the refusal changed the raw annotation to '$out', expected 'no-mistakes-prod-only off'"
+  pass "fm-project-mode: +hardened rides a flat mode and is refused on the conditional policy"
 }
 
 # The load-bearing registry case. Three callers parse this script's two words
@@ -690,6 +736,7 @@ test_promote_requires_and_records_the_delivery_contract
 test_promote_notices_the_standing_quality_posture
 test_project_mode_maps_the_conditional_policy
 test_project_mode_reads_the_registered_quality_posture
+test_project_mode_refuses_hardened_on_the_conditional_policy
 test_project_mode_two_word_contract_survives_the_quality_posture
 test_scout_and_secondmate_refuse_the_quality_flag
 test_spawn_refuses_a_brief_quality_mismatch

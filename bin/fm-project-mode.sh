@@ -56,6 +56,13 @@
 # An unrecognised mode token resets only the mode and the yolo flag and keeps a
 # "+hardened" parsed beside it, because a typo in the mode must not silently drop the
 # quality gate too; the unknown-mode warning still goes to stderr.
+# "+hardened" beside "no-mistakes-prod-only" is the opposite case and drops to
+# "standard" with its own stderr warning: a hardened project must pick a flat delivery
+# mode, because a conditional policy decides per task and a quality standard covering
+# only part of a project is not a statable posture
+# (.agents/skills/project-management/SKILL.md "Delivery posture"). Unlike the typo,
+# that combination parses cleanly and was ruled out on purpose. The mode still resolves
+# to no-mistakes-prod-only, the two-word stdout is unchanged, and the exit stays 0.
 # Usage: fm-project-mode.sh [--raw] [--quality] <project-name>
 set -eu
 
@@ -127,6 +134,10 @@ case "$mode" in
 esac
 case "$yolo" in on|off) ;; *) yolo=off ;; esac
 case "$quality" in standard|hardened) ;; *) quality=standard ;; esac
+if [ "$mode" = no-mistakes-prod-only ] && [ "$quality" = hardened ]; then
+  echo "warn: +hardened is refused alongside the conditional policy no-mistakes-prod-only for $NAME; a hardened project must pick a flat delivery mode (no-mistakes, direct-PR or local-only), so defaulting quality to standard" >&2
+  quality=standard
+fi
 # A conditional policy is not a task mode. Mechanical callers get its most
 # rigorous leg; --raw callers get the annotation itself (see the header).
 if [ "$RAW" -eq 0 ] && [ "$mode" = no-mistakes-prod-only ]; then
