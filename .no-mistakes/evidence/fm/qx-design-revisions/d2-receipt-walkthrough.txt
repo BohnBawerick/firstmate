@@ -1,0 +1,104 @@
+=== D2 quality receipt: end-to-end walk =====================================
+project repo : /tmp/tmp.3gmdbSsnhR/proj
+base_sha     : 5df8ff7985512f59c3ed8f4b304af144f9182890
+head_sha     : eba51b080d63d78d70fc1e8c16127f45c82ec422
+validator    : bin/fm-quality-receipt.sh
+=============================================================================
+
+--- 1. head_sha: the Stage 0a fail-open ------------------------------
+The old receipt: base_sha drifted, no head_sha, "not-applicable", exit 0.
+{"schema_version":1,"phase":"clean","outcome":"not-applicable","base_sha":"5df8ff7985512f59c3ed8f4b304af144f9182890"}
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate old-stage0a.json
+fm-quality-receipt: $/head_sha: required
+  -> exit 1 (was exit 0 before: a bad change walked through)
+
+A receipt that stuffs a constant in head_sha, checked against the tree:
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate --check-head /tmp/tmp.3gmdbSsnhR/proj head-constant.json
+fm-quality-receipt: $/head_sha: does not resolve in /tmp/tmp.3gmdbSsnhR/proj: fatal: Needed a single revision
+  -> exit 1
+
+A real sha that is no longer HEAD (the anchor drifted):
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate --check-head /tmp/tmp.3gmdbSsnhR/proj head-stale.json
+fm-quality-receipt: $/head_sha: 5df8ff7985512f59c3ed8f4b304af144f9182890 is not HEAD eba51b080d63d78d70fc1e8c16127f45c82ec422
+  -> exit 1
+
+The honest receipt from that same tree:
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate --check-head /tmp/tmp.3gmdbSsnhR/proj clean-pass.json
+  -> exit 0
+
+--- 2. per-phase classification vocabulary ---------------------------
+A complexity offender filed as "killable" (what the pilot was forced to do):
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate complexity-as-killable.json
+fm-quality-receipt: $/findings/0/classification: expected 'over-threshold'
+  -> exit 1
+
+The same finding filed as "over-threshold":
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate complexity-ok.json
+  -> exit 0
+
+--- 3. stable per-finding id ----------------------------------------
+Two distinct survivors on one line stay two findings:
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate harden-two-on-a-line.json
+  -> exit 0
+  no-progress key = ['42', '43']
+
+Two findings sharing one id (count same, identity lost):
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate dup-id.json
+fm-quality-receipt: $/findings/1/id: duplicate id '42' (also $/findings/0/id)
+  -> exit 1
+
+--- 4/5. engine, threshold, duration_ms are required -----------------
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate  # clean receipt with engine removed
+fm-quality-receipt: $/engine: required
+  -> exit 1
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate  # clean receipt with threshold removed
+fm-quality-receipt: $/threshold: required
+  -> exit 1
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate  # clean receipt with duration_ms removed
+fm-quality-receipt: $/duration_ms: required
+  -> exit 1
+
+--- 6. verify emits ONE envelope carrying phases[] -------------------
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate --check-head /tmp/tmp.3gmdbSsnhR/proj verify.json
+  -> exit 0
+  CI reads one outcome: exhausted
+    phase clean   outcome=pass       engine=eslint@10.1.0 findings=0
+    phase harden  outcome=exhausted  engine=@stryker-mutator/core@10.0.0 findings=1
+
+The pilot shape, one flat object mixing both phases:
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate verify-flat.json
+fm-quality-receipt: $/phases: required
+  -> exit 1
+
+A wrapper gluing a child from another tree:
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate verify-glued.json
+fm-quality-receipt: $/phases/1/head_sha: must equal envelope head_sha
+  -> exit 1
+
+--- 7. wall-clock bound in D1 bounds ---------------------------------
+  D1 bounds as documented: {"max_iterations": "4", "no_progress_limit": "2", "budget_usd": "8", "budget_minutes": "20"}
+  wall-clock bound present: True
+
+--- exit-code contract the loop controller branches on ---------------
+valid receipt            -> 0
+schema/rule violation    -> 1  (the phase command is at fault)
+
+$ /home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0KX7PAKBDDAN72SW7REWCQ2/bin/fm-quality-receipt.sh validate /tmp/tmp.3gmdbSsnhR/missing.json  # unreadable path
+fm-quality-receipt: cannot read receipt: [Errno 2] No such file or directory: '/tmp/tmp.3gmdbSsnhR/missing.json'
+  -> exit 2  (wiring fault, not a verdict)
+
+=== end =====================================================================

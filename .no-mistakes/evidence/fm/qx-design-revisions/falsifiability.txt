@@ -1,0 +1,36 @@
+=== Falsifiability of tests/fm-quality-receipt.test.sh ======================
+Each mutation removes one thing the intent asked for, then reruns the suite.
+A test that pins behavior must go red. Tree is restored after each mutation.
+
+[baseline] unmodified tree
+SUITE PASSED  <-- expected
+
+[A] head_sha removed from the committed schema's required lists
+SUITE FAILED  <-- good
+      not ok - missing head_sha fail-open: expected exit 1, got 0
+
+[B] --check-head turned into a no-op (a constant head_sha would pass)
+SUITE FAILED  <-- good
+      not ok - head_sha pinned to the parent commit: expected exit 1, got 0
+
+[C] duration_ms, engine and threshold removed from required
+SUITE FAILED  <-- good
+      not ok - duration_ms only inside metrics: expected exit 1, got 0
+
+[D] per-finding id uniqueness rule disabled
+SUITE FAILED  <-- good
+      not ok - duplicate finding ids: expected exit 1, got 0
+
+[E] clean/harden classification vocabularies merged into one enum
+SUITE FAILED  <-- good
+      not ok - clean finding classified killable: expected exit 1, got 0
+
+[F] verify envelope allowed to carry a flat findings[] again
+SUITE FAILED  <-- good
+      not ok - verify with flat findings: expected exit 1, got 0
+
+[restored] tree back to committed state
+SUITE PASSED  <-- expected
+git status --porcelain:
+(nothing listed above = worktree clean)
+============================================================================
