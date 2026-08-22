@@ -1468,7 +1468,8 @@ EOF
   out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
 
   # fm-lock.sh's own exact success text.
-  assert_contains "$out" "lock acquired: harness pid" "fm-lock.sh's real output did not appear (composition, not reimplementation)"
+  assert_contains "$out" "lock acquired: THIS session holds the fleet lock" "fm-lock.sh's real output did not appear (composition, not reimplementation)"
+  assert_contains "$out" "HELM: THIS session holds the fleet lock" "the digest did not state the helm verdict in words"
   # fm-bootstrap.sh's own exact MISSING-tool line format.
   assert_contains "$out" "MISSING: gh-axi (install:" "fm-bootstrap.sh's real detect line did not appear verbatim"
   # fm-wake-drain.sh's real drained record (raw tab-separated queue line).
@@ -2013,7 +2014,7 @@ SH
     FM_HOME="$home" FM_ROOT_OVERRIDE="$root" PATH="$fakebin:$BASE_PATH" \
     bash -c 'export FM_FAKE_HARNESS_PID=$$; exec "$1" 8 "$2"' _ "$nest" "$SESSION_START")
 
-  assert_contains "$out" "lock acquired: harness pid" \
+  assert_contains "$out" "lock acquired: THIS session holds the fleet lock" \
     "the runtime bound's wrapper processes pushed the harness out of the bounded ancestry walk"
   assert_not_contains "$out" "READ-ONLY SESSION" \
     "a session start eight shells below its harness was wrongly refused the lock"

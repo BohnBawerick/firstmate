@@ -101,6 +101,16 @@ The alarm cannot repeat during that failure episode, and a later unhealthy stop 
 A positively verified healthy watcher clears the failure notice, alarm, and block budget for a future independent episode.
 A Claude failure notice describes the automatic mechanism as broken and does not direct a routine manual background arm.
 
+### Not this session
+
+A stand-down is not a failure, and the guard separates the two before any blocking path in any mode.
+When another live session holds this home's fleet lock, the Stop auto-arm correctly stands down at its ownership gate and writes no epoch, no failure notice, and no alarm, so the bounded progression above cannot advance and the attended fail-open it ends in is unreachable by construction.
+A session that can never legitimately arm was therefore blocked on every turn, with `state/.turnend-claude-blocks` pinned at its first count while the guard waited for a failure record a clean stand-down never writes.
+Supervision belongs to the session that holds the lock, so there is nothing here to arm or repair.
+The guard states the decline once per (session, lock owner) pair, recorded in `state/.turnend-unowned-notice`, and stands down on every later turn; a change of either half reports again.
+The decline spends none of the auto-arm block budget, which stays reserved for a genuinely broken arm in a home this session actually holds.
+[`watcher-continuity.md`](watcher-continuity.md#session-lock-ownership) owns the ownership verdict itself.
+
 OpenCode, Pi, and pi-signed expose passive callbacks for this purpose.
 Their adapters fail open at the hook boundary to protect the user session but schedule one bounded follow-up when the predicate blocks.
 The generated prompts use the canonical `turn-end-guard` kind after the U+2063 `FIRSTMATE_OP: ` prefix, so Ahoy does not treat them as captain messages.

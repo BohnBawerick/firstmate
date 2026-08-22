@@ -10,11 +10,18 @@
 #   - Scope: only a genuine primary checkout (plain checkout or validly marked
 #     secondmate home) with AGENTS.md, bin/, and the effective state dir - the
 #     exact fm-turnend-guard.sh scope. Child crew/scout worktrees stay inert.
-#   - Identity: only when THIS session's harness ancestor holds state/.lock.
+#   - Identity: only when THIS session holds state/.lock, by the one ownership
+#     contract in bin/fm-session-lock-lib.sh - which recognizes a background
+#     continuation of the lock-holding conversation as that same session, so a
+#     forked continuation arms the watcher instead of standing down blind.
 #     When an existing numeric owner fails the shared harness-liveness predicate,
 #     the hook delegates guarded recovery to bin/fm-lock.sh and then re-verifies
 #     ownership. A live owner, missing lock, malformed lock, or unresolved
-#     ancestry remains inert, so a competing session never arms or rewakes.
+#     identity remains inert, so a competing session never arms or rewakes.
+#     Standing down there is a DECLINE, not a failure: it deliberately writes no
+#     epoch and no failure record, and bin/fm-turnend-guard.sh owns telling those
+#     two apart so a session that can never legitimately arm is not blocked
+#     forever waiting for a failure record this path never writes.
 #   - AFK: while state/.afk exists the away daemon owns the watcher and triage;
 #     this hook exits 0 and NEVER rewakes the primary (checked again at
 #     translation time so a mid-cycle AFK transition is honored).

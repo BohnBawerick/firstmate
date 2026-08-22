@@ -31,6 +31,12 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 . "$SCRIPT_DIR/fm-pr-lib.sh"
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
+# Fail closed before any fleet mutation: AGENTS.md section 3 makes a session that
+# could not verify lock ownership read-only, and bin/fm-session-lock-lib.sh is
+# the single owner of that verdict and its refusal.
+# shellcheck source=bin/fm-session-lock-lib.sh
+. "$SCRIPT_DIR/fm-session-lock-lib.sh"
+fm_require_session_lock "$STATE" "promote a scout task" || exit 1
 
 MODE=
 YOLO=

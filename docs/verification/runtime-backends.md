@@ -207,6 +207,35 @@ Cursor is deliberately outside this cursor-anchored empty-composer matrix becaus
 
 `zellij action dump-screen --pane-id <id> --ansi` was verified at zellij 0.44.0 to preserve ANSI styling (real Claude Code rendered inside a zellij pane dumped `ESC[m` `❯` U+00A0 for its idle composer row), which is the capability the zellij composer classifier reads.
 
+## Session identity
+
+`bin/fm-session-lock-lib.sh` decides which session holds a home from two values Claude Code exports into every tool shell and every hook process: `CLAUDE_PID` (that session's own harness process) and `CLAUDE_CODE_SESSION_ID` (the conversation).
+Both are vendor-emitted, so the contract is proven against the real harness rather than against a fixture.
+Verified on 2026-08-22 against Claude Code 2.1.239 on Linux (WSL2), in an isolated lab project whose only hooks were the identity probe, with one no-tool prompt and no fleet home touched.
+
+```sh
+FM_SESSION_IDENTITY_LIVE=1 tests/fm-session-identity-live-e2e.test.sh
+```
+
+Observed output (the recorded ancestry pid is redacted here; it is a live process id):
+
+```text
+# claude: 2.1.239 (Claude Code)
+ok - the real harness declares one session identity to every hook process
+# ancestry walk from the hook process resolved: <pid>
+ok - the declared identity is live, and the shared resolver prefers it over the ancestry walk
+ok - a continuation of the real conversation inherits the helm, and a stranger does not
+# fm-session-identity-live-e2e: verified against claude 2.1.239 (Claude Code)
+```
+
+The session's start hook and its stop hook declared the same `CLAUDE_PID` and the same `CLAUDE_CODE_SESSION_ID`, that pid was a live process the shared harness predicate accepted, and `fm_session_lock_self_pid` preferred it over the ancestry walk.
+The run also reproduced the split this contract exists to close: from inside the lab session's own hook, the ancestry walk resolved a pid belonging to an unrelated live Claude Code session further up the process tree, while the declared identity named the lab session itself.
+That is why the declared identity is consulted first and the ancestry walk is the last tier rather than the only one.
+A process holding only the recorded conversation id - the background-continuation shape, outside the lock owner's process tree - was granted the helm, and the same process with a different conversation id was refused it.
+This guard is the refresh command after a Claude Code upgrade; rerun it and update the version above rather than trusting this record across releases.
+No other verified harness declares a session identity, so every one of them still resolves through the ancestry walk alone; that tier is pinned by the portable regressions in `tests/fm-session-lock-ancestry.test.sh` and `tests/fm-session-lock-ownership.test.sh`.
+`docs/watcher-continuity.md` owns the ownership contract itself.
+
 ## Herdr
 
 The compatibility floor is protocol 14.

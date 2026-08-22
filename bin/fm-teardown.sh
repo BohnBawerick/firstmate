@@ -169,6 +169,13 @@ SUB_HOME_PARENT_MARKER=".fm-secondmate-parent"
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 # shellcheck source=bin/fm-nm-run-lib.sh
 . "$SCRIPT_DIR/fm-nm-run-lib.sh"
+# Fail closed before any fleet mutation: AGENTS.md section 3 makes a session that
+# could not verify lock ownership read-only, and bin/fm-session-lock-lib.sh is
+# the single owner of that verdict and its refusal.
+# shellcheck source=bin/fm-session-lock-lib.sh
+. "$SCRIPT_DIR/fm-session-lock-lib.sh"
+fm_require_session_lock "$STATE" "tear a task down" || exit 1
+
 if [ "$#" -lt 1 ] || ! fm_task_id_path_safe "$1"; then
   echo "error: invalid teardown request" >&2
   exit 2

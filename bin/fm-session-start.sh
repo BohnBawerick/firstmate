@@ -625,6 +625,15 @@ subsection "LOCK"
 LOCK_OUT=$("$SCRIPT_DIR/fm-lock.sh" 2>&1)
 LOCK_RC=$?
 printf '%s\n' "$LOCK_OUT"
+# State the helm verdict in words, independently of the acquisition line above.
+# A recorded pid is not something a reading agent should have to compare by
+# hand, and reading someone else's pid as confirmation of ownership is exactly
+# what let a non-owning session mutate this home (docs/watcher-continuity.md).
+if fm_session_lock_owned_by_self "$STATE"; then
+  printf 'HELM: THIS session holds the fleet lock - it may change fleet state.\n'
+else
+  printf 'HELM: ANOTHER session holds the fleet lock - this session is READ-ONLY.\n'
+fi
 READ_ONLY=0
 if [ "$LOCK_RC" -ne 0 ]; then
   READ_ONLY=1
@@ -642,7 +651,10 @@ if [ "$LOCK_RC" -ne 0 ]; then
     printf '%s\n' "$BAR"
   }
 fi
-REBUILDING_SESSION_PID=$(fm_harness_ancestry_pid 2>/dev/null || true)
+# The same identity the lock RECORDS, so the baseline written for a lock owner is
+# compared against that owner rather than against a second answer to the same
+# question (bin/fm-session-lock-lib.sh).
+REBUILDING_SESSION_PID=$(fm_session_lock_self_pid 2>/dev/null || true)
 print_agents_refresh_if_required "$REBUILDING_SESSION_PID"
 
 if [ "$READ_ONLY" -eq 0 ]; then

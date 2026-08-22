@@ -287,6 +287,13 @@ SUB_HOME_MARKER=".fm-secondmate-home"
 . "$SCRIPT_DIR/fm-remote-readiness-lib.sh"
 # shellcheck source=bin/fm-self-repo-lib.sh
 . "$SCRIPT_DIR/fm-self-repo-lib.sh"
+# Fail closed before any fleet mutation: AGENTS.md section 3 makes a session that
+# could not verify lock ownership read-only, and bin/fm-session-lock-lib.sh is
+# the single owner of that verdict and its refusal.
+# shellcheck source=bin/fm-session-lock-lib.sh
+. "$SCRIPT_DIR/fm-session-lock-lib.sh"
+fm_require_session_lock "$STATE" "spawn a worker" || exit 1
+
 # Fail closed before any fleet mutation: a no-mistakes gate agent must never spawn
 # a direct report (see bin/fm-gate-refuse-lib.sh).
 fm_refuse_if_gate_agent

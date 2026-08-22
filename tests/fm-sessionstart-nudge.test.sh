@@ -213,7 +213,7 @@ test_run_startup_runs_the_full_digest() {
   out=$(run_hook "$root" --source startup </dev/null) || status=$?
   expect_code 0 "$status" "run wrapper startup"
   assert_contains "$out" "$FULL_BANNER$root" "startup did not run the full digest"
-  assert_contains "$out" "lock acquired: harness pid" \
+  assert_contains "$out" "lock acquired: THIS session holds the fleet lock" \
     "the portable startup fixture did not supply a real harness process"
   assert_not_contains "$out" "$REEMIT_BANNER" "startup was misrouted to a context re-emit"
   assert_not_contains "$out" "FIRSTMATE_OP" "a run-tier open also emitted the nudge instruction"

@@ -34,6 +34,15 @@ FM_TEST_LIB_SOURCED=1
 # strips this to verify real refusal.
 export FM_GATE_REFUSE_BYPASS=1
 
+# Drop the harness-declared session identity for the whole suite
+# (bin/fm-session-lock-lib.sh). A suite run from inside a real Claude Code
+# session inherits that session's CLAUDE_PID and CLAUDE_CODE_SESSION_ID, which
+# would make every fixture home record the DEVELOPER's live session as its lock
+# owner - so ownership assertions would pass vacuously on the host and fail in
+# CI, where neither variable exists. Tests that exercise the declared identity
+# set these deliberately, per case.
+unset CLAUDE_PID CLAUDE_CODE_SESSION_ID
+
 # Resolve the repo root from this library's own location. Consumed by sourcing
 # test files, not by this library, so it reads as "unused" here.
 # shellcheck disable=SC2034

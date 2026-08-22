@@ -21,6 +21,26 @@ The Claude turn-end guard owns the monotonic failure progression, one-time atten
 While supervision is still needed and away mode remains inactive, an actionable close wakes the idle session through exit 2.
 While away mode (`state/.afk`) is active, the sub-supervisor daemon owns fleet supervision and triage, and primary watcher adapters stand down so wakes and arm processes are not duplicated.
 
+## Session-lock ownership
+
+`bin/fm-session-lock-lib.sh` is the single owner of "does this process belong to the session that holds this home's fleet lock", and of the refusal a session that does not hold it prints.
+
+Identity is answered in three tiers, and the first that applies wins.
+`CLAUDE_PID` names the Claude Code session process; `CLAUDE_CODE_SESSION_ID` names the conversation; the harness-ancestry walk answers for every harness that publishes neither.
+The two declared values win because a harness exports them identically into every tool shell and every hook process of a session, while the ancestry walk answers a slightly different question at each call site: it climbs to the first harness match and then stops at the first non-harness ancestor, so how deep the caller sits inside the harness's own worker chain decides which pid it reports.
+A Claude Code background continuation runs in a detached process tree, where that walk from a hook stops short of the session that took the helm while the walk from an ordinary tool shell can climb past it into an unrelated harness further up the real tree.
+`bin/fm-lock.sh` records the conversation in `state/.lock.session` beside the pid in `state/.lock`, replacing or removing it at every acquisition, so a continuation of the lock-holding conversation inherits the helm and an unrelated session never can.
+
+That one verdict now decides both halves of the contract, so no path can enforce a different answer than another.
+`bin/fm-claude-stop-autoarm.sh` and `bin/fm-turnend-guard-cursor.sh` use it to decide whether they may arm, and every fleet-mutation entry point - `bin/fm-wake-drain.sh`, `bin/fm-send.sh`, `bin/fm-spawn.sh`, `bin/fm-teardown.sh`, `bin/fm-promote.sh`, `bin/fm-merge-local.sh`, `bin/fm-pr-merge.sh`, and `bin/fm-control.sh` - calls `fm_require_session_lock` before argument validation, so AGENTS.md section 3's read-only rule is enforced where the mutation happens rather than trusted to a banner the session may never have read.
+The refusal names the holder and what to do instead.
+
+It refuses only on the full conjunction: a live lock owner, that owner not being this session, and this caller belonging to a harness session of its own.
+A missing, stale, or malformed lock is no competing session, and `bin/fm-lock.sh` already turns those into a fresh acquisition.
+A caller outside any harness session is no competing session either - that is the parent home reaching into a secondmate's endpoint over ssh, a detached job, or CI, none of which can produce the two-agents-one-home split.
+
+`bin/fm-session-start.sh`'s LOCK section states the verdict in words on its own `HELM:` line, independently of the acquisition line, so a reading agent never has to compare pids by hand.
+
 ## Actionable wake ordering
 
 After an actionable Pi or OpenCode child close, the adapter starts and verifies one singleton successor before it delivers the original wake.
@@ -84,6 +104,8 @@ The same suite covers away-mode wake suppression and arm inhibition, ordinary sa
 `tests/fm-claude-stop-autoarm.test.sh` covers the auto-arm's scope, stale and live session owners, unchanged AFK and need boundaries, single-flight, bounded failure retries, benign live-watcher cycle ends, one-notice failure episodes, and exit-2 translation.
 `FM_CLAUDE_LIVE_E2E=1 tests/fm-claude-stop-autoarm-live-e2e.test.sh` starts with the reproduced stale-lock state, runs session start first, completes two tokenless cycles, and checks the competing-live-owner negative control.
 `tests/fm-turnend-guard.test.sh` covers the cooperative `--claude` guard, including monotonic failed-epoch progression, the integrated bounded fail-open, post-alarm continuation suppression, and positive recovery reset.
+`tests/fm-session-lock-ownership.test.sh` drives real competing live processes against real entry points: every mutating path refusing a non-owning session, the holder and a background continuation of its conversation passing untouched, an unrelated conversation and a non-owning session being refused, a caller outside any harness session not being treated as a competitor, the lock path's ownership wording, the auto-arm's silent record-free decline, and the turn-end guard reporting that decline once before standing down.
+That suite runs with no harness at all, so the two declared values it drives are pinned by `tests/fm-session-identity-live-e2e.test.sh`, the opt-in guard that proves them against the real installed Claude Code; [`verification/runtime-backends.md`](verification/runtime-backends.md#session-identity) carries its dated result and names it as the command that refreshes it.
 
 ## Active limits and verification
 

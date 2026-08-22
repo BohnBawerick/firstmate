@@ -71,6 +71,18 @@
 #      (default 3) consecutive blocks per session - safely below Claude Code's
 #      hard 8-consecutive-block override - then allow one loud attended
 #      fail-open only for an already verified failure episode.
+#
+# Not-this-session stand-down: an auto-arm that DECLINES is not an auto-arm that
+# FAILED. When another live session holds this home's fleet lock, the auto-arm
+# correctly stands down at its ownership gate and writes no epoch and no failure
+# record at all - so the bounded progression above can never advance, and the
+# attended fail-open it ends in is unreachable by construction. That is a stable
+# condition, not a recovery in progress: supervision belongs to the session that
+# holds the lock, and there is nothing here to arm or repair. So this guard
+# checks ownership BEFORE any blocking path, states the decline once per
+# (session, lock owner) pair, and then stops blocking. state/.turnend-unowned-notice
+# records that pair; it is a one-line notice, not fleet state, and a change of
+# either half correctly reports again.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -103,6 +115,8 @@ done
 . "$SCRIPT_DIR/fm-primary-scope-lib.sh"
 # shellcheck source=bin/fm-hook-host-lib.sh
 . "$SCRIPT_DIR/fm-hook-host-lib.sh"
+# shellcheck source=bin/fm-session-lock-lib.sh
+. "$SCRIPT_DIR/fm-session-lock-lib.sh"
 
 # Read the whole turn-end hook payload once; never block on unreadable/absent
 # stdin.
@@ -184,6 +198,32 @@ if fm_turnend_supervision_healthy "$STATE" "$WATCH" "$GRACE" "$FM_HOME"; then
   fm_failure_episode_reset "$STATE" && exit 0
   exit 2
 fi
+
+# Supervision is off AND this session does not hold the home: report the decline
+# once for this (session, lock owner) pair, then stand down for good. Blocking
+# again would nag a session that has no authority to fix it, forever.
+UNOWNED_NOTICE="$STATE/.turnend-unowned-notice"
+decline_stop() {
+  local owner want have rule
+  owner=$(fm_session_lock_pid "$STATE" 2>/dev/null || printf 'unknown')
+  want="session=$SESSION_ID owner=$owner"
+  have=$(cat "$UNOWNED_NOTICE" 2>/dev/null || true)
+  [ "$have" = "$want" ] && exit 0
+  printf '%s\n' "$want" > "$UNOWNED_NOTICE" 2>/dev/null || true
+  rule='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+  {
+    printf '●%s\n' "$rule"
+    printf '●  SUPERVISION IS OFF, AND THIS SESSION CANNOT TURN IT ON\n'
+    printf '●  Another live firstmate session (harness pid %s) holds this home fleet lock,\n' "$owner"
+    printf '●  so supervision is that session job and nothing here can arm or repair it.\n'
+    printf '●  This session is READ-ONLY: do not spawn, steer, merge, or otherwise change\n'
+    printf '●  fleet state from it. End the other session, or continue the work there.\n'
+    printf '●  Reported once - later turns will not block on this again.\n'
+    printf '●%s\n' "$rule"
+  } >&2
+  exit 2
+}
+fm_session_lock_held_by_other "$STATE" && decline_stop
 
 block_stop() {
   local afk x_mode reason rule cause tick
