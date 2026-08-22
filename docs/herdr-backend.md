@@ -228,8 +228,9 @@ The composer verdict itself is deliberately unchanged: a right-aligned status to
 The poll density bounds the residual possibility of an extremely fast complete turn; a missed native transition falls through to the composer verdict rather than reporting a false swallow.
 
 `pane read --lines N` can return empty output when N is below the viewport height.
-The capture owner requests at least 200 lines from Herdr and trims locally to the caller's bound.
-This generous floor is required for small composer and peek reads.
+Both capture owners therefore request at least 200 lines from Herdr.
+The plain scrollback capture then trims locally to the caller's bound, which is what small peek reads need.
+The composer's `visible` ANSI capture is deliberately not trimmed: the viewport is already the bound, and a further tail can clip the composer's opening rule (see "Composer and injection safety").
 
 Herdr's native agent state can read idle while a harness waits on its own long foreground tool.
 The shared crew-state path therefore accepts a native `busy` as evidence of activity but never a native `idle` as evidence that a worker has stopped; the task's own semantic busy state (`bin/fm-busy-lib.sh`) decides that.
@@ -238,7 +239,8 @@ A human-blocked permission dialog has no busy banner and still surfaces.
 ## Composer and injection safety
 
 Herdr has no direct cursor-row primitive.
-The adapter is a thin capture: it hands a bounded ANSI tail plus Herdr's capability facts to the fleet-wide classifier in `bin/fm-composer-lib.sh`, which owns every shape - bordered boxes, bare agent-glyph rows (including muse's `⟩`, which the adapter's retired local pattern silently omitted), opencode's left bar, and the Pi separator region this adapter pioneered, admitted only when native `agent get` identity is exactly Pi and state is idle, done, or blocked.
+The adapter is a thin capture: composer classification reads the live `visible` viewport as a styled ANSI snapshot, then hands that plus Herdr's capability facts to the fleet-wide classifier in `bin/fm-composer-lib.sh`, which owns every shape - bordered boxes, bare agent-glyph rows (including muse's `⟩`, which the adapter's retired local pattern silently omitted), opencode's left bar, and the Pi separator region this adapter pioneered, admitted only when native `agent get` identity is exactly Pi and state is idle, done, or blocked.
+`recent` scrollback is the wrong composer source: a short tail of it can drop Claude's opening `─` while keeping the idle `❯` and closing rule, which used to classify unknown for an entire away run.
 A working Pi, pending middle row, missing identity, incomplete separator pair, or over-tall candidate remains unknown or pending.
 Identity stays a lazy second read, consulted only when a separator pair could change the verdict.
 
@@ -247,8 +249,13 @@ ANSI capture preserves de-emphasized placeholder style.
 If the ANSI capture ever fails, the plain fallback declares itself unstyled and the classifier degrades a glyph row carrying trailing text to `unknown` instead of misreading ghost suggestions as typed input, which safely defers injection and eventually raises the wedge alarm.
 
 A bare shell prompt is never an empty agent composer.
-Away-mode injection proceeds only on an affirmative `empty` result, never on unknown.
-This prevents a dead agent pane from receiving and possibly executing an escalation as shell input.
+Away-mode injection proceeds on an affirmative `empty` result.
+On herdr it also proceeds on `unknown` when `fm_backend_herdr_composer_unknown_deliverable` proves all of: the styled ANSI re-read succeeded, the verdict is still unknown rather than pending, the screen carries a genuine agent composer container, and native agent-state is idle.
+A dead login shell is not a container, so `agent_status=done` mapping to idle cannot make it an injection target; a modal, an unidentified row, and a read that fell back to the unstyled capture are all refused for the same reason.
+A Pi separator pair counts as a container only when the native identity is exactly Pi and the pair is inside `FM_COMPOSER_PI_MAX_LINES`, because the shared verdict rejects an over-tall or non-Pi pair without reading its content rows, and an unread region may hold the captain's unsent draft.
+Both refusals are the same rule: `unknown` may only ever mean "proven container, unjudgeable styling", never "proven container, unread text".
+The unstyled fallback matters here for the same reason: it spells real typed text `unknown` instead of `pending`, so accepting it would merge the digest into the captain's half-typed line.
+`fm_backend_herdr_composer_read` is the single capture-classify-resolve-identity body behind both `fm_backend_herdr_composer_state` and this override, so the override's styled and container rules cannot drift from the verdict they qualify.
 
 The current operational envelope starts with U+2063 and `FIRSTMATE_OP: `.
 The separate routed-request carrier uses `[fm-from-firstmate]` plus U+2063.

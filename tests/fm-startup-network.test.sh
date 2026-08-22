@@ -461,7 +461,7 @@ EOF
     FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$root/bin/fm-lock.sh" 2>&1) \
     || fail "lock takeover still failed after the sweep released its lease"
   new_owner=$(cat "$home/state/.lock")
-  assert_contains "$out" "lock acquired: harness pid $new_owner" \
+  assert_contains "$out" "lock acquired: THIS session holds the fleet lock (harness pid $new_owner)" \
     "the fleet lock did not record the harness owner reported by acquisition"
   [ "$new_owner" != "$$" ] || fail "the prior harness still owned the lock after takeover"
   pass "fm-startup-network: fleet-lock takeover cannot overlap a mutating sweep"

@@ -1968,12 +1968,57 @@ test_inject_msg_defers_on_dead_shell_unknown() {
     fm_backend_target_exists() { return 0; }
     pane_is_busy() { return 1; }
     fm_backend_composer_state() { printf 'unknown'; }
+    fm_backend_composer_unknown_deliverable() { return 1; }
     fm_backend_send_text_submit() { fail "send_text_submit must NOT run when the composer is a dead shell (unknown)"; }
     if FM_SUPERVISOR_BACKEND=herdr FM_SUPERVISOR_TARGET="default:w1:p2" inject_msg "hello" "$state"; then
       fail "inject_msg should defer (never inject) when the composer reads unknown (dead shell / unreadable)"
     fi
   ) || fail "dead-shell inject_msg subshell failed"
   pass "inject_msg: defers on a dead-shell/unreadable composer (unknown), never typing the escalation into a shell"
+}
+
+test_inject_msg_herdr_unknown_native_idle_delivers() {
+  local dir state
+  dir=$(make_supercase inject-herdr-unknown-idle)
+  state="$dir/state"
+  afk_enter "$state"
+  (
+    fm_backend_target_exists() { return 0; }
+    pane_is_busy() { return 1; }
+    fm_backend_composer_state() { printf 'unknown'; }
+    fm_backend_composer_unknown_deliverable() {
+      [ "$1" = herdr ] || fail "unknown_deliverable backend '$1'"
+      return 0
+    }
+    fm_backend_send_text_submit() {
+      [ "$1" = herdr ] || fail "send_text_submit backend '$1'"
+      printf 'empty'
+    }
+    FM_SUPERVISOR_BACKEND=herdr FM_SUPERVISOR_TARGET="default:w1:p2" inject_msg "hello" "$state" \
+      || fail "inject_msg should deliver when herdr native state is idle even if the composer reads unknown"
+  ) || fail "herdr unknown+idle inject_msg subshell failed"
+  pass "inject_msg: herdr native idle delivers through an unknown composer (clipped idle Claude)"
+}
+
+test_max_defer_herdr_unknown_native_idle_flushes() {
+  local dir state
+  dir=$(make_supercase maxdefer-herdr-unknown-idle)
+  state="$dir/state"
+  escalate_add "$state" "done: PR https://x/y/pull/9"
+  echo $(( $(date +%s) - 600 )) > "$state/.subsuper-escalations.since"
+  afk_enter "$state"
+  (
+    fm_backend_target_exists() { return 0; }
+    pane_is_busy() { return 1; }
+    fm_backend_composer_state() { printf 'unknown'; }
+    fm_backend_composer_unknown_deliverable() { return 0; }
+    fm_backend_send_text_submit() { printf 'empty'; }
+    FM_SUPERVISOR_BACKEND=herdr FM_SUPERVISOR_TARGET="default:w1:p2" \
+      FM_ESCALATE_BATCH_SECS=99999 FM_MAX_DEFER_SECS=60 housekeeping "$state"
+  ) || fail "max-defer herdr unknown+idle housekeeping subshell failed"
+  [ ! -s "$state/.subsuper-escalations" ] || fail "buffer not cleared after herdr native-idle max-defer recovery"
+  [ ! -e "$state/.subsuper-inject-wedged" ] || fail "wedge alarm left behind after herdr native-idle max-defer recovery"
+  pass "max-defer: herdr native idle recovers an unknown composer instead of only alarming"
 }
 
 test_inject_msg_defers_on_unrecognized_composer_state() {
@@ -2095,4 +2140,6 @@ test_inject_msg_herdr_composer_guard_defers
 test_inject_msg_herdr_pane_gone_defers
 test_inject_msg_herdr_submits_through_backend_dispatch
 test_inject_msg_defers_on_dead_shell_unknown
+test_inject_msg_herdr_unknown_native_idle_delivers
+test_max_defer_herdr_unknown_native_idle_flushes
 test_inject_msg_defers_on_unrecognized_composer_state

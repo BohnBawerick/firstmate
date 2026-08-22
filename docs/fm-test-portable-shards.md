@@ -64,26 +64,35 @@ Each shard is still strictly serial in itself, and separate runners mean no two 
 `.github/workflows/ci.yml` derives the same `n` from `strategy.job-total` rather than a literal, so changing the shard count in either file without the other fails the lane loudly instead of leaving part of the required suite unrun.
 
 Assignment is longest-processing-time bin packing over per-script duration hints embedded in `bin/fm-test-run.sh`.
-The hints came from that run's `fm-test-timing-portable-serial` artifact on 2026-08-02, where the lane ran 69 scripts in 1143762 ms of serial work.
+The hints came from the four `Behavior portable serial` shard logs of CI run [32555114248](https://github.com/BohnBawerick/firstmate/actions/runs/32555114248) on 2026-08-22, where the lane holds 123 scripts and about 2529858 ms of serial work.
+Three short scripts had no measured value in that run because shard 4 was cancelled before reaching them; they keep their earlier hints.
 A script with no hint gets the conservative `PORTABLE_SERIAL_DEFAULT_WEIGHT_MS` default.
 Hints only affect balance: the coverage guard keeps the partition complete and disjoint whatever they say, so a stale hint costs a slower shard rather than lost coverage.
+Let the hints go stale for long enough and that slower shard hits the job timeout, which is what happened on run 32555114248: 46 unhinted scripts pushed shard 4 to 904 s against a 445 s shard 2.
 
 | Lane | Script count | Estimated duration |
 |---|---:|---:|
-| `portable-serial-1of4` | 15 | 285945 ms (~285.9 s) |
-| `portable-serial-2of4` | 18 | 285944 ms (~285.9 s) |
-| `portable-serial-3of4` | 17 | 285929 ms (~285.9 s) |
-| `portable-serial-4of4` | 19 | 285944 ms (~285.9 s) |
-| imbalance | | 16 ms |
+| `portable-serial-1of4` | 29 | 632451 ms (~632.5 s) |
+| `portable-serial-2of4` | 30 | 632453 ms (~632.5 s) |
+| `portable-serial-3of4` | 33 | 632452 ms (~632.5 s) |
+| `portable-serial-4of4` | 31 | 632502 ms (~632.5 s) |
+| imbalance | | 51 ms |
 
-The single longest script, `tests/fm-pr-check-security.test.sh` at 199573 ms, is the floor for any shard count.
+The single longest script, `tests/fm-pr-check-security.test.sh` at 236787 ms, is the floor for any shard count.
 
 Refresh the hints by downloading the per-shard timing artifacts from a green CI run, replacing the `portable_serial_weight_hints` table in `bin/fm-test-run.sh` with the measured `path`/`duration_ms` pairs, and updating the table above:
 
 ```sh
-gh run download <run-id> -R kunchenguid/firstmate --pattern 'fm-test-timing-portable-serial-*' -D /tmp/fm-serial
+gh run download <run-id> --pattern 'fm-test-timing-portable-serial-*' -D /tmp/fm-serial
 jq -r '.scripts[] | [.path, .duration_ms] | @tsv' /tmp/fm-serial/*.json | LC_ALL=C sort
 bin/fm-test-run.sh --check-coverage
+```
+
+A shard that hit its timeout uploads no artifact.
+Read its `FM_TEST_END` lines out of the job log instead, and keep the earlier hint for any script the cancelled shard never reached:
+
+```sh
+gh run view --job <job-id> --log | grep -o 'FM_TEST_END.*'
 ```
 
 ## Coverage guard
@@ -108,7 +117,7 @@ Portable shards, each portable serial shard, and the Herdr lane upload runner-ge
 | Lane | Bound | Rationale |
 |---|---|---|
 | portable parallel 1/2 | job `timeout-minutes: 10` | The measured shard sums are about three minutes and the timeout is a hang tripwire. |
-| portable serial 1-4 | job `timeout-minutes: 15` | Each balanced shard is about five minutes, leaving roughly 3x hang-tripwire margin. |
+| portable serial 1-4 | job `timeout-minutes: 25` | Each balanced shard is about 10.5 minutes of script time plus about 2 minutes of setup, leaving roughly 2x hang-tripwire margin. |
 | Herdr | family-run step `timeout-minutes: 20`; job `timeout-minutes: 75` backstop | Healthy runs finish around 7 minutes, so the step bound is the hang tripwire (cleanup and timing artifacts still upload) while the job cap stays a last-resort backstop. |
 
 Timeouts are hang tripwires rather than expected healthy durations.

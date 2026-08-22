@@ -2120,7 +2120,11 @@ SH
       "$ROOT/bin/fm-config-push.sh" > "$first_out" 2>&1
   ) &
   first_pid=$!
-  for _ in $(seq 1 100); do
+  # The first push has to discover worktrees and publish a generation before it
+  # reaches send-keys, so this budget has to cover process startup on a loaded
+  # runner, not just the delivery itself. The loop exits on the marker, so a
+  # generous bound costs nothing on a fast machine.
+  for _ in $(seq 1 1500); do
     [ -e "$entered" ] && break
     sleep 0.02
   done

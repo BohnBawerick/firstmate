@@ -961,6 +961,97 @@ test_task_id_reuse_refused_and_preserves_retained_report() {
   pass "fm-brief: task id reuse is refused, reports directory contents, gives a way forward, and preserves retained artifacts"
 }
 
+# --- quality posture --------------------------------------------------------
+
+# The load-bearing case for the quality wiring: a ship brief scaffolded WITHOUT
+# --quality must be the brief this scaffold produced before --quality existed.
+# Proven by executing the real scaffold twice - once with no flag, once with the
+# explicit default - and comparing the generated files byte for byte, plus the
+# two negative assertions that say what "unchanged" means here: no contract line
+# and no quality-gate section reach a standard worker.
+test_standard_quality_leaves_the_ship_brief_untouched() {
+  local home brief_default brief_explicit mode n=0
+  home="$TMP_ROOT/quality-standard-home"
+  mkdir -p "$home/data"
+  for mode in no-mistakes direct-PR local-only; do
+    n=$((n + 1))
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "brief-qstd-d$n" some-proj --mode "$mode" >/dev/null 2>&1 \
+      || fail "$mode: a ship brief with no --quality should scaffold"
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "brief-qexp-d$n" some-proj --mode "$mode" --quality standard >/dev/null 2>&1 \
+      || fail "$mode: an explicit --quality standard brief should scaffold"
+    brief_default="$home/data/brief-qstd-d$n/brief.md"
+    brief_explicit="$home/data/brief-qexp-d$n/brief.md"
+    # The task id is the only text that legitimately differs between the two.
+    sed "s/brief-qexp-d$n/brief-qstd-d$n/g" "$brief_explicit" > "$home/normalized-d$n"
+    cmp -s "$brief_default" "$home/normalized-d$n" \
+      || fail "$mode: --quality standard changed the generated brief (diff: $(diff "$brief_default" "$home/normalized-d$n" | head -5))"
+    assert_no_grep "Quality contract:" "$brief_default" \
+      "$mode: a standard brief recorded a quality contract line"
+    assert_no_grep "# Quality gate" "$brief_default" \
+      "$mode: a standard brief carried the hardened quality-gate section"
+    grep -qx "Delivery contract: mode=$mode" "$brief_default" \
+      || fail "$mode: the delivery contract line did not survive the quality wiring"
+  done
+  pass "fm-brief.sh: a standard ship brief is byte-identical with and without --quality, and carries no quality text"
+}
+
+# A hardened brief must tell the worker the four things the loop depends on, and
+# must record the machine-readable sibling line bin/fm-spawn.sh checks. Each fact
+# is asserted on the generated file, not on the scaffold's source.
+test_hardened_brief_records_the_contract_and_the_gate() {
+  local home brief mode n=0
+  home="$TMP_ROOT/quality-hardened-home"
+  mkdir -p "$home/data"
+  for mode in no-mistakes direct-PR local-only; do
+    n=$((n + 1))
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "brief-qhard-e$n" some-proj --mode "$mode" --quality hardened >/dev/null 2>&1 \
+      || fail "$mode: a hardened ship brief should scaffold"
+    brief="$home/data/brief-qhard-e$n/brief.md"
+    grep -qx "Delivery contract: mode=$mode" "$brief" \
+      || fail "$mode: the hardened brief lost its delivery contract line"
+    grep -qx "Quality contract: quality=hardened" "$brief" \
+      || fail "$mode: the hardened brief did not record its machine-readable quality contract line"
+    assert_grep "# Quality gate" "$brief" "$mode: the hardened brief carried no quality-gate section"
+    assert_grep 'base_sha=' "$brief" "$mode: the hardened brief did not name the fixed base commit"
+    # shellcheck disable=SC2016 # A literal backticked phrase from the brief, matched fixed-string.
+    assert_grep 'never against `HEAD~1`' "$brief" "$mode: the hardened brief did not warn off HEAD~1"
+    assert_grep 'clean loop first, then the harden loop' "$brief" "$mode: the hardened brief did not order the two loops"
+    assert_grep 'before you start on that definition of done' "$brief" "$mode: the hardened brief did not put the loops before the definition of done"
+    assert_grep 'fm-quality.sh' "$brief" "$mode: the hardened brief did not name the script that drives the loop"
+    assert_grep 'Do not hand-roll either loop' "$brief" "$mode: the hardened brief did not forbid hand-rolling the loop"
+    assert_grep 'real product defect' "$brief" "$mode: the hardened brief did not say to report a defect rather than test around it"
+    assert_no_grep "EOF" "$brief" "$mode: the hardened brief leaked a heredoc EOF marker"
+    assert_grep "{TASK}" "$brief" "$mode: the hardened brief lost the {TASK} placeholder"
+  done
+  pass "fm-brief.sh: a hardened ship brief records the quality contract line and the short quality-gate section"
+}
+
+# --quality has a safe default, so it is optional - but a typo must stop the
+# scaffold rather than quietly producing a standard brief for a task firstmate
+# resolved as hardened, and a scout, dreamer, or charter must refuse it outright
+# rather than accepting and discarding it.
+test_quality_is_closed_set_and_refused_where_it_does_not_apply() {
+  local home out status label args expect
+  home="$TMP_ROOT/quality-refused-home"
+  mkdir -p "$home/data"
+  while IFS='|' read -r label args expect; do
+    [ -n "$label" ] || continue
+    # shellcheck disable=SC2086  # args is an intentional word-split arg list
+    out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" $args 2>&1)
+    status=$?
+    [ "$status" -ne 0 ] || fail "$label: expected a non-zero exit"
+    assert_contains "$out" "$expect" "$label: refusal did not explain why"
+  done <<'ROWS'
+unknown quality value|brief-qref-f1 some-proj --mode no-mistakes --quality nope|--quality must be one of standard, hardened
+empty quality value|brief-qref-f2 some-proj --mode no-mistakes --quality|requires a value
+quality on a scout brief|brief-qref-f3 some-proj --scout --quality hardened|--quality applies only to ship briefs
+quality on a dreamer brief|brief-qref-f4 some-proj --dreamer --quality hardened|--quality applies only to ship briefs
+quality on a secondmate charter|brief-qref-f5 --secondmate --no-projects --quality hardened|--quality applies only to ship briefs
+ROWS
+  assert_absent "$home/data/brief-qref-f1/brief.md" "a refused quality value still wrote a brief"
+  pass "fm-brief.sh: --quality is closed-set validated and refused on scout, dreamer, and charter scaffolds"
+}
+
 test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
@@ -985,3 +1076,6 @@ test_status_protocol_shows_documented_decision_key_placement
 test_scout_and_secondmate_load_decision_hold_policy
 test_scout_and_secondmate_scaffold
 test_task_id_reuse_refused_and_preserves_retained_report
+test_standard_quality_leaves_the_ship_brief_untouched
+test_hardened_brief_records_the_contract_and_the_gate
+test_quality_is_closed_set_and_refused_where_it_does_not_apply
