@@ -97,14 +97,15 @@ backend (tmux or herdr; see "Auto-discovered supervisor pane" below):
 - **Composer-state guard** - `inject_msg` reads the full `empty`/`pending`/`pending-unproven`/`unknown` verdict from `fm_backend_composer_state`.
   Affirmative `empty` injects.
   `pending` always defers (a human draft or swallowed digest).
-  `unknown` defers except on herdr when native agent-state is idle: that is positive proof the registered agent is waiting between turns, so a false-unknown idle Claude composer cannot stall away-mode overnight.
-  A dead shell has no idle agent registration and still defers.
+  `unknown` defers unless the backend can prove otherwise.
+  Only herdr can, and only when a fresh styled (ANSI) re-read still shows a genuine agent composer container AND native agent-state is idle, so a false-unknown idle Claude composer cannot stall away-mode overnight.
+  A dead shell, a modal, an unidentified or blank row, and a degraded unstyled read all have no such proof and still defer.
   Native-hosted away auto-discovers the captain pane (`HERDR_PANE_ID`); it does not need a different flush target.
   Each adapter contributes only capture and capability facts to the fleet-wide screen classifier in `bin/fm-composer-lib.sh`, which owns every shape and verdict.
   See `docs/herdr-backend.md` "Composer and injection safety" for the operator contract.
   `pane_input_pending` stays fail-closed for other callers: every result except exact `empty` is pending.
 
-A busy primary pane, pending composer, or unknown composer without herdr native idle, defers the injection; the buffered escalation survives in `state/.subsuper-escalations` and is retried on the next housekeeping tick.
+A busy primary pane, a pending composer, or an unknown composer the backend cannot prove is a live idle agent composer, defers the injection; the buffered escalation survives in `state/.subsuper-escalations` and is retried on the next housekeeping tick.
 In afk mode the composer guard is belt-and-suspenders (no human is typing), but it protects against the race window between the captain returning and their message landing, a dead shell, and the daemon's own previous injection sitting unsent.
 
 **Max-defer recovery (the daemon must never silently wedge).**
@@ -177,7 +178,7 @@ the operational prefix lets firstmate distinguish it from a real captain message
 - **Busy and composer guards on the supervisor pane** - before injecting, the daemon runs the detected-primary-harness rendered busy guard and reads `fm_backend_composer_state` directly.
   `empty` injects.
   `pending` protects half-typed or swallowed input.
-  `unknown` protects unreadable panes and dead shells, except on herdr when native agent-state is idle.
+  `unknown` protects unreadable panes, modals, and dead shells, except on herdr when a fresh styled re-read still proves a genuine agent composer container and native agent-state is idle.
   Every other result preserves the buffer for retry, so the daemon never merges its digest into the captain's half-typed line or types it into a shell.
 - The active backend passes its capture plus declarative styled, cursor, identity, and row capabilities to the shared screen classifier; all structural recognition and verdict logic remains in `bin/fm-composer-lib.sh`.
   Styled captures let that owner remove dim/faint and dark-TRUECOLOR ghost or placeholder text while shape detection uses the ANSI-stripped screen, so a dark border is not lost with ghost content.
@@ -185,6 +186,7 @@ the operational prefix lets firstmate distinguish it from a real captain message
   `FM_COMPOSER_IDLE_RE` overrides the shared idle-placeholder regex, but a match alone never bypasses the classifier's shape-specific position and ANSI de-emphasis safety gates.
   `FM_BUSY_REGEX` overrides the rendered delivery guards plus Grok's isolated task-state fallback.
   A blank or otherwise unidentified input row carries no positive container proof and defers injection, so a modal dialog or a mid-redraw pane is never an injection target.
+  The herdr unknown override does not weaken that: it requires the same positive container proof from a fresh styled capture, and refuses a bare shell row, a modal, an unidentified row, and any read that fell back to an unstyled capture.
 - **Max-defer recovery** - the daemon must never silently wedge. If anything stays
   buffered past `FM_MAX_DEFER_SECS` (default 300s), the daemon retries the flush,
   including herdr native-idle delivery when the composer is unknown. If that

@@ -819,6 +819,23 @@ fm_backend_composer_state() {  # <backend> <target> [expected-label] -> empty|pe
   esac
 }
 
+# fm_backend_composer_unknown_deliverable: may a caller act on an `unknown`
+# composer verdict for <target> on other evidence? Default NO. Only a backend
+# with a native agent-registration probe can answer yes, and only when that
+# probe plus a styled re-read prove a live agent composer is waiting between
+# turns; every other backend keeps `unknown` a hard defer. The away-mode
+# daemon uses this so a false-unknown composer cannot stall delivery for
+# hours, without any backend shape knowledge leaking into the daemon.
+fm_backend_composer_unknown_deliverable() {  # <backend> <target>
+  local backend=$1
+  shift
+  fm_backend_source "$backend" || return 1
+  case "$backend" in
+    herdr) fm_backend_herdr_composer_unknown_deliverable "$@" ;;
+    *) return 1 ;;
+  esac
+}
+
 # fm_backend_target_exists: cheap, READ-ONLY existence check - does the
 # recorded TARGET endpoint still exist on BACKEND? Never starts a server or
 # session: for herdr this deliberately queries the pane directly instead of

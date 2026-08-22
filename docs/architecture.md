@@ -102,7 +102,7 @@ Composer classification has one shared owner, `bin/fm-composer-lib.sh`: tmux, he
 `fm-spawn.sh` also routes Kimi launch readiness through that classifier instead of carrying another shape copy.
 The daemon injects into an affirmatively `empty` composer.
 Pending text always defers.
-Unknown defers except on herdr when native agent-state is idle, so a clipped idle Claude composer cannot stall away-mode overnight, while a dead shell still cannot receive an escalation.
+Unknown defers unless the backend proves the pane is a live agent composer waiting between turns; only herdr can, requiring a fresh styled re-read that still shows a genuine composer container plus native agent-state idle, so a clipped idle Claude composer cannot stall away-mode overnight while a dead shell, a modal, an unidentified row, and a degraded unstyled read still cannot receive an escalation.
 Native-hosted away auto-discovers the captain pane and does not use a second flush target.
 The current operator boundary is in [Composer and injection safety](herdr-backend.md#composer-and-injection-safety).
 Unsupported supervisor backends refuse at daemon startup.

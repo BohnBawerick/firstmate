@@ -249,8 +249,9 @@ If the ANSI capture ever fails, the plain fallback declares itself unstyled and 
 
 A bare shell prompt is never an empty agent composer.
 Away-mode injection proceeds on an affirmative `empty` result.
-On herdr it also proceeds when the composer is unknown and native agent-state is idle, because that is a registered agent waiting between turns rather than a dead shell.
-A dead shell has no idle agent registration and still cannot receive an escalation.
+On herdr it also proceeds on `unknown` when `fm_backend_herdr_composer_unknown_deliverable` proves all of: the styled ANSI re-read succeeded, the verdict is still unknown rather than pending, the screen carries a genuine agent composer container, and native agent-state is idle.
+A dead login shell is not a container, so `agent_status=done` mapping to idle cannot make it an injection target; a modal, an unidentified row, and a read that fell back to the unstyled capture are all refused for the same reason.
+The unstyled fallback matters here: it spells real typed text `unknown` instead of `pending`, so accepting it would merge the digest into the captain's half-typed line.
 
 The current operational envelope starts with U+2063 and `FIRSTMATE_OP: `.
 The separate routed-request carrier uses `[fm-from-firstmate]` plus U+2063.

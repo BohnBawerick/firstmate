@@ -1078,9 +1078,10 @@ _fm_composer_select_cursorless() {
   if [ "$FM_COMPOSER_SCAN_PI_PAIR_FOUND" = 0 ] \
      && [ "$FM_COMPOSER_SCAN_PI_LAST_SEPARATOR" -gt "$generic" ]; then
     # A lone separator below the candidate usually means a clipped Pi pair, so
-    # fail closed. Claude's idle composer is a bare agent glyph immediately
-    # under its closing ─; a short herdr tail can drop the matching opening
-    # rule and used to classify that idle pane unknown for the whole away run.
+    # fail closed. Claude's idle composer is a bare agent glyph with its
+    # closing ─ on the very next row; a short herdr tail can drop the matching
+    # opening rule and used to classify that idle pane unknown for the whole
+    # away run.
     if [ "$FM_COMPOSER_SELECTED_KIND" != bare ] \
        || [ "$FM_COMPOSER_SCAN_PI_LAST_SEPARATOR" -ne $((generic + 1)) ]; then
       FM_COMPOSER_SELECTED_KIND=
@@ -1324,6 +1325,27 @@ EOF
         "$FM_COMPOSER_SELECTED_FIRST" "$FM_COMPOSER_SELECTED_LAST"
       ;;
   esac
+}
+
+# fm_composer_screen_has_agent_container: 0 when the cursor-less selection
+# proves a GENUINE agent composer shape - a bordered box, a bare agent-glyph
+# row, opencode's left-bar, or pi's separated pair - is the live bottom-most
+# shape on <screen>. 1 covers every screen the classifier could not attribute
+# to an agent composer at all: a dead login-shell prompt, a modal or
+# mid-redraw pane with no identifiable input row, and a clipped structure.
+#
+# fm_composer_classify_screen answers `unknown` for BOTH "no container" and
+# "a proven container whose content I cannot judge". A caller that wants to
+# act on `unknown` on other evidence needs those apart, because typing into a
+# no-container screen is exactly the hazard the strict blank-row rule exists
+# to prevent. This is that split, kept here so no backend re-derives it.
+# Cursor-less only: it answers about the same selection cursor-less adapters
+# (herdr, cmux, orca, zellij) already classify with.
+fm_composer_screen_has_agent_container() {  # <screen>
+  local plain
+  plain=$(printf '%s\n' "$1" | fm_composer_strip_ansi)
+  _fm_composer_scan_screen "$plain" ''
+  _fm_composer_select_cursorless "$plain"
 }
 
 # fm_composer_submit_retry_core: the ONE verify-and-retry-Enter submit loop

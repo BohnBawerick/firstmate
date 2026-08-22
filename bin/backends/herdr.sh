@@ -2606,16 +2606,14 @@ fm_backend_herdr_capture() {  # <target> <lines>
 # classification needs what is on screen now. `recent` is scrollback, and
 # tailing it to FM_COMPOSER_CAPTURE_LINES can drop Claude's opening ─ so an
 # idle-between-turns pane classifies unknown and away-mode never injects.
-# `visible` is already viewport-bounded; keep the >=200 --lines fetch so the
-# small-N empty-read bug cannot apply, and do not tail the result.
+# `visible` is already viewport-bounded, so the result is not tailed and the
+# only job left is clamping --lines up to 200, where the small-N empty-read
+# bug cannot apply.
 fm_backend_herdr_capture_ansi() {  # <target> [lines]
   fm_backend_herdr_target_ready "$1" || return 1
-  local lines=${2:-200} fetch out
-  case "$lines" in ''|*[!0-9]*) lines=200 ;; esac
-  fetch=$lines
+  local fetch=${2:-200}
   case "$fetch" in ''|*[!0-9]*) fetch=200 ;; *) [ "$fetch" -ge 200 ] || fetch=200 ;; esac
-  out=$(fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane read "$FM_BACKEND_HERDR_PANE" --source visible --lines "$fetch" --format ansi 2>/dev/null) || return 1
-  printf '%s' "$out"
+  fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane read "$FM_BACKEND_HERDR_PANE" --source visible --lines "$fetch" --format ansi 2>/dev/null
 }
 
 # --- herdr composer capture and capability primitives -----------------------
@@ -2672,6 +2670,44 @@ fm_backend_herdr_composer_state() {  # <target> -> empty|pending|pending-unprove
     [ "$verdict" != need-identity ] || verdict=unknown
   fi
   printf '%s' "$verdict"
+}
+
+# fm_backend_herdr_composer_unknown_deliverable: the narrow away-mode override
+# behind an `unknown` composer verdict. It succeeds ONLY when every one of
+# these holds, re-read fresh so a human who started typing since the verdict
+# still wins:
+#   1. The STYLED ANSI capture succeeded. The plain fallback spells real typed
+#      text `unknown` instead of `pending` (see the styled=0 degradation in
+#      bin/fm-composer-lib.sh), so a degraded read must keep deferring or the
+#      digest merges into a human's half-typed line.
+#   2. The classifier still says `unknown` - proven `pending` never delivers.
+#   3. The screen carries a genuine agent composer container. A pane whose
+#      harness exited leaves a bare login-shell row, and herdr keeps reporting
+#      agent_status=done (which maps to idle), so native state alone cannot
+#      tell a waiting agent from a dead shell. A modal or mid-redraw pane has
+#      no container either, and away mode must never answer one.
+#   4. Native agent-state is idle: positive proof a registered agent is
+#      waiting between turns rather than mid-turn.
+# Together these let a false-unknown composer (a clipped idle Claude the
+# classifier cannot prove empty) deliver instead of stalling away mode for
+# hours, without widening the target set any further.
+fm_backend_herdr_composer_unknown_deliverable() {  # <target>
+  local target=$1 cap caps verdict identity
+  fm_backend_herdr_parse_target "$target" || return 1
+  cap=$(fm_backend_herdr_capture_ansi "$target" "$FM_COMPOSER_CAPTURE_LINES" 2>/dev/null) || return 1
+  caps=$(printf 'styled=1\ncursor=0\nidentity=1\nrows=%s' "$FM_COMPOSER_CAPTURE_LINES")
+  verdict=$(fm_composer_classify_screen "$caps" "$cap")
+  if [ "$verdict" = need-identity ]; then
+    if ! identity=$(fm_backend_herdr_composer_identity "$target" 2>/dev/null) || [ -z "$identity" ]; then
+      identity=probe-absent
+    fi
+    verdict=$(fm_composer_classify_screen "$caps" "$cap" '' "$identity")
+    [ "$verdict" != need-identity ] || verdict=unknown
+  fi
+  [ "$verdict" = unknown ] || return 1
+  fm_composer_screen_has_agent_container "$cap" || return 1
+  [ "$(fm_backend_herdr_busy_state "$target" 2>/dev/null)" = idle ] || return 1
+  return 0
 }
 
 # fm_backend_herdr_rendered_busy_state: busy|idle|unknown from the pane's

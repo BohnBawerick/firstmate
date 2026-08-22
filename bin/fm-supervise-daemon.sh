@@ -1053,9 +1053,9 @@ housekeeping() {  # <state>
   fi
 
   # (1b) max-defer recovery. If anything is still buffered past MAX_DEFER_SECS,
-  # retry the flush path. A herdr pane whose composer is unknown but whose
-  # native agent-state is idle can deliver here. If submit still cannot be
-  # confirmed, raise a loud wedge alarm while preserving the buffer.
+  # retry the flush path. A herdr pane whose composer is unknown can deliver
+  # here when the backend proves a live idle agent composer. If submit still
+  # cannot be confirmed, raise a loud wedge alarm while preserving the buffer.
   max_defer=${FM_MAX_DEFER_SECS:-$MAX_DEFER_SECS_DEFAULT}
   if afk_active "$state" && [ "$max_defer" -gt 0 ] && [ -s "$state/.subsuper-escalations" ]; then
     oldest=$(_oldest_line_age "$state/.subsuper-escalations")
@@ -1203,11 +1203,14 @@ window_for_task() {  # <task-key> [state]
 #     Pending means Enter was swallowed; unknown is treated as undelivered by
 #     this strict daemon path.
 #   - COMPOSER GUARD before typing: pending text defers so we never merge with
-#     a human draft. Empty proceeds. Unknown defers except on herdr when native
-#     agent-state is idle (a registered agent waiting between turns, including
-#     a clipped idle Claude composer that the classifier cannot prove empty).
+#     a human draft. Empty proceeds. Unknown defers unless the backend can
+#     prove otherwise (fm_backend_composer_unknown_deliverable): on herdr a
+#     styled re-read that still shows a genuine agent composer, plus native
+#     agent-state idle, delivers a clipped idle Claude the classifier cannot
+#     prove empty. A dead shell, a modal, and an unidentified row have no
+#     container, so they keep deferring.
 inject_msg() {  # <message> [state]
-  local msg=$1 state target backend retries sleep_s verdict composer encoded native
+  local msg=$1 state target backend retries sleep_s verdict composer encoded
   state="${2:-$(_state_root)}"
   # (1) Presence-gate: inject ONLY when afk is active. When afk is off, the
   # daemon self-handles and stays quiet; firstmate drives the normal always-on
@@ -1235,23 +1238,19 @@ inject_msg() {  # <message> [state]
   fi
   #   b) Composer-guard: inject into a confirmed-empty GENUINE agent composer.
   #      The shared classifier reports 'pending' for real unsubmitted text and
-  #      'unknown' for a dead shell or unreadable pane. Pending always defers.
-  #      Unknown defers except on herdr when native agent-state is idle: that
-  #      is positive proof the registered agent is waiting between turns, so a
-  #      false-unknown composer (clipped idle Claude) must not stall away-mode
-  #      for hours. A dead shell has no idle agent registration, so it still
-  #      defers. Native-hosted away uses the same captain pane; it does not
-  #      need a different target.
+  #      'unknown' for a dead shell, an unidentified row, or a container it
+  #      cannot judge. Pending ALWAYS defers. Unknown defers unless the backend
+  #      proves the pane is a live agent composer waiting between turns
+  #      (fm_backend_composer_unknown_deliverable, herdr only): a
+  #      false-unknown composer must not stall away-mode for hours, but a dead
+  #      shell, a modal, an unidentified row and a degraded unstyled read all
+  #      still defer. Native-hosted away uses the same captain pane; it does
+  #      not need a different target.
   composer=$(fm_backend_composer_state "$backend" "$target" 2>/dev/null)
   if [ "$composer" != empty ]; then
-    if [ "$composer" = unknown ] && [ "$backend" = herdr ]; then
-      native=$(fm_backend_busy_state "$backend" "$target" 2>/dev/null)
-      if [ "$native" = idle ]; then
-        log "inject: composer unknown but herdr native idle; delivering"
-      else
-        log "inject deferred: supervisor composer not confirmed-empty (state=${composer:-unknown}: pending input, dead-shell prompt, or unreadable pane)"
-        return 1
-      fi
+    if [ "$composer" = unknown ] \
+       && fm_backend_composer_unknown_deliverable "$backend" "$target" 2>/dev/null; then
+      log "inject: composer unknown but $backend proves a live idle agent composer; delivering"
     else
       log "inject deferred: supervisor composer not confirmed-empty (state=${composer:-unknown}: pending input, dead-shell prompt, or unreadable pane)"
       return 1

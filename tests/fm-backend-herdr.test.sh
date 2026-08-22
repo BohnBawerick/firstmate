@@ -3186,6 +3186,89 @@ test_composer_capture_uses_visible_source() {
   pass "fm_backend_herdr_composer_state: pane read uses --source visible"
 }
 
+# --- the away-mode unknown-composer override --------------------------------
+#
+# fm_backend_herdr_composer_unknown_deliverable is the ONLY thing that lets the
+# away daemon type into a pane whose composer verdict is `unknown`. These four
+# cases pin its whole contract: the one screen it must accept, and the three
+# hazards it must refuse.
+
+test_unknown_deliverable_accepts_styled_container_when_native_idle() {
+  local dir log resp fb
+  dir="$TMP_ROOT/unknown-deliverable-ok"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  # A fully dim-rendered idle Claude row: ghost stripping empties the whole
+  # row, glyph included, so the shared classifier cannot prove it empty and
+  # answers unknown - but the bare agent-glyph container IS proven.
+  printf '\033[2m❯ Try "fix the typecheck error"\033[0m\n' > "$resp/1.out"
+  printf '{"result":{"agent":{"agent_status":"idle"}}}\n' > "$resp/2.out"
+  fb=$(make_herdr_fakebin "$dir")
+  PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_unknown_deliverable default:w1:p2' "$ROOT" \
+    || fail "a styled unknown over a proven agent composer with native idle must be deliverable"
+  pass "fm_backend_herdr_composer_unknown_deliverable: accepts a styled unknown over a proven agent composer when native state is idle"
+}
+
+test_unknown_deliverable_refuses_unstyled_fallback_with_typed_text() {
+  local dir log resp fb out
+  dir="$TMP_ROOT/unknown-deliverable-unstyled"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  # The captain came back and typed an unsent line. On an older herdr the ANSI
+  # read fails, the plain fallback declares styled=0, and REAL typed text is
+  # spelled `unknown` instead of `pending`. Delivering there would merge the
+  # digest into the captain's line.
+  echo 1 > "$resp/1.exit"
+  printf '❯ land the parked workers\n' > "$resp/2.out"
+  echo 1 > "$resp/3.exit"
+  printf '{"result":{"agent":{"agent_status":"idle"}}}\n' > "$resp/4.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_state default:w1:p2' "$ROOT" )
+  [ "$out" = unknown ] || fail "the unstyled fallback should spell typed text unknown, got '$out'"
+  if PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_unknown_deliverable default:w1:p2' "$ROOT"; then
+    fail "a degraded unstyled read must never be deliverable - it hides real typed text as unknown"
+  fi
+  pass "fm_backend_herdr_composer_unknown_deliverable: refuses a degraded unstyled read carrying the captain's typed text"
+}
+
+test_unknown_deliverable_refuses_dead_shell_reporting_done() {
+  local dir log resp fb dir2 resp2 fb2 native
+  dir="$TMP_ROOT/unknown-deliverable-done-maps-idle"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  # The harness exited to its login shell while herdr still reports
+  # agent_status=done, which maps to native idle. Native state alone cannot
+  # tell that from an agent waiting between turns; the missing composer
+  # container can.
+  printf '{"result":{"agent":{"agent_status":"done"}}}\n' > "$resp/1.out"
+  fb=$(make_herdr_fakebin "$dir")
+  native=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_busy_state default:w1:p2' "$ROOT" )
+  [ "$native" = idle ] || fail "agent_status=done must still map to native idle for this hazard to be real, got '$native'"
+  dir2="$TMP_ROOT/unknown-deliverable-dead-shell"; mkdir -p "$dir2/responses"; resp2="$dir2/responses"
+  printf 'paiva@box firstmate %% \n' > "$resp2/1.out"
+  printf '{"result":{"agent":{"agent_status":"done"}}}\n' > "$resp2/2.out"
+  fb2=$(make_herdr_fakebin "$dir2")
+  if PATH="$fb2:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp2" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_unknown_deliverable default:w1:p2' "$ROOT"; then
+    fail "a bare login-shell row must never be deliverable, even while herdr reports done (native idle)"
+  fi
+  pass "fm_backend_herdr_composer_unknown_deliverable: refuses a dead login shell whose agent_status=done maps to native idle"
+}
+
+test_unknown_deliverable_refuses_unidentified_row() {
+  local dir log resp fb
+  dir="$TMP_ROOT/unknown-deliverable-unidentified"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  # A mid-redraw or borderless dialog pane: no glyph, no box, no left bar, no
+  # separator pair. A digest plus Enter here would answer whatever is
+  # highlighted, which away mode must never do.
+  printf 'Do you want to proceed?\n  1. Yes\n  2. No, tell Claude what to do differently\n' > "$resp/1.out"
+  printf '{"result":{"agent":{"agent_status":"idle"}}}\n' > "$resp/2.out"
+  fb=$(make_herdr_fakebin "$dir")
+  if PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_unknown_deliverable default:w1:p2' "$ROOT"; then
+    fail "an unidentified row with no container proof must never be deliverable"
+  fi
+  pass "fm_backend_herdr_composer_unknown_deliverable: refuses an unidentified row with no container proof"
+}
+
 test_composer_state_claude_unbordered_prompt_is_pending() {
   local dir log resp fb out
   dir="$TMP_ROOT/composer-claude-bare-pending"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
@@ -4555,6 +4638,10 @@ test_composer_state_pi_separator_requires_safe_native_identity
 test_composer_state_claude_unbordered_prompt_is_empty
 test_composer_state_claude_clipped_closing_rule_is_empty
 test_composer_capture_uses_visible_source
+test_unknown_deliverable_accepts_styled_container_when_native_idle
+test_unknown_deliverable_refuses_unstyled_fallback_with_typed_text
+test_unknown_deliverable_refuses_dead_shell_reporting_done
+test_unknown_deliverable_refuses_unidentified_row
 test_composer_state_claude_unbordered_prompt_is_pending
 test_composer_state_bare_prompt_below_stale_bordered_banner_wins
 test_composer_state_claude_dim_prompt_suggestion_ghost_is_empty

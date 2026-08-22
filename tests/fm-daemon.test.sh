@@ -1968,7 +1968,7 @@ test_inject_msg_defers_on_dead_shell_unknown() {
     fm_backend_target_exists() { return 0; }
     pane_is_busy() { return 1; }
     fm_backend_composer_state() { printf 'unknown'; }
-    fm_backend_busy_state() { printf 'unknown'; }
+    fm_backend_composer_unknown_deliverable() { return 1; }
     fm_backend_send_text_submit() { fail "send_text_submit must NOT run when the composer is a dead shell (unknown)"; }
     if FM_SUPERVISOR_BACKEND=herdr FM_SUPERVISOR_TARGET="default:w1:p2" inject_msg "hello" "$state"; then
       fail "inject_msg should defer (never inject) when the composer reads unknown (dead shell / unreadable)"
@@ -1986,7 +1986,10 @@ test_inject_msg_herdr_unknown_native_idle_delivers() {
     fm_backend_target_exists() { return 0; }
     pane_is_busy() { return 1; }
     fm_backend_composer_state() { printf 'unknown'; }
-    fm_backend_busy_state() { [ "$1" = herdr ] || fail "busy_state backend '$1'"; printf 'idle'; }
+    fm_backend_composer_unknown_deliverable() {
+      [ "$1" = herdr ] || fail "unknown_deliverable backend '$1'"
+      return 0
+    }
     fm_backend_send_text_submit() {
       [ "$1" = herdr ] || fail "send_text_submit backend '$1'"
       printf 'empty'
@@ -2008,7 +2011,7 @@ test_max_defer_herdr_unknown_native_idle_flushes() {
     fm_backend_target_exists() { return 0; }
     pane_is_busy() { return 1; }
     fm_backend_composer_state() { printf 'unknown'; }
-    fm_backend_busy_state() { printf 'idle'; }
+    fm_backend_composer_unknown_deliverable() { return 0; }
     fm_backend_send_text_submit() { printf 'empty'; }
     FM_SUPERVISOR_BACKEND=herdr FM_SUPERVISOR_TARGET="default:w1:p2" \
       FM_ESCALATE_BATCH_SECS=99999 FM_MAX_DEFER_SECS=60 housekeeping "$state"
