@@ -74,7 +74,7 @@ elif mode == "shrinking":
 else:
     ids = []
 
-phase = os.environ["FM_QUALITY_PHASE"]
+phase = os.environ.get("FMQ_FORCE_PHASE") or os.environ["FM_QUALITY_PHASE"]
 classification = "over-threshold" if phase == "clean" else "killable"
 receipt = {
     "schema_version": 1,
@@ -126,10 +126,43 @@ for arg in "$@"; do
 done
 cat > /dev/null
 [ -z "${FMQ_TURN_EDIT:-}" ] || printf 'round\n' >> "$FMQ_TURN_EDIT"
+[ -z "${FMQ_TURN_EXCLUDE:-}" ] || printf '    - "%s"\n' "$FMQ_TURN_EXCLUDE" >> .quality-gate.yaml
 printf '{"action":"%s"}\n' "${FMQ_TURN_ACTION:-tested}"
 exit 0
 SH
-  chmod +x "$d/ctl/phase.sh" "$d/ctl/test.sh" "$d/fakebin/claude"
+  # A phase command that honours the exclude list the loop hands it. The
+  # finding survives until "src/a.ts" is excluded, and then the phase passes.
+  cat > "$d/ctl/exclude-phase.sh" <<'SH'
+#!/usr/bin/env sh
+exec python3 "$FMQ_CTL/exclude-receipt.py"
+SH
+
+  cat > "$d/ctl/exclude-receipt.py" <<'PY'
+import json
+import os
+import sys
+
+excluded = "src/a.ts" in os.environ.get("FM_QUALITY_EXCLUDE", "").split()
+findings = [] if excluded else [
+    {"id": "m1", "file": "src/a.ts", "line": 3, "classification": "over-threshold"}
+]
+receipt = {
+    "schema_version": 1,
+    "phase": os.environ["FM_QUALITY_PHASE"],
+    "outcome": "pass" if excluded else "exhausted",
+    "base_sha": os.environ["FM_QUALITY_BASE_SHA"],
+    "head_sha": os.environ["FM_QUALITY_HEAD_SHA"],
+    "duration_ms": 7,
+    "engine": {"name": "fixture-engine", "version": "1.2.3"},
+    "threshold": {"crap_max": 15},
+    "metrics": {"observed": float(len(findings))},
+    "findings": findings,
+}
+json.dump(receipt, sys.stdout)
+sys.stdout.write("\n")
+PY
+
+  chmod +x "$d/ctl/phase.sh" "$d/ctl/test.sh" "$d/ctl/exclude-phase.sh" "$d/fakebin/claude"
   printf '%s\n' "$d"
 }
 
@@ -182,6 +215,21 @@ bounds:
   max_iterations: 4
   no_progress_limit: 2
   budget_minutes: 5'
+
+# Builds a PATH dir holding only the named tools, so a case can drive the script
+# on a host that is missing one - GNU timeout, for instance.
+build_toolbin() {  # <case-dir> <extra-tool...>
+  local d=$1 tool real
+  shift
+  mkdir -p "$d/toolbin"
+  for tool in python3 git sh bash sed awk grep cut tr sort head tail cat cp mv rm \
+      mkdir mktemp chmod dirname basename date env ls "$@"; do
+    real=$(command -v "$tool" 2>/dev/null) || continue
+    ln -sf "$real" "$d/toolbin/$tool"
+  done
+  [ -x "$d/toolbin/python3" ] && [ -x "$d/toolbin/git" ] \
+    || fail "the toolbin fixture needs python3 and git"
+}
 
 # --- pass, and its read-only twin -------------------------------------------
 
@@ -692,6 +740,178 @@ test_usage_errors() {
   pass "usage errors exit 2 and --help exits 0"
 }
 
+# A dry run is an inspection. It must not destroy the durable proof an earlier
+# run left behind: on a hardened task bin/fm-crew-state.sh reads that file, and
+# a missing receipt reopens a task that was finished.
+test_dry_run_keeps_an_existing_receipt() {
+  local d file rc=0 out
+  d=$(new_case dry-run-keeps)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  FMQ_OUTCOME=pass run_quality "$d" run task --phase clean >/dev/null || rc=$?
+  expect_code 0 "$rc" "the measuring run passes"
+  file=$(receipt_of "$d" clean)
+  assert_present "$file" "the measuring run leaves a receipt"
+  rc=0
+  out=$(run_quality "$d" run task --phase clean --dry-run) || rc=$?
+  expect_code 0 "$rc" "a dry run resolves cleanly"
+  assert_contains "$out" "no receipt was written" "a dry run says it wrote nothing"
+  assert_present "$file" "a dry run must not delete the receipt it says it did not touch"
+  [ "$(receipt_outcome "$file")" = pass ] \
+    || fail "the earlier pass must survive a dry run untouched"
+  pass "a dry run leaves an existing receipt exactly as it found it"
+}
+
+# The turn prompt asks the agent to answer `excluded` by editing the contract's
+# exclude list. The loop commits that edit, so the next round has to read it
+# back or one of the four documented answers is a no-op inside a run.
+EXCLUDE_CONTRACT='version: 1
+verify: "true"
+test: "sh $FMQ_CTL/test.sh"
+bounds:
+  max_iterations: 4
+  no_progress_limit: 3
+  budget_minutes: 5
+clean:
+  command: "sh $FMQ_CTL/exclude-phase.sh"
+  threshold:
+    crap_max: 15
+  exclude:
+    - "src/gen/**"'
+
+test_a_round_can_exclude_a_finding() {
+  local d out rc=0
+  d=$(new_case exclude-honoured)
+  write_contract "$d" "$EXCLUDE_CONTRACT"
+  write_meta "$d" hardened
+  out=$(FMQ_TURN_ACTION=excluded FMQ_TURN_EXCLUDE=src/a.ts \
+    run_quality "$d" run task --phase clean) || rc=$?
+  expect_code 0 "$rc" "a round that excludes the finding reaches pass"
+  assert_contains "$out" "outcome: pass" "the next round measures against the new exclude list"
+  [ "$(receipt_outcome "$(receipt_of "$d" clean)")" = pass ] \
+    || fail "the receipt records the pass the exclusion produced"
+  pass "a finding excluded by a round is gone from the next round's measurement"
+}
+
+# The twin: identical contract, identical rounds, identical agent turn - only
+# the exclude edit is missing. The finding must survive, so the case above
+# cannot be satisfied by a phase command that always passes.
+test_without_the_exclude_edit_the_finding_survives() {
+  local d out rc=0
+  d=$(new_case exclude-absent)
+  write_contract "$d" "$EXCLUDE_CONTRACT"
+  write_meta "$d" hardened
+  out=$(FMQ_TURN_ACTION=tested run_quality "$d" run task --phase clean) || rc=$?
+  expect_code 1 "$rc" "a finding nobody excluded keeps the phase below threshold"
+  assert_not_contains "$out" "outcome: pass" "an unexcluded finding is never a pass"
+  pass "without the exclude edit the same finding survives every round"
+}
+
+# clean and harden judge findings by different vocabularies, so a receipt from
+# the other phase is not evidence about this one.
+test_receipt_from_another_phase_is_blocked() {
+  local d out rc=0
+  d=$(new_case wrong-phase)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  out=$(FMQ_FORCE_PHASE=harden FMQ_OUTCOME=pass \
+    run_quality "$d" run task --phase clean) || rc=$?
+  expect_code 3 "$rc" "a receipt for the other phase is blocked"
+  assert_contains "$out" "outcome: blocked" "a mismatched phase reports blocked"
+  assert_not_contains "$out" "outcome: pass" "a harden receipt never satisfies the clean gate"
+  assert_absent "$(receipt_of "$d" clean)" "a mismatched receipt is not filed as this phase's proof"
+  pass "a phase command that answers for the other phase is blocked, not accepted"
+}
+
+# An unchanged empty finding set is the clearest no-progress case there is.
+test_repeated_empty_findings_is_stuck() {
+  local d out rc=0
+  d=$(new_case stuck-empty)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  out=$(FMQ_IDS_MODE=none FMQ_OUTCOME=exhausted \
+    run_quality "$d" run task --phase clean) || rc=$?
+  expect_code 1 "$rc" "rounds below threshold with no progress exit 1"
+  assert_contains "$out" "outcome: stuck" "an unchanged empty finding set is no progress"
+  assert_not_contains "$out" "outcome: exhausted" "stuck is reported before the round bound"
+  pass "rounds that repeat an empty finding set report stuck, not exhausted"
+}
+
+# The suite re-run that tells red apart from flaky shares the one bound; it does
+# not get a second full copy of it.
+test_the_suite_recheck_stays_inside_the_bound() {
+  local d out rc=0 started ended
+  d=$(new_case suite-recheck-bound)
+  write_contract "$d" 'version: 1
+verify: "true"
+test: "sleep 5; exit 1"
+clean:
+  command: "sh $FMQ_CTL/phase.sh"
+bounds:
+  budget_minutes: 0.1'
+  write_meta "$d" hardened
+  started=$(date +%s)
+  out=$(run_quality "$d" run task --phase clean) || rc=$?
+  ended=$(date +%s)
+  [ "$rc" -ne 0 ] || fail "a red suite must not pass: $out"
+  assert_not_contains "$out" "outcome: pass" "a red suite is never a pass"
+  [ $((ended - started)) -lt 9 ] \
+    || fail "the suite check spent more than one bound: $((ended - started))s of a 6s bound"
+  pass "checking a red suite twice stays inside the one wall-clock bound"
+}
+
+# The perl fallback is the only bounded runner on a host without GNU timeout. A
+# suite killed by a signal has to read as red there too, or a crashed or
+# OOM-killed suite is scored green and every number measured over it is trusted.
+test_signal_killed_suite_is_red_without_gnu_timeout() {
+  local d out rc=0
+  if ! command -v perl >/dev/null 2>&1; then
+    pass "skipped: this host has no perl to fall back to"
+    return 0
+  fi
+  d=$(new_case perl-signal)
+  write_contract "$d" 'version: 1
+verify: "true"
+test: "kill -SEGV $$"
+clean:
+  command: "sh $FMQ_CTL/phase.sh"
+bounds:
+  budget_minutes: 5'
+  write_meta "$d" hardened
+  build_toolbin "$d" perl sleep kill
+  out=$(PATH="$d/toolbin:$d/fakebin" FMQ_CTL="$d/ctl" FM_STATE_OVERRIDE="$d/state" \
+    FM_DATA_OVERRIDE="$d/data" FMQ_OUTCOME=pass "$QUALITY" run task --phase clean) || rc=$?
+  expect_code 3 "$rc" "a suite killed by a signal blocks the measurement"
+  assert_contains "$out" "outcome: blocked" "a crashed suite reports blocked"
+  assert_not_contains "$out" "outcome: pass" "a crashed suite is never scored green"
+  assert_absent "$d/ctl/round" "the phase command never runs over a crashed suite"
+  pass "a signal-killed test suite reads as red on a host that only has perl"
+}
+
+# The twin: the same perl-only host with a green suite must measure normally, so
+# the case above cannot be satisfied by refusing whenever GNU timeout is gone.
+test_perl_host_still_measures_a_green_suite() {
+  local d rc=0
+  if ! command -v perl >/dev/null 2>&1; then
+    pass "skipped: this host has no perl to fall back to"
+    return 0
+  fi
+  d=$(new_case perl-green)
+  write_contract "$d" 'version: 1
+verify: "true"
+test: "exit 0"
+clean:
+  command: "sh $FMQ_CTL/phase.sh"
+bounds:
+  budget_minutes: 5'
+  write_meta "$d" hardened
+  build_toolbin "$d" perl sleep kill
+  PATH="$d/toolbin:$d/fakebin" FMQ_CTL="$d/ctl" FM_STATE_OVERRIDE="$d/state" \
+    FM_DATA_OVERRIDE="$d/data" FMQ_OUTCOME=pass "$QUALITY" run task --phase clean >/dev/null || rc=$?
+  expect_code 0 "$rc" "a green suite on a perl-only host still measures and passes"
+  pass "a perl-only host measures a green suite normally"
+}
+
 test_pass
 test_read_only_is_not_pass
 test_read_only_cannot_measure_is_blocked
@@ -720,6 +940,14 @@ test_status_reports_the_gate_verdict
 test_status_on_a_standard_task_requires_nothing
 test_receipt_prints_what_was_written
 test_dry_run_changes_nothing
+test_dry_run_keeps_an_existing_receipt
+test_a_round_can_exclude_a_finding
+test_without_the_exclude_edit_the_finding_survives
+test_receipt_from_another_phase_is_blocked
+test_repeated_empty_findings_is_stuck
+test_the_suite_recheck_stays_inside_the_bound
+test_signal_killed_suite_is_red_without_gnu_timeout
+test_perl_host_still_measures_a_green_suite
 test_unknown_contract_version_refuses
 test_contract_without_verify_refuses
 test_missing_base_anchor_is_blocked

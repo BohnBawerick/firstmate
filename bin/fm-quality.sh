@@ -413,7 +413,7 @@ bounded_sh() {  # <secs> <dir> <command-string>
   local secs=$1 dir=$2 cmd=$3
   case "$TIMEOUT_TOOL" in
     timeout|gtimeout) ( cd "$dir" && "$TIMEOUT_TOOL" -- "$secs" sh -c "$cmd" ) ;;
-    perl) ( cd "$dir" && perl -e 'my $t = shift; my $pid = fork; die "fork failed" unless defined $pid; if (!$pid) { setpgrp(0, 0); exec @ARGV } local $SIG{ALRM} = sub { kill "TERM", -$pid; select undef, undef, undef, 0.2; kill "KILL", -$pid; exit 124 }; alarm $t; waitpid $pid, 0; exit($? >> 8)' "$secs" sh -c "$cmd" ) ;;
+    perl) ( cd "$dir" && perl -e 'my $t = shift; my $pid = fork; die "fork failed" unless defined $pid; if (!$pid) { setpgrp(0, 0); exec @ARGV } local $SIG{ALRM} = sub { kill "TERM", -$pid; select undef, undef, undef, 0.2; kill "KILL", -$pid; exit 124 }; alarm $t; waitpid $pid, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$secs" sh -c "$cmd" ) ;;
     *) return 127 ;;
   esac
 }
@@ -690,7 +690,7 @@ MEASURE_OUTCOME=""
 MEASURE_FILE=""
 MEASURE_DETAIL=""
 measure() {  # <command> <secs>
-  local cmd=$1 secs=$2 out="$WORK_DIR/measure.json" rc=0 head_sha receipt_base
+  local cmd=$1 secs=$2 out="$WORK_DIR/measure.json" rc=0 head_sha receipt_base receipt_phase
   MEASURE_STATUS=""; MEASURE_OUTCOME=""; MEASURE_FILE=""; MEASURE_DETAIL=""
   head_sha=$(git -C "$WT" rev-parse HEAD 2>/dev/null || true)
   FM_QUALITY_PHASE="$PHASE" \
@@ -727,6 +727,12 @@ measure() {  # <command> <secs>
     MEASURE_DETAIL="the $PHASE receipt measured against $receipt_base, not this task's base commit $BASE_SHA"
     return 0
   fi
+  receipt_phase=$(receipt_field "$out" phase || true)
+  if [ "$receipt_phase" != "$PHASE" ]; then
+    MEASURE_STATUS=drift
+    MEASURE_DETAIL="the $PHASE command printed a $receipt_phase receipt, and the two phases judge findings by different vocabularies"
+    return 0
+  fi
   MEASURE_STATUS=receipt
   MEASURE_FILE=$out
   MEASURE_OUTCOME=$(receipt_field "$out" outcome || true)
@@ -750,9 +756,19 @@ check_suite() {  # <command> <secs>
     return 0
   fi
   # Red once. Run it again on identical code: red twice is a red suite, and red
-  # then green is a flaky one. Both make the metric meaningless.
+  # then green is a flaky one. Both make the metric meaningless. The re-run
+  # takes what is left of the bound, not another full copy of it.
+  secs=$(remaining_seconds)
+  if [ "$secs" -le 0 ]; then
+    printf 'exhausted the wall-clock bound ran out re-running the red test suite, so red and flaky could not be told apart\n'
+    return 0
+  fi
   rc=0
   bounded_sh "$secs" "$WT" "$cmd" >/dev/null 2>&1 || rc=$?
+  if [ "$rc" -eq 124 ]; then
+    printf 'blocked the ordinary test suite did not finish inside the wall-clock bound\n'
+    return 0
+  fi
   if [ "$rc" -eq 0 ]; then
     printf 'blocked the ordinary test suite is flaky (red then green on identical code), so the score would be noise\n'
   else
@@ -844,6 +860,7 @@ PY
 cmd_run() {
   local state suite phase_cmd test_cmd secs rc detail
   local round=1 no_progress=0 prev_ids="" ids="" last_receipt="" turn_action=""
+  local have_prev=0
   local round_head=""
 
   [ -n "$WT" ] || die "the task record for $ID names no worktree"
@@ -857,7 +874,7 @@ cmd_run() {
   # phase goes first. Otherwise a run that could not measure would leave an
   # older pass standing as if it still described the code.
   mkdir -p "$DATA/$ID" || die "cannot create the task record dir $DATA/$ID"
-  rm -f -- "$(receipt_path "$PHASE")"
+  [ "$DRY_RUN" -eq 1 ] || rm -f -- "$(receipt_path "$PHASE")"
 
   state=$(load_contract "$WT")
   case "$state" in
@@ -907,6 +924,7 @@ cmd_run() {
     suite=$(check_suite "$test_cmd" "$secs")
     case "$suite" in
       blocked*) finish blocked "${suite#blocked }" ;;
+      exhausted*) finish exhausted "${suite#exhausted }" ;;
     esac
   fi
 
@@ -914,6 +932,19 @@ cmd_run() {
     secs=$(remaining_seconds)
     if [ "$secs" -le 0 ]; then
       finish exhausted "the ${BOUND_BUDGET_MINUTES}-minute wall-clock bound ran out after $((round - 1)) round(s)"
+    fi
+    # A turn may have edited the exclude list, which is one of the four answers
+    # the prompt asks for. Re-read the contract so the next measurement sees it.
+    # Bounds and the phase command stay pinned to round 1: a run does not get to
+    # extend its own wall clock or swap the command it is being measured by.
+    if [ "$round" -gt 1 ]; then
+      state=$(load_contract "$WT")
+      case "$state" in
+        absent) finish blocked "the .quality-gate.yaml was removed during round $((round - 1)), so the contract can no longer be read" ;;
+        error*) finish blocked "round $((round - 1)) left .quality-gate.yaml unreadable: ${state#error }" ;;
+      esac
+      [ -n "$(cfg_get "$PHASE.command")" ] \
+        || finish blocked "round $((round - 1)) removed the $PHASE command from .quality-gate.yaml"
     fi
     measure "$phase_cmd" "$secs"
     case "$MEASURE_STATUS" in
@@ -952,12 +983,13 @@ cmd_run() {
 
     # Below threshold. Bounds first, so an exhausted phase never spends a turn.
     ids=$(receipt_finding_ids "$last_receipt" || true)
-    if [ -n "$prev_ids" ] && [ "$ids" = "$prev_ids" ]; then
+    if [ "$have_prev" -eq 1 ] && [ "$ids" = "$prev_ids" ]; then
       no_progress=$((no_progress + 1))
     else
       no_progress=0
     fi
     prev_ids=$ids
+    have_prev=1
     if [ "$no_progress" -ge "$BOUND_NO_PROGRESS" ]; then
       write_final "$last_receipt" stuck "$round" "" \
         "$BOUND_NO_PROGRESS consecutive rounds left the same findings untouched"
