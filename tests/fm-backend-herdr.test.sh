@@ -3160,6 +3160,32 @@ test_composer_state_claude_unbordered_prompt_is_empty() {
   pass "fm_backend_herdr_composer_state: a real-claude unbordered '❯' prompt row (no border box in view) reads empty"
 }
 
+test_composer_state_claude_clipped_closing_rule_is_empty() {
+  local dir log resp fb out
+  dir="$TMP_ROOT/composer-claude-clipped-rule"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  # 2026-08-22: a 20-line recent tail can keep idle ❯ and the closing ─ while
+  # dropping the opening ─. Eight or more ─ make this a Pi separator; without
+  # the immediate-glyph exception it classified unknown all night.
+  printf '\xe2\x9d\xaf\n────────────────────────────────\n  firstmate on  main · Opus 5\n  \xe2\x86\x90 for agents\n' > "$resp/1.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_state default:w1:p2' "$ROOT" )
+  [ "$out" = empty ] || fail "clipped idle Claude (❯ then closing ─, no opening ─) must read empty, got '$out'"
+  pass "fm_backend_herdr_composer_state: clipped idle Claude closing rule reads empty"
+}
+
+test_composer_capture_uses_visible_source() {
+  local dir log resp fb
+  dir="$TMP_ROOT/composer-visible-source"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '❯\n' > "$resp/1.out"
+  fb=$(make_herdr_fakebin "$dir")
+  PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_state default:w1:p2' "$ROOT" >/dev/null
+  assert_contains "$(cat "$log")" $'\x1f''--source'$'\x1f''visible' \
+    "composer capture must read the live viewport, not scrollback"
+  pass "fm_backend_herdr_composer_state: pane read uses --source visible"
+}
+
 test_composer_state_claude_unbordered_prompt_is_pending() {
   local dir log resp fb out
   dir="$TMP_ROOT/composer-claude-bare-pending"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
@@ -4527,6 +4553,8 @@ test_composer_state_pi_separator_real_text_is_pending
 test_composer_state_pi_incomplete_separator_below_stale_generic_is_unknown
 test_composer_state_pi_separator_requires_safe_native_identity
 test_composer_state_claude_unbordered_prompt_is_empty
+test_composer_state_claude_clipped_closing_rule_is_empty
+test_composer_capture_uses_visible_source
 test_composer_state_claude_unbordered_prompt_is_pending
 test_composer_state_bare_prompt_below_stale_bordered_banner_wins
 test_composer_state_claude_dim_prompt_suggestion_ghost_is_empty

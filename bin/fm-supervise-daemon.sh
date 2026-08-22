@@ -57,10 +57,11 @@
 #     the marker would forget it).
 #     Crewmates are autonomous, so a delayed stale response does not stall a
 #     healthy crewmate's own progress.
-#     Buffered escalation delivery also has a max-defer alarm: if a digest stays
-#     undelivered past FM_MAX_DEFER_SECS, the daemon retries a normal flush and
-#     writes state/.subsuper-inject-wedged and attempts a configurable active
-#     alert if submit still cannot be confirmed.
+#     Buffered escalation delivery also has a max-defer recovery: if a digest
+#     stays undelivered past FM_MAX_DEFER_SECS, the daemon retries a normal
+#     flush (including the herdr native-idle unknown override in inject_msg).
+#     Only if that still cannot confirm a submit does it write
+#     state/.subsuper-inject-wedged and attempt a configurable active alert.
 #   - Cheap heartbeat catch-all: every HEARTBEAT_SCAN_SECS the daemon greps all
 #     state/*.status for a captain-relevant line the per-wake classifier might
 #     have missed (e.g. a status verb outside CAPTAIN_RE) and escalates it.
@@ -117,7 +118,7 @@
 #          FM_COMPOSER_IDLE_RE      optional shared classifier override; see
 #                                   docs/configuration.md for its safety gates
 #          FM_MAX_DEFER_SECS        max seconds a buffered escalation may sit
-#                                   undelivered before one normal flush attempt;
+#                                   undelivered before one recovery flush;
 #                                   if that cannot confirm a submit, a wedge
 #                                   alarm fires (default 300; 0 disables)
 #          FM_WEDGE_ALARM_CHANNEL   override config/wedge-alarm with a single
@@ -212,8 +213,9 @@ ESCALATE_BATCH_SECS_DEFAULT=90
 HEARTBEAT_SCAN_SECS_DEFAULT=300
 HOUSEKEEPING_TICK_DEFAULT=15
 # Max time a buffered escalation may sit undelivered before the daemon retries
-# the normal flush path and, if that cannot confirm a submit, raises a loud wedge
-# alarm. The escape hatch makes a guard false-positive visible instead of silent.
+# the flush path (including herdr native-idle delivery when the composer is
+# unknown) and, if that cannot confirm a submit, raises a loud wedge alarm.
+# The escape hatch is a recovery attempt first, then a visible stall.
 MAX_DEFER_SECS_DEFAULT=300
 WEDGE_ALARM_TIMEOUT_SECS_DEFAULT=10
 WEDGE_ALARM_LAST_EPOCH=0
@@ -1050,9 +1052,10 @@ housekeeping() {  # <state>
     fi
   fi
 
-  # (1b) max-defer escape. If anything is still buffered past MAX_DEFER_SECS,
-  # retry the normal delivery path. If that still cannot confirm, raise a loud
-  # wedge alarm while preserving the buffer.
+  # (1b) max-defer recovery. If anything is still buffered past MAX_DEFER_SECS,
+  # retry the flush path. A herdr pane whose composer is unknown but whose
+  # native agent-state is idle can deliver here. If submit still cannot be
+  # confirmed, raise a loud wedge alarm while preserving the buffer.
   max_defer=${FM_MAX_DEFER_SECS:-$MAX_DEFER_SECS_DEFAULT}
   if afk_active "$state" && [ "$max_defer" -gt 0 ] && [ -s "$state/.subsuper-escalations" ]; then
     oldest=$(_oldest_line_age "$state/.subsuper-escalations")
@@ -1199,12 +1202,12 @@ window_for_task() {  # <task-key> [state]
 #     path it means native agent-state observed a real turn start.
 #     Pending means Enter was swallowed; unknown is treated as undelivered by
 #     this strict daemon path.
-#   - COMPOSER GUARD before typing: if the cursor line already has real content
-#     after dim/faint ghost text and borders are ignored (a human's half-typed
-#     line, or a previous injection's unsent text), defer entirely - injecting
-#     would merge with the human's text.
+#   - COMPOSER GUARD before typing: pending text defers so we never merge with
+#     a human draft. Empty proceeds. Unknown defers except on herdr when native
+#     agent-state is idle (a registered agent waiting between turns, including
+#     a clipped idle Claude composer that the classifier cannot prove empty).
 inject_msg() {  # <message> [state]
-  local msg=$1 state target backend retries sleep_s verdict composer encoded
+  local msg=$1 state target backend retries sleep_s verdict composer encoded native
   state="${2:-$(_state_root)}"
   # (1) Presence-gate: inject ONLY when afk is active. When afk is off, the
   # daemon self-handles and stays quiet; firstmate drives the normal always-on
@@ -1230,19 +1233,29 @@ inject_msg() {  # <message> [state]
     log "inject deferred: supervisor pane busy (agent mid-turn)"
     return 1
   fi
-  #   b) Composer-guard: inject ONLY into a confirmed-empty GENUINE agent
-  #      composer. The shared classifier (fm_backend_composer_state ->
-  #      fm_composer_classify_content, bin/fm-composer-lib.sh) reports 'pending'
-  #      for real unsubmitted text (a human's half-typed line, or a swallowed
-  #      prior injection) and 'unknown' for a bare dead-shell prompt (the agent
-  #      exited to its login shell) or an unreadable pane. Neither is a safe
-  #      target - typing the escalation into a shell could execute it - so defer
-  #      on anything that is not affirmatively 'empty'. A deferred escalation
-  #      stays buffered for the next cycle or the catch-up flush.
+  #   b) Composer-guard: inject into a confirmed-empty GENUINE agent composer.
+  #      The shared classifier reports 'pending' for real unsubmitted text and
+  #      'unknown' for a dead shell or unreadable pane. Pending always defers.
+  #      Unknown defers except on herdr when native agent-state is idle: that
+  #      is positive proof the registered agent is waiting between turns, so a
+  #      false-unknown composer (clipped idle Claude) must not stall away-mode
+  #      for hours. A dead shell has no idle agent registration, so it still
+  #      defers. Native-hosted away uses the same captain pane; it does not
+  #      need a different target.
   composer=$(fm_backend_composer_state "$backend" "$target" 2>/dev/null)
   if [ "$composer" != empty ]; then
-    log "inject deferred: supervisor composer not confirmed-empty (state=${composer:-unknown}: pending input, dead-shell prompt, or unreadable pane)"
-    return 1
+    if [ "$composer" = unknown ] && [ "$backend" = herdr ]; then
+      native=$(fm_backend_busy_state "$backend" "$target" 2>/dev/null)
+      if [ "$native" = idle ]; then
+        log "inject: composer unknown but herdr native idle; delivering"
+      else
+        log "inject deferred: supervisor composer not confirmed-empty (state=${composer:-unknown}: pending input, dead-shell prompt, or unreadable pane)"
+        return 1
+      fi
+    else
+      log "inject deferred: supervisor composer not confirmed-empty (state=${composer:-unknown}: pending input, dead-shell prompt, or unreadable pane)"
+      return 1
+    fi
   fi
   # (4) Type the digest ONCE, then submit with Enter (retry Enter only, never
   # retype) via the shared submit primitive. Success = the backend confirms

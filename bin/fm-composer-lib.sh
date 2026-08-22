@@ -1077,8 +1077,15 @@ _fm_composer_select_cursorless() {
   fi
   if [ "$FM_COMPOSER_SCAN_PI_PAIR_FOUND" = 0 ] \
      && [ "$FM_COMPOSER_SCAN_PI_LAST_SEPARATOR" -gt "$generic" ]; then
-    FM_COMPOSER_SELECTED_KIND=
-    return 1
+    # A lone separator below the candidate usually means a clipped Pi pair, so
+    # fail closed. Claude's idle composer is a bare agent glyph immediately
+    # under its closing ─; a short herdr tail can drop the matching opening
+    # rule and used to classify that idle pane unknown for the whole away run.
+    if [ "$FM_COMPOSER_SELECTED_KIND" != bare ] \
+       || [ "$FM_COMPOSER_SCAN_PI_LAST_SEPARATOR" -ne $((generic + 1)) ]; then
+      FM_COMPOSER_SELECTED_KIND=
+      return 1
+    fi
   fi
   if [ "$FM_COMPOSER_SCAN_SHELL_ROW" -gt "$generic" ]; then
     FM_COMPOSER_SELECTED_KIND=

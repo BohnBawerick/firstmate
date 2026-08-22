@@ -238,7 +238,8 @@ A human-blocked permission dialog has no busy banner and still surfaces.
 ## Composer and injection safety
 
 Herdr has no direct cursor-row primitive.
-The adapter is a thin capture: it hands a bounded ANSI tail plus Herdr's capability facts to the fleet-wide classifier in `bin/fm-composer-lib.sh`, which owns every shape - bordered boxes, bare agent-glyph rows (including muse's `⟩`, which the adapter's retired local pattern silently omitted), opencode's left bar, and the Pi separator region this adapter pioneered, admitted only when native `agent get` identity is exactly Pi and state is idle, done, or blocked.
+The adapter is a thin capture: composer classification reads the live `visible` viewport as a styled ANSI snapshot, then hands that plus Herdr's capability facts to the fleet-wide classifier in `bin/fm-composer-lib.sh`, which owns every shape - bordered boxes, bare agent-glyph rows (including muse's `⟩`, which the adapter's retired local pattern silently omitted), opencode's left bar, and the Pi separator region this adapter pioneered, admitted only when native `agent get` identity is exactly Pi and state is idle, done, or blocked.
+`recent` scrollback is the wrong composer source: a short tail of it can drop Claude's opening `─` while keeping the idle `❯` and closing rule, which used to classify unknown for an entire away run.
 A working Pi, pending middle row, missing identity, incomplete separator pair, or over-tall candidate remains unknown or pending.
 Identity stays a lazy second read, consulted only when a separator pair could change the verdict.
 
@@ -247,8 +248,9 @@ ANSI capture preserves de-emphasized placeholder style.
 If the ANSI capture ever fails, the plain fallback declares itself unstyled and the classifier degrades a glyph row carrying trailing text to `unknown` instead of misreading ghost suggestions as typed input, which safely defers injection and eventually raises the wedge alarm.
 
 A bare shell prompt is never an empty agent composer.
-Away-mode injection proceeds only on an affirmative `empty` result, never on unknown.
-This prevents a dead agent pane from receiving and possibly executing an escalation as shell input.
+Away-mode injection proceeds on an affirmative `empty` result.
+On herdr it also proceeds when the composer is unknown and native agent-state is idle, because that is a registered agent waiting between turns rather than a dead shell.
+A dead shell has no idle agent registration and still cannot receive an escalation.
 
 The current operational envelope starts with U+2063 and `FIRSTMATE_OP: `.
 The separate routed-request carrier uses `[fm-from-firstmate]` plus U+2063.

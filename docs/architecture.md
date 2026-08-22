@@ -100,10 +100,13 @@ Pane existence, busy checks, composer checks, capture, and verified submit route
 The retries-exhausted queued-Enter decision is owned by `fm_composer_queued_enter_verdict` in `bin/fm-composer-lib.sh`; tmux and herdr provide only their backend-specific busy signals.
 Composer classification has one shared owner, `bin/fm-composer-lib.sh`: tmux, herdr, Zellij, Orca, and cmux contribute only a screen capture plus declarative styled, cursor, identity, and row capabilities, while the shared classifier owns every shape and the `empty`/`pending`/`pending-unproven`/`unknown` verdict.
 `fm-spawn.sh` also routes Kimi launch readiness through that classifier instead of carrying another shape copy.
-The daemon injects only into an affirmatively `empty` composer, so every other or future verdict defers; positive container proof is required, and a blank unidentified row or bare dead-shell prompt cannot receive an escalation.
+The daemon injects into an affirmatively `empty` composer.
+Pending text always defers.
+Unknown defers except on herdr when native agent-state is idle, so a clipped idle Claude composer cannot stall away-mode overnight, while a dead shell still cannot receive an escalation.
+Native-hosted away auto-discovers the captain pane and does not use a second flush target.
 The current operator boundary is in [Composer and injection safety](herdr-backend.md#composer-and-injection-safety).
 Unsupported supervisor backends refuse at daemon startup.
-Stalled escalation delivery writes `state/.subsuper-inject-wedged` and attempts a configured backend-independent active alert after `FM_MAX_DEFER_SECS` instead of silently deferring forever.
+Stalled escalation delivery retries the flush after `FM_MAX_DEFER_SECS`, including herdr native-idle delivery when the composer is unknown, and only then writes `state/.subsuper-inject-wedged` and attempts a configured backend-independent active alert.
 On an unmarked return, `bin/fm-afk-return.sh` owns ordered shutdown, durable catch-up evidence, and the fail-closed gate that keeps ordinary work behind every live firstmate-actionable blocker.
 `fm-send.sh` selects a pre-Enter popup-settle for slash commands and for codex `$...` skill invocations using metadata-routed target `harness=` values, then adds its own `FM_SEND_SETTLE` pause after successful text sends so immediate peeks catch the receiving turn starting; the sub-supervisor uses only the shared submit core and does not pay that post-submit pause.
 

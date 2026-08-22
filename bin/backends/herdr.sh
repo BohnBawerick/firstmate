@@ -2602,14 +2602,20 @@ fm_backend_herdr_capture() {  # <target> <lines>
   printf '%s' "$out" | tail -n "$lines"
 }
 
-fm_backend_herdr_capture_ansi() {  # <target> <lines>
+# fm_backend_herdr_capture_ansi: the live viewport, styled. Composer
+# classification needs what is on screen now. `recent` is scrollback, and
+# tailing it to FM_COMPOSER_CAPTURE_LINES can drop Claude's opening ─ so an
+# idle-between-turns pane classifies unknown and away-mode never injects.
+# `visible` is already viewport-bounded; keep the >=200 --lines fetch so the
+# small-N empty-read bug cannot apply, and do not tail the result.
+fm_backend_herdr_capture_ansi() {  # <target> [lines]
   fm_backend_herdr_target_ready "$1" || return 1
   local lines=${2:-200} fetch out
   case "$lines" in ''|*[!0-9]*) lines=200 ;; esac
   fetch=$lines
   case "$fetch" in ''|*[!0-9]*) fetch=200 ;; *) [ "$fetch" -ge 200 ] || fetch=200 ;; esac
-  out=$(fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane read "$FM_BACKEND_HERDR_PANE" --source recent --lines "$fetch" --format ansi 2>/dev/null) || return 1
-  printf '%s' "$out" | tail -n "$lines"
+  out=$(fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane read "$FM_BACKEND_HERDR_PANE" --source visible --lines "$fetch" --format ansi 2>/dev/null) || return 1
+  printf '%s' "$out"
 }
 
 # --- herdr composer capture and capability primitives -----------------------
