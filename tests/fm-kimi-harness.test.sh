@@ -801,7 +801,7 @@ SH
   esac
   printf '%s\n' "$$" > "$home/state/.lock"
   out=$(FM_HOME="$home" PATH="$fakebin:$BASE_PATH" "$ROOT/bin/fm-lock.sh" status)
-  assert_contains "$out" "lock: held by live harness pid" \
+  assert_contains "$out" "lock: held by ANOTHER live session (harness pid" \
     "fm-lock did not recognize Kimi as a live holder"
   pass "fm-lock recognizes Kimi ancestry and live lock holders"
 }

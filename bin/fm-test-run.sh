@@ -1235,7 +1235,10 @@ families_for_changed_path() {
       ;;
     bin/fm-pr-*|bin/fm-merge-local.sh|bin/fm-teardown.sh|bin/fm-review-diff.sh|\
     bin/fm-x-*|bin/fm-check*)
+      # The merge, PR-merge, and teardown paths carry the fleet-mutation gate,
+      # whose placement and refusal wording are pinned by the ownership suite.
       printf '%s\n' pr-forge
+      printf '%s\n' watcher-wake-lock
       ;;
     bin/fm-nm-run-lib.sh)
       # Shared no-mistakes run-attribution primitives, sourced by both
@@ -1276,10 +1279,16 @@ families_for_changed_path() {
     bin/fm-decision-hold.sh|bin/fm-supervision*|bin/fm-transition-lib.sh|\
     bin/fm-tmux-lib.sh|bin/fm-marker-lib.sh|bin/fm-operational-input.sh|bin/fm-tasks-axi-lib.sh|\
     bin/fm-vendor-auth-probe.sh|\
-    bin/fm-primary-scope-lib.sh|bin/fm-project-mode.sh|bin/fm-promote.sh|\
+    bin/fm-primary-scope-lib.sh|bin/fm-project-mode.sh|\
     bin/fm-quality-receipt.sh|\
     bin/fm-ff-lib.sh|bin/fm-gotmp*|bin/*pretool*)
       printf '%s\n' pure-contract-unit
+      ;;
+    bin/fm-promote.sh)
+      # Also a fleet-mutation entry point, so its gate is pinned by the
+      # ownership suite alongside its own contract coverage.
+      printf '%s\n' pure-contract-unit
+      printf '%s\n' watcher-wake-lock
       ;;
     .agents/skills/quota-array-dispatch/SKILL.md)
       printf '%s\n' pure-contract-unit

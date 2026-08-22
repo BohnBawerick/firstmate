@@ -560,6 +560,45 @@ test_two_non_owning_sessions_each_report_once_and_both_stand_down() {
   pass "two non-owning sessions in one home each report once, then both stand down"
 }
 
+# Pi and grok end a turn with a payload that carries no session_id at all, so
+# the payload id alone cannot tell two of their sessions apart in one home.
+test_a_harness_that_sends_no_session_id_reports_once_per_session() {
+  local dir rc out
+  dir="$TMP_ROOT/turnend-no-session-id"
+  make_home "$dir"
+  start_lock_holder "$dir" >/dev/null
+
+  # One session, two turns: report, then stand down. The ordered rc list is the
+  # evidence, so a stand-down on the FIRST turn cannot pass by accident.
+  detached_run env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$FAKE_CLAUDE" -c '
+      rcs=
+      i=0
+      while [ "$i" -lt 2 ]; do
+        printf "%s\n" "{\"stop_hook_active\":false}" | "$1"
+        rcs="$rcs$?,"
+        i=$((i + 1))
+      done
+      printf "rcs=%s\n" "$rcs"
+    ' _ "$dir/bin/fm-turnend-guard.sh" >/dev/null
+  out=$(run_output)
+  assert_contains "$out" "rcs=2,0," \
+    "a session with no payload session id did not report once and then stand down"
+
+  # A DIFFERENT session in the same home has read nothing and is owed its own
+  # report. One shared slot would silence it.
+  rc=$(detached_run env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
+    "$FAKE_CLAUDE" -c 'printf "%s\n" "{\"stop_hook_active\":false}" | "$1"; exit $?' \
+    _ "$dir/bin/fm-turnend-guard.sh")
+  out=$(run_output)
+  expect_code 2 "$rc" "a second session with no payload session id was silently stood down"
+  assert_contains "$out" "THIS SESSION CANNOT TURN IT ON" \
+    "the second session was not told why it cannot fix supervision"
+
+  pass "a harness that sends no session id still reports the decline once per session"
+}
+
 test_turnend_guard_reports_again_when_the_holder_changes() {
   local dir first second rc out
   dir="$TMP_ROOT/turnend-rehold"
@@ -593,4 +632,5 @@ test_a_spawned_worker_does_not_inherit_the_spawning_sessions_helm
 test_autoarm_declines_without_recording_a_failure
 test_turnend_guard_reports_the_decline_once_then_stops_blocking
 test_two_non_owning_sessions_each_report_once_and_both_stand_down
+test_a_harness_that_sends_no_session_id_reports_once_per_session
 test_turnend_guard_reports_again_when_the_holder_changes

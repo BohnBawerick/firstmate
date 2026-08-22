@@ -245,15 +245,21 @@ fm_session_lock_recorded_id() {  # <state-dir>
 
 # Print the numeric pid recorded in state dir $1's session lock, or return 1.
 #
-# INVARIANT, relied on by every predicate below: while a session holds the home,
-# the recorded pid names a LIVE process. Liveness is the only evidence another
-# process has that the home is held at all, so a dead pid reads as a free home
-# fleet-wide and lets an unrelated session mutate it. Tier 2 makes that reachable
-# without the invariant - a continuation inherits the helm by conversation id
-# while the pid it inherited can die under it - so bin/fm-lock.sh rewrites a dead
-# pid at every acquisition, and bin/fm-claude-stop-autoarm.sh, the only thing
-# that fires on an ordinary turn, reclaims through bin/fm-lock.sh whenever it
-# finds one.
+# Liveness is the only evidence another process has that the home is held at
+# all, so a dead recorded pid reads as a free home fleet-wide. Tier 2 is what
+# makes a dead pid reachable while a session still holds the helm: a
+# continuation inherits the home by conversation id, and the pid it inherited
+# can die under it.
+#
+# Two writers keep the pid live, and NEITHER makes it an invariant callers may
+# assume. bin/fm-lock.sh rewrites a dead pid at every acquisition, but it only
+# runs at session start and at the Cursor park. bin/fm-claude-stop-autoarm.sh is
+# the only caller that fires on an ordinary turn, and its reclaim sits behind
+# the away-mode and supervision-need gates on purpose, so an away home and an
+# idle home stay byte-for-byte inert and keep a dead pid indefinitely.
+# fm_session_lock_held_by_other below treats those homes as free, which is the
+# same answer it gives for any stale lock, so nothing here may be written on the
+# assumption that a dead recorded pid cannot occur.
 fm_session_lock_pid() {  # <state-dir>
   local lock_pid
   lock_pid=$(cat "$1/.lock" 2>/dev/null || true)

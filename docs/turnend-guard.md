@@ -109,6 +109,7 @@ A session that can never legitimately arm was therefore blocked on every turn, w
 Supervision belongs to the session that holds the lock, so there is nothing here to arm or repair.
 The guard states the decline once per (session, lock owner) pair and stands down on every later turn; a change of either half reports again.
 The owner it already reported is recorded per session in `state/.turnend-unowned-notice.<session>`, one slot each, so two non-owning sessions in one home cannot overwrite each other's slot and block each other forever.
+The slot is keyed on the stop payload's session id, falling back to the caller's own resolved session identity for Pi and grok, which send no session id at all and would otherwise share one slot across every session the home ever runs.
 The decline spends none of the auto-arm block budget, which stays reserved for a genuinely broken arm in a home this session actually holds.
 [`watcher-continuity.md`](watcher-continuity.md#session-lock-ownership) owns the ownership verdict itself.
 

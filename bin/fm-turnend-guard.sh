@@ -205,8 +205,17 @@ fi
 # Supervision is off AND this session does not hold the home: report the decline
 # once for this (session, lock owner) pair, then stand down for good. Blocking
 # again would nag a session that has no authority to fix it, forever.
+# Pi and grok send a stop payload with no session_id, so the payload id alone
+# would collapse every session in the home onto one shared slot and turn "report
+# once per session" into "report once, ever". Fall back to this caller's own
+# resolved session identity, which is stable within a session and distinct
+# across sessions for exactly the harnesses that publish no id.
 UNOWNED_NOTICE_SLUG=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9._-' '_')
-[ -n "$UNOWNED_NOTICE_SLUG" ] || UNOWNED_NOTICE_SLUG=unknown
+case "$UNOWNED_NOTICE_SLUG" in
+  ''|unknown)
+    UNOWNED_NOTICE_SLUG=self-$(fm_session_lock_self_pid 2>/dev/null || printf 'unresolved')
+    ;;
+esac
 UNOWNED_NOTICE="$STATE/.turnend-unowned-notice.$UNOWNED_NOTICE_SLUG"
 decline_stop() {
   local owner want have rule
