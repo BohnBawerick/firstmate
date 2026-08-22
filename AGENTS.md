@@ -82,7 +82,7 @@ data/                personal fleet records; LOCAL, gitignored as a whole
   captain.md         this home's domain-local captain preferences and working style; LOCAL, gitignored, canonical even if harness memory mirrors it, and updated with inspect-then-update
   captain-shared.md  main-authoritative shared captain preferences propagated read-only to secondmate homes; LOCAL, gitignored, owned by secondmate-provisioning
   memory/            fleet-local operational knowledge as one atomic note per claim, plus an optional standing core, the dated operating picture now.md, the regenerable catalog, and the never-injected drop tray; LOCAL, gitignored; curated with inspect-then-update - rewrite and prune rather than append forever, the same contract as captain.md; bin/fm-memory-compile.sh owns the note format and what session start injects, and bin/fm-memory-migrate.sh owns creating this layout from a home's legacy learnings.md
-  projects.md        thin fleet navigation registry recording each project's standing delivery posture; firstmate-private, parsed for mechanical sync and seeding by fm-project-mode.sh (section 6)
+  projects.md        thin fleet navigation registry recording each project's standing delivery and quality postures; firstmate-private, parsed for mechanical sync and seeding by fm-project-mode.sh (section 6)
   secondmates.md      local and remote secondmate routing table; firstmate-private, maintained by the secondmate seed helpers (section 6)
   <id>/brief.md      per-task crewmate brief, or per-secondmate charter brief when kind=secondmate
   <id>/report.md     scout task deliverable, written by the crewmate; survives teardown
@@ -123,6 +123,8 @@ state/               runtime records and signals; gitignored
   .status-presentation-cursor .status-presentation-lock  fleet-wide per-task status identity/byte-offset manifest and serialization lock preventing already-presented status lines from being replayed as new; owned by fm-classify-lib.sh, with each task's row retired by teardown
   .afk               durable away-mode flag; present = sub-supervisor may inject escalations (set by /afk, cleared on user return)
   .watch.lock .wake-queue.lock watcher singleton and queue serialization locks
+  .lock.session      conversation recorded beside the session lock, so a background continuation of the lock-holding conversation is recognized as the same session; docs/watcher-continuity.md
+  .turnend-unowned-notice.<session>   per-session record of the lock owner the turn-end guard already told that session it does not hold, plus the writer's process identity so a recycled pid reports again and a retired session's record is swept; never touch
   .claude-autoarm.lock .claude-autoarm-epoch .claude-autoarm-failure-notified .claude-autoarm-failure-alarmed .turnend-claude-blocks .turnend-claude-blocks.lock   Claude Stop auto-arm single-flight, epoch, failure-episode, attended-alarm, guard-budget, and budget-lock records; never touch
   .cursor-park-owner .cursor-park-owner.lock .turnend-cursor-blocks   Cursor stop-hook owner record, publication and commit lock, and bounded repair-nag budget; never touch
   .hash-* .count-* .stale-* .stale-since-* .paused-* .wedge-escalations-* .seen-* .hb-surfaced-* .last-* .heartbeat-streak   watcher internals; never touch
@@ -150,6 +152,8 @@ An `ABSENT` captain, shared-captain, or secondmate file means the firstmate repo
 
 If the session lock cannot be acquired and verified, report its exact diagnostic and remain read-only; another active session is only one possible cause.
 A lock-refused session must not spawn, steer, merge, drain the wake queue, repair supervision, repair a checkout, or perform any other fleet mutation.
+Read the digest's `HELM:` line rather than the recorded pid: it states in words whether this session holds the lock, and a background continuation of the lock-holding conversation is that same session.
+Every fleet-mutation entry point refuses a session that does not hold the home, so a refusal naming the holder is that boundary working, never an obstacle to route around; `docs/watcher-continuity.md` owns the ownership contract.
 
 The digest itself makes no external-network call and never waits for one.
 Every network check a session start owes - GitHub auth, dead-secondmate relaunch, secondmate convergence, pending handoff delivery, and project clone refresh - runs concurrently in a bounded worker owned by `bin/fm-startup-network.sh` and is reported in the digest's own `NETWORK CHECKS` section.
@@ -286,6 +290,7 @@ Resolve every ship task's concrete delivery mode and yolo posture at intake, and
 A current explicit captain instruction wins; otherwise the project's registry entry is the captain's standing posture, and dropping below its rigor needs a reason you can state.
 On a `no-mistakes-prod-only` project, classify the task's surface: internal-only tooling, automation, contributor or operator process, and release or submission work ships `direct-PR`, while product-facing, mixed, and uncertain work ships `no-mistakes`; never infer internal-only from file location or project name.
 An unregistered project or absent registry resolves to `no-mistakes` with yolo off, and the registration gap goes to the captain.
+A task's quality posture resolves at intake with the same precedence, a current explicit captain instruction first, then the project's registered posture, then `standard`, with the one-line reason for any deviation recorded in the same backlog note.
 Record the resulting mode, yolo, and the one-line reason for any deviation in the backlog item note.
 
 Treat file or subsystem overlap as a risk signal rather than an automatic reason to wait, and dispatch isolated work immediately with no concurrency cap when each change can be independently implemented and validated and the selected delivery path can reconcile ordinary rebases or conflicts.

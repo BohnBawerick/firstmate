@@ -37,7 +37,7 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | `fm-ensure-agents-md.sh` | Ensure a project's real `AGENTS.md`, its `CLAUDE.md` `@AGENTS.md` pointer, and the canonical self-governance section |
 | `fm-guard.sh`            | Warn on primary-checkout tangles, pending queued wakes, and unhealthy supervision    |
 | `fm-primary-scope-lib.sh` | Shared marker-or-plain-checkout primary-home predicate for tracked hooks             |
-| `fm-session-lock-lib.sh` | Shared session-lock harness identity (ancestry walk and holder liveness) for fm-lock.sh and the Claude Stop auto-arm |
+| `fm-session-lock-lib.sh` | Single owner of session-lock identity - declared pid, then conversation id, then the ancestry walk - and of `fm_require_session_lock`, the gate every fleet-mutation entry point calls (docs/watcher-continuity.md) |
 | `fm-claude-stop-autoarm.sh` | Claude Stop `asyncRewake` hook owning tokenless watcher continuity with single-flight exit-2 rewake (docs/watcher-continuity.md) |
 | `fm-turnend-guard.sh`    | Shared primary turn-end guard predicate so no turn ends blind (docs/turnend-guard.md) |
 | `fm-turnend-guard-grok.sh` | Grok Stop-hook adapter for the primary turn-end guard                              |
@@ -62,7 +62,9 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | `backends/orca.sh`       | Experimental Orca backend adapter owning both worktree and terminal                  |
 | `backends/cmux.sh`       | Experimental cmux session-provider adapter                                           |
 | `fm-config-push.sh`      | Push declared inherited local material to live local or remote secondmates and send the placement-specific config reread when changed |
-| `fm-project-mode.sh`     | Resolve a project's registered delivery posture from `data/projects.md` for fleet sync and home seeding |
+| `fm-project-mode.sh`     | Resolve a project's registered delivery and quality postures from `data/projects.md` |
+| `fm-quality.sh`          | Run a project's quality phase under its own bounds, write its receipt, report one outcome |
+| `fm-quality-receipt.sh`  | Validate a quality-gate receipt against the D2 schema, or print that schema           |
 | `fm-merge-local.sh`      | Fast-forward a `local-only` project or Firstmate's own repository local default branch after approval |
 | `fm-review-diff.sh`      | Review a crewmate branch or resolved PR head against the authoritative base          |
 | `fm-marker-lib.sh`       | Compatibility entry point for the from-firstmate carrier owned by `fm-operational-input.sh` |

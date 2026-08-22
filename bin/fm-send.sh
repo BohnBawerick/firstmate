@@ -142,6 +142,12 @@ fi
 . "$SCRIPT_DIR/fm-line-cap-lib.sh"
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
+# Fail closed before any fleet mutation: AGENTS.md section 3 makes a session that
+# could not verify lock ownership read-only, and bin/fm-session-lock-lib.sh is
+# the single owner of that verdict and its refusal.
+# shellcheck source=bin/fm-session-lock-lib.sh
+. "$SCRIPT_DIR/fm-session-lock-lib.sh"
+fm_require_session_lock "$STATE" "steer a worker" || exit 1
 
 FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the requested message WILL still be sent.' "$SCRIPT_DIR/fm-guard.sh" || true
 

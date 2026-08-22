@@ -625,6 +625,30 @@ subsection "LOCK"
 LOCK_OUT=$("$SCRIPT_DIR/fm-lock.sh" 2>&1)
 LOCK_RC=$?
 printf '%s\n' "$LOCK_OUT"
+# State the helm verdict in words, independently of the recorded pid on the
+# acquisition line above. A pid is not something a reading agent should have to
+# compare by hand, and reading someone else's pid as confirmation of ownership
+# is exactly what let a non-owning session mutate this home
+# (docs/watcher-continuity.md).
+# The verdict is NOT a second opinion on the acquisition. bin/fm-lock.sh owns
+# whether this session holds the lock, and it exits 0 only after it verified
+# that; recomputing the answer here would let the digest print a helm line that
+# contradicts the acquisition line above it or the read-only banner below it,
+# and a reader given two opposite instructions is worse off than with the bare
+# pid this line replaced. So the exit code decides, and the resolver is
+# consulted only to explain a failed acquisition, where the cause must be named
+# only when it is demonstrable: an unwritable state dir or a lock that is not a
+# regular file fails acquisition with no competing holder at all, and naming one
+# there would be the same false claim in different words.
+if [ "$LOCK_RC" -eq 0 ]; then
+  printf 'HELM: THIS session holds the fleet lock - it may change fleet state.\n'
+elif fm_session_lock_owned_by_self "$STATE"; then
+  printf 'HELM: ownership resolves to THIS session, but the fleet lock was NOT acquired - stay READ-ONLY by instruction; the fleet-mutation gate refuses only a live foreign owner, so nothing will stop this session.\n'
+elif fm_session_lock_held_by_other "$STATE"; then
+  printf 'HELM: ANOTHER session holds the fleet lock - this session is READ-ONLY.\n'
+else
+  printf 'HELM: fleet-lock ownership could NOT be resolved - this session is READ-ONLY.\n'
+fi
 READ_ONLY=0
 if [ "$LOCK_RC" -ne 0 ]; then
   READ_ONLY=1
@@ -642,7 +666,10 @@ if [ "$LOCK_RC" -ne 0 ]; then
     printf '%s\n' "$BAR"
   }
 fi
-REBUILDING_SESSION_PID=$(fm_harness_ancestry_pid 2>/dev/null || true)
+# The same identity the lock RECORDS, so the baseline written for a lock owner is
+# compared against that owner rather than against a second answer to the same
+# question (bin/fm-session-lock-lib.sh).
+REBUILDING_SESSION_PID=$(fm_session_lock_self_pid 2>/dev/null || true)
 print_agents_refresh_if_required "$REBUILDING_SESSION_PID"
 
 if [ "$READ_ONLY" -eq 0 ]; then

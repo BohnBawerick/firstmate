@@ -61,6 +61,11 @@
 #   5. Missing meta or torn-down worktree: report unknown · none. If no run is
 #      attributed to this crew, a dead endpoint also reports unknown · none rather
 #      than trusting a stale status log.
+#   6. A task recorded quality=hardened is not done until its quality receipt
+#      exists and passes, so every `done` verdict is filtered through
+#      bin/fm-quality.sh's own status verdict (see quality_gate_override below).
+#      Nothing else in this script changes, and a task with any other posture is
+#      never touched by it.
 #
 # Read-only and side-effect free. Always exits 0 on a successful read regardless
 # of state; exit 2 only on a usage error (no id).
@@ -70,6 +75,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 
 # shellcheck source=bin/fm-tmux-lib.sh
 . "$SCRIPT_DIR/fm-tmux-lib.sh"
@@ -97,10 +103,53 @@ FM_CREW_STATE_RUNS_LIMIT=${FM_CREW_STATE_RUNS_LIMIT:-200}
 case "$FM_CREW_STATE_RUNS_LIMIT" in ''|*[!0-9]*) FM_CREW_STATE_RUNS_LIMIT=200 ;; esac
 SEP=' · '
 
-# Emit the one canonical line and exit 0. Detail is optional.
+# A HARDENED task is not done until its quality receipt exists and passes.
+# A no-mistakes run that reports checks-passed with no receipt is not finished,
+# it is inconsistent, and saying so is the point. bin/fm-quality.sh owns the
+# whole verdict (which phases the project configures, what a valid receipt is,
+# which base commit it must name), so this asks it rather than restating any of
+# that here. The answer keeps the same ternary discipline as run attribution: a
+# MISSING receipt is a definite "the gate never ran" and reports blocked, while
+# an unreadable one is "cannot tell" and reports unknown - which, unlike
+# blocked, is not itself an instruction to act. A gate that passed on an earlier
+# commit still lets done stand - the pipeline commits after the pre-flight loop
+# by design, and the project's own CI is the final proof - but the line says so.
+#
+# This runs only when the task record says quality=hardened, so every state on
+# every ordinary task is byte-for-byte what it was before.
+quality_gate_override() {  # <detail> -> "<state>|<detail>" or nothing
+  local detail=$1 verdict note state reason
+  [ "${QUALITY_POSTURE:-}" = hardened ] || return 0
+  verdict=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_DATA_OVERRIDE="$DATA" \
+    "$SCRIPT_DIR/fm-quality.sh" status "$ID" 2>/dev/null) || verdict=""
+  note=${verdict##*"$SEP"}
+  case "$verdict" in
+    'quality: satisfied-stale'*) state="done";    reason="quality gate passed on an earlier commit: $note" ;;
+    'quality: satisfied'*|'quality: not-required'*) return 0 ;;
+    'quality: missing'*)         state="blocked"; reason="quality gate never ran: $note" ;;
+    'quality: not-passed'*)      state="blocked"; reason="quality gate did not pass: $note" ;;
+    'quality: unreadable'*)      state="unknown"; reason="quality gate unreadable: $note" ;;
+    *)                           state="unknown"; reason="quality gate verdict unavailable" ;;
+  esac
+  # One construction for every arm: an incoming detail may be empty, and a
+  # leading separator would put an empty field in a line supervision parses.
+  printf '%s|%s' "$state" "${detail:+$detail$SEP}$reason"
+}
+
+# Emit the one canonical line and exit 0. Detail is optional. A `done` verdict
+# on a hardened task passes through the quality gate above first, so no path
+# that can report done - run-step, coarse run, or status log - can bypass it.
 emit() {  # <state> <source> [detail]
-  local line="state: $1${SEP}source: $2"
-  [ -n "${3:-}" ] && line="$line${SEP}$3"
+  local state=$1 source=$2 detail=${3:-} override
+  if [ "$state" = "done" ]; then
+    override=$(quality_gate_override "$detail")
+    if [ -n "$override" ]; then
+      state=${override%%|*}
+      detail=${override#*|}
+    fi
+  fi
+  local line="state: $state${SEP}source: $source"
+  [ -n "$detail" ] && line="$line${SEP}$detail"
   printf '%s\n' "$line"
   exit 0
 }
@@ -117,6 +166,9 @@ WT=$(meta_value worktree)
 KIND=$(meta_value kind)
 HARNESS=$(meta_value harness)
 REMOTE_HOST=$(meta_value remote_host)
+# Empty until the meta is read, which keeps emit()'s quality gate inert on the
+# only paths that emit before this point (and none of them emit `done`).
+QUALITY_POSTURE=$(meta_value quality)
 [ -n "$KIND" ] || KIND=ship
 
 # A torn-down (or never-created) worktree has no current state to read. A

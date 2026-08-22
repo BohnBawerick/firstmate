@@ -1626,6 +1626,190 @@ test_missing_run_head_falls_back_to_current_state() {
   pass "missing run head falls back instead of matching by branch"
 }
 
+
+# --- hardened quality gate on a done verdict --------------------------------
+# A hardened task is not done until its quality receipt exists and passes. These
+# cases pin BOTH directions plus the ternary middle, and the standard-task case
+# pins that nothing else in this script moved.
+
+# Turns a fresh case dir into a hardened task: a real repo on fm/q, a contract
+# naming one pre-flight phase, and a meta recording the hardened posture and the
+# base commit. Called directly (not through a subshell) so the FM_FAKE_RUN_HEAD
+# export from make_repo_on_branch reaches the fakes.
+setup_hardened_case() {  # <case-dir> [quality]
+  local d=$1 quality=${2:-hardened}
+  mkdir -p "$d/data"
+  make_repo_on_branch "$d/wt" fm/q
+  make_fakebin "$d" >/dev/null
+  cat > "$d/wt/.quality-gate.yaml" <<'YAML'
+version: 1
+verify: "true"
+clean:
+  command: "true"
+YAML
+  git -C "$d/wt" add -A
+  git -C "$d/wt" -c user.name=fmtest -c user.email=fmtest@example.invalid commit -qm contract
+  FM_FAKE_RUN_HEAD=$(git -C "$d/wt" rev-parse HEAD)
+  export FM_FAKE_RUN_HEAD
+  fm_write_meta "$d/state/q.meta" "window=fm:fm-q" "worktree=$d/wt" "kind=ship" \
+    "harness=claude" "quality=$quality" "base_sha=$FM_FAKE_RUN_HEAD"
+}
+
+write_clean_receipt() {  # <case-dir> <outcome>
+  local d=$1 outcome=$2 sha
+  sha=$(git -C "$d/wt" rev-parse HEAD)
+  mkdir -p "$d/data/q"
+  python3 - "$d/data/q/quality-clean-receipt.json" "$outcome" "$sha" <<'RECEIPT'
+import json
+import sys
+
+dest, outcome, sha = sys.argv[1:4]
+with open(dest, "w", encoding="utf-8") as handle:
+    json.dump(
+        {
+            "schema_version": 1,
+            "phase": "clean",
+            "outcome": outcome,
+            "base_sha": sha,
+            "head_sha": sha,
+            "duration_ms": 11,
+            "engine": {"name": "fixture-engine", "version": "1.0.0"},
+            "threshold": {"crap_max": 15},
+            "findings": [],
+        },
+        handle,
+    )
+RECEIPT
+}
+
+run_crew_state_with_data() {  # <case-dir> <id>
+  PATH="$1/fakebin:$PATH" FM_STATE_OVERRIDE="$1/state" FM_DATA_OVERRIDE="$1/data" \
+    "$CREW_STATE" "$2"
+}
+
+test_hardened_without_receipt_is_not_done() {
+  reset_fakes
+  local d out; d=$(new_case quality-no-receipt)
+  setup_hardened_case "$d"
+  FM_FAKE_AXI_STATUS="$(run_passed fm/q)"
+  out=$(run_crew_state_with_data "$d" q)
+  assert_not_contains "$out" "state: done" \
+    "a hardened task with no quality receipt must not be reported done"
+  assert_contains "$out" "state: blocked" "a missing receipt is a definite verdict"
+  assert_contains "$out" "quality gate never ran" "the line says why it is not done"
+  pass "a hardened task with a finished run but no quality receipt is not done"
+}
+
+# The twin: identical run, identical fixture, only the receipt appears.
+test_hardened_with_passing_receipt_is_done() {
+  reset_fakes
+  local d out; d=$(new_case quality-receipt)
+  setup_hardened_case "$d"
+  write_clean_receipt "$d" pass
+  FM_FAKE_AXI_STATUS="$(run_passed fm/q)"
+  out=$(run_crew_state_with_data "$d" q)
+  assert_contains "$out" "state: done" "a passing quality receipt lets done stand"
+  assert_not_contains "$out" "quality gate" "a satisfied gate adds nothing to the line"
+  pass "a hardened task with a passing quality receipt reports done unchanged"
+}
+
+# A gate that passed on an earlier commit still lets done stand, because the
+# pipeline commits after the pre-flight loop by design and the project's own CI
+# is the final proof. What must not happen is the drift going unsaid.
+test_hardened_with_stale_receipt_is_done_and_says_so() {
+  reset_fakes
+  local d out; d=$(new_case quality-stale-receipt)
+  setup_hardened_case "$d"
+  write_clean_receipt "$d" pass
+  git -C "$d/wt" commit -q --allow-empty -m "a later fix round"
+  FM_FAKE_RUN_HEAD=$(git -C "$d/wt" rev-parse HEAD)
+  export FM_FAKE_RUN_HEAD
+  FM_FAKE_AXI_STATUS="$(run_passed fm/q)"
+  out=$(run_crew_state_with_data "$d" q)
+  assert_contains "$out" "state: done" "a stale but passing gate still lets done stand"
+  assert_contains "$out" "quality gate passed on an earlier commit" \
+    "the line names the staleness so a supervisor sees it"
+  pass "a hardened task whose receipt predates HEAD reports done and names the drift"
+}
+
+# Every quality verdict builds its line the same way, so a task whose own status
+# line carried no detail never produces an empty field in the line supervision
+# parses. A degenerate `done:` with nothing after the colon is the one input
+# that reaches emit with an empty detail.
+test_quality_gate_line_has_no_empty_field() {
+  reset_fakes
+  local d out; d=$(new_case quality-empty-detail)
+  setup_hardened_case "$d"
+  printf 'done:\n' > "$d/state/q.status"
+  FM_FAKE_AXI_STATUS="$(run_running fm/some-other)"
+  FM_FAKE_BUSY=0
+  arm_idle_record "$d/state" q
+  out=$(run_crew_state_with_data "$d" q)
+  assert_contains "$out" "quality gate never ran" "a missing receipt still says why"
+  assert_not_contains "$out" " ·  · " "no arm may leave an empty field in the line"
+  write_clean_receipt "$d" exhausted
+  out=$(run_crew_state_with_data "$d" q)
+  assert_contains "$out" "quality gate did not pass" "a failed receipt still says why"
+  assert_not_contains "$out" " ·  · " "the sibling arm builds its line the same way"
+  pass "a quality verdict on a detail-less status line leaves no empty field"
+}
+
+# Same ternary discipline as run attribution: an unreadable receipt is "cannot
+# tell", a different answer from a missing one and not itself an instruction to
+# act.
+test_hardened_with_unreadable_receipt_is_unknown() {
+  reset_fakes
+  local d out; d=$(new_case quality-unreadable)
+  setup_hardened_case "$d"
+  mkdir -p "$d/data/q"
+  printf 'not a receipt\n' > "$d/data/q/quality-clean-receipt.json"
+  FM_FAKE_AXI_STATUS="$(run_passed fm/q)"
+  out=$(run_crew_state_with_data "$d" q)
+  assert_contains "$out" "state: unknown" "an unreadable receipt is cannot-tell, not blocked"
+  assert_not_contains "$out" "state: done" "an unreadable receipt never reports done"
+  assert_contains "$out" "quality gate unreadable" "the line names what could not be read"
+  pass "an unreadable quality receipt reports unknown, distinct from a missing one"
+}
+
+test_hardened_receipt_that_did_not_pass_is_not_done() {
+  reset_fakes
+  local d out; d=$(new_case quality-not-passed)
+  setup_hardened_case "$d"
+  write_clean_receipt "$d" read-only
+  FM_FAKE_AXI_STATUS="$(run_passed fm/q)"
+  out=$(run_crew_state_with_data "$d" q)
+  assert_not_contains "$out" "state: done" \
+    "a read-only score on a hardened task is not a gate that passed"
+  assert_contains "$out" "quality gate did not pass" "the line names the outcome recorded"
+  pass "a hardened task whose receipt only reported a score is not done"
+}
+
+# The gate is scoped to quality=hardened, so every ordinary task's line is what
+# it was before.
+test_standard_task_line_is_unchanged() {
+  reset_fakes
+  local d out; d=$(new_case quality-standard)
+  setup_hardened_case "$d" standard
+  FM_FAKE_AXI_STATUS="$(run_passed fm/q)"
+  out=$(run_crew_state_with_data "$d" q)
+  assert_contains "$out" "state: done" "a standard task still reports done"
+  assert_not_contains "$out" "quality" "a standard task's line never mentions the gate"
+  pass "a task with any posture but hardened is untouched by the quality gate"
+}
+
+# A hardened task still validating is working, not blocked: the gate only ever
+# filters a done verdict.
+test_hardened_working_run_is_untouched() {
+  reset_fakes
+  local d out; d=$(new_case quality-working)
+  setup_hardened_case "$d"
+  FM_FAKE_AXI_STATUS="$(run_running fm/q)"
+  out=$(run_crew_state_with_data "$d" q)
+  assert_contains "$out" "state: working" "an active run on a hardened task is still working"
+  assert_not_contains "$out" "quality gate" "the gate does not touch a non-done verdict"
+  pass "the quality gate filters only a done verdict, never an in-flight one"
+}
+
 test_active_run_is_authoritative
 test_stale_needs_decision_superseded
 test_stale_blocked_superseded
@@ -1686,5 +1870,13 @@ test_unbindable_terminal_run_reports_unknown_not_failed
 test_coarse_unbindable_terminal_row_reports_unknown
 test_coarse_failed_run_at_current_head_still_reports_failed
 test_coarse_diverged_newest_row_blocks_older_row
+test_hardened_without_receipt_is_not_done
+test_hardened_with_passing_receipt_is_done
+test_hardened_with_stale_receipt_is_done_and_says_so
+test_quality_gate_line_has_no_empty_field
+test_hardened_with_unreadable_receipt_is_unknown
+test_hardened_receipt_that_did_not_pass_is_not_done
+test_standard_task_line_is_unchanged
+test_hardened_working_run_is_untouched
 
 echo "all fm-crew-state tests passed"

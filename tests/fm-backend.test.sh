@@ -1083,6 +1083,20 @@ test_spawn_explicit_backend_flag_beats_autodetect_herdr_env() {
   pass "fm-spawn.sh: explicit --backend tmux wins over an ambient HERDR_ENV=1 auto-detect marker"
 }
 
+# The away daemon may act on an `unknown` composer verdict only when the
+# backend positively proves a live idle agent composer. Every backend without
+# a native agent-registration probe must refuse, so `unknown` stays a hard
+# defer everywhere it cannot be disproved.
+test_composer_unknown_deliverable_default_is_refusal() {
+  local backend
+  for backend in tmux orca cmux zellij bogus-backend; do
+    if fm_backend_composer_unknown_deliverable "$backend" "some:target" 2>/dev/null; then
+      fail "backend '$backend' must never permit delivery through an unknown composer"
+    fi
+  done
+  pass "fm_backend_composer_unknown_deliverable: every backend without a native agent probe refuses by default"
+}
+
 test_spawn_autodetect_nesting_resolves_tmux_silently() {
   local proj wt data id state config out fb
   proj="$TMP_ROOT/nest-project"; wt="$TMP_ROOT/nest-wt"; data="$TMP_ROOT/nest-data"
@@ -1113,6 +1127,7 @@ test_spawn_autodetect_nesting_resolves_tmux_silently() {
   pass "fm-spawn.sh: auto-detect resolves nested tmux-in-herdr to tmux and stays silent end to end"
 }
 
+test_composer_unknown_deliverable_default_is_refusal
 test_backend_name_precedence
 test_backend_detect_precedence
 test_backend_detect_cmux_fallback_bundle_id

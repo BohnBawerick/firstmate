@@ -6,7 +6,7 @@
 # description, acceptance criteria, and context, and may adjust other sections
 # when the task genuinely deviates (e.g. working an existing external PR instead
 # of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--herdr-lab]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--quality <standard|hardened>] [--herdr-lab]
 #        fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab]
 #        fm-brief.sh <task-id> <repo-name> --dreamer [--herdr-lab]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
@@ -48,9 +48,22 @@
 # "Delivery contract: mode=<mode>" line. bin/fm-spawn.sh reads that line and refuses
 # to launch a ship task whose explicit --mode disagrees, so an adjusted brief and the
 # recorded task metadata cannot drift apart.
+# --quality is the task's quality posture, resolved at intake the same way (AGENTS.md
+# section 7) from the project's registered "+hardened" annotation, and it defaults to
+# standard so every existing call site scaffolds exactly as before:
+#   standard  the ordinary path: implement, then the mode's definition of done
+#   hardened  a clean loop then a harden loop, both against the base commit fixed at
+#             spawn, both before validation, driven by bin/fm-quality.sh
+# A hardened brief carries the sibling machine-readable line
+# "Quality contract: quality=hardened" plus one short quality-gate section; a standard
+# brief carries neither, so an absent line means standard and a standard brief stays
+# byte-identical to what this scaffold produced before --quality existed. bin/fm-spawn.sh
+# checks that line against its own --quality exactly as it checks the mode line.
+# --quality is refused on scout, dreamer and secondmate scaffolds, for the same reason
+# --mode is.
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
-# --mode is refused on scout and secondmate scaffolds: a scout's deliverable is a
-# report rather than a merge, and a charter is not a delivery contract.
+# --mode is refused on scout, dreamer and secondmate scaffolds: a scout or dreamer
+# delivers a report rather than a merge, and a charter is not a delivery contract.
 # There is no --yolo flag here. The worker never owns approval decisions, so yolo is
 # a spawn-time and firstmate-side input only (AGENTS.md section 7).
 # Every scaffold's status protocol distinguishes the configured
@@ -115,6 +128,8 @@ HERDR_LAB=0
 NO_PROJECTS=0
 MODE=
 MODE_SET=0
+QUALITY=standard
+QUALITY_SET=0
 POS=()
 want_value=
 for a in "$@"; do
@@ -124,6 +139,7 @@ for a in "$@"; do
     esac
     case "$want_value" in
       mode) MODE=$a; MODE_SET=1 ;;
+      quality) QUALITY=$a; QUALITY_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
     want_value=
@@ -137,6 +153,8 @@ for a in "$@"; do
     --no-projects) NO_PROJECTS=1 ;;
     --mode) want_value=mode ;;
     --mode=*) MODE=${a#--mode=}; MODE_SET=1 ;;
+    --quality) want_value=quality ;;
+    --quality=*) QUALITY=${a#--quality=}; QUALITY_SET=1 ;;
     # yolo never reaches the worker: it is firstmate's approval authority, not a
     # brief input. Refuse it loudly so it is never silently dropped here and then
     # believed to have been recorded.
@@ -162,6 +180,19 @@ if [ "$KIND" = ship ]; then
   esac
 elif [ "$MODE_SET" -eq 1 ]; then
   echo "error: --mode applies only to ship briefs; a scout or dreamer delivers a report and a secondmate charter is not a delivery contract" >&2
+  exit 1
+fi
+
+# Quality posture. Unlike --mode it has a safe default, so it is optional and only
+# its VALUE is closed-set validated; a typo must never quietly scaffold a standard
+# brief for a task firstmate resolved as hardened.
+if [ "$KIND" = ship ]; then
+  case "$QUALITY" in
+    standard|hardened) ;;
+    *) echo "error: --quality must be one of standard, hardened (got '$QUALITY')" >&2; exit 1 ;;
+  esac
+elif [ "$QUALITY_SET" -eq 1 ]; then
+  echo "error: --quality applies only to ship briefs; a scout or dreamer delivers a report and a secondmate charter is not a delivery contract" >&2
   exit 1
 fi
 [ "${#POS[@]}" -ge 1 ] || { echo "error: task id is required" >&2; exit 1; }
@@ -479,17 +510,40 @@ echo "scaffolded: $BRIEF (dreamer; replace {TASK})"
 exit 0
 fi
 
+# The DOD's machine-readable contract header, owned in one place so the three
+# mode bodies below cannot drift apart. A standard task emits the delivery line
+# alone, exactly as this scaffold did before --quality existed; a hardened task
+# adds the sibling quality line that bin/fm-spawn.sh checks against its own
+# explicit --quality before launching, the same way it checks the delivery line.
+CONTRACT_LINES="Delivery contract: mode=$MODE"
+if [ "$QUALITY" = hardened ]; then
+  CONTRACT_LINES="$CONTRACT_LINES
+Quality contract: quality=hardened"
+fi
+
+# The hardened task's extra instructions. Deliberately short: bin/fm-quality.sh
+# and its --help own the loop's mechanics, and a second copy here would drift.
+IFS= read -r -d '' QUALITY_SECTION <<EOF || true
+# Quality gate
+This task ships **hardened**, so an extra quality pass runs before the definition of done below, and \`$FM_ROOT/bin/fm-quality.sh\` drives it.
+
+1. The base commit is fixed when this task starts and is recorded in the task's durable record as \`base_sha=\`. Measure every phase as a diff against THAT commit, never against \`HEAD~1\`: each round of the loop commits, so \`HEAD~1\` would narrow the gate to the last round alone while still reporting success.
+2. Run the clean loop first, then the harden loop, and finish both before you start on that definition of done - on a no-mistakes task, that means before the pipeline starts.
+3. Do not hand-roll either loop. The rounds, the bounds, the receipt, and the outcome vocabulary belong to that script; \`$FM_ROOT/bin/fm-quality.sh --help\` is authoritative for its mechanics.
+4. Only a pass continues. If a surviving mutant exposes a real product defect rather than a missing test, report it (rule 6) instead of writing a test around it - a test that passes against a defect is exactly how a quality gate gets gamed.
+EOF
+QUALITY_SECTION=${QUALITY_SECTION%$'\n'}
+
 # Ship task: shape Setup / Rule 1 / Definition of done by this task's explicit
-# delivery mode, validated above. The generated DOD opens with the fixed
-# "Delivery contract: mode=<mode>" line that bin/fm-spawn.sh checks against its own
-# explicit --mode before launching.
+# delivery mode, validated above. Each body opens with $CONTRACT_LINES, built once
+# just above.
 case "$MODE" in
   direct-PR)
     SETUP2=""
     RULE1='1. Never push to the default branch (push only your `fm/'"$ID"'` branch). Never merge a PR.'
     IFS= read -r -d '' DOD <<EOF || true
 # Definition of done
-Delivery contract: mode=direct-PR
+$CONTRACT_LINES
 This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
 When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file and stop.
@@ -501,7 +555,7 @@ EOF
     RULE1="1. Never push to any remote and never open a PR. Work only on your \`fm/$ID\` branch; firstmate handles the merge into local \`main\`."
     IFS= read -r -d '' DOD <<EOF || true
 # Definition of done
-Delivery contract: mode=local-only
+$CONTRACT_LINES
 This task ships **local-only**: no remote, no PR, no pipeline.
 The task is complete only when committed on your branch \`fm/$ID\`. Do NOT push, do NOT open a PR, do NOT merge.
 Keep your branch a clean fast-forward onto the current default branch - if \`main\` has advanced, rebase onto it so the eventual merge stays a fast-forward.
@@ -515,7 +569,7 @@ EOF
     RULE1='1. Never push to the default branch. Never merge a PR.'
     IFS= read -r -d '' DOD <<EOF || true
 # Definition of done
-Delivery contract: mode=no-mistakes
+$CONTRACT_LINES
 This mode is complete only when the no-mistakes pipeline has shipped a PR whose checks are green.
 When implementation is committed on your branch, start the no-mistakes pipeline yourself immediately.
 Append \`working: starting no-mistakes validation\` to the status file, then run the \`no-mistakes\` CLI on your \`PATH\`: \`no-mistakes axi run --intent "<...>"\` to start, and \`no-mistakes axi respond\` for each gate.
@@ -543,6 +597,14 @@ esac
 # $(...) command substitution used to strip. Drop that one newline so generated
 # briefs stay byte-identical to the historical Bash 5 output.
 DOD=${DOD%$'\n'}
+
+# A standard task's brief body is unchanged by --quality existing: nothing is
+# prepended, so it stays byte-identical to the pre-quality scaffold.
+if [ "$QUALITY" = hardened ]; then
+  DOD="$QUALITY_SECTION
+
+$DOD"
+fi
 
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
@@ -598,4 +660,6 @@ Keep it proportionate: skip \`AGENTS.md\` edits for trivial tasks that produced 
 
 $DOD
 EOF
-echo "scaffolded: $BRIEF (ship, mode=$MODE; replace {TASK})"
+QUALITY_NOTE=
+[ "$QUALITY" = standard ] || QUALITY_NOTE=", quality=$QUALITY"
+echo "scaffolded: $BRIEF (ship, mode=$MODE$QUALITY_NOTE; replace {TASK})"

@@ -923,6 +923,10 @@ EOF
   assert_contains "$out" "FLEET LOCK OWNERSHIP WAS NOT VERIFIED" "lock publication failure was misreported as a live holder"
   assert_contains "$out" "lacks verified fleet-lock ownership" "lock publication failure did not explain why queued wakes remain untouched"
   assert_not_contains "$out" "ANOTHER LIVE FIRSTMATE SESSION HOLDS THE FLEET LOCK" "lock publication failure falsely claimed a live lock holder"
+  assert_contains "$out" "HELM: fleet-lock ownership could NOT be resolved" \
+    "the helm line did not name the real cause of a non-competing acquisition failure"
+  assert_not_contains "$out" "HELM: ANOTHER session holds the fleet lock" \
+    "the helm line named a competing holder for a home whose lock is free"
   [ -s "$home/state/.wake-queue" ] || fail "lock publication failure allowed the wake queue to mutate"
 
   pass "session start stays read-only when lock ownership cannot be published"
@@ -1468,7 +1472,8 @@ EOF
   out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
 
   # fm-lock.sh's own exact success text.
-  assert_contains "$out" "lock acquired: harness pid" "fm-lock.sh's real output did not appear (composition, not reimplementation)"
+  assert_contains "$out" "lock acquired: THIS session holds the fleet lock" "fm-lock.sh's real output did not appear (composition, not reimplementation)"
+  assert_contains "$out" "HELM: THIS session holds the fleet lock" "the digest did not state the helm verdict in words"
   # fm-bootstrap.sh's own exact MISSING-tool line format.
   assert_contains "$out" "MISSING: gh-axi (install:" "fm-bootstrap.sh's real detect line did not appear verbatim"
   # fm-wake-drain.sh's real drained record (raw tab-separated queue line).
@@ -1476,6 +1481,38 @@ EOF
   assert_contains "$out" "wake annotation: latest wake-EVENT observed at drain, not current state: task-z.status: needs-decision: pick a library" "fm-session-start.sh did not preserve the drain's separate annotation line"
 
   pass "fm-session-start.sh composes the real fm-lock.sh, fm-bootstrap.sh, and fm-wake-drain.sh output verbatim"
+}
+
+# Ownership and acquisition are two different questions, and they can disagree:
+# the recorded pid can resolve to this session while the acquisition still
+# fails. The digest must never answer them with two opposite instructions in the
+# same section.
+test_the_helm_line_never_contradicts_the_read_only_banner() {
+  local rec root home fakebin out
+  rec=$(new_world helm-unacquired)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+
+  # The lock names this session's own declared pid, so ownership resolves; it is
+  # a symlink rather than a regular file, so fm-lock.sh refuses to acquire it.
+  printf '%s\n' "$$" > "$home/state/lock-target"
+  ln -s "$home/state/lock-target" "$home/state/.lock"
+
+  out=$(env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
+    CLAUDE_PID="$$" FM_HOME="$home" FM_ROOT_OVERRIDE="$root" \
+    PATH="$fakebin:$BASE_PATH" "$SESSION_START")
+
+  assert_contains "$out" "READ-ONLY SESSION - FLEET LOCK OWNERSHIP WAS NOT VERIFIED" \
+    "the digest did not go read-only when the lock could not be acquired"
+  assert_not_contains "$out" "HELM: THIS session holds the fleet lock" \
+    "the helm line said this session may change fleet state, right above the read-only banner"
+  assert_contains "$out" "HELM: ownership resolves to THIS session, but the fleet lock was NOT acquired" \
+    "the digest did not name the resolved-but-unacquired state"
+
+  pass "the helm line agrees with the read-only banner when ownership resolves but acquisition fails"
 }
 
 # --- deferred network stage -------------------------------------------------
@@ -2013,7 +2050,7 @@ SH
     FM_HOME="$home" FM_ROOT_OVERRIDE="$root" PATH="$fakebin:$BASE_PATH" \
     bash -c 'export FM_FAKE_HARNESS_PID=$$; exec "$1" 8 "$2"' _ "$nest" "$SESSION_START")
 
-  assert_contains "$out" "lock acquired: harness pid" \
+  assert_contains "$out" "lock acquired: THIS session holds the fleet lock" \
     "the runtime bound's wrapper processes pushed the harness out of the bounded ancestry walk"
   assert_not_contains "$out" "READ-ONLY SESSION" \
     "a session start eight shells below its harness was wrongly refused the lock"
@@ -2533,6 +2570,7 @@ test_orphan_status_logs_are_printed
 test_endpoint_liveness_tmux
 test_endpoint_liveness_herdr
 test_composition_invokes_real_scripts
+test_the_helm_line_never_contradicts_the_read_only_banner
 test_backlog_compact_tasks_axi_omits_bodies_and_keeps_metadata
 test_backlog_queued_bound_discloses_its_remainder
 test_backlog_compact_manual_backend_skips_indented_bodies

@@ -133,7 +133,7 @@ exit 1
 SH
   chmod +x "$fakebin/ps"
   out=$(FM_HOME="$home" PATH="$fakebin:$PATH" "$ROOT/bin/fm-lock.sh" status)
-  assert_contains "$out" "lock: held by live harness pid" "fm-lock did not recognize grok as a live holder"
+  assert_contains "$out" "lock: held by ANOTHER live session (harness pid" "fm-lock did not recognize grok as a live holder"
   pass "fm-lock recognizes grok harness processes"
 }
 

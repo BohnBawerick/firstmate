@@ -134,6 +134,12 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 . "$SCRIPT_DIR/fm-pr-lib.sh"
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
+# Fail closed before any fleet mutation: AGENTS.md section 3 makes a session that
+# could not verify lock ownership read-only, and bin/fm-session-lock-lib.sh is
+# the single owner of that verdict and its refusal.
+# shellcheck source=bin/fm-session-lock-lib.sh
+. "$SCRIPT_DIR/fm-session-lock-lib.sh"
+fm_require_session_lock "$STATE" "drive a worker lifecycle action" || exit 1
 
 POLL=${FM_CONTROL_POLL:-0.5}
 SETTLE_WAIT=${FM_CONTROL_SETTLE_WAIT:-5}

@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 # Acquire or inspect the per-home firstmate session lock.
-# Writes the harness (agent) process PID found by walking the shell's ancestry,
-# which lives as long as the firstmate session - unlike the transient subshell
-# PID of any one tool call, which is dead moments after it is written.
+# Writes the pid of the harness (agent) process that lives as long as the
+# firstmate session - unlike the transient subshell PID of any one tool call,
+# which is dead moments after it is written. bin/fm-session-lock-lib.sh owns how
+# that pid is resolved and how a later caller proves it belongs to the same
+# session; a session whose harness publishes a conversation id also records it
+# in state/.lock.session, so a background continuation of that conversation
+# inherits the helm instead of fighting for it.
+# Every acquisition line states OWNERSHIP in words, never a bare pid: a reader
+# must be able to tell "I hold this" from "someone else holds this" without
+# comparing pids by hand.
 # Usage: fm-lock.sh           acquire; exit 1 unless ownership is verified
 #        fm-lock.sh status    print holder and liveness; always exits 0
 set -u
@@ -29,11 +36,67 @@ if [ "${1:-}" = "status" ]; then
     echo "lock: unreadable"
     exit 0
   }
-  if fm_harness_pid_alive "$old"; then echo "lock: held by live harness pid $old"; else echo "lock: stale (pid $old dead or not a harness)"; fi
+  if ! fm_harness_pid_alive "$old"; then
+    echo "lock: stale (pid $old dead or not a harness)"
+  elif fm_session_lock_owned_by_self "$STATE"; then
+    echo "lock: held by THIS session (harness pid $old)"
+  else
+    echo "lock: held by ANOTHER live session (harness pid $old)"
+  fi
   exit 0
 fi
 
-me=$(fm_harness_ancestry_pid) || { echo "error: cannot locate harness process in ancestry" >&2; exit 1; }
+me=$(fm_session_lock_self_pid) || { echo "error: cannot identify this session harness process" >&2; exit 1; }
+
+# Record the conversation alongside the pid, so a later background continuation
+# of THIS conversation is recognized as the same helm. Publishing no id must
+# clear any stale one rather than leave it to grant ownership to a stranger.
+publish_session_id() {
+  local id file
+  file=$(fm_session_lock_id_file "$STATE")
+  if id=$(fm_harness_session_id); then
+    printf '%s\n' "$id" > "$file" 2>/dev/null || rm -f "$file" 2>/dev/null || true
+  else
+    rm -f "$file" 2>/dev/null || true
+  fi
+}
+
+# Which of the three tiers granted ownership over recorded pid $1. Must be
+# called while state/.lock.session still holds the PRIOR value: publishing this
+# session's id first would make the conversation comparison trivially true and
+# report every grant as a conversation match.
+ownership_tier() {  # <recorded-pid>
+  local recorded=$1 self_id recorded_id
+  if [ "$me" = "$recorded" ]; then
+    printf 'self\n'
+    return 0
+  fi
+  if self_id=$(fm_harness_session_id) \
+    && recorded_id=$(fm_session_lock_recorded_id "$STATE") \
+    && [ "$self_id" = "$recorded_id" ]; then
+    printf 'conversation\n'
+    return 0
+  fi
+  printf 'ancestry\n'
+}
+
+# One wording for every successful acquisition, so the ownership verdict never
+# reads as a bare pid the caller has to interpret. The parenthetical names the
+# tier that actually granted it, because tier 2 and tier 3 both reach this with
+# a recorded pid that is not `me`.
+report_acquired() {  # <recorded-pid> <tier>
+  case "$2" in
+    self)
+      echo "lock acquired: THIS session holds the fleet lock (harness pid $1)"
+      ;;
+    conversation)
+      echo "lock acquired: THIS session holds the fleet lock (recorded harness pid $1, same conversation as this session)"
+      ;;
+    *)
+      echo "lock acquired: THIS session holds the fleet lock (recorded harness pid $1, inside this session's harness ancestry)"
+      ;;
+  esac
+}
 probe=$(mktemp "$STATE/.lock-write.XXXXXX" 2>/dev/null) || {
   echo "error: cannot write session lock; operate read-only until resolved" >&2
   exit 1
@@ -55,14 +118,22 @@ release_claim_lock() {
 trap release_claim_lock EXIT
 trap 'exit 1' HUP INT TERM
 
+# Ownership without a live recorded pid falls through to a fresh claim rather
+# than exiting early, so the live-pid invariant bin/fm-session-lock-lib.sh states
+# holds after every acquisition.
 if [ -f "$LOCK" ] && [ ! -L "$LOCK" ]; then
   old=$(cat "$LOCK" 2>/dev/null || true)
-  if [ "$old" = "$me" ]; then
-    echo "lock acquired: harness pid $me"
-    exit 0
-  fi
   if fm_harness_pid_alive "$old"; then
-    echo "error: another live firstmate session holds the lock (pid $old); operate read-only until resolved" >&2
+    if fm_session_lock_owned_by_self "$STATE"; then
+      # An ancestry grant inherits an existing owner's record. It has no
+      # authority to rename the conversation on it, and doing so would lock
+      # that owner's own background continuation out of a home it still holds.
+      tier=$(ownership_tier "$old")
+      [ "$tier" = ancestry ] || publish_session_id
+      report_acquired "$old" "$tier"
+      exit 0
+    fi
+    echo "error: NOT THIS SESSION - another live firstmate session holds the lock (harness pid $old); operate read-only until resolved" >&2
     exit 1
   fi
 fi
@@ -86,8 +157,8 @@ if [ -e "$LOCK" ] || [ -L "$LOCK" ]; then
     echo "error: session lock is unreadable; operate read-only until resolved" >&2
     exit 1
   }
-  if [ "$old" != "$me" ] && fm_harness_pid_alive "$old"; then
-    echo "error: another live firstmate session holds the lock (pid $old); operate read-only until resolved" >&2
+  if fm_harness_pid_alive "$old" && ! fm_session_lock_owned_by_self "$STATE"; then
+    echo "error: NOT THIS SESSION - another live firstmate session holds the lock (harness pid $old); operate read-only until resolved" >&2
     exit 1
   fi
 fi
@@ -103,5 +174,6 @@ if [ ! -f "$LOCK" ] || [ -L "$LOCK" ] || [ "$written" != "$me" ]; then
   echo "error: session lock ownership verification failed; operate read-only until resolved" >&2
   exit 1
 fi
+publish_session_id
 release_claim_lock
-echo "lock acquired: harness pid $me"
+report_acquired "$me" self

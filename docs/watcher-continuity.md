@@ -21,6 +21,38 @@ The Claude turn-end guard owns the monotonic failure progression, one-time atten
 While supervision is still needed and away mode remains inactive, an actionable close wakes the idle session through exit 2.
 While away mode (`state/.afk`) is active, the sub-supervisor daemon owns fleet supervision and triage, and primary watcher adapters stand down so wakes and arm processes are not duplicated.
 
+## Session-lock ownership
+
+`bin/fm-session-lock-lib.sh` is the single owner of "does this process belong to the session that holds this home's fleet lock", and of the refusal a session that does not hold it prints.
+
+Identity is answered in three tiers, and the first that applies wins.
+`CLAUDE_PID` names the Claude Code session process; `CLAUDE_CODE_SESSION_ID` names the conversation; the harness-ancestry walk answers for every harness that publishes neither.
+The two declared values win because a harness exports them identically into every tool shell and every hook process of a session, while the ancestry walk answers a slightly different question at each call site: it climbs to the first harness match and then stops at the first non-harness ancestor, so how deep the caller sits inside the harness's own worker chain decides which pid it reports.
+A Claude Code background continuation runs in a detached process tree, where that walk from a hook stops short of the session that took the helm while the walk from an ordinary tool shell can climb past it into an unrelated harness further up the real tree.
+`bin/fm-lock.sh` records the conversation in `state/.lock.session` beside the pid in `state/.lock`, replacing or removing it whenever it takes or re-confirms the home as its own, so a continuation of the lock-holding conversation inherits the helm and an unrelated session never can.
+Which tier granted ownership is decided before that record is written, and an ancestry grant is the one case that does not write it: such a caller inherits an existing owner's record because the recorded holder happens to sit above it in the real process tree, and renaming the conversation there would lock that owner's own background continuation out of a home it still holds.
+Liveness is the only evidence another process has that the home is held at all, so a dead recorded pid reads as a free home fleet-wide, and inheriting the helm by conversation id is what makes a dead pid reachable while a session still holds the home.
+`bin/fm-lock.sh` rewrites a dead pid at every acquisition, and `bin/fm-claude-stop-autoarm.sh` - the only caller that fires on an ordinary turn - reclaims through it whenever it finds one, whether or not this session already owns the home.
+That reclaim stays behind the away-mode and supervision-need gates by design, so an away home and an idle home keep a dead pid indefinitely and read as free; a dead recorded pid is therefore rarer than before but never impossible, and no predicate may assume it away.
+
+What the two declared tiers recognise is an accidentally inherited identity, not a hostile one.
+Both values come from the environment and every descendant of a session inherits them, so they are a correctness guard against a forked continuation being misread as a stranger, never a trust boundary against a process that sets them deliberately.
+A worker firstmate launches is such a descendant, so `bin/fm-spawn.sh` clears both from every worker's launch environment, for every runtime, rather than the predicate second-guessing what it reads.
+
+That one verdict now decides both halves of the contract, so no path can enforce a different answer than another.
+`bin/fm-claude-stop-autoarm.sh` and `bin/fm-turnend-guard-cursor.sh` use it to decide whether they may arm, and every fleet-mutation entry point - `bin/fm-wake-drain.sh`, `bin/fm-send.sh`, `bin/fm-spawn.sh`, `bin/fm-teardown.sh`, `bin/fm-promote.sh`, `bin/fm-merge-local.sh`, `bin/fm-pr-merge.sh`, and `bin/fm-control.sh` - calls `fm_require_session_lock` before argument validation, so AGENTS.md section 3's read-only rule is enforced where the mutation happens rather than trusted to a banner the session may never have read.
+The refusal names the holder and what to do instead.
+
+It refuses only on the full conjunction: a live lock owner, that owner not being this session, and this caller belonging to a harness session of its own.
+A missing, stale, or malformed lock is no competing session, and `bin/fm-lock.sh` already turns those into a fresh acquisition.
+A caller outside any harness session is no competing session either - that is the parent home reaching into a secondmate's endpoint over ssh, a detached job, or CI, none of which can produce the two-agents-one-home split.
+
+`bin/fm-session-start.sh`'s LOCK section states the verdict in words on its own `HELM:` line, so a reading agent never has to compare pids by hand.
+The line reads the acquisition's exit code rather than recomputing ownership, because `bin/fm-lock.sh` owns that decision and exits 0 only after verifying it; the helm line can therefore never contradict the acquisition line above it or the read-only banner below it.
+The resolver is consulted only to explain a failed acquisition, where ownership can still resolve to this session while the lock cannot be written at all.
+That branch says read-only by instruction rather than as an enforced fact, because the gate refuses only a live foreign owner and there is none here, so nothing would actually stop the session.
+Narrowing the gate to acquisition success instead would refuse the parent home reaching into a secondmate's endpoint over ssh, detached jobs, and CI, so the restraint stays with the reading agent and the digest says so plainly.
+
 ## Actionable wake ordering
 
 After an actionable Pi or OpenCode child close, the adapter starts and verifies one singleton successor before it delivers the original wake.
@@ -84,6 +116,8 @@ The same suite covers away-mode wake suppression and arm inhibition, ordinary sa
 `tests/fm-claude-stop-autoarm.test.sh` covers the auto-arm's scope, stale and live session owners, unchanged AFK and need boundaries, single-flight, bounded failure retries, benign live-watcher cycle ends, one-notice failure episodes, and exit-2 translation.
 `FM_CLAUDE_LIVE_E2E=1 tests/fm-claude-stop-autoarm-live-e2e.test.sh` starts with the reproduced stale-lock state, runs session start first, completes two tokenless cycles, and checks the competing-live-owner negative control.
 `tests/fm-turnend-guard.test.sh` covers the cooperative `--claude` guard, including monotonic failed-epoch progression, the integrated bounded fail-open, post-alarm continuation suppression, and positive recovery reset.
+`tests/fm-session-lock-ownership.test.sh` drives real competing live processes against real entry points: every mutating path refusing a non-owning session, the holder and a background continuation of its conversation passing untouched, an unrelated conversation and a non-owning session being refused, a caller outside any harness session not being treated as a competitor, the lock path's ownership wording, the auto-arm's silent record-free decline, and the turn-end guard reporting that decline once before standing down.
+That suite runs with no harness at all, so the two declared values it drives are pinned by `tests/fm-session-identity-live-e2e.test.sh`, the opt-in guard that proves them against the real installed Claude Code; [`verification/runtime-backends.md`](verification/runtime-backends.md#session-identity) carries its dated result and names it as the command that refreshes it.
 
 ## Active limits and verification
 
