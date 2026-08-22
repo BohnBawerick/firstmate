@@ -374,6 +374,7 @@ family_for_basename() {
     fm-kimi-harness.test.sh|fm-muse-harness.test.sh|fm-herdr-lab.test.sh|fm-lint.test.sh|\
     fm-lint-workflows.test.sh|\
     fm-operational-input.test.sh|fm-pi-primary-types.test.sh|\
+    fm-quality-receipt.test.sh|\
     fm-send-popup-settle.test.sh|fm-send-settle.test.sh|\
     fm-subagent-pretool-check.test.sh|\
     fm-supervision-instructions.test.sh|fm-task-delivery.test.sh|\
@@ -1203,6 +1204,7 @@ families_for_changed_path() {
     bin/fm-tmux-lib.sh|bin/fm-marker-lib.sh|bin/fm-operational-input.sh|bin/fm-tasks-axi-lib.sh|\
     bin/fm-vendor-auth-probe.sh|\
     bin/fm-primary-scope-lib.sh|bin/fm-project-mode.sh|bin/fm-promote.sh|\
+    bin/fm-quality-receipt.sh|\
     bin/fm-ff-lib.sh|bin/fm-gotmp*|bin/*pretool*)
       printf '%s\n' pure-contract-unit
       ;;
@@ -1222,7 +1224,8 @@ families_for_changed_path() {
       printf '%s\n' pure-contract-unit
       ;;
     .github/*|.tasks.toml|AGENTS.md|CLAUDE.md|CONTRIBUTING.md|\
-    docs/configuration.md|docs/supervision-protocols/*)
+    docs/configuration.md|docs/supervision-protocols/*|\
+    docs/quality-gate.md|docs/quality-receipt.schema.json)
       printf '%s\n' pure-contract-unit
       ;;
     tests/lib.sh|tests/*-helpers.sh)
