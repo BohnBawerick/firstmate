@@ -50,8 +50,12 @@
 # output path precisely so the two-word stdout contract above stays untouched.
 #
 # An unknown/missing project or unknown mode falls back to "no-mistakes off" and warns
-# to stderr, so a typo never silently drops the gate; --quality falls back to
-# "standard" on the same inputs.
+# to stderr, so a typo never silently drops the gate.
+# The quality posture resolves independently of that fallback.
+# A missing registry file, or a project absent from the registry, does yield "standard".
+# An unrecognised mode token resets only the mode and the yolo flag and keeps a
+# "+hardened" parsed beside it, because a typo in the mode must not silently drop the
+# quality gate too; the unknown-mode warning still goes to stderr.
 # Usage: fm-project-mode.sh [--raw] [--quality] <project-name>
 set -eu
 

@@ -554,6 +554,41 @@ EOF
   pass "fm-spawn: a ship task records quality= and base_sha= additively, and a scout records neither"
 }
 
+# The registry is the captain's standing quality posture too, so a hardened project
+# shipped as a standard task is announced for the same reason a rigor downgrade is:
+# allowed on a current captain instruction, never silent. It is advisory only, so the
+# spawn still succeeds and still records the standard posture it was handed.
+test_spawn_notices_a_quality_downgrade_against_the_registry() {
+  local rec home proj wt fakebin out status meta
+  rec=$(make_spawning_home quality-standing)
+  IFS='|' read -r home proj wt fakebin <<EOF
+$rec
+EOF
+
+  # 1. A hardened project, spawned from a standard brief with no --quality.
+  printf '%s\n' '- proj [no-mistakes +hardened] - fixture (added 2026-01-01)' > "$home/data/projects.md"
+  write_brief "$home" quality-standing-i1 no-mistakes
+  out=$(run_spawning "$home" "$wt" "$fakebin" quality-standing-i1 "$proj" --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "the quality notice must not block the spawn"$'\n'"$out"
+  assert_contains "$out" "ships quality=standard while the standing posture for proj is hardened" \
+    "no notice when a hardened project shipped a standard task"
+  meta="$home/state/quality-standing-i1.meta"
+  assert_present "$meta" "the announced spawn wrote no task record"
+  [ "$(meta_value "$meta" quality)" = standard ] \
+    || fail "the notice changed the recorded posture to '$(meta_value "$meta" quality)'"
+
+  # 2. The same spawn against a project carrying no +hardened token stays quiet.
+  printf '%s\n' '- proj [no-mistakes] - fixture (added 2026-01-01)' > "$home/data/projects.md"
+  write_brief "$home" quality-standing-i2 no-mistakes
+  out=$(run_spawning "$home" "$wt" "$fakebin" quality-standing-i2 "$proj" --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "a standard project spawn should succeed"$'\n'"$out"
+  assert_not_contains "$out" "ships quality=" \
+    "a project with no registered quality posture printed a quality notice"
+  pass "fm-spawn: a standard task under a hardened standing posture is announced, never blocked"
+}
+
 test_ship_spawn_requires_a_valid_delivery_contract
 test_scout_and_secondmate_refuse_delivery_flags
 test_spawn_refuses_a_brief_mode_mismatch
@@ -566,4 +601,5 @@ test_project_mode_two_word_contract_survives_the_quality_posture
 test_scout_and_secondmate_refuse_the_quality_flag
 test_spawn_refuses_a_brief_quality_mismatch
 test_spawn_records_the_quality_posture_and_base_commit
+test_spawn_notices_a_quality_downgrade_against_the_registry
 echo "# all fm-task-delivery tests passed"

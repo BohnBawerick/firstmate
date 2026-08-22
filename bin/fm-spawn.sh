@@ -1793,6 +1793,13 @@ if [ "$KIND" = ship ]; then
      && [ "$(delivery_rigor_rank "$MODE")" -lt "$(delivery_rigor_rank "$STANDING_MODE")" ]; then
     echo "notice: $ID ships mode=$MODE while the standing posture for $PROJ_NAME is $STANDING_MODE - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state" >&2
   fi
+  # The same notice for the quality posture, which is a plain two-value token: there
+  # is no conditional policy to exclude, so a hardened standing posture shipped as a
+  # standard task is the only downgrade there is. Advisory only, like the mode notice.
+  STANDING_QUALITY=$("$FM_ROOT/bin/fm-project-mode.sh" --quality "$PROJ_NAME" 2>/dev/null) || STANDING_QUALITY=
+  if [ "$STANDING_QUALITY" = hardened ] && [ "$QUALITY" = standard ]; then
+    echo "notice: $ID ships quality=$QUALITY while the standing posture for $PROJ_NAME is $STANDING_QUALITY - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state" >&2
+  fi
 fi
 
 BRIEF_DIR_REAL=$(cd "$(dirname "$BRIEF")" && pwd -P)
