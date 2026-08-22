@@ -299,6 +299,7 @@ receipt_outcome() {  # <file>
 
 # The standard single-phase contract. $FMQ_CTL is expanded by the platform shell
 # the command runs under, not by YAML.
+# shellcheck disable=SC2016 # the phase command's child shell expands $FMQ_CTL, not this test shell
 STD_CONTRACT='version: 1
 verify: "true"
 test: "sh $FMQ_CTL/test.sh"
@@ -580,6 +581,7 @@ bounds:
 test_wall_clock_bound_leaves_a_fast_engine_alone() {
   local d rc=0
   d=$(new_case wall-clock-spare)
+  # shellcheck disable=SC2016 # the phase command's child shell expands $FMQ_CTL, not this test shell
   write_contract "$d" 'version: 1
 verify: "true"
 clean:
@@ -860,6 +862,7 @@ test_dry_run_keeps_an_existing_receipt() {
 # The turn prompt asks the agent to answer `excluded` by editing the contract's
 # exclude list. The loop commits that edit, so the next round has to read it
 # back or one of the four documented answers is a no-op inside a run.
+# shellcheck disable=SC2016 # the phase command's child shell expands $FMQ_CTL, not this test shell
 EXCLUDE_CONTRACT='version: 1
 verify: "true"
 test: "sh $FMQ_CTL/test.sh"
@@ -937,6 +940,7 @@ test_repeated_empty_findings_is_stuck() {
 test_the_suite_recheck_stays_inside_the_bound() {
   local d out rc=0 started ended
   d=$(new_case suite-recheck-bound)
+  # shellcheck disable=SC2016 # the phase command's child shell expands $FMQ_CTL, not this test shell
   write_contract "$d" 'version: 1
 verify: "true"
 test: "sleep 5; exit 1"
@@ -966,6 +970,7 @@ test_signal_killed_suite_is_red_without_gnu_timeout() {
     return 0
   fi
   d=$(new_case perl-signal)
+  # shellcheck disable=SC2016 # the phase command's child shell expands $$ and $FMQ_CTL, not this test shell
   write_contract "$d" 'version: 1
 verify: "true"
 test: "kill -SEGV $$"
@@ -993,6 +998,7 @@ test_perl_host_still_measures_a_green_suite() {
     return 0
   fi
   d=$(new_case perl-green)
+  # shellcheck disable=SC2016 # the phase command's child shell expands $FMQ_CTL, not this test shell
   write_contract "$d" 'version: 1
 verify: "true"
 test: "exit 0"
@@ -1030,6 +1036,7 @@ test_dry_run_files_no_supervision_event() {
 # The loop re-reads the contract each round so an exclusion lands, and the agent
 # turn runs with full write access to the worktree. The bar it is judged against
 # is not one of the things it gets to move.
+# shellcheck disable=SC2016 # the phase command's child shell expands $FMQ_CTL, not this test shell
 THRESHOLD_CONTRACT='version: 1
 verify: "true"
 test: "sh $FMQ_CTL/test.sh"
@@ -1076,6 +1083,7 @@ test_an_untouched_threshold_runs_the_rounds_out() {
 test_unreadable_budget_usd_refuses() {
   local d out rc=0
   d=$(new_case bad-budget-usd)
+  # shellcheck disable=SC2016 # the phase command's child shell expands $FMQ_CTL, not this test shell
   write_contract "$d" 'version: 1
 verify: "true"
 clean:
@@ -1095,6 +1103,7 @@ bounds:
 test_a_readable_budget_usd_is_accepted() {
   local d rc=0
   d=$(new_case good-budget-usd)
+  # shellcheck disable=SC2016 # the phase command's child shell expands $FMQ_CTL, not this test shell
   write_contract "$d" 'version: 1
 verify: "true"
 clean:
