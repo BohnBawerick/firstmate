@@ -733,6 +733,72 @@ test_check_head_separates_git_failure_from_a_bad_sha() {
   pass "fm-quality-receipt: git failing to run is exit 2, a sha git disowns is exit 1"
 }
 
+test_a_receipt_arrives_on_stdin() {
+  local good bad out rc
+  good="$TMP_ROOT/stdin-good.json"
+  clean_pass_py | write_receipt "$good"
+  bad="$TMP_ROOT/stdin-bad.json"
+  cat <<PY | write_receipt "$bad"
+{
+  "schema_version": 1,
+  "phase": "clean",
+  "outcome": "not-applicable",
+  "base_sha": "$BASE",
+  "duration_ms": 12,
+  "engine": {"name": "eslint", "version": "10.1.0"},
+  "threshold": {"crap_max": 15},
+  "findings": [],
+}
+PY
+  out=$(validate - <"$good" 2>&1); rc=$?
+  expect_code 0 "$rc" "a valid receipt named on stdin with -"$'\n'"$out"
+  out=$(validate <"$good" 2>&1); rc=$?
+  expect_code 0 "$rc" "a valid receipt redirected onto stdin with no operand"$'\n'"$out"
+  out=$(cat "$good" | validate 2>&1); rc=$?
+  expect_code 0 "$rc" "a valid receipt piped in, the way a phase command emits one"$'\n'"$out"
+  out=$(validate - <"$bad" 2>&1); rc=$?
+  expect_code 1 "$rc" "an invalid receipt on stdin"$'\n'"$out"
+  assert_contains "$out" "head_sha" "the stdin rejection did not name head_sha"$'\n'"$out"
+  pass "fm-quality-receipt: a receipt piped in on stdin is read, not an empty string"
+}
+
+test_an_empty_argument_is_refused_rather_than_defaulted() {
+  local rec out rc
+  rec="$TMP_ROOT/empty-arg.json"
+  cat <<PY | write_receipt "$rec"
+{
+  "schema_version": 1,
+  "phase": "clean",
+  "outcome": "pass",
+  "base_sha": "$BASE",
+  "head_sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "duration_ms": 10,
+  "engine": {"name": "eslint", "version": "10.1.0"},
+  "threshold": {"crap_max": 15},
+  "findings": [],
+}
+PY
+  out=$(validate --check-head "" "$rec" 2>&1); rc=$?
+  expect_code 2 "$rc" "--check-head with an empty git dir"$'\n'"$out"
+  out=$(validate "" </dev/null 2>&1); rc=$?
+  expect_code 2 "$rc" "an empty file operand"$'\n'"$out"
+  validate "$rec" >/dev/null 2>&1 || fail "the fixture receipt is not valid without --check-head"
+  pass "fm-quality-receipt: an empty argument never silently becomes the default"
+}
+
+test_an_unreadable_receipt_path_is_a_tool_error() {
+  local rec out rc
+  out=$(validate "$TMP_ROOT/no-such-receipt.json" 2>&1); rc=$?
+  expect_code 2 "$rc" "a receipt path that does not exist"$'\n'"$out"
+  out=$(validate "$TMP_ROOT" 2>&1); rc=$?
+  expect_code 2 "$rc" "a receipt path that is a directory"$'\n'"$out"
+  rec="$TMP_ROOT/not-json.json"
+  printf 'this is not json\n' >"$rec"
+  out=$(validate "$rec" 2>&1); rc=$?
+  expect_code 1 "$rc" "a receipt that was read but is not JSON"$'\n'"$out"
+  pass "fm-quality-receipt: an unreadable path is exit 2, unparseable content is exit 1"
+}
+
 test_schema_command_prints_json() {
   local out rc
   out=$("$RECEIPT" schema); rc=$?
@@ -762,4 +828,7 @@ test_dashdash_reads_the_named_file_not_stdin
 test_sha_pattern_rejects_a_trailing_newline
 test_a_schema_keyword_this_checker_cannot_enforce_is_refused
 test_check_head_separates_git_failure_from_a_bad_sha
+test_a_receipt_arrives_on_stdin
+test_an_empty_argument_is_refused_rather_than_defaulted
+test_an_unreadable_receipt_path_is_a_tool_error
 test_schema_command_prints_json

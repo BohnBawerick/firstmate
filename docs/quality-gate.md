@@ -143,7 +143,10 @@ bin/fm-quality-receipt.sh schema
 ```
 
 Exit 0 is a valid receipt, 1 an invalid one, 2 a usage or tool error.
-The split matters to the loop controller: a broken receipt is the phase command's fault, while git failing to run, or a schema keyword the checker cannot enforce, is a wiring fault and must not be read as a verdict on the change.
+The split matters to the loop controller: a receipt that is read but is not JSON, or does not fit the schema, is the phase command's fault.
+A receipt path that cannot be read at all, git failing to run, or a schema keyword the checker cannot enforce, is a wiring fault and must not be read as a verdict on the change.
+
+The receipt may arrive as a file operand, as `-`, or on stdin with no operand, so a phase command that prints its receipt on stdout can be piped straight in.
 
 `--check-head` resolves `head_sha` in that tree and requires it to be that tree's `HEAD`.
 A receipt that stuffed a constant in `head_sha` fails as soon as `HEAD` moves.

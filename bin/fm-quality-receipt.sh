@@ -17,9 +17,11 @@
 #   - finding ids are unique inside each findings array
 #   - each verify child's base_sha and head_sha equal the envelope's
 # --check-head <git-dir> then requires head_sha to resolve to that tree's HEAD.
-# Tool errors (exit 2) include git failing to run under --check-head, and a
-# schema using a keyword this checker does not implement: an unenforced schema
-# keyword is refused, never ignored.
+# Tool errors (exit 2) are faults in the wiring rather than verdicts on the
+# change: a receipt path that cannot be read, git failing to run under
+# --check-head, and a schema using a keyword this checker does not implement.
+# An unenforced schema keyword is refused, never ignored.
+# A receipt that is read but is not JSON is the phase command's fault, exit 1.
 # FM_QUALITY_RECEIPT_SCHEMA overrides the schema path (test seam).
 set -eu
 
@@ -40,6 +42,21 @@ fi
 CMD=""
 CHECK_HEAD=""
 FILE=""
+FILE_SET=""
+
+fm_quality_receipt_set_file() {
+  [ -z "$FILE_SET" ] || {
+    printf 'fm-quality-receipt: unexpected extra argument %s\n' "$1" >&2
+    exit 2
+  }
+  [ -n "$1" ] || {
+    printf 'fm-quality-receipt: the file operand is empty\n' >&2
+    exit 2
+  }
+  FILE=$1
+  FILE_SET=1
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -h|--help)
@@ -63,7 +80,7 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --check-head)
-      [ "$#" -ge 2 ] || {
+      [ "$#" -ge 2 ] && [ -n "$2" ] || {
         printf 'fm-quality-receipt: --check-head requires a git dir\n' >&2
         exit 2
       }
@@ -75,11 +92,7 @@ while [ "$#" -gt 0 ]; do
       break
       ;;
     -)
-      [ -z "$FILE" ] || {
-        printf 'fm-quality-receipt: unexpected extra argument %s\n' "$1" >&2
-        exit 2
-      }
-      FILE=-
+      fm_quality_receipt_set_file -
       shift
       ;;
     -*)
@@ -87,22 +100,14 @@ while [ "$#" -gt 0 ]; do
       exit 2
       ;;
     *)
-      [ -z "$FILE" ] || {
-        printf 'fm-quality-receipt: unexpected extra argument %s\n' "$1" >&2
-        exit 2
-      }
-      FILE=$1
+      fm_quality_receipt_set_file "$1"
       shift
       ;;
   esac
 done
 
 while [ "$#" -gt 0 ]; do
-  [ -z "$FILE" ] || {
-    printf 'fm-quality-receipt: unexpected extra argument %s\n' "$1" >&2
-    exit 2
-  }
-  FILE=$1
+  fm_quality_receipt_set_file "$1"
   shift
 done
 
@@ -112,7 +117,7 @@ done
 }
 
 if [ "$CMD" = schema ]; then
-  [ -z "$CHECK_HEAD" ] && [ -z "$FILE" ] || {
+  [ -z "$CHECK_HEAD" ] && [ -z "$FILE_SET" ] || {
     printf 'fm-quality-receipt: schema takes no extra arguments\n' >&2
     exit 2
   }
@@ -134,9 +139,9 @@ fi
   exit 2
 }
 
-[ -n "$FILE" ] || FILE=-
+[ -n "$FILE_SET" ] || FILE=-
 
-exec python3 - "$SCHEMA" "$CHECK_HEAD" "$FILE" <<'PY'
+FM_QUALITY_RECEIPT_PROGRAM=$(cat <<'PY'
 from __future__ import annotations
 
 import json
@@ -433,9 +438,13 @@ def main() -> int:
         else:
             with open(source, encoding="utf-8") as handle:
                 raw = handle.read()
-        receipt = json.loads(raw)
-    except (OSError, json.JSONDecodeError) as exc:
+    except OSError as exc:
         print(f"fm-quality-receipt: cannot read receipt: {exc}", file=sys.stderr)
+        return 2
+    try:
+        receipt = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(f"fm-quality-receipt: receipt is not JSON: {exc}", file=sys.stderr)
         return 1
     try:
         validate(receipt, schema, schema, "$")
@@ -455,3 +464,6 @@ def main() -> int:
 if __name__ == "__main__":
     sys.exit(main())
 PY
+)
+
+exec python3 -c "$FM_QUALITY_RECEIPT_PROGRAM" "$SCHEMA" "$CHECK_HEAD" "$FILE"
