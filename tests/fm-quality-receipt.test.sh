@@ -838,6 +838,99 @@ PY
   pass "fm-quality-receipt: a \$ref with an unapplied sibling, or no target, is refused"
 }
 
+test_const_and_enum_compare_type_not_only_value() {
+  local rec
+  rec="$TMP_ROOT/version-true.json"
+  cat <<PY | write_receipt "$rec"
+{
+  "schema_version": True,
+  "phase": "clean",
+  "outcome": "pass",
+  "base_sha": "$BASE",
+  "head_sha": "$HEAD",
+  "duration_ms": 10,
+  "engine": {"name": "eslint", "version": "10.1.0"},
+  "threshold": {"crap_max": 15},
+  "findings": [],
+}
+PY
+  expect_fail_field "$rec" "schema_version" "schema_version as the boolean true"
+  rec="$TMP_ROOT/version-two.json"
+  cat <<PY | write_receipt "$rec"
+{
+  "schema_version": 2,
+  "phase": "clean",
+  "outcome": "pass",
+  "base_sha": "$BASE",
+  "head_sha": "$HEAD",
+  "duration_ms": 10,
+  "engine": {"name": "eslint", "version": "10.1.0"},
+  "threshold": {"crap_max": 15},
+  "findings": [],
+}
+PY
+  expect_fail_field "$rec" "schema_version" "schema_version 2"
+  rec="$TMP_ROOT/phase-true.json"
+  cat <<PY | write_receipt "$rec"
+{
+  "schema_version": 1,
+  "phase": True,
+  "outcome": "pass",
+  "base_sha": "$BASE",
+  "head_sha": "$HEAD",
+  "duration_ms": 10,
+  "engine": {"name": "eslint", "version": "10.1.0"},
+  "threshold": {"crap_max": 15},
+  "findings": [],
+}
+PY
+  expect_fail_field "$rec" "phase" "phase as the boolean true"
+  rec="$TMP_ROOT/version-one.json"
+  clean_pass_py | write_receipt "$rec"
+  validate "$rec" >/dev/null 2>&1 || fail "schema_version 1 was rejected"
+  pass "fm-quality-receipt: true is not 1, so a boolean cannot pass as a const or enum member"
+}
+
+test_a_non_finite_number_is_not_a_measurement() {
+  local rec
+  rec="$TMP_ROOT/nan-metrics.json"
+  cat <<PY | write_receipt "$rec"
+{
+  "schema_version": 1,
+  "phase": "harden",
+  "outcome": "pass",
+  "base_sha": "$BASE",
+  "head_sha": "$HEAD",
+  "duration_ms": 10,
+  "engine": {"name": "@stryker-mutator/core", "version": "10.0.0"},
+  "threshold": {"kill_rate_min": float("inf")},
+  "metrics": {"kill_rate": float("nan")},
+  "findings": [],
+}
+PY
+  expect_fail_field "$rec" "JSON" "a receipt carrying the NaN and Infinity tokens"
+  rec="$TMP_ROOT/overflow-metrics.json"
+  cat >"$rec" <<PY
+{
+  "schema_version": 1,
+  "phase": "harden",
+  "outcome": "pass",
+  "base_sha": "$BASE",
+  "head_sha": "$HEAD",
+  "duration_ms": 10,
+  "engine": {"name": "@stryker-mutator/core", "version": "10.0.0"},
+  "threshold": {"kill_rate_min": 0.80},
+  "metrics": {"kill_rate": 1e400},
+  "findings": []
+}
+PY
+  expect_fail_field "$rec" "kill_rate" "a metric literal that overflows to infinity"
+  rec="$TMP_ROOT/finite-metrics.json"
+  harden_exhausted_py | write_receipt "$rec"
+  validate "$rec" >/dev/null 2>&1 || fail "ordinary fractional metrics were rejected"
+  pass "fm-quality-receipt: a metric that compares false against every threshold is refused"
+}
+
 test_schema_command_prints_json() {
   local out rc
   out=$("$RECEIPT" schema); rc=$?
@@ -871,4 +964,6 @@ test_a_receipt_arrives_on_stdin
 test_an_empty_argument_is_refused_rather_than_defaulted
 test_an_unreadable_receipt_path_is_a_tool_error
 test_a_ref_the_checker_cannot_honour_is_refused
+test_const_and_enum_compare_type_not_only_value
+test_a_non_finite_number_is_not_a_measurement
 test_schema_command_prints_json

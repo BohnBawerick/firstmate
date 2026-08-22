@@ -147,6 +147,7 @@ FM_QUALITY_RECEIPT_PROGRAM=$(cat <<'PY'
 from __future__ import annotations
 
 import json
+import math
 import re
 import subprocess
 import sys
@@ -250,7 +251,29 @@ def is_int(value: object) -> bool:
 
 
 def is_number(value: object) -> bool:
-    return is_int(value) or isinstance(value, float)
+    if is_int(value):
+        return True
+    return isinstance(value, float) and math.isfinite(value)
+
+
+def reject_constant(token: str) -> float:
+    raise ValueError(f"{token} is not a JSON number")
+
+
+def json_equal(left: object, right: object) -> bool:
+    if isinstance(left, bool) != isinstance(right, bool):
+        return False
+    if isinstance(left, dict) and isinstance(right, dict):
+        return len(left) == len(right) and all(
+            key in right and json_equal(value, right[key]) for key, value in left.items()
+        )
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(
+            json_equal(a, b) for a, b in zip(left, right)
+        )
+    if isinstance(left, (dict, list)) or isinstance(right, (dict, list)):
+        return False
+    return left == right
 
 
 def unescape(part: str) -> str:
@@ -321,9 +344,9 @@ def validate(instance: object, schema: object, root: dict, path: str) -> None:
             raise SchemaError(path, "expected number")
     elif expected_type is not None:
         raise SchemaError(path, f"unsupported type {expected_type}")
-    if "const" in schema and instance != schema["const"]:
+    if "const" in schema and not json_equal(instance, schema["const"]):
         raise SchemaError(path, f"expected {schema['const']!r}")
-    if "enum" in schema and instance not in schema["enum"]:
+    if "enum" in schema and not any(json_equal(instance, item) for item in schema["enum"]):
         raise SchemaError(path, f"expected one of {schema['enum']!r}")
     if "pattern" in schema:
         if not isinstance(instance, str) or re.fullmatch(schema["pattern"], instance) is None:
@@ -440,8 +463,8 @@ def main() -> int:
     schema_path, check_head_dir, source = sys.argv[1], sys.argv[2], sys.argv[3]
     try:
         with open(schema_path, encoding="utf-8") as handle:
-            schema = json.load(handle)
-    except (OSError, json.JSONDecodeError) as exc:
+            schema = json.load(handle, parse_constant=reject_constant)
+    except (OSError, ValueError) as exc:
         print(f"fm-quality-receipt: cannot read schema: {exc}", file=sys.stderr)
         return 2
     try:
@@ -459,8 +482,8 @@ def main() -> int:
         print(f"fm-quality-receipt: cannot read receipt: {exc}", file=sys.stderr)
         return 2
     try:
-        receipt = json.loads(raw)
-    except json.JSONDecodeError as exc:
+        receipt = json.loads(raw, parse_constant=reject_constant)
+    except ValueError as exc:
         print(f"fm-quality-receipt: receipt is not JSON: {exc}", file=sys.stderr)
         return 1
     try:
