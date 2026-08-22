@@ -20,7 +20,9 @@
 # Tool errors (exit 2) are faults in the wiring rather than verdicts on the
 # change: a receipt path that cannot be read, git failing to run under
 # --check-head, and a schema using a keyword this checker does not implement.
-# An unenforced schema keyword is refused, never ignored.
+# An unenforced schema keyword is refused, never ignored. That includes a
+# keyword written beside a $ref, which this checker does not apply, and a $ref
+# that does not resolve: both are refused when the schema is loaded.
 # A receipt that is read but is not JSON is the phase command's fault, exit 1.
 # FM_QUALITY_RECEIPT_SCHEMA overrides the schema path (test seam).
 set -eu
@@ -200,7 +202,7 @@ KNOWN_KEYWORDS = ANNOTATION_KEYWORDS | APPLIED_KEYWORDS
 KNOWN_TYPES = frozenset({"object", "array", "string", "integer", "number"})
 
 
-def check_schema(schema: object, path: str) -> None:
+def check_schema(schema: object, path: str, root: dict, seen: set[str]) -> None:
     if isinstance(schema, bool):
         return
     if not isinstance(schema, dict):
@@ -208,24 +210,39 @@ def check_schema(schema: object, path: str) -> None:
     for key in schema:
         if key not in KNOWN_KEYWORDS:
             raise SchemaError(path, f"unsupported schema keyword {key}")
+    defs = schema.get("$defs")
+    if "$defs" in schema and not isinstance(defs, dict):
+        raise SchemaError(f"{path}/$defs", "expected object")
+    if isinstance(defs, dict):
+        for name, sub in defs.items():
+            check_schema(sub, f"{path}/$defs/{name}", root, seen)
+    if "$ref" in schema:
+        for key in schema:
+            if key != "$ref" and key not in ANNOTATION_KEYWORDS:
+                raise SchemaError(path, f"{key} beside $ref is not applied")
+        ref = schema["$ref"]
+        target = resolve(ref, root)
+        if ref not in seen:
+            seen.add(ref)
+            check_schema(target, ref, root, seen)
+        return
     expected_type = schema.get("type")
     if expected_type is not None and expected_type not in KNOWN_TYPES:
         raise SchemaError(path, f"unsupported type {expected_type!r}")
     for key in ("if", "then", "else", "not", "items", "additionalProperties"):
         if key in schema:
-            check_schema(schema[key], f"{path}/{key}")
+            check_schema(schema[key], f"{path}/{key}", root, seen)
     if "allOf" in schema:
         if not isinstance(schema["allOf"], list):
             raise SchemaError(f"{path}/allOf", "expected array")
         for i, sub in enumerate(schema["allOf"]):
-            check_schema(sub, f"{path}/allOf/{i}")
-    for key in ("properties", "$defs"):
-        block = schema.get(key)
-        if key in schema and not isinstance(block, dict):
-            raise SchemaError(f"{path}/{key}", "expected object")
-        if isinstance(block, dict):
-            for name, sub in block.items():
-                check_schema(sub, f"{path}/{key}/{name}")
+            check_schema(sub, f"{path}/allOf/{i}", root, seen)
+    props = schema.get("properties")
+    if "properties" in schema and not isinstance(props, dict):
+        raise SchemaError(f"{path}/properties", "expected object")
+    if isinstance(props, dict):
+        for name, sub in props.items():
+            check_schema(sub, f"{path}/properties/{name}", root, seen)
 
 
 def is_int(value: object) -> bool:
@@ -428,7 +445,7 @@ def main() -> int:
         print(f"fm-quality-receipt: cannot read schema: {exc}", file=sys.stderr)
         return 2
     try:
-        check_schema(schema, "$")
+        check_schema(schema, "$", schema, set())
     except SchemaError as exc:
         print(f"fm-quality-receipt: schema is not enforceable: {exc}", file=sys.stderr)
         return 2

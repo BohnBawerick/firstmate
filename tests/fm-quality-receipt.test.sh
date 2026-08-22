@@ -799,6 +799,45 @@ test_an_unreadable_receipt_path_is_a_tool_error() {
   pass "fm-quality-receipt: an unreadable path is exit 2, unparseable content is exit 1"
 }
 
+test_a_ref_the_checker_cannot_honour_is_refused() {
+  local rec schema out rc
+  rec="$TMP_ROOT/ref-clean-pass.json"
+  clean_pass_py | write_receipt "$rec"
+  validate "$rec" >/dev/null 2>&1 || fail "the fixture receipt is not valid against the committed schema"
+  schema="$TMP_ROOT/schema-ref-sibling.json"
+  python3 - "$ROOT/docs/quality-receipt.schema.json" "$schema" <<'PY'
+import json, sys
+src, dst = sys.argv[1], sys.argv[2]
+doc = json.load(open(src))
+doc["properties"]["head_sha"] = {"$ref": "#/$defs/sha", "minLength": 64}
+json.dump(doc, open(dst, "w"))
+PY
+  out=$(FM_QUALITY_RECEIPT_SCHEMA="$schema" validate "$rec" 2>&1); rc=$?
+  expect_code 2 "$rc" "a constraint written beside a \$ref, which this checker does not apply"$'\n'"$out"
+  assert_contains "$out" "minLength" "the refusal did not name the ignored keyword"$'\n'"$out"
+  schema="$TMP_ROOT/schema-broken-ref.json"
+  python3 - "$ROOT/docs/quality-receipt.schema.json" "$schema" <<'PY'
+import json, sys
+src, dst = sys.argv[1], sys.argv[2]
+doc = json.load(open(src))
+doc["properties"]["head_sha"] = {"$ref": "#/$defs/shaa"}
+json.dump(doc, open(dst, "w"))
+PY
+  out=$(FM_QUALITY_RECEIPT_SCHEMA="$schema" validate "$rec" 2>&1); rc=$?
+  expect_code 2 "$rc" "a \$ref that does not resolve"$'\n'"$out"
+  schema="$TMP_ROOT/schema-broken-ref-in-if.json"
+  python3 - "$ROOT/docs/quality-receipt.schema.json" "$schema" <<'PY'
+import json, sys
+src, dst = sys.argv[1], sys.argv[2]
+doc = json.load(open(src))
+doc["allOf"][0]["if"] = {"$ref": "#/$defs/shaa"}
+json.dump(doc, open(dst, "w"))
+PY
+  out=$(FM_QUALITY_RECEIPT_SCHEMA="$schema" validate "$rec" 2>&1); rc=$?
+  expect_code 2 "$rc" "a broken \$ref inside an if, which silently picks a branch"$'\n'"$out"
+  pass "fm-quality-receipt: a \$ref with an unapplied sibling, or no target, is refused"
+}
+
 test_schema_command_prints_json() {
   local out rc
   out=$("$RECEIPT" schema); rc=$?
@@ -831,4 +870,5 @@ test_check_head_separates_git_failure_from_a_bad_sha
 test_a_receipt_arrives_on_stdin
 test_an_empty_argument_is_refused_rather_than_defaulted
 test_an_unreadable_receipt_path_is_a_tool_error
+test_a_ref_the_checker_cannot_honour_is_refused
 test_schema_command_prints_json
