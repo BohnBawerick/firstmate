@@ -125,6 +125,10 @@ for arg in "$@"; do
   esac
 done
 cat > /dev/null
+if [ -n "${FMQ_CLAUDE_TURN_FAILS:-}" ]; then
+  printf 'Invalid API key · Please run /login\n' >&2
+  exit "$FMQ_CLAUDE_TURN_FAILS"
+fi
 [ -z "${FMQ_TURN_EDIT:-}" ] || printf 'round\n' >> "$FMQ_TURN_EDIT"
 [ -z "${FMQ_TURN_EXCLUDE:-}" ] || printf '    - "%s"\n' "$FMQ_TURN_EXCLUDE" >> .quality-gate.yaml
 [ -z "${FMQ_TURN_THRESHOLD:-}" ] || python3 - "$FMQ_TURN_THRESHOLD" <<'EDIT'
@@ -243,6 +247,10 @@ run_quality() {  # <case-dir> <args...>
 # A case's phase-command receipt path.
 receipt_of() {  # <case-dir> <phase>
   printf '%s/data/task/quality-%s-receipt.json\n' "$1" "$2"
+}
+
+receipt_exclusions() {  # <file> -> one glob per line
+  python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1])).get("exclusions", [])))' "$1"
 }
 
 receipt_outcome() {  # <file>
@@ -1059,6 +1067,76 @@ bounds:
   pass "a budget_usd the harness can read is accepted and the phase measures"
 }
 
+# A harness that never ran is not an agent that looked and changed nothing. The
+# loop must name the broken harness rather than spend every round and then blame
+# the code for leaving the findings untouched.
+test_a_harness_that_cannot_run_is_blocked() {
+  local d out rc=0
+  d=$(new_case turn-harness-down)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  out=$(FMQ_IDS_MODE=static FMQ_CLAUDE_TURN_FAILS=1 \
+    run_quality "$d" run task --phase clean) || rc=$?
+  expect_code 3 "$rc" "a harness that exits non-zero with no answer is blocked"
+  assert_contains "$out" "outcome: blocked" "a turn that never ran is could-not-measure"
+  assert_contains "$out" "claude" "the refusal names the harness that failed"
+  assert_not_contains "$out" "outcome: stuck" "a broken harness is not the code standing still"
+  [ "$(receipt_outcome "$(receipt_of "$d" clean)")" = blocked ] \
+    || fail "the receipt records blocked, not a verdict about the code"
+  pass "a harness that cannot run reports blocked instead of blaming the code"
+}
+
+# The twin: the same contract, the same unmoving findings, the same rounds - only
+# the harness works and answers. That must still reach stuck, so the case above
+# cannot be satisfied by blocking whenever the findings do not move.
+test_a_working_harness_that_changes_nothing_is_stuck() {
+  local d out rc=0
+  d=$(new_case turn-no-change)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  out=$(FMQ_IDS_MODE=static FMQ_TURN_ACTION=no-change \
+    run_quality "$d" run task --phase clean) || rc=$?
+  expect_code 1 "$rc" "an agent that answered no-change leaves the phase stuck"
+  assert_contains "$out" "outcome: stuck" "an agent that ran and changed nothing is stuck"
+  assert_not_contains "$out" "outcome: blocked" "a working harness is not a broken one"
+  pass "an agent that ran and answered no-change still reports stuck"
+}
+
+# The receipt is the durable proof, so it has to record the bar the run measured
+# against. A pass earned by excluding the diff must not be byte-identical to a
+# pass earned by writing tests.
+test_the_receipt_records_what_was_excluded() {
+  local d file rc=0
+  d=$(new_case receipt-exclusions)
+  write_contract "$d" "$EXCLUDE_CONTRACT"
+  write_meta "$d" hardened
+  FMQ_TURN_ACTION=excluded FMQ_TURN_EXCLUDE=src/a.ts \
+    run_quality "$d" run task --phase clean >/dev/null || rc=$?
+  expect_code 0 "$rc" "the excluding round reaches pass"
+  file=$(receipt_of "$d" clean)
+  [ "$(receipt_exclusions "$file")" = "src/gen/**
+src/a.ts" ] \
+    || fail "the receipt must record both the contract's exclusions and the one this run added: $(receipt_exclusions "$file")"
+  "$ROOT/bin/fm-quality-receipt.sh" validate "$file" >/dev/null \
+    || fail "a receipt carrying exclusions must still satisfy the committed schema"
+  pass "the receipt records the exclude list the run was measured against"
+}
+
+# The twin: the same contract measured with no round adding anything must record
+# only the contract's own entry, so the field cannot be a constant.
+test_the_receipt_records_no_exclusion_that_was_not_made() {
+  local d file rc=0
+  d=$(new_case receipt-exclusions-untouched)
+  write_contract "$d" "$EXCLUDE_CONTRACT"
+  write_meta "$d" hardened
+  FMQ_TURN_ACTION=tested run_quality "$d" run task --phase clean >/dev/null || rc=$?
+  expect_code 1 "$rc" "a run nobody excluded anything in stays below threshold"
+  file=$(receipt_of "$d" clean)
+  [ "$(receipt_exclusions "$file")" = "src/gen/**" ] \
+    || fail "the receipt must record only the contract's own exclusion: $(receipt_exclusions "$file")"
+  pass "a run that excluded nothing records only the contract's own exclusions"
+}
+
 test_pass
 test_read_only_is_not_pass
 test_read_only_cannot_measure_is_blocked
@@ -1100,6 +1178,10 @@ test_a_round_cannot_widen_its_own_threshold
 test_an_untouched_threshold_runs_the_rounds_out
 test_unreadable_budget_usd_refuses
 test_a_readable_budget_usd_is_accepted
+test_a_harness_that_cannot_run_is_blocked
+test_a_working_harness_that_changes_nothing_is_stuck
+test_the_receipt_records_what_was_excluded
+test_the_receipt_records_no_exclusion_that_was_not_made
 test_unknown_contract_version_refuses
 test_contract_without_verify_refuses
 test_missing_base_anchor_is_blocked

@@ -60,6 +60,10 @@
 #   data/<id>/quality-clean-receipt.json
 #   data/<id>/quality-harden-receipt.json
 #
+# Each receipt records the exclude list the run actually measured against, so a
+# pass earned by excluding the diff is not byte-identical to a pass earned by
+# writing tests.
+#
 # One file per phase, each a complete D2 phase receipt. The parked spec named a
 # single data/<id>/quality-receipt.json holding both; the landed schema requires
 # a verify envelope's children to share its head_sha, and the harden loop commits
@@ -470,16 +474,17 @@ PY
 
 # Rewrites a measurement receipt as the phase's final receipt: the loop's own
 # outcome, the loop's total wall clock, and the round count it took.
-finalize_receipt() {  # <in> <outcome> <duration_ms> <rounds> <note> <out>
+finalize_receipt() {  # <in> <outcome> <duration_ms> <rounds> <note> <out> <exclusions>
   python3 - "$@" <<'PY'
 import json
 import sys
 
-src, outcome, duration_ms, rounds, note, dest = sys.argv[1:7]
+src, outcome, duration_ms, rounds, note, dest, exclusions = sys.argv[1:8]
 with open(src, encoding="utf-8") as handle:
     doc = json.load(handle)
 doc["outcome"] = outcome
 doc["duration_ms"] = int(duration_ms)
+doc["exclusions"] = [line for line in exclusions.splitlines() if line]
 metrics = doc.get("metrics")
 if not isinstance(metrics, dict):
     metrics = {}
@@ -539,6 +544,14 @@ finish() {  # <outcome> <detail>
 
 AGENT_SCHEMA='{"type":"object","additionalProperties":false,"required":["action"],"properties":{"action":{"enum":["tested","excluded","defect-found","no-change"]},"finding_id":{"type":"string"},"note":{"type":"string"}}}'
 
+# The resolved harness binary's own version string, so a refusal names what
+# actually failed rather than the harness the task record asked for.
+harness_version() {  # <harness>
+  local bin version=""
+  bin=$(command -v "$1" 2>/dev/null) && version=$("$bin" --version 2>/dev/null | head -1)
+  printf '%s' "${version:-unknown}"
+}
+
 # Only claude and codex have a recipe, and the resolved binary must still
 # advertise its structured-output flag in its own --help. A renamed or removed
 # flag then refuses loudly naming the harness and version rather than running a
@@ -559,8 +572,7 @@ check_structured_output() {  # <harness>
     printf 'refuse harness %s is not installed here\n' "$harness"
     return 0
   fi
-  version=$("$bin" --version 2>/dev/null | head -1)
-  [ -n "$version" ] || version=unknown
+  version=$(harness_version "$bin")
   help_out=$("$bin" "${help_args[@]}" 2>&1) || true
   if ! printf '%s\n' "$help_out" | grep -q -- "$flag"; then
     printf 'refuse harness %s (%s) no longer advertises %s, so its final answer cannot be schema-validated\n' "$harness" "$version" "$flag"
@@ -570,10 +582,13 @@ check_structured_output() {  # <harness>
 }
 
 # One bounded headless turn. Writes the agent's structured answer's `action`
-# to stdout, or nothing when the turn produced no readable answer.
+# to stdout, or nothing when the turn produced no readable answer. The harness
+# exit status goes to $WORK_DIR/turn.rc, because a turn that never ran is a
+# broken harness, not an agent that looked and changed nothing. It runs in a
+# command substitution, so a file is what reaches the caller.
 agent_turn() {  # <secs> <prompt-file> <round>
   local secs=$1 prompt=$2 round=$3 out="$WORK_DIR/turn.out" schema_file="$WORK_DIR/turn-schema.json"
-  local resume=""
+  local rc=0 resume=""
   [ "$round" -gt 1 ] && resume=1
   printf '%s' "$AGENT_SCHEMA" > "$schema_file"
   case "$HARNESS" in
@@ -583,7 +598,7 @@ agent_turn() {  # <secs> <prompt-file> <round>
       [ -z "$resume" ] || cmd="$cmd --continue"
       cmd="$cmd < \"\$FM_QUALITY_PROMPT\""
       FM_QUALITY_SCHEMA="$AGENT_SCHEMA" FM_QUALITY_PROMPT="$prompt" \
-        bounded_sh "$secs" "$WT" "$cmd" > "$out" 2>/dev/null || true
+        bounded_sh "$secs" "$WT" "$cmd" > "$out" 2>/dev/null || rc=$?
       ;;
     codex)
       local cmd="codex exec"
@@ -592,10 +607,11 @@ agent_turn() {  # <secs> <prompt-file> <round>
       [ -z "$MODEL" ] || cmd="$cmd --model $MODEL"
       cmd="$cmd - < \"\$FM_QUALITY_PROMPT\""
       FM_QUALITY_SCHEMA_FILE="$schema_file" FM_QUALITY_PROMPT="$prompt" \
-        bounded_sh "$secs" "$WT" "$cmd" > "$out" 2>/dev/null || true
+        bounded_sh "$secs" "$WT" "$cmd" > "$out" 2>/dev/null || rc=$?
       ;;
     *) return 0 ;;
   esac
+  printf '%s\n' "$rc" > "$WORK_DIR/turn.rc"
   # Tolerant read: the structured object is either the whole document, the
   # `result` field of a harness envelope (as an object or as a JSON string), or
   # the last JSON object printed among streamed events. Anything else is an
@@ -864,7 +880,7 @@ PY
 
 cmd_run() {
   local state suite phase_cmd test_cmd secs rc detail
-  local round=1 no_progress=0 prev_ids="" ids="" last_receipt="" turn_action=""
+  local round=1 no_progress=0 prev_ids="" ids="" last_receipt="" turn_action="" turn_rc=0
   local have_prev=0
   local round_head="" pinned_threshold=""
 
@@ -1017,6 +1033,15 @@ cmd_run() {
     round_head=$(git -C "$WT" rev-parse HEAD)
     write_turn_prompt "$last_receipt" "$WORK_DIR/turn-prompt.md"
     turn_action=$(agent_turn "$secs" "$WORK_DIR/turn-prompt.md" "$round")
+    turn_rc=$(cat "$WORK_DIR/turn.rc" 2>/dev/null || printf '0')
+    # 124 is the wall-clock bound doing its job, and the next round reports it
+    # as exhausted. Any other failure with no answer is a harness that did not
+    # run, which is not evidence about the code.
+    if [ -z "$turn_action" ] && [ "$turn_rc" -ne 0 ] && [ "$turn_rc" -ne 124 ]; then
+      write_final "$last_receipt" blocked "$round" \
+        "The $HARNESS agent turn could not run, so no round of work happened." \
+        "the $HARNESS harness ($(harness_version "$HARNESS")) exited $turn_rc with no readable answer, so no agent turn ran"
+    fi
     if [ "$turn_action" = defect-found ]; then
       write_final "$last_receipt" defect-found "$round" \
         "A round reported a surviving finding as a real product defect." \
@@ -1047,7 +1072,8 @@ cmd_run() {
 write_final() {  # <receipt> <outcome> <rounds> <note> <detail>
   local src=$1 outcome=$2 rounds=$3 note=$4 detail=$5 dest err
   dest=$(receipt_path "$PHASE")
-  if ! finalize_receipt "$src" "$outcome" "$(elapsed_ms)" "$rounds" "$note" "$WORK_DIR/final.json"; then
+  if ! finalize_receipt "$src" "$outcome" "$(elapsed_ms)" "$rounds" "$note" "$WORK_DIR/final.json" \
+      "$(cfg_seq "$PHASE.exclude")"; then
     finish blocked "the $PHASE receipt could not be finalized"
   fi
   if ! err=$(validate_receipt "$WORK_DIR/final.json" "$WT" 2>&1); then
