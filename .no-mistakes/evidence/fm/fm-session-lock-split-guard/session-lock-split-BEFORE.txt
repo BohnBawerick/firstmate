@@ -1,0 +1,221 @@
+===================================================================
+  BEFORE the change (base commit 672c6d0)
+  session A (harness pid 28091) holds this home. Everything below
+  is what a SECOND live session in the same home sees.
+===================================================================
+
+--- session B: what the lock path tells it (part 2) ---------------
+$ bin/fm-lock.sh
+error: another live firstmate session holds the lock (pid 28091); operate read-only until resolved
+[exit 1]
+
+$ bin/fm-lock.sh status
+lock: held by live harness pid 28091
+[exit 0]
+
+--- session B: the session-start digest HELM line (part 2) --------
+$ bin/fm-session-start.sh   (LOCK section)
+LOCK
+--------------------------------------------------------------------------------
+error: another live firstmate session holds the lock (pid 28091); operate read-only until resolved
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  READ-ONLY SESSION - FLEET LOCK OWNERSHIP WAS NOT VERIFIED
+●  error: another live firstmate session holds the lock (pid 28091); operate read-only until resolved
+●  Skipping every mutating step: PR-check migration, stale Herdr child cleanup,
+●  secondmate convergence, secondmate liveness, pending remote handoff retry,
+●  X-mode artifacts, fleet sync, and wake-queue drain. Detect-only bootstrap
+●  diagnostics and the rest of this read-only-safe digest still ran below.
+●  Operate read-only until this resolves - do not spawn, steer, merge, or
+●  otherwise mutate fleet state from this session.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+--- session B: mutating fleet paths (part 1) ----------------------
+$ bin/fm-spawn.sh
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: ship spawns require --mode <no-mistakes|direct-PR|local-only>; resolve it at intake from the captain's instruction and the project's registered posture in data/projects.md
+[exit 1]
+$ bin/fm-send.sh
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+/tmp/fmdemo/run.TZOgKV/home/bin/fm-send.sh: line 325: $1: unbound variable
+[exit 1]
+$ bin/fm-merge-local.sh
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+/tmp/fmdemo/run.TZOgKV/home/bin/fm-merge-local.sh: line 22: 1: usage: fm-merge-local.sh <task-id>
+[exit 1]
+$ bin/fm-pr-merge.sh
+error: invalid PR merge request
+[exit 2]
+$ bin/fm-teardown.sh
+error: invalid teardown request
+[exit 2]
+$ bin/fm-promote.sh
+usage: fm-promote.sh <task-id> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off>
+[exit 1]
+$ bin/fm-control.sh
+fm-control.sh - the CONTROL PLANE for a firstmate-owned agent: allowlisted
+lifecycle verbs addressed to an exact task id.
+
+Usage: fm-control.sh <task-id> interrupt
+       fm-control.sh <task-id> exit
+       fm-control.sh <task-id> relaunch [--harness <name>] [--model <name>]
+                                        [--effort <level>]
+                                        (--note <text> | --note-file <path>)
+
+Why this exists, and how it differs from fm-send.sh. bin/fm-send.sh is the
+DATA plane: conversational text for the agent to read, always routing-marked
+for a kind=secondmate target so the reply returns through the status path.
+That marking is right for a message and wrong for a lifecycle command - a
+marked "/quit" arrives as ordinary chat the agent reasons ABOUT instead of
+executing. This script is the control plane: semantic process control with a
+closed verb list, per-harness mechanics owned by an executable adapter
+(bin/fm-control-lib.sh) rather than improvised in agent prose, and a verified
+postcondition for every action. There is deliberately NO arbitrary-text and
+NO generic raw-key entry point here; fm-send remains the only way to send an
+agent something to read.
+
+  interrupt  Deliver the harness's verified interrupt sequence. The agent
+             keeps running. Postcondition: delivery succeeded, the endpoint
+             still exists, and the agent is still alive where the backend can
+             classify that. Cancellation is confirmed only from an adapter-
+             owned acknowledgement and otherwise reported unconfirmed. Busy
+             state is never rewritten as proof of the action.
+  exit       Stop the agent, preserving its terminal endpoint, worktree, and
+             every uncommitted change. Interrupts first when the task reads
+             busy, then submits the harness's exit command. Postcondition:
+             the backend's recovery-grade classifier reports the agent gone.
+             Already-stopped is success (idempotent).
+  relaunch   Transactionally replace the running agent with a new one, in the
+             SAME endpoint and SAME worktree, on the same or a newly chosen
+             harness/model/effort - so switching harness is one ordinary use
+             of this verb. With no explicit axis, a secondmate re-resolves its
+             durable config/secondmate-harness pin (harness plus its optional
+             model and effort tokens) exactly as any other respawn does, while
+             a ship or scout keeps the exact adapter already recorded for it.
+             A prefixed raw-command basename cannot reconstruct its launch
+             command, so relaunch requires an explicit --harness for it.
+             --note is required for a ship or scout, whose replacement
+             inherits the local copy but none of the conversation; a
+             secondmate reconciles its own home's records at startup, so its
+             standing charter is never rewritten.
+             Records a durable checkpoint and that note, exits the old agent,
+             then delegates the launch to its single owner,
+             bin/fm-spawn.sh --relaunch. A failure before publication keeps
+             the prior durable record in place and reports the concrete
+             state; it never leaves a half-transitioned task claiming to be
+             running.
+
+Teardown and discard are NOT verbs here and never will be. `exit` stops an
+agent and preserves everything else; removing a worktree, killing an
+endpoint, or discarding work stays with bin/fm-teardown.sh, which owns the
+landed-work test.
+
+`resume` is not a verb: it is not deterministic across the verified adapters
+(bin/fm-control-lib.sh's header owns that reasoning). `relaunch` covers the
+same need for every adapter because the brief on disk, not a harness-private
+session, is the durable instruction.
+
+Targeting is EXACT: only a bare task id with a state/<id>.meta record in
+THIS home is accepted, and the record must pass the shared endpoint-identity
+validation (bin/fm-backend.sh's fm_backend_validate_task_endpoint). A legacy
+fm-<id> label, an explicit session:window endpoint, and a bare window name
+are all refused - a lifecycle command delivered to the wrong endpoint is far
+worse than a loud refusal.
+
+A remotely placed secondmate is refused by name: its agent runs on another
+host, so no postcondition this plane verifies could be read for it here.
+
+Fail-closed boundaries:
+  - An unverified harness, or a harness whose control mechanics are unknown,
+    is refused rather than guessed at.
+  - A backend that cannot deliver the harness's interrupt key is refused
+    (Orca's terminal API has no Escape).
+  - `exit` and `relaunch` require a backend with a recovery-grade agent-state
+    classifier (tmux, herdr), because without one the "the agent stopped"
+    postcondition cannot be proven. zellij, orca, and cmux are refused rather
+    than reported as successful blind.
+  - An ambiguous or unreadable endpoint state refuses; only a positively
+    classified state acts.
+
+Environment knobs (all bounded waits, seconds):
+  FM_CONTROL_POLL              poll interval for postcondition waits (0.5)
+  FM_CONTROL_SETTLE_WAIT       adapter acknowledgement wait after interrupt (5)
+  FM_CONTROL_EXIT_WAIT         alive->dead wait after the exit command (30)
+  FM_CONTROL_LAUNCH_WAIT       dead->alive wait after a relaunch (90)
+  FM_CONTROL_EXIT_RETRIES      Enter retries for the exit command (3)
+[exit 2]
+$ bin/fm-wake-drain.sh
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+[exit 0]
+
+--- session B: ending two turns (part 3) --------------------------
+$ turn 1 ends
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  TURN WOULD END BLIND - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher holds this home lock (last beat: never).
+●  The Stop-owned auto-arm did not claim this home either, so recovery is NOT already under way.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[exit 2]
+  state/.turnend-claude-blocks: session=session-B
+count=1
+epoch=
+
+$ turn 2 ends
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  TURN WOULD END BLIND - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher holds this home lock (last beat: never).
+●  The Stop-owned auto-arm did not claim this home either, so recovery is NOT already under way.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[exit 2]
+  state/.turnend-claude-blocks: session=session-B
+count=2
+epoch=
+
+$ turn 3 ends
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  TURN WOULD END BLIND - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher holds this home lock (last beat: never).
+●  The Stop-owned auto-arm did not claim this home either, so recovery is NOT already under way.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[exit 2]
+  state/.turnend-claude-blocks: session=session-B count=3 epoch= 
+
+$ turn 4 ends
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  TURN WOULD END BLIND - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher holds this home lock (last beat: never).
+●  The Stop-owned auto-arm did not claim this home either, so recovery is NOT already under way.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[exit 2]
+  state/.turnend-claude-blocks: session=session-B count=4 epoch= 
+
+$ turn 5 ends
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  TURN WOULD END BLIND - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher holds this home lock (last beat: never).
+●  The Stop-owned auto-arm did not claim this home either, so recovery is NOT already under way.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[exit 2]
+  state/.turnend-claude-blocks: session=session-B count=5 epoch= 
+
+$ turn 6 ends
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  TURN WOULD END BLIND - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher holds this home lock (last beat: never).
+●  The Stop-owned auto-arm did not claim this home either, so recovery is NOT already under way.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[exit 2]
+  state/.turnend-claude-blocks: session=session-B count=6 epoch= 
+

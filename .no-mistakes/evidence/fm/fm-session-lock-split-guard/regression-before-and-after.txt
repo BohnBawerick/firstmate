@@ -1,0 +1,30 @@
+Regression suite tests/fm-session-lock-ownership.test.sh
+each part fails against the base commit (672c6d0) and passes against the target (faf35c0).
+
+=== BEFORE: base-commit bin/, driven by the SAME new test file ===
+--- $ bash tests/only-part1.test.sh   (base commit)
+not ok - fm-wake-drain.sh let a non-owning session proceed
+--- $ bash tests/only-part2.test.sh   (base commit)
+not ok - the refusal did not distinguish this session from the holder (missing: 'NOT THIS SESSION')
+--- $ bash tests/only-part2b.test.sh   (base commit)
+not ok - the holder could not record its own conversation on the lock
+--- $ bash tests/only-part3.test.sh   (base commit)
+not ok - the decline did not say why this session cannot fix supervision (missing: 'THIS SESSION CANNOT TURN IT ON')
+$ bash tests/fm-session-lock-ownership.test.sh   (target commit)
+ok - every mutating fleet entry point refuses a session that does not hold the home
+ok - the fleet-mutation gate answers before argument validation
+ok - the lock-holding session passes the fleet-mutation gate untouched
+ok - a caller outside any harness session is not treated as a competing session
+ok - the lock path names ownership in words, never as a bare pid
+ok - a background continuation of the lock-holding conversation inherits the helm, and only it does
+ok - an ancestry grant inherits the recorded conversation instead of renaming it
+ok - a helm inherited by conversation id records the continuation's own live pid
+ok - the Stop auto-arm reclaims a dead recorded pid under an inherited helm
+ok - a spawned worker does not inherit the spawning session's helm
+ok - the auto-arm declines silently and records no failure for a home it does not hold
+ok - the turn-end guard reports a not-this-session decline once, then stops blocking
+ok - two non-owning sessions in one home each report once, then both stand down
+ok - a harness that sends no session id still reports the decline once per session
+ok - notice records are retired only when their recorded identity is gone
+ok - the decline is reported again when a different session takes the home
+[exit 0]

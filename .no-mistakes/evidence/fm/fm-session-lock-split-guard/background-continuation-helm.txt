@@ -1,0 +1,64 @@
+===================================================================
+  BEFORE the change (base 672c6d0): the continuation is locked out of its own home
+===================================================================
+
+foreground session (conversation conv-captain) took the helm:
+    lock acquired: harness pid 5303
+    [exit 0]
+    state/.lock          = 5303
+    state/.lock.session  = (none)
+
+$ (background continuation of the SAME conversation, CLAUDE_CODE_SESSION_ID=conv-captain)  fm-lock.sh
+    lock: held by live harness pid 5303
+    [exit 0]
+
+$ (background continuation of the SAME conversation, CLAUDE_CODE_SESSION_ID=conv-captain)  fm-wake-drain.sh
+    ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ●  WATCHER DOWN - SUPERVISION IS OFF
+    ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+    ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+    ●  This is a supervision warning only; the guarded operation WILL still run.
+    ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+    ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    [exit 0]
+
+$ (an UNRELATED conversation, CLAUDE_CODE_SESSION_ID=conv-stranger)  fm-lock.sh
+    lock: held by live harness pid 5303
+    [exit 0]
+
+$ (an UNRELATED conversation, CLAUDE_CODE_SESSION_ID=conv-stranger)  fm-wake-drain.sh
+    WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+    [exit 0]
+===================================================================
+  AFTER the change (target faf35c0): a background continuation inherits the helm, a stranger does not
+===================================================================
+
+foreground session (conversation conv-captain) took the helm:
+    lock acquired: THIS session holds the fleet lock (harness pid 92359)
+    [exit 0]
+    state/.lock          = 92359
+    state/.lock.session  = conv-captain
+
+$ (background continuation of the SAME conversation, CLAUDE_CODE_SESSION_ID=conv-captain)  fm-lock.sh
+    lock: held by THIS session (harness pid 92359)
+    [exit 0]
+
+$ (background continuation of the SAME conversation, CLAUDE_CODE_SESSION_ID=conv-captain)  fm-wake-drain.sh
+    ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ●  WATCHER DOWN - SUPERVISION IS OFF
+    ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+    ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+    ●  This is a supervision warning only; the guarded operation WILL still run.
+    ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+    ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    [exit 0]
+
+$ (an UNRELATED conversation, CLAUDE_CODE_SESSION_ID=conv-stranger)  fm-lock.sh
+    lock: held by ANOTHER live session (harness pid 92359)
+    [exit 0]
+
+$ (an UNRELATED conversation, CLAUDE_CODE_SESSION_ID=conv-stranger)  fm-wake-drain.sh
+    error: refusing to present or acknowledge this home's wake queue - this session does not hold the fleet lock for /tmp/fmdemo/cont.3KRSiP/home/state.
+    Another live firstmate session (harness pid 92359) holds it, and only that session
+    may change fleet state. Operate read-only from here, or end that session first.
+    [exit 1]

@@ -1,0 +1,138 @@
+
+=== SETUP ===
+foreground session A : harness pid 44804, conversation conv-alpha
+background continuation of A : harness pid 44845, conversation conv-alpha
+unrelated session C : harness pid 44914, conversation conv-charlie
+
+=== PART 2 - session A takes the helm, and the output says so in words ===
+$ fm-lock.sh   (as session A)
+lock acquired: THIS session holds the fleet lock (harness pid 44804)
+[exit 0]
+state/.lock         -> 44804
+state/.lock.session -> conv-alpha
+
+=== PART 1a - the background continuation inherits the helm and may mutate ===
+$ fm-lock.sh   (as background continuation B)
+lock acquired: THIS session holds the fleet lock (recorded harness pid 44804, same conversation as this session)
+[exit 0]
+$ fm-lock.sh status   (as B)
+lock: held by THIS session (harness pid 44804)
+[exit 0]
+$ fm-wake-drain.sh   (as B)
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[exit 0]
+
+=== PART 2 - the unrelated session is told it does NOT hold the home ===
+$ fm-lock.sh   (as session C)
+error: NOT THIS SESSION - another live firstmate session holds the lock (harness pid 44804); operate read-only until resolved
+[exit 1]
+$ fm-lock.sh status   (as C)
+lock: held by ANOTHER live session (harness pid 44804)
+[exit 0]
+
+=== PART 1b - every mutating fleet path refuses session C ===
+$ fm-wake-drain.sh   (as C)
+error: refusing to present or acknowledge this home's wake queue - this session does not hold the fleet lock for /tmp/fmdemo/home.680knb/home/state.
+Another live firstmate session (harness pid 44804) holds it, and only that session
+may change fleet state. Operate read-only from here, or end that session first.
+[exit 1]
+$ fm-send.sh   (as C)
+error: refusing to steer a worker - this session does not hold the fleet lock for /tmp/fmdemo/home.680knb/home/state.
+Another live firstmate session (harness pid 44804) holds it, and only that session
+may change fleet state. Operate read-only from here, or end that session first.
+[exit 1]
+$ fm-spawn.sh   (as C)
+error: refusing to spawn a worker - this session does not hold the fleet lock for /tmp/fmdemo/home.680knb/home/state.
+Another live firstmate session (harness pid 44804) holds it, and only that session
+may change fleet state. Operate read-only from here, or end that session first.
+[exit 1]
+$ fm-teardown.sh   (as C)
+error: refusing to tear a task down - this session does not hold the fleet lock for /tmp/fmdemo/home.680knb/home/state.
+Another live firstmate session (harness pid 44804) holds it, and only that session
+may change fleet state. Operate read-only from here, or end that session first.
+[exit 1]
+$ fm-promote.sh   (as C)
+error: refusing to promote a scout task - this session does not hold the fleet lock for /tmp/fmdemo/home.680knb/home/state.
+Another live firstmate session (harness pid 44804) holds it, and only that session
+may change fleet state. Operate read-only from here, or end that session first.
+[exit 1]
+$ fm-merge-local.sh   (as C)
+error: refusing to merge work into local main - this session does not hold the fleet lock for /tmp/fmdemo/home.680knb/home/state.
+Another live firstmate session (harness pid 44804) holds it, and only that session
+may change fleet state. Operate read-only from here, or end that session first.
+[exit 1]
+$ fm-pr-merge.sh   (as C)
+error: refusing to merge a pull request - this session does not hold the fleet lock for /tmp/fmdemo/home.680knb/home/state.
+Another live firstmate session (harness pid 44804) holds it, and only that session
+may change fleet state. Operate read-only from here, or end that session first.
+[exit 1]
+$ fm-control.sh   (as C)
+error: refusing to drive a worker lifecycle action - this session does not hold the fleet lock for /tmp/fmdemo/home.680knb/home/state.
+Another live firstmate session (harness pid 44804) holds it, and only that session
+may change fleet state. Operate read-only from here, or end that session first.
+[exit 1]
+
+=== PART 3 - the turn-end guard reports the decline once, then stands down ===
+--- session C ends turn 1 ---
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  SUPERVISION IS OFF, AND THIS SESSION CANNOT TURN IT ON
+●  Another live firstmate session (harness pid 44804) holds this home fleet lock,
+●  so supervision is that session job and nothing here can arm or repair it.
+●  This session is READ-ONLY: do not spawn, steer, merge, or otherwise change
+●  fleet state from it. End the other session, or continue the work there.
+●  Reported once - later turns will not block on this again.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[exit 2]
+--- session C ends turn 2 ---
+[exit 0]
+--- session C ends turn 3 ---
+[exit 0]
+--- session C ends turn 4 ---
+[exit 0]
+
+auto-arm block budget file state/.turnend-claude-blocks: absent - a clean stand-down spent none of it
+
+=== PART 3 - the helm holder is unaffected: session B ends a turn ===
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  TURN WOULD END BLIND - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher holds this home lock (last beat: never).
+●  The Stop-owned auto-arm did not claim this home either, so recovery is NOT already under way.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[exit 2]
+
+=== PART 2 - the session-start digest, as the reading agent sees it ===
+--- LOCK section, session C (does not hold the home) ---
+6:LOCK
+7---------------------------------------------------------------------------------
+8-error: NOT THIS SESSION - another live firstmate session holds the lock (harness pid 44804); operate read-only until resolved
+9-HELM: ANOTHER session holds the fleet lock - this session is READ-ONLY.
+10-●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+11-●  READ-ONLY SESSION - FLEET LOCK OWNERSHIP WAS NOT VERIFIED
+12-●  error: NOT THIS SESSION - another live firstmate session holds the lock (harness pid 44804); operate read-only until resolved
+13-●  Skipping every mutating step: PR-check migration, stale Herdr child cleanup,
+14-●  secondmate convergence, secondmate liveness, pending remote handoff retry,
+15-●  X-mode artifacts, fleet sync, and wake-queue drain. Detect-only bootstrap
+16-●  diagnostics and the rest of this read-only-safe digest still ran below.
+17-●  Operate read-only until this resolves - do not spawn, steer, merge, or
+18-●  otherwise mutate fleet state from this session.
+--- LOCK section, session B (background continuation of the holder) ---
+6:LOCK
+7---------------------------------------------------------------------------------
+8-lock acquired: THIS session holds the fleet lock (recorded harness pid 44804, same conversation as this session)
+9-HELM: THIS session holds the fleet lock - it may change fleet state.
+10-
+11-BOOTSTRAP
+12---------------------------------------------------------------------------------
+13-(silent - all good)
+14-
+15-WAKE QUEUE
+16---------------------------------------------------------------------------------
+17-WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+18-================================================================================

@@ -1,0 +1,10 @@
+$ FM_SESSION_IDENTITY_LIVE=1 tests/fm-session-identity-live-e2e.test.sh
+  (opt-in live guard, run against the real installed Claude Code on this machine)
+
+# claude: 2.1.239 (Claude Code)
+ok - the real harness declares one session identity to every hook process
+# ancestry walk from the hook process resolved: 99661
+ok - the declared identity is live, and the shared resolver prefers it over the ancestry walk
+ok - a continuation of the real conversation inherits the helm, and a stranger does not
+# fm-session-identity-live-e2e: verified against claude 2.1.239 (Claude Code)
+[exit 0]
