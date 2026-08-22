@@ -125,6 +125,7 @@ for arg in "$@"; do
   esac
 done
 cat > /dev/null
+[ -z "${FMQ_TURN_DIRTY:-}" ] || printf 'half finished\n' > "$FMQ_TURN_DIRTY"
 if [ -n "${FMQ_CLAUDE_TURN_FAILS:-}" ]; then
   printf 'Invalid API key · Please run /login\n' >&2
   exit "$FMQ_CLAUDE_TURN_FAILS"
@@ -247,6 +248,12 @@ run_quality() {  # <case-dir> <args...>
 # A case's phase-command receipt path.
 receipt_of() {  # <case-dir> <phase>
   printf '%s/data/task/quality-%s-receipt.json\n' "$1" "$2"
+}
+
+assert_clean_worktree() {  # <case-dir> <why>
+  local dirty
+  dirty=$(git -C "$1/wt" status --porcelain 2>/dev/null)
+  [ -z "$dirty" ] || fail "$2: the task copy was left dirty: $dirty"
 }
 
 receipt_exclusions() {  # <file> -> one glob per line
@@ -1137,6 +1144,56 @@ test_the_receipt_records_no_exclusion_that_was_not_made() {
   pass "a run that excluded nothing records only the contract's own exclusions"
 }
 
+# Every exit that skips the ordinary suite's verdict still owes the task copy a
+# revert. A half-finished edit no test ever saw would otherwise sit uncommitted,
+# and the next hardened run refuses on a dirty tree until a human cleans it.
+test_a_failed_turn_leaves_no_half_finished_work() {
+  local d out rc=0
+  d=$(new_case turn-failed-dirty)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  out=$(FMQ_IDS_MODE=static FMQ_TURN_DIRTY="$d/wt/half-done.txt" FMQ_CLAUDE_TURN_FAILS=1 \
+    run_quality "$d" run task --phase clean) || rc=$?
+  expect_code 3 "$rc" "a harness that could not run is blocked"
+  assert_contains "$out" "outcome: blocked" "a turn that never finished is could-not-measure"
+  assert_absent "$d/wt/half-done.txt" "the half-finished edit must not survive the round"
+  assert_clean_worktree "$d" "a blocked turn"
+  pass "a turn that ends the phase by failing reverts its half-finished work"
+}
+
+# The sibling exit: the prompt tells a defect report to change nothing, and the
+# loop enforces that rather than trusting it.
+test_a_defect_report_leaves_no_half_finished_work() {
+  local d out rc=0
+  d=$(new_case defect-dirty)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  out=$(FMQ_IDS_MODE=static FMQ_TURN_DIRTY="$d/wt/half-done.txt" FMQ_TURN_ACTION=defect-found \
+    run_quality "$d" run task --phase clean) || rc=$?
+  expect_code 5 "$rc" "an agent-reported defect exits 5"
+  assert_contains "$out" "outcome: defect-found" "the defect still ends the phase"
+  assert_absent "$d/wt/half-done.txt" "a defect report that also edited must not leave the edit"
+  assert_clean_worktree "$d" "a defect-found turn"
+  pass "a defect report reverts anything the turn changed on its way out"
+}
+
+# The twin for both: a round the ordinary suite approves must keep its work, so
+# neither case above can be satisfied by reverting every round.
+test_an_approved_round_keeps_its_work() {
+  local d rc=0 kept
+  d=$(new_case round-kept)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  FMQ_IDS_MODE=shrinking FMQ_TURN_DIRTY="$d/wt/kept.txt" \
+    run_quality "$d" run task --phase clean >/dev/null || rc=$?
+  expect_code 1 "$rc" "the rounds run out below threshold"
+  assert_present "$d/wt/kept.txt" "a round the suite approved keeps its work"
+  kept=$(git -C "$d/wt" log --oneline -- kept.txt | wc -l)
+  [ "$kept" -gt 0 ] || fail "the approved round's work must be committed, not left loose"
+  assert_clean_worktree "$d" "an approved round"
+  pass "a round the ordinary suite approves keeps and commits its work"
+}
+
 test_pass
 test_read_only_is_not_pass
 test_read_only_cannot_measure_is_blocked
@@ -1182,6 +1239,9 @@ test_a_harness_that_cannot_run_is_blocked
 test_a_working_harness_that_changes_nothing_is_stuck
 test_the_receipt_records_what_was_excluded
 test_the_receipt_records_no_exclusion_that_was_not_made
+test_a_failed_turn_leaves_no_half_finished_work
+test_a_defect_report_leaves_no_half_finished_work
+test_an_approved_round_keeps_its_work
 test_unknown_contract_version_refuses
 test_contract_without_verify_refuses
 test_missing_base_anchor_is_blocked

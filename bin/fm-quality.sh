@@ -74,7 +74,9 @@
 # A ROUND. Measure against the fixed base_sha; a pass, a blocked, a
 # not-applicable, or a defect ends the phase. Below threshold with room left:
 # one bounded agent turn, then the ordinary suite. Red reverts the round, so a
-# failed round costs budget and nothing else; green commits it. A survivor that
+# failed round costs budget and nothing else; green commits it. A round that
+# ends the phase before the suite can judge it - a defect report, or a harness
+# that never ran - is reverted too, so no exit leaves work no test ever saw. A survivor that
 # is a real defect leaves the loop entirely, because writing a test that passes
 # against a defect is exactly how a score gets gamed. "No progress" means the
 # same finding ids, not the same count.
@@ -878,6 +880,14 @@ sys.stdout.write("\n")
 PY
 }
 
+# A round that ends the phase costs budget and nothing else, so every exit that
+# skips the ordinary suite's verdict puts the task copy back where the round
+# started. Half-finished work no test ever saw is not something to leave behind.
+revert_round() {  # <head-sha>
+  git -C "$WT" reset --hard --quiet "$1" 2>/dev/null || true
+  git -C "$WT" clean -fdq 2>/dev/null || true
+}
+
 cmd_run() {
   local state suite phase_cmd test_cmd secs rc detail
   local round=1 no_progress=0 prev_ids="" ids="" last_receipt="" turn_action="" turn_rc=0
@@ -1038,11 +1048,13 @@ cmd_run() {
     # as exhausted. Any other failure with no answer is a harness that did not
     # run, which is not evidence about the code.
     if [ -z "$turn_action" ] && [ "$turn_rc" -ne 0 ] && [ "$turn_rc" -ne 124 ]; then
+      revert_round "$round_head"
       write_final "$last_receipt" blocked "$round" \
         "The $HARNESS agent turn could not run, so no round of work happened." \
         "the $HARNESS harness ($(harness_version "$HARNESS")) exited $turn_rc with no readable answer, so no agent turn ran"
     fi
     if [ "$turn_action" = defect-found ]; then
+      revert_round "$round_head"
       write_final "$last_receipt" defect-found "$round" \
         "A round reported a surviving finding as a real product defect." \
         "a surviving finding was reported as a real product defect, not a missing test"
@@ -1055,8 +1067,7 @@ cmd_run() {
       bounded_sh "$secs" "$WT" "$test_cmd" >/dev/null 2>&1 || rc=$?
     fi
     if [ "$rc" -ne 0 ]; then
-      git -C "$WT" reset --hard --quiet "$round_head" 2>/dev/null || true
-      git -C "$WT" clean -fdq 2>/dev/null || true
+      revert_round "$round_head"
     else
       git -C "$WT" add -A >/dev/null 2>&1 || true
       if [ -n "$(git -C "$WT" status --porcelain 2>/dev/null)" ]; then
