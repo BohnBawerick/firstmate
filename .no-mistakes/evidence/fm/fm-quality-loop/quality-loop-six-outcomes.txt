@@ -1,0 +1,127 @@
+
+=========================================================
+1/8  OUTCOME: pass  (hardened project, bar met -> exit 0)
+=========================================================
+$ fm-quality.sh run task --phase clean      # quality=hardened
+outcome: pass · phase: clean · mode: hardened · threshold met in 1 round(s)
+exit code: 0
+
+--- data/task/quality-clean-receipt.json ---
+{
+    "base_sha": "aeebc72df0434ec1dd3ab9822874b85253bef2c4",
+    "duration_ms": 639,
+    "engine": {
+        "name": "stryker-demo",
+        "version": "8.2.6"
+    },
+    "exclusions": [],
+    "findings": [],
+    "head_sha": "aeebc72df0434ec1dd3ab9822874b85253bef2c4",
+    "metrics": {
+        "crap_observed": 0.0,
+        "quality_loop_rounds": 1
+    },
+    "outcome": "pass",
+    "phase": "clean",
+    "schema_version": 1,
+    "threshold": {
+        "crap_max": 15
+    }
+}
+
+=========================================================
+2/8  OUTCOME: read-only  (standard project, SAME bar met -> exit 6, NOT pass)
+=========================================================
+$ fm-quality.sh run task --phase clean      # quality=standard
+outcome: read-only · phase: clean · mode: read-only · scores reported, nothing gated (measured: pass)
+exit code: 6
+
+--- data/task/quality-clean-receipt.json ---
+{
+    "base_sha": "8f431b8014c86bfcf6f0006791dec16c332f8eb6",
+    "duration_ms": 558,
+    "engine": {
+        "name": "stryker-demo",
+        "version": "8.2.6"
+    },
+    "exclusions": [],
+    "findings": [],
+    "head_sha": "8f431b8014c86bfcf6f0006791dec16c332f8eb6",
+    "metrics": {
+        "crap_observed": 0.0,
+        "quality_loop_rounds": 1
+    },
+    "notes": "Read-only run: the measurement came back pass and nothing was gated.",
+    "outcome": "read-only",
+    "phase": "clean",
+    "schema_version": 1,
+    "threshold": {
+        "crap_max": 15
+    }
+}
+
+Machine-readable difference between the two runs above:
+  hardened receipt outcome = 'pass'
+  standard receipt outcome = 'read-only'
+  same measurement?         True
+  read-only mistakable for pass? False
+
+=========================================================
+3/8  OUTCOME: blocked  (could not measure -> exit 3, never pass)
+=========================================================
+$ fm-quality.sh run task --phase clean      # engine binary missing
+outcome: blocked · phase: clean · mode: hardened · the clean command could not be run here (exit 127)
+exit code: 3
+receipt written? no - nothing was measured, so nothing is proved
+
+=========================================================
+4/8  OUTCOME: not-applicable  (no .quality-gate.yaml -> exit 4)
+=========================================================
+$ fm-quality.sh run task --phase clean      # project has no contract
+outcome: not-applicable · phase: clean · mode: hardened · this project has no .quality-gate.yaml, so there is no quality contract to measure
+exit code: 4
+
+=========================================================
+5/8  OUTCOME: exhausted  (rounds run out below the bar -> exit 1)
+=========================================================
+$ fm-quality.sh run task --phase clean      # findings shrink but never reach the bar
+outcome: exhausted · phase: clean · mode: hardened · 3 rounds ran out below the threshold
+exit code: 1
+receipt outcome: exhausted
+
+=========================================================
+6/8  OUTCOME: stuck  (same finding ids round after round -> exit 1)
+=========================================================
+$ fm-quality.sh run task --phase clean      # identical finding ids every round
+outcome: stuck · phase: clean · mode: hardened · 2 consecutive rounds left the same findings untouched
+exit code: 1
+receipt outcome: stuck
+
+=========================================================
+7/8  OUTCOME: defect-found  (a survivor is a real product bug -> exit 5)
+=========================================================
+$ fm-quality.sh run task --phase clean      # engine reports a product defect
+outcome: defect-found · phase: clean · mode: hardened · the clean phase reported a real product defect
+exit code: 5
+receipt outcome: defect-found
+
+=========================================================
+8/8  WALL CLOCK IS ENFORCED  (engine sleeps 300s, budget is 1 minute)
+=========================================================
+$ fm-quality.sh run task --phase clean      # bounds.budget_minutes: 1
+outcome: exhausted · phase: clean · mode: hardened · the clean command did not finish inside the 1-minute wall-clock bound
+exit code: 1
+the engine asked for 300s; the loop cut it off and returned after 65s
+
+=========================================================
+STATUS: what the rest of the pipeline asks
+=========================================================
+$ fm-quality.sh status task    # after the hardened pass above
+quality: satisfied · mode: hardened · every configured phase has a passing receipt
+exit code: 0
+$ fm-quality.sh status task    # after the read-only run above
+quality: not-required · mode: read-only · this task ships standard, so no receipt gates it
+exit code: 0
+$ fm-quality.sh status task    # after the blocked run above
+quality: missing · mode: hardened · no receipt for: clean
+exit code: 0

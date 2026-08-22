@@ -1,0 +1,26 @@
+The pipeline run says "passed" in every case below.
+Only the quality receipt differs.
+
+A: quality=hardened, no receipt (the gate never ran)
+$ fm-crew-state.sh q
+state: blocked · source: run-step · run passed: PR merged/closed · quality gate never ran: no receipt for: clean
+
+B: quality=hardened, receipt outcome=pass
+$ fm-crew-state.sh q
+state: done · source: run-step · run passed: PR merged/closed
+
+C: quality=hardened, receipt outcome=exhausted (measured, below the bar)
+$ fm-crew-state.sh q
+state: blocked · source: run-step · run passed: PR merged/closed · quality gate did not pass: the clean phase reported exhausted
+
+D: quality=hardened, receipt outcome=read-only (reported, never gated)
+$ fm-crew-state.sh q
+state: blocked · source: run-step · run passed: PR merged/closed · quality gate did not pass: the clean phase reported read-only
+
+E: quality=hardened, receipt file corrupt (cannot tell)
+$ fm-crew-state.sh q
+state: unknown · source: run-step · run passed: PR merged/closed · quality gate unreadable: the clean receipt is present but not a valid receipt
+
+F: quality=standard, no receipt (an ordinary task, untouched)
+$ fm-crew-state.sh q
+state: done · source: run-step · run passed: PR merged/closed

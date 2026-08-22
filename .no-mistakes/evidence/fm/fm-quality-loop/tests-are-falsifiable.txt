@@ -1,0 +1,41 @@
+
+=========================================================
+MUTATION 1 - a read-only run reports 'pass' instead of 'read-only'
+=========================================================
+mutation applied:
+  -      write_final "$last_receipt" read-only "$round" \
+  +      write_final "$last_receipt" pass "$round" \
+
+test result:
+  ok - a hardened task that meets its threshold reports pass and writes a receipt
+  not ok - a read-only run must not exit with the pass code: expected exit 6, got 0
+
+=========================================================
+MUTATION 2 - 'could not measure' reports 'pass' instead of 'blocked'
+=========================================================
+mutation applied:
+  -      no-command|no-receipt|invalid|drift) finish blocked "$MEASURE_DETAIL" ;;
+  +      no-command|no-receipt|invalid|drift) finish pass "$MEASURE_DETAIL" ;;
+
+test result:
+  ok - a hardened task that meets its threshold reports pass and writes a receipt
+  ok - read-only reports the score with its own outcome and exit code, never pass
+  not ok - a read-only run that could not measure is blocked: expected exit 3, got 0
+
+=========================================================
+MUTATION 3 - the wall-clock budget is a constant 86400s (never enforced)
+=========================================================
+mutation applied:
+  -  printf '%s' "$(( BUDGET_SECONDS - used ))"
+  +  printf '%s' 86400
+
+test result:
+  ok - a phase below threshold with progress every round reports exhausted
+  ok - rounds that leave the same findings untouched report stuck, not exhausted
+  not ok - a measurement that outruns the bound exits 1: expected exit 1, got 3
+
+=========================================================
+UNMUTATED source, same suite
+=========================================================
+  ok - usage errors exit 2 and --help exits 0
+  all fm-quality tests passed
