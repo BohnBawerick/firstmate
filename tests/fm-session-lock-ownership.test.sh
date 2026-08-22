@@ -584,6 +584,60 @@ guard_turn() {  # <dir>
   guard_turn_as "$1" other
 }
 
+# Start a peer session: ONE long-lived harness process that ends many turns, the
+# way a real session does, and echo its pid.
+#
+# guard_turn_as above spawns a fresh process per turn, which is honest for a
+# single session because the guard never retires its own slot. It is NOT honest
+# once a second session shares the home: retirement reads the writer's recorded
+# process identity, so a per-turn fixture presents each peer to the other as a
+# session that has already exited, and the two sweep each other's record. A real
+# session's recorded holder - CLAUDE_PID, or the outermost pid of the harness
+# ancestry - outlives every turn it ends.
+#
+# Turns are driven through files rather than by re-launching, because the pid is
+# exactly what has to stay the same across them. The trailing `:` keeps the
+# process a "claude" for the predicate under test, as in start_harness_process.
+start_peer_session() {  # <dir> <session-id>
+  local dir=$1 session=$2 base pid
+  base="$TMP_ROOT/peer.$session"
+  rm -f "$base.go" "$base.rc" "$base.out" "$base.pid"
+  bash -c '"$0" "$@" &' "$TMP_ROOT/detached.sh" "$$" "$base.launch" "$base.launch.rc" \
+    env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" FM_CLAUDE_AUTOARM_SYNC_WAIT_MS=100 \
+    "$FAKE_CLAUDE" -c '
+      dir=$1; session=$2; base=$3
+      printf "%s\n" "$$" > "$base.pid"
+      while :; do
+        if [ -f "$base.go" ]; then
+          rm -f "$base.go"
+          printf "%s\n" "{\"session_id\":\"$session\",\"stop_hook_active\":false}" \
+            | "$dir/bin/fm-turnend-guard.sh" --claude > "$base.out" 2>&1
+          printf "%s\n" "$?" > "$base.rc"
+        fi
+        sleep 0.05
+      done
+      :
+    ' _ "$dir" "$session" "$base" >/dev/null 2>&1
+  wait_for_file "$base.pid" || fail "a peer session never published its pid"
+  pid=$(tr -d '[:space:]' < "$base.pid")
+  printf '%s\n' "$pid" >> "$TMP_ROOT/holders"
+  printf '%s\n' "$pid"
+}
+
+# End one turn in an already running peer session and print its exit code.
+peer_turn() {  # <session-id>
+  local base="$TMP_ROOT/peer.$1"
+  rm -f "$base.rc"
+  : > "$base.go"
+  wait_for_file "$base.rc" || fail "peer session $1 never finished a turn"
+  tr -d '[:space:]' < "$base.rc"
+}
+
+peer_output() {  # <session-id>
+  cat "$TMP_ROOT/peer.$1.out" 2>/dev/null || true
+}
+
 test_turnend_guard_reports_the_decline_once_then_stops_blocking() {
   local dir rc out turn
   dir="$TMP_ROOT/turnend"
@@ -621,17 +675,23 @@ test_two_non_owning_sessions_each_report_once_and_both_stand_down() {
   make_home "$dir"
   start_lock_holder "$dir" >/dev/null
 
-  # A single shared notice slot would be overwritten by whichever peer reported
+  # Two live sessions, each ending its turns from its own process, interleaved:
+  # a single shared notice slot would be overwritten by whichever peer reported
   # last, so each would keep finding a slot that is not its own and block on
   # every turn forever - the state this decline path exists to end.
-  expect_code 2 "$(guard_turn_as "$dir" peer-one)" \
+  start_peer_session "$dir" peer-one >/dev/null
+  start_peer_session "$dir" peer-two >/dev/null
+
+  expect_code 2 "$(peer_turn peer-one)" \
     "the first non-owning session did not report its decline"
-  expect_code 2 "$(guard_turn_as "$dir" peer-two)" \
+  expect_code 2 "$(peer_turn peer-two)" \
     "the second non-owning session did not report its decline"
 
   for turn in 2 3 4; do
-    expect_code 0 "$(guard_turn_as "$dir" peer-one)" "peer-one blocked again on turn $turn"
-    expect_code 0 "$(guard_turn_as "$dir" peer-two)" "peer-two blocked again on turn $turn"
+    expect_code 0 "$(peer_turn peer-one)" "peer-one blocked again on turn $turn"
+    expect_code 0 "$(peer_turn peer-two)" "peer-two blocked again on turn $turn"
+    [ -z "$(peer_output peer-one)" ] || fail "peer-one repeated the decline on turn $turn"
+    [ -z "$(peer_output peer-two)" ] || fail "peer-two repeated the decline on turn $turn"
   done
 
   pass "two non-owning sessions in one home each report once, then both stand down"
