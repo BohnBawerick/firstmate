@@ -107,7 +107,8 @@ A stand-down is not a failure, and the guard separates the two before any blocki
 When another live session holds this home's fleet lock, the Stop auto-arm correctly stands down at its ownership gate and writes no epoch, no failure notice, and no alarm, so the bounded progression above cannot advance and the attended fail-open it ends in is unreachable by construction.
 A session that can never legitimately arm was therefore blocked on every turn, with `state/.turnend-claude-blocks` pinned at its first count while the guard waited for a failure record a clean stand-down never writes.
 Supervision belongs to the session that holds the lock, so there is nothing here to arm or repair.
-The guard states the decline once per (session, lock owner) pair, recorded in `state/.turnend-unowned-notice`, and stands down on every later turn; a change of either half reports again.
+The guard states the decline once per (session, lock owner) pair and stands down on every later turn; a change of either half reports again.
+The owner it already reported is recorded per session in `state/.turnend-unowned-notice.<session>`, one slot each, so two non-owning sessions in one home cannot overwrite each other's slot and block each other forever.
 The decline spends none of the auto-arm block budget, which stays reserved for a genuinely broken arm in a home this session actually holds.
 [`watcher-continuity.md`](watcher-continuity.md#session-lock-ownership) owns the ownership verdict itself.
 

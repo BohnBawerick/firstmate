@@ -91,14 +91,20 @@ release_claim_lock() {
 trap release_claim_lock EXIT
 trap 'exit 1' HUP INT TERM
 
+# Inheriting the helm by conversation id must still leave a LIVE pid in the
+# lock. The recorded pid is what every other process tests for liveness, so a
+# continuation that kept a dead predecessor's pid there would read as a stale
+# lock home-wide and let an unrelated session mutate this fleet. Ownership
+# without a live recorded pid therefore falls through to a fresh claim rather
+# than exiting early.
 if [ -f "$LOCK" ] && [ ! -L "$LOCK" ]; then
   old=$(cat "$LOCK" 2>/dev/null || true)
-  if fm_session_lock_owned_by_self "$STATE"; then
-    publish_session_id
-    report_acquired "$old"
-    exit 0
-  fi
   if fm_harness_pid_alive "$old"; then
+    if fm_session_lock_owned_by_self "$STATE"; then
+      publish_session_id
+      report_acquired "$old"
+      exit 0
+    fi
     echo "error: NOT THIS SESSION - another live firstmate session holds the lock (harness pid $old); operate read-only until resolved" >&2
     exit 1
   fi

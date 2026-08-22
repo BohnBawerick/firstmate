@@ -625,12 +625,24 @@ subsection "LOCK"
 LOCK_OUT=$("$SCRIPT_DIR/fm-lock.sh" 2>&1)
 LOCK_RC=$?
 printf '%s\n' "$LOCK_OUT"
-# State the helm verdict in words, independently of the acquisition line above.
-# A recorded pid is not something a reading agent should have to compare by
-# hand, and reading someone else's pid as confirmation of ownership is exactly
-# what let a non-owning session mutate this home (docs/watcher-continuity.md).
-if fm_session_lock_owned_by_self "$STATE"; then
+# State the helm verdict in words, independently of the recorded pid on the
+# acquisition line above. A pid is not something a reading agent should have to
+# compare by hand, and reading someone else's pid as confirmation of ownership
+# is exactly what let a non-owning session mutate this home
+# (docs/watcher-continuity.md).
+# The verdict is NOT a second opinion on the acquisition. bin/fm-lock.sh owns
+# whether this session holds the lock, and it exits 0 only after it verified
+# that; recomputing the answer here would let the digest print a helm line that
+# contradicts the acquisition line above it or the read-only banner below it,
+# and a reader given two opposite instructions is worse off than with the bare
+# pid this line replaced. So the exit code decides, and the resolver is
+# consulted only to explain a failed acquisition: ownership can still resolve to
+# this session when the lock cannot be written at all (an unwritable state dir,
+# a lock that is not a regular file).
+if [ "$LOCK_RC" -eq 0 ]; then
   printf 'HELM: THIS session holds the fleet lock - it may change fleet state.\n'
+elif fm_session_lock_owned_by_self "$STATE"; then
+  printf 'HELM: ownership resolves to THIS session, but the fleet lock was NOT acquired - this session is READ-ONLY.\n'
 else
   printf 'HELM: ANOTHER session holds the fleet lock - this session is READ-ONLY.\n'
 fi

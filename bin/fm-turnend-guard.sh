@@ -80,8 +80,11 @@
 # condition, not a recovery in progress: supervision belongs to the session that
 # holds the lock, and there is nothing here to arm or repair. So this guard
 # checks ownership BEFORE any blocking path, states the decline once per
-# (session, lock owner) pair, and then stops blocking. state/.turnend-unowned-notice
-# records that pair; it is a one-line notice, not fleet state, and a change of
+# (session, lock owner) pair, and then stops blocking.
+# state/.turnend-unowned-notice.<session> records the owner this session was
+# already told about - one slot per session, because a single shared slot would
+# be overwritten by the next non-owning session and the two would block each
+# other forever. It is a one-line notice, not fleet state, and a change of
 # either half correctly reports again.
 set -u
 
@@ -202,11 +205,13 @@ fi
 # Supervision is off AND this session does not hold the home: report the decline
 # once for this (session, lock owner) pair, then stand down for good. Blocking
 # again would nag a session that has no authority to fix it, forever.
-UNOWNED_NOTICE="$STATE/.turnend-unowned-notice"
+UNOWNED_NOTICE_SLUG=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9._-' '_')
+[ -n "$UNOWNED_NOTICE_SLUG" ] || UNOWNED_NOTICE_SLUG=unknown
+UNOWNED_NOTICE="$STATE/.turnend-unowned-notice.$UNOWNED_NOTICE_SLUG"
 decline_stop() {
   local owner want have rule
   owner=$(fm_session_lock_pid "$STATE" 2>/dev/null || printf 'unknown')
-  want="session=$SESSION_ID owner=$owner"
+  want="owner=$owner"
   have=$(cat "$UNOWNED_NOTICE" 2>/dev/null || true)
   [ "$have" = "$want" ] && exit 0
   printf '%s\n' "$want" > "$UNOWNED_NOTICE" 2>/dev/null || true

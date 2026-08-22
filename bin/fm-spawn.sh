@@ -3004,6 +3004,15 @@ case "$HARNESS" in
   cursor) LAUNCH=${LAUNCH//__CURSORBIN__/"$(shell_quote "$CURSOR_BIN")"} ;;
 esac
 LAUNCH=${LAUNCH//__WORKTREE__/$sq_worktree}
+# Claude Code's two declared identity values are exported into every descendant
+# of the spawning session, and bin/fm-session-lock-lib.sh reads them to answer
+# who holds this home. A worker that inherited them would answer that question
+# as the session that spawned it and pass the fleet-mutation gate in its name.
+# Cleared for EVERY runtime, with no per-harness exception a later change can
+# get wrong: a claude worker publishes its own values anyway, so clearing them
+# costs it nothing, and every other runtime publishes none and must not borrow
+# these.
+LAUNCH="env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $LAUNCH"
 case "$HARNESS" in
   claude|codex|opencode|pi|pi-signed|grok|kimi|muse)
     LAUNCH="env -u CURSOR_AGENT -u CURSOR_INVOKED_AS $LAUNCH"

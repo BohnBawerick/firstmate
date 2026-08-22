@@ -30,6 +30,15 @@
 #      conversation is that same conversation, so it inherits the helm rather
 #      than fighting the session that took it.
 #   3. the ancestry walk, unchanged, for every harness that publishes neither.
+#
+# What the declared tiers recognise is an ACCIDENTALLY inherited identity, not a
+# hostile one. Both values come from the environment and every descendant of a
+# session inherits them, so this is a correctness guard that keeps a forked
+# continuation of the lock-holding conversation from being misread as a
+# stranger. It is never a trust boundary against a process that sets them
+# deliberately. A worker firstmate launches is a descendant of the spawning
+# session, so bin/fm-spawn.sh clears both from every worker's launch environment
+# rather than this file second-guessing what it reads.
 
 # Cursor process identity is NOT expressible as a command-name pattern and is
 # deliberately not added to the tables below: Cursor's installed names are
@@ -180,8 +189,8 @@ fm_harness_pid_alive() {
 # Claude Code exports it into every tool-call shell AND every hook process of a
 # session, so it is the one identity that is identical at both call sites and
 # survives a background continuation running in a detached process tree. The
-# charset check keeps a hostile or truncated value from ever matching a
-# recorded id by accident.
+# charset check keeps a truncated or malformed value from matching a recorded id
+# by accident, and keeps the id safe to use in a file name.
 fm_harness_session_id() {
   local id=${CLAUDE_CODE_SESSION_ID:-}
   [ -n "$id" ] || return 1

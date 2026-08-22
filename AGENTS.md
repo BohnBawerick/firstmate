@@ -124,7 +124,7 @@ state/               runtime records and signals; gitignored
   .afk               durable away-mode flag; present = sub-supervisor may inject escalations (set by /afk, cleared on user return)
   .watch.lock .wake-queue.lock watcher singleton and queue serialization locks
   .lock.session      conversation recorded beside the session lock, so a background continuation of the lock-holding conversation is recognized as the same session; docs/watcher-continuity.md
-  .turnend-unowned-notice   one-line record of the (session, lock owner) pair the turn-end guard already told this session it does not hold; never touch
+  .turnend-unowned-notice.<session>   per-session one-line record of the lock owner the turn-end guard already told that session it does not hold; never touch
   .claude-autoarm.lock .claude-autoarm-epoch .claude-autoarm-failure-notified .claude-autoarm-failure-alarmed .turnend-claude-blocks .turnend-claude-blocks.lock   Claude Stop auto-arm single-flight, epoch, failure-episode, attended-alarm, guard-budget, and budget-lock records; never touch
   .cursor-park-owner .cursor-park-owner.lock .turnend-cursor-blocks   Cursor stop-hook owner record, publication and commit lock, and bounded repair-nag budget; never touch
   .hash-* .count-* .stale-* .stale-since-* .paused-* .wedge-escalations-* .seen-* .hb-surfaced-* .last-* .heartbeat-streak   watcher internals; never touch

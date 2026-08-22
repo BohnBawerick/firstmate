@@ -30,6 +30,11 @@ Identity is answered in three tiers, and the first that applies wins.
 The two declared values win because a harness exports them identically into every tool shell and every hook process of a session, while the ancestry walk answers a slightly different question at each call site: it climbs to the first harness match and then stops at the first non-harness ancestor, so how deep the caller sits inside the harness's own worker chain decides which pid it reports.
 A Claude Code background continuation runs in a detached process tree, where that walk from a hook stops short of the session that took the helm while the walk from an ordinary tool shell can climb past it into an unrelated harness further up the real tree.
 `bin/fm-lock.sh` records the conversation in `state/.lock.session` beside the pid in `state/.lock`, replacing or removing it at every acquisition, so a continuation of the lock-holding conversation inherits the helm and an unrelated session never can.
+Inheriting the helm that way still rewrites `state/.lock` with the continuation's own live pid, because every other process tests the recorded pid for liveness and a dead one would read as a stale lock home-wide.
+
+What the two declared tiers recognise is an accidentally inherited identity, not a hostile one.
+Both values come from the environment and every descendant of a session inherits them, so they are a correctness guard against a forked continuation being misread as a stranger, never a trust boundary against a process that sets them deliberately.
+A worker firstmate launches is such a descendant, so `bin/fm-spawn.sh` clears both from every worker's launch environment, for every runtime, rather than the predicate second-guessing what it reads.
 
 That one verdict now decides both halves of the contract, so no path can enforce a different answer than another.
 `bin/fm-claude-stop-autoarm.sh` and `bin/fm-turnend-guard-cursor.sh` use it to decide whether they may arm, and every fleet-mutation entry point - `bin/fm-wake-drain.sh`, `bin/fm-send.sh`, `bin/fm-spawn.sh`, `bin/fm-teardown.sh`, `bin/fm-promote.sh`, `bin/fm-merge-local.sh`, `bin/fm-pr-merge.sh`, and `bin/fm-control.sh` - calls `fm_require_session_lock` before argument validation, so AGENTS.md section 3's read-only rule is enforced where the mutation happens rather than trusted to a banner the session may never have read.
@@ -39,7 +44,9 @@ It refuses only on the full conjunction: a live lock owner, that owner not being
 A missing, stale, or malformed lock is no competing session, and `bin/fm-lock.sh` already turns those into a fresh acquisition.
 A caller outside any harness session is no competing session either - that is the parent home reaching into a secondmate's endpoint over ssh, a detached job, or CI, none of which can produce the two-agents-one-home split.
 
-`bin/fm-session-start.sh`'s LOCK section states the verdict in words on its own `HELM:` line, independently of the acquisition line, so a reading agent never has to compare pids by hand.
+`bin/fm-session-start.sh`'s LOCK section states the verdict in words on its own `HELM:` line, so a reading agent never has to compare pids by hand.
+The line reads the acquisition's exit code rather than recomputing ownership, because `bin/fm-lock.sh` owns that decision and exits 0 only after verifying it; the helm line can therefore never contradict the acquisition line above it or the read-only banner below it.
+The resolver is consulted only to explain a failed acquisition, where ownership can still resolve to this session while the lock cannot be written at all.
 
 ## Actionable wake ordering
 

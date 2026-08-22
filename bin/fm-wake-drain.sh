@@ -15,6 +15,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=bin/fm-line-cap-lib.sh
 . "$SCRIPT_DIR/fm-line-cap-lib.sh"
 
+# Fail closed BEFORE argument validation: AGENTS.md section 3 makes a session
+# that could not verify lock ownership read-only, and a non-owner must be told
+# who holds the home rather than that its arguments were malformed.
+# bin/fm-session-lock-lib.sh is the single owner of that verdict and its refusal.
+# shellcheck source=bin/fm-session-lock-lib.sh
+. "$SCRIPT_DIR/fm-session-lock-lib.sh"
+fm_require_session_lock "$STATE" "present or acknowledge this home's wake queue" || exit 1
+
 DRAIN_TMP=
 DRAIN_LOCK_HELD=false
 RAW_ROWS=
@@ -40,13 +48,6 @@ case "${1:-}" in
     ;;
   *) echo "usage: fm-wake-drain.sh [--ack-through SEQUENCE --recovery-generation GENERATION]" >&2; exit 2 ;;
 esac
-
-# Fail closed before any fleet mutation: AGENTS.md section 3 makes a session that
-# could not verify lock ownership read-only, and bin/fm-session-lock-lib.sh is
-# the single owner of that verdict and its refusal.
-# shellcheck source=bin/fm-session-lock-lib.sh
-. "$SCRIPT_DIR/fm-session-lock-lib.sh"
-fm_require_session_lock "$STATE" "present or acknowledge this home's wake queue" || exit 1
 
 # Defense in depth for the supervision chain: this script runs at the top of
 # every wake-handling and recovery turn, so assert supervision health here too. A
