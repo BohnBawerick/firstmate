@@ -30,7 +30,8 @@
 # OUTCOMES AND EXIT CODES. The exit code is a pure function of the outcome, so a
 # shell caller branches without parsing. This table is the single owner:
 #
-#   0  pass            threshold met on the diff against base_sha
+#   0  pass            threshold met on the diff against base_sha, judged
+#                        against the threshold the contract configures
 #   1  exhausted       rounds or the wall-clock bound ran out below threshold
 #   1  stuck           no_progress_limit rounds moved the same findings by nothing
 #   2  (usage error)   bad arguments, missing task record, unreadable contract
@@ -60,9 +61,17 @@
 #   data/<id>/quality-clean-receipt.json
 #   data/<id>/quality-harden-receipt.json
 #
-# Each receipt records the exclude list the run actually measured against, so a
-# pass earned by excluding the diff is not byte-identical to a pass earned by
-# writing tests.
+# Each receipt records the exclude list the run actually measured against - the
+# contract's entries plus whatever the engine reported for itself - so a pass
+# earned by excluding the diff is not byte-identical to a pass earned by writing
+# tests.
+#
+# STATUS VERDICTS. `status` answers with one token a caller can branch on:
+# satisfied, satisfied-stale, missing, not-passed, unreadable, or not-required.
+# `satisfied-stale` is a passing gate whose receipt names an earlier head than
+# the task copy is on now. It still counts, because the pipeline commits after
+# the pre-flight loop by design and the project's own CI is the final proof, but
+# the drift is a token rather than prose so no caller has to read the sentence.
 #
 # One file per phase, each a complete D2 phase receipt. The parked spec named a
 # single data/<id>/quality-receipt.json holding both; the landed schema requires
@@ -486,7 +495,14 @@ with open(src, encoding="utf-8") as handle:
     doc = json.load(handle)
 doc["outcome"] = outcome
 doc["duration_ms"] = int(duration_ms)
-doc["exclusions"] = [line for line in exclusions.splitlines() if line]
+declared = [line for line in exclusions.splitlines() if line]
+reported = doc.get("exclusions")
+reported = [e for e in reported if isinstance(e, str)] if isinstance(reported, list) else []
+merged = []
+for entry in declared + reported:
+    if entry not in merged:
+        merged.append(entry)
+doc["exclusions"] = merged
 metrics = doc.get("metrics")
 if not isinstance(metrics, dict):
     metrics = {}
@@ -714,6 +730,7 @@ MEASURE_FILE=""
 MEASURE_DETAIL=""
 measure() {  # <command> <secs>
   local cmd=$1 secs=$2 out="$WORK_DIR/measure.json" rc=0 head_sha receipt_base receipt_phase
+  local want_threshold mismatch
   MEASURE_STATUS=""; MEASURE_OUTCOME=""; MEASURE_FILE=""; MEASURE_DETAIL=""
   head_sha=$(git -C "$WT" rev-parse HEAD 2>/dev/null || true)
   FM_QUALITY_PHASE="$PHASE" \
@@ -756,11 +773,60 @@ measure() {  # <command> <secs>
     MEASURE_DETAIL="the $PHASE command printed a $receipt_phase receipt, and the two phases judge findings by different vocabularies"
     return 0
   fi
+  want_threshold=$(cfg_keys_under "$PHASE.threshold" | tr '\t' '=')
+  if [ -n "$want_threshold" ]; then
+    mismatch=$(threshold_mismatch "$out" "$want_threshold")
+    if [ -n "$mismatch" ]; then
+      MEASURE_STATUS=drift
+      MEASURE_DETAIL="the $PHASE receipt was not judged against this contract's threshold: $mismatch"
+      return 0
+    fi
+  fi
   MEASURE_STATUS=receipt
   MEASURE_FILE=$out
   MEASURE_OUTCOME=$(receipt_field "$out" outcome || true)
   MEASURE_DETAIL="measured"
   return 0
+}
+
+# A phase command that judges by its own baked-in number rather than the one it
+# was handed passes silently, which is the flattering failure this loop exists
+# to exclude. 0.80 and 0.8 are the same bar, so the compare is numeric.
+# Echoes a mismatch message, or nothing when the receipt names the same bar.
+threshold_mismatch() {  # <receipt> <contract-threshold-lines>
+  python3 - "$1" "$2" <<'PY'
+import json
+import sys
+
+path, declared_text = sys.argv[1:3]
+declared = {}
+for line in declared_text.splitlines():
+    if "=" in line:
+        key, value = line.split("=", 1)
+        declared[key] = value
+try:
+    with open(path, encoding="utf-8") as handle:
+        reported = json.load(handle).get("threshold")
+except (OSError, ValueError):
+    reported = None
+if not isinstance(reported, dict):
+    reported = {}
+
+
+def same(want, got):
+    try:
+        return float(want) == float(got)
+    except (TypeError, ValueError):
+        return str(want) == str(got)
+
+
+def show(mapping):
+    return ", ".join(f"{k}={mapping[k]}" for k in sorted(mapping))
+
+
+if set(declared) != set(reported) or any(not same(declared[k], reported[k]) for k in declared):
+    print(f"the contract sets {show(declared)} but the receipt was judged against {show(reported) or '<none>'}")
+PY
 }
 
 # --- the ordinary suite -----------------------------------------------------
@@ -803,6 +869,7 @@ check_suite() {  # <command> <secs>
 
 cmd_status() {
   local verdict detail phases phase file outcome missing="" state
+  local head_sha="" recorded stale=""
   if [ "$MODE" != hardened ]; then
     printf 'quality: not-required · mode: %s · this task ships standard, so no receipt gates it\n' "$MODE"
     return 0
@@ -831,6 +898,7 @@ cmd_status() {
   fi
   verdict=satisfied
   detail="every configured phase has a passing receipt"
+  head_sha=$(git -C "$WT" rev-parse HEAD 2>/dev/null || true)
   for phase in $phases; do
     file=$(receipt_path "$phase")
     if [ ! -f "$file" ]; then
@@ -852,10 +920,17 @@ cmd_status() {
         printf 'quality: not-passed · mode: hardened · the %s phase reported %s\n' "$phase" "$outcome"
         return 0 ;;
     esac
+    recorded=$(receipt_field "$file" head_sha || true)
+    if [ -n "$head_sha" ] && [ -n "$recorded" ] && [ "$recorded" != "$head_sha" ]; then
+      stale="${stale}the $phase receipt measured $recorded, "
+    fi
   done
   if [ -n "$missing" ]; then
     verdict=missing
     detail="no receipt for:${missing}"
+  elif [ -n "$stale" ]; then
+    verdict=satisfied-stale
+    detail="${stale}and the task copy is now at $head_sha, so the project's own CI is what proves these commits"
   fi
   printf 'quality: %s · mode: hardened · %s\n' "$verdict" "$detail"
 }

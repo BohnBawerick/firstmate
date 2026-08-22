@@ -114,6 +114,15 @@ It says the measurement ran and its numbers are in `metrics`, and that nothing w
 A read-only run that could not measure still reports `blocked`, never `read-only`.
 Relaxing the block does not relax the honesty, and the pilot's failure mode was a flattering silent one, not a loud one.
 
+### `exclusions`, and who owns it
+
+`exclusions` is optional and belongs to whoever narrowed the surface.
+A phase command reports what it excluded for itself; the contract's `<phase>.exclude` list is what the loop handed it.
+`bin/fm-quality.sh` writes the union of the two into the receipt it files, contract entries first, so the durable proof records the whole surface the run was measured against rather than either half of it.
+
+That matters because a round may add an exclusion mid-run and the loop commits that edit.
+A pass earned by excluding the diff and a pass earned by writing tests are different facts, and the receipt has to be able to tell them apart.
+
 ### Classification
 
 `clean` findings use `over-threshold`.

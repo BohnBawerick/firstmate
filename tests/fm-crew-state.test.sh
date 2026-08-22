@@ -1713,6 +1713,25 @@ test_hardened_with_passing_receipt_is_done() {
   pass "a hardened task with a passing quality receipt reports done unchanged"
 }
 
+# A gate that passed on an earlier commit still lets done stand, because the
+# pipeline commits after the pre-flight loop by design and the project's own CI
+# is the final proof. What must not happen is the drift going unsaid.
+test_hardened_with_stale_receipt_is_done_and_says_so() {
+  reset_fakes
+  local d out; d=$(new_case quality-stale-receipt)
+  setup_hardened_case "$d"
+  write_clean_receipt "$d" pass
+  git -C "$d/wt" commit -q --allow-empty -m "a later fix round"
+  FM_FAKE_RUN_HEAD=$(git -C "$d/wt" rev-parse HEAD)
+  export FM_FAKE_RUN_HEAD
+  FM_FAKE_AXI_STATUS="$(run_passed fm/q)"
+  out=$(run_crew_state_with_data "$d" q)
+  assert_contains "$out" "state: done" "a stale but passing gate still lets done stand"
+  assert_contains "$out" "quality gate passed on an earlier commit" \
+    "the line names the staleness so a supervisor sees it"
+  pass "a hardened task whose receipt predates HEAD reports done and names the drift"
+}
+
 # Same ternary discipline as run attribution: an unreadable receipt is "cannot
 # tell", a different answer from a missing one and not itself an instruction to
 # act.
@@ -1831,6 +1850,7 @@ test_coarse_failed_run_at_current_head_still_reports_failed
 test_coarse_diverged_newest_row_blocks_older_row
 test_hardened_without_receipt_is_not_done
 test_hardened_with_passing_receipt_is_done
+test_hardened_with_stale_receipt_is_done_and_says_so
 test_hardened_with_unreadable_receipt_is_unknown
 test_hardened_receipt_that_did_not_pass_is_not_done
 test_standard_task_line_is_unchanged

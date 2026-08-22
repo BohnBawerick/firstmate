@@ -111,7 +111,9 @@ SEP=' · '
 # that here. The answer keeps the same ternary discipline as run attribution: a
 # MISSING receipt is a definite "the gate never ran" and reports blocked, while
 # an unreadable one is "cannot tell" and reports unknown - which, unlike
-# blocked, is not itself an instruction to act.
+# blocked, is not itself an instruction to act. A gate that passed on an earlier
+# commit still lets done stand - the pipeline commits after the pre-flight loop
+# by design, and the project's own CI is the final proof - but the line says so.
 #
 # This runs only when the task record says quality=hardened, so every state on
 # every ordinary task is byte-for-byte what it was before.
@@ -122,6 +124,8 @@ quality_gate_override() {  # <detail> -> "<state>|<detail>" or nothing
     "$SCRIPT_DIR/fm-quality.sh" status "$ID" 2>/dev/null) || verdict=""
   note=${verdict##*"$SEP"}
   case "$verdict" in
+    'quality: satisfied-stale'*)
+      printf 'done|%s' "${detail:+$detail$SEP}quality gate passed on an earlier commit: $note" ;;
     'quality: satisfied'*|'quality: not-required'*) return 0 ;;
     'quality: missing'*)    printf 'blocked|%s%squality gate never ran: %s' "$detail" "$SEP" "$note" ;;
     'quality: not-passed'*) printf 'blocked|%s%squality gate did not pass: %s' "$detail" "$SEP" "$note" ;;

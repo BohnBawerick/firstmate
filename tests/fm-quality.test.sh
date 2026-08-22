@@ -84,7 +84,9 @@ receipt = {
     "head_sha": os.environ["FM_QUALITY_HEAD_SHA"],
     "duration_ms": 7,
     "engine": {"name": "fixture-engine", "version": "1.2.3"},
-    "threshold": {"crap_max": 15} if phase == "clean" else {"kill_rate_min": 0.8},
+    "threshold": json.loads(os.environ["FMQ_FORCE_THRESHOLD"])
+    if os.environ.get("FMQ_FORCE_THRESHOLD")
+    else ({"crap_max": 15} if phase == "clean" else {"kill_rate_min": 0.8}),
     "metrics": {"observed": float(len(ids))},
     "findings": [
         {"id": i, "file": "src/a.ts", "line": 3, "classification": classification}
@@ -157,6 +159,7 @@ import os
 import sys
 
 excluded = "src/a.ts" in os.environ.get("FM_QUALITY_EXCLUDE", "").split()
+engine_excludes = [e for e in os.environ.get("FMQ_ENGINE_EXCLUDES", "").split() if e]
 findings = [] if excluded else [
     {"id": "m1", "file": "src/a.ts", "line": 3, "classification": "over-threshold"}
 ]
@@ -172,6 +175,8 @@ receipt = {
     "metrics": {"observed": float(len(findings))},
     "findings": findings,
 }
+if engine_excludes:
+    receipt["exclusions"] = engine_excludes
 json.dump(receipt, sys.stdout)
 sys.stdout.write("\n")
 PY
@@ -1194,6 +1199,81 @@ test_an_approved_round_keeps_its_work() {
   pass "a round the ordinary suite approves keeps and commits its work"
 }
 
+# The contract pins the bar inside .quality-gate.yaml, but the phase command is
+# a script in the same repo the agent can edit. A receipt judged against some
+# other number is not evidence about this contract's bar.
+test_a_receipt_judged_against_another_bar_is_blocked() {
+  local d out rc=0
+  d=$(new_case threshold-receipt-drift)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  out=$(FMQ_OUTCOME=pass FMQ_FORCE_THRESHOLD='{"crap_max": 9999}' \
+    run_quality "$d" run task --phase clean) || rc=$?
+  expect_code 3 "$rc" "a receipt judged against another bar is blocked"
+  assert_contains "$out" "outcome: blocked" "the wrong bar is could-not-measure"
+  assert_contains "$out" "crap_max=9999" "the refusal names the bar the receipt used"
+  assert_not_contains "$out" "outcome: pass" "a self-declared bar never earns a pass"
+  assert_absent "$(receipt_of "$d" clean)" "no receipt is filed for a bar nobody configured"
+  pass "a receipt judged against a bar the contract never set is blocked"
+}
+
+# The twin: the same number written the other way is the same bar, so the check
+# has to compare numerically rather than by text.
+test_the_same_bar_written_differently_still_passes() {
+  local d rc=0
+  d=$(new_case threshold-same-number)
+  write_contract "$d" "${STD_CONTRACT/crap_max: 15/crap_max: 15.0}"
+  write_meta "$d" hardened
+  FMQ_OUTCOME=pass run_quality "$d" run task --phase clean >/dev/null || rc=$?
+  expect_code 0 "$rc" "15.0 and 15 are the same bar"
+  pass "a threshold written 15.0 against a receipt's 15 is the same bar, not drift"
+}
+
+# The receipt has to record the whole surface the run skipped, so an engine that
+# narrows the diff for itself is not silently dropped from the durable proof.
+test_the_receipt_keeps_the_engines_own_exclusions() {
+  local d file rc=0
+  d=$(new_case receipt-engine-exclusions)
+  write_contract "$d" "$EXCLUDE_CONTRACT"
+  write_meta "$d" hardened
+  FMQ_ENGINE_EXCLUDES='**/*.d.ts' FMQ_TURN_ACTION=excluded FMQ_TURN_EXCLUDE=src/a.ts \
+    run_quality "$d" run task --phase clean >/dev/null || rc=$?
+  expect_code 0 "$rc" "the excluding round reaches pass"
+  file=$(receipt_of "$d" clean)
+  [ "$(receipt_exclusions "$file")" = "src/gen/**
+src/a.ts
+**/*.d.ts" ] \
+    || fail "the receipt must union the contract's list with the engine's: $(receipt_exclusions "$file")"
+  "$ROOT/bin/fm-quality-receipt.sh" validate "$file" >/dev/null \
+    || fail "the merged exclusions must still satisfy the committed schema"
+  pass "the receipt unions the engine's own exclusions with the contract's"
+}
+
+# A passing receipt from an earlier head still counts - the pipeline commits
+# after the pre-flight loop by design - but a caller must be able to see the
+# drift from the verdict token alone.
+test_status_marks_a_receipt_from_an_earlier_head() {
+  local d out
+  d=$(new_case status-stale-head)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  FMQ_OUTCOME=pass run_quality "$d" run task --phase clean >/dev/null \
+    || fail "the measuring run should pass"
+  out=$(run_quality "$d" status task)
+  case "$out" in
+    "quality: satisfied "*) : ;;
+    *) fail "a receipt at the current head is plain satisfied: $out" ;;
+  esac
+  git -C "$d/wt" commit -q --allow-empty -m "a later fix round"
+  out=$(run_quality "$d" status task)
+  case "$out" in
+    "quality: satisfied-stale "*) : ;;
+    *) fail "a receipt from an earlier head needs its own token: $out" ;;
+  esac
+  assert_contains "$out" "$(git -C "$d/wt" rev-parse HEAD)" "the detail names the current commit"
+  pass "status reports satisfied-stale once HEAD moves past the receipt"
+}
+
 test_pass
 test_read_only_is_not_pass
 test_read_only_cannot_measure_is_blocked
@@ -1242,6 +1322,10 @@ test_the_receipt_records_no_exclusion_that_was_not_made
 test_a_failed_turn_leaves_no_half_finished_work
 test_a_defect_report_leaves_no_half_finished_work
 test_an_approved_round_keeps_its_work
+test_a_receipt_judged_against_another_bar_is_blocked
+test_the_same_bar_written_differently_still_passes
+test_the_receipt_keeps_the_engines_own_exclusions
+test_status_marks_a_receipt_from_an_earlier_head
 test_unknown_contract_version_refuses
 test_contract_without_verify_refuses
 test_missing_base_anchor_is_blocked
