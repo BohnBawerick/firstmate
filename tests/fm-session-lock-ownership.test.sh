@@ -30,10 +30,18 @@ FAKEBIN=$(fm_fakebin "$TMP_ROOT/fakebin")
 ln -s /bin/bash "$FAKEBIN/claude"
 FAKE_CLAUDE="$FAKEBIN/claude"
 
+# Reap each fixture process AND what it left running. Signalling the recorded
+# pid alone is not enough: every fixture harness process is a bash shell waiting
+# on a foreground `sleep`, and the default SIGTERM disposition kills the shell
+# while orphaning that sleep for its full duration. fm_test_reap_pid snapshots
+# the descendants first, so those orphans are reaped by pid.
+# fm_test_reap_tracked_pids cannot own this set: these processes are started
+# from command substitutions and reparented away, so they are neither jobs nor
+# descendants of this shell, which is the membership proof that helper requires.
 cleanup_holders() {
   local pid
   while IFS= read -r pid; do
-    [ -n "$pid" ] && kill "$pid" 2>/dev/null
+    [ -n "$pid" ] && fm_test_reap_pid "$pid"
   done < "$TMP_ROOT/holders" 2>/dev/null
   fm_test_cleanup
 }
@@ -152,14 +160,15 @@ start_lock_holder() {  # <dir>
   start_harness_process "$1/state/.lock"
 }
 
-wait_for_pid_gone() {  # <pid>
-  local i=0
-  while [ "$i" -lt 600 ]; do
-    kill -0 "$1" 2>/dev/null || return 0
-    sleep 0.05
-    i=$((i + 1))
-  done
-  return 1
+# End a fixture harness process and the child it is waiting on.
+#
+# Every fixture harness process is a bash shell blocked on a foreground `sleep`.
+# The default SIGTERM disposition kills that shell at once but ORPHANS the sleep
+# for its full duration, and bin/fm-test-run.sh reports the survivor as a leaked
+# process group. fm_test_reap_pid snapshots the descendants before it signals,
+# so the orphan is reaped by pid rather than waited out.
+retire_fixture_process() {  # <pid>
+  fm_test_reap_pid "$1" || fail "a fixture harness process survived TERM and KILL"
 }
 
 # --- 1. the fleet-mutation gate ---------------------------------------------
@@ -391,8 +400,7 @@ test_an_inherited_helm_records_its_own_live_pid() {
 
   # The process that took the helm exits while the conversation carries on in a
   # live background continuation - the split this whole contract exists for.
-  kill "$holder" 2>/dev/null || true
-  wait_for_pid_gone "$holder" || fail "the fixture lock holder never exited"
+  retire_fixture_process "$holder"
   continuation=$(start_harness_process "$TMP_ROOT/continuation.pid")
 
   rc=$(detached_run env CLAUDE_PID="$continuation" CLAUDE_CODE_SESSION_ID=conv-gamma \
@@ -434,8 +442,7 @@ test_the_autoarm_reclaims_a_dead_recorded_pid_under_an_inherited_helm() {
     FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$dir/bin/fm-lock.sh" >/dev/null \
     || fail "the holder could not record its own conversation on the lock"
 
-  kill "$holder" 2>/dev/null || true
-  wait_for_pid_gone "$holder" || fail "the fixture lock holder never exited"
+  retire_fixture_process "$holder"
   continuation=$(start_harness_process "$TMP_ROOT/autoarm-continuation.pid")
 
   detached_run env CLAUDE_PID="$continuation" CLAUDE_CODE_SESSION_ID=conv-epsilon \
@@ -760,8 +767,7 @@ test_retired_notice_records_are_swept_and_live_ones_survive() {
   printf 'owner=1\nholder=%s\nidentity=%s\n' \
     "$retired" "$(fm_test_pid_identity "$retired")" > "$stale_slot"
 
-  kill "$retired" 2>/dev/null || true
-  wait_for_pid_gone "$retired" || fail "the retired fixture process never exited"
+  retire_fixture_process "$retired"
 
   # A third session ends a turn, which is when retirement runs.
   rc=$(detached_run env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
@@ -788,7 +794,7 @@ test_turnend_guard_reports_again_when_the_holder_changes() {
   expect_code 2 "$(guard_turn "$dir")" "the first decline did not report"
   expect_code 0 "$(guard_turn "$dir")" "the decline did not stand down"
 
-  kill "$first" 2>/dev/null || true
+  retire_fixture_process "$first"
   second=$(start_lock_holder "$dir")
   [ "$second" != "$first" ] || fail "the fixture reused the retired holder pid"
 

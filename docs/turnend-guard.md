@@ -101,19 +101,6 @@ The alarm cannot repeat during that failure episode, and a later unhealthy stop 
 A positively verified healthy watcher clears the failure notice, alarm, and block budget for a future independent episode.
 A Claude failure notice describes the automatic mechanism as broken and does not direct a routine manual background arm.
 
-### Not this session
-
-A stand-down is not a failure, and the guard separates the two before any blocking path in any mode.
-When another live session holds this home's fleet lock, the Stop auto-arm correctly stands down at its ownership gate and writes no epoch, no failure notice, and no alarm, so the bounded progression above cannot advance and the attended fail-open it ends in is unreachable by construction.
-A session that can never legitimately arm was therefore blocked on every turn, with `state/.turnend-claude-blocks` pinned at its first count while the guard waited for a failure record a clean stand-down never writes.
-Supervision belongs to the session that holds the lock, so there is nothing here to arm or repair.
-The guard states the decline once per (session, lock owner) pair and stands down on every later turn; a change of either half reports again.
-The owner it already reported is recorded per session in `state/.turnend-unowned-notice.<session>`, one slot each, so two non-owning sessions in one home cannot overwrite each other's slot and block each other forever.
-The slot is keyed on the stop payload's session id, in either spelling, falling back to the caller's own resolved harness pid for Pi, which sends no session id at all and would otherwise share one slot across every session the home ever runs.
-Each record also carries the writer's `fm_pid_identity`, so a recycled pid reads as a mismatch and reports again rather than letting a new session mistake a retired one's record for its own; a record whose identity no longer resolves to a live process is retired on the next decline, and nothing is ever removed on age or count.
-The decline spends none of the auto-arm block budget, which stays reserved for a genuinely broken arm in a home this session actually holds.
-[`watcher-continuity.md`](watcher-continuity.md#session-lock-ownership) owns the ownership verdict itself.
-
 OpenCode, Pi, and pi-signed expose passive callbacks for this purpose.
 Their adapters fail open at the hook boundary to protect the user session but schedule one bounded follow-up when the predicate blocks.
 The generated prompts use the canonical `turn-end-guard` kind after the U+2063 `FIRSTMATE_OP: ` prefix, so Ahoy does not treat them as captain messages.
@@ -154,6 +141,19 @@ That hook is deliberately left to a follow-up alongside the deferred `preCompact
 If a passive adapter cannot invoke its SDK, or the Grok legacy fallback cannot find `grok` or a session id, the next pull-based `fm-guard.sh` call reports the problem.
 That warning uses `bin/fm-supervision-instructions.sh --repair-line`, so it always points to the active harness protocol rather than embedding another repair command.
 
+### Not this session
+
+A stand-down is not a failure, and the guard separates the two before any blocking path in any mode.
+When another live session holds this home's fleet lock, the Stop auto-arm correctly stands down at its ownership gate and writes no epoch, no failure notice, and no alarm, so the bounded progression above cannot advance and the attended fail-open it ends in is unreachable by construction.
+Without that separation a session that can never legitimately arm blocks on every turn, with `state/.turnend-claude-blocks` pinned at its first count while the guard waits for a failure record a clean stand-down never writes.
+Supervision belongs to the session that holds the lock, so there is nothing here to arm or repair.
+The guard states the decline once per (session, lock owner) pair and stands down on every later turn; a change of either half reports again.
+The owner it already reported is recorded per session in `state/.turnend-unowned-notice.<session>`, one slot each, so two non-owning sessions in one home cannot overwrite each other's slot and block each other forever.
+The slot is keyed on the stop payload's session id, in either spelling, falling back to the caller's own resolved harness pid for Pi, which sends no session id at all and would otherwise share one slot across every session the home ever runs.
+Each record also carries the writer's `fm_pid_identity`, so a recycled pid reads as a mismatch and reports again rather than letting a new session mistake a retired one's record for its own; a record whose identity no longer resolves to a live process is retired on the next decline, and nothing is ever removed on age or count.
+The decline spends none of the auto-arm block budget, which stays reserved for a genuinely broken arm in a home this session actually holds.
+[`watcher-continuity.md`](watcher-continuity.md#session-lock-ownership) owns the ownership verdict itself.
+
 ## Compatibility limits
 
 - Child crewmate and scout worktrees are outside scope.
@@ -192,4 +192,5 @@ It also covers true-reason banner wording and reason-keyed episode dedup survivi
 `tests/fm-agy-harness.test.sh` covers the separate agy crew hook's surgical install, idempotence, foreign-key preservation, pointer and token gating, single-line, pretty-printed, and multi-root payload framings, spawn registration, and teardown cleanup.
 `tests/fm-supervision-instructions.test.sh` covers recovery-line ownership and pi-signed's identity-preserving reuse of Pi's protocol.
 `FM_PI_LIVE_E2E=1 tests/fm-pi-primary-live-e2e.test.sh` is the opt-in isolated Pi path.
+`tests/fm-session-lock-ownership.test.sh` covers the not-this-session decline against real competing live processes; [`watcher-continuity.md`](watcher-continuity.md#regression-coverage) owns that suite.
 [`verification/supervision.md`](verification/supervision.md#turn-end-guard) records the active cross-harness empirical evidence, including the 2026-07-24 Claude `asyncRewake` revalidation.
