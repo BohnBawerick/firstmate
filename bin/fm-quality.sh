@@ -78,7 +78,9 @@
 # a verify envelope's children to share its head_sha, and the harden loop commits
 # after the clean receipt is written, so the two phases never share a head. Each
 # run deletes its own phase's receipt first, so a receipt always describes the
-# current run and a stale pass can never outlive it.
+# current run and a stale pass can never outlive it. --dry-run resolves the
+# contract, prints the phase, mode, base commit, command and bounds, and stops:
+# it runs nothing, deletes and writes no receipt, and appends no status line.
 #
 # A ROUND. Measure against the fixed base_sha; a pass, a blocked, a
 # not-applicable, or a defect ends the phase. Below threshold with room left:
@@ -1058,8 +1060,10 @@ cmd_run() {
     fi
     # A turn may have edited the exclude list, which is one of the four answers
     # the prompt asks for. Re-read the contract so the next measurement sees it.
-    # Bounds and the phase command stay pinned to round 1: a run does not get to
-    # extend its own wall clock or swap the command it is being measured by.
+    # Bounds stay pinned to round 1: a run does not get to extend its own wall
+    # clock. The phase command and its threshold are checked against round 1
+    # rather than re-read, so a round that swaps the command it is measured by,
+    # or moves the bar it is measured against, blocks instead of being believed.
     if [ "$round" -gt 1 ]; then
       state=$(load_contract "$WT")
       case "$state" in
