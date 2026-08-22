@@ -275,6 +275,57 @@ test_promote_requires_and_records_the_delivery_contract() {
   pass "fm-promote: promotion requires the delivery contract and records it exactly once"
 }
 
+# A promoted task carries no quality posture at all, so the registry's standing
+# posture is announced rather than silently lost. Advisory only: the promotion still
+# happens, and a record with no project= to look up promotes quietly.
+test_promote_notices_the_standing_quality_posture() {
+  local home meta out status
+  home="$TMP_ROOT/promote-quality/home"
+  mkdir -p "$home/state" "$home/data"
+
+  run_promote() {  # <id>
+    FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+      "$PROMOTE" "$1" --mode direct-PR --yolo on 2>&1
+  }
+
+  # 1. A hardened project: the notice fires and the promotion still lands.
+  printf '%s\n' '- proj [no-mistakes +hardened] - fixture (added 2026-01-01)' > "$home/data/projects.md"
+  meta="$home/state/promote-q1.meta"
+  printf 'window=fm-promote-q1\nkind=scout\nworktree=/tmp/wt\nproject=%s/projects/proj\n' "$home" > "$meta"
+  out=$(run_promote promote-q1)
+  status=$?
+  expect_code 0 "$status" "the quality notice must not block a promotion"$'\n'"$out"
+  assert_contains "$out" "the standing posture for proj is hardened" \
+    "no notice when a hardened project's scout was promoted"
+  assert_grep 'kind=ship' "$meta" "the announced promotion did not restore ship teardown protection"
+  assert_grep 'mode=direct-PR' "$meta" "the announced promotion did not record the decided delivery mode"
+  assert_grep 'yolo=on' "$meta" "the announced promotion did not record the decided approval posture"
+  assert_no_grep 'quality=' "$meta" "a promoted task recorded a quality posture it cannot anchor"
+  assert_no_grep 'base_sha=' "$meta" "a promoted task recorded a base commit it cannot capture"
+
+  # 2. The same promotion against a project with no +hardened token stays quiet.
+  printf '%s\n' '- proj [no-mistakes] - fixture (added 2026-01-01)' > "$home/data/projects.md"
+  meta="$home/state/promote-q2.meta"
+  printf 'window=fm-promote-q2\nkind=scout\nworktree=/tmp/wt\nproject=%s/projects/proj\n' "$home" > "$meta"
+  out=$(run_promote promote-q2)
+  status=$?
+  expect_code 0 "$status" "a standard project's promotion should succeed"$'\n'"$out"
+  assert_not_contains "$out" "standing posture" \
+    "a project with no registered quality posture printed a notice"
+
+  # 3. A record with no project= line has nothing to look up and promotes silently.
+  printf '%s\n' '- proj [no-mistakes +hardened] - fixture (added 2026-01-01)' > "$home/data/projects.md"
+  meta="$home/state/promote-q3.meta"
+  printf 'window=fm-promote-q3\nkind=scout\nworktree=/tmp/wt\n' > "$meta"
+  out=$(run_promote promote-q3)
+  status=$?
+  expect_code 0 "$status" "a promotion with no project= should still succeed"$'\n'"$out"
+  assert_not_contains "$out" "standing posture" \
+    "a record with no project= resolved a standing posture from somewhere"
+  assert_grep 'kind=ship' "$meta" "a promotion with no project= did not rewrite the record"
+  pass "fm-promote: a hardened standing posture is announced on promotion, never blocked"
+}
+
 # The registry parser survives for the mechanical consumers only. It accepts the
 # conditional policy, maps it to its most rigorous leg for them, and exposes the
 # raw annotation for the one caller that must tell a policy from a flat mode.
@@ -523,12 +574,22 @@ meta_value() {  # <meta-file> <key>
 # the record it always wrote, with nothing removed, nothing changed, and only the
 # two new additive lines present.
 test_spawn_records_the_quality_posture_and_base_commit() {
-  local rec home proj wt fakebin meta out status base keys
+  local rec home proj wt fakebin meta out status base prespawn keys
   rec=$(make_spawning_home quality-meta)
   IFS='|' read -r home proj wt fakebin <<EOF
 $rec
 EOF
-  base=$(git -C "$wt" rev-parse HEAD)
+  # The base is the commit the spawn resets the worktree to, which is origin's
+  # default tip, NOT the worktree's pre-spawn HEAD. Advance the worktree's own branch
+  # first so the two are different objects: a capture taken before the reset would
+  # anchor a pooled worktree on whatever the previous task left behind, and with the
+  # fixture's two commits identical the assertion could not tell the cases apart.
+  base=$(git -C "$proj.origin.git" rev-parse HEAD)
+  git -C "$wt" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit --quiet --allow-empty -m 'worktree advanced past the base'
+  prespawn=$(git -C "$wt" rev-parse HEAD)
+  [ "$prespawn" != "$base" ] \
+    || fail "the fixture stopped diverging: pre-spawn HEAD and the reset target are both $base, so the capture point is untested"
 
   # 1. No --quality at all: the pre-quality call site, unchanged.
   write_brief "$home" quality-meta-i1 no-mistakes
@@ -540,7 +601,9 @@ EOF
   [ "$(meta_value "$meta" quality)" = standard ] \
     || fail "a spawn with no --quality recorded quality='$(meta_value "$meta" quality)'"
   [ "$(meta_value "$meta" base_sha)" = "$base" ] \
-    || fail "base_sha recorded '$(meta_value "$meta" base_sha)', expected the worktree's HEAD $base"
+    || fail "base_sha recorded '$(meta_value "$meta" base_sha)', expected the reset target $base"
+  [ "$(meta_value "$meta" base_sha)" != "$prespawn" ] \
+    || fail "base_sha recorded the worktree's pre-spawn HEAD $prespawn, so the anchor was captured before the reset"
   # Everything the record carried before the quality wiring is still exactly there.
   [ "$(meta_value "$meta" mode)" = no-mistakes ] || fail "the recorded delivery mode changed"
   [ "$(meta_value "$meta" yolo)" = off ] || fail "the recorded approval posture changed"
@@ -624,6 +687,7 @@ test_spawn_refuses_a_brief_mode_mismatch
 test_spawn_notices_a_rigor_downgrade_against_the_registry
 test_scout_records_no_delivery_posture
 test_promote_requires_and_records_the_delivery_contract
+test_promote_notices_the_standing_quality_posture
 test_project_mode_maps_the_conditional_policy
 test_project_mode_reads_the_registered_quality_posture
 test_project_mode_two_word_contract_survives_the_quality_posture

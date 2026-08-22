@@ -59,10 +59,11 @@
 # brief carries neither, so an absent line means standard and a standard brief stays
 # byte-identical to what this scaffold produced before --quality existed. bin/fm-spawn.sh
 # checks that line against its own --quality exactly as it checks the mode line.
-# --quality is refused on scout and secondmate scaffolds for the same reason --mode is.
+# --quality is refused on scout, dreamer and secondmate scaffolds, for the same reason
+# --mode is.
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
-# --mode is refused on scout and secondmate scaffolds: a scout's deliverable is a
-# report rather than a merge, and a charter is not a delivery contract.
+# --mode is refused on scout, dreamer and secondmate scaffolds: a scout or dreamer
+# delivers a report rather than a merge, and a charter is not a delivery contract.
 # There is no --yolo flag here. The worker never owns approval decisions, so yolo is
 # a spawn-time and firstmate-side input only (AGENTS.md section 7).
 # Every scaffold's status protocol distinguishes the configured
