@@ -244,6 +244,16 @@ fm_session_lock_recorded_id() {  # <state-dir>
 }
 
 # Print the numeric pid recorded in state dir $1's session lock, or return 1.
+#
+# INVARIANT, relied on by every predicate below: while a session holds the home,
+# the recorded pid names a LIVE process. Liveness is the only evidence another
+# process has that the home is held at all, so a dead pid reads as a free home
+# fleet-wide and lets an unrelated session mutate it. Tier 2 makes that reachable
+# without the invariant - a continuation inherits the helm by conversation id
+# while the pid it inherited can die under it - so bin/fm-lock.sh rewrites a dead
+# pid at every acquisition, and bin/fm-claude-stop-autoarm.sh, the only thing
+# that fires on an ordinary turn, reclaims through bin/fm-lock.sh whenever it
+# finds one.
 fm_session_lock_pid() {  # <state-dir>
   local lock_pid
   lock_pid=$(cat "$1/.lock" 2>/dev/null || true)

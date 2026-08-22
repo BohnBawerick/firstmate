@@ -1207,8 +1207,15 @@ families_for_changed_path() {
     bin/fm-session-start.sh|bin/fm-bootstrap.sh|bin/fm-fleet-sync.sh|\
     bin/fm-memory*|bin/fm-dreamer*|\
     bin/fm-sessionstart-nudge.sh|bin/fm-startup-network.sh|bin/fm-tangle*|bin/fm-update.sh|\
-    bin/fm-gate-refuse*|bin/fm-lock*|bin/fm-quota-axi-lib.sh)
+    bin/fm-gate-refuse*|bin/fm-quota-axi-lib.sh)
       printf '%s\n' session-bootstrap
+      ;;
+    bin/fm-lock*)
+      # The single owner of session-lock acquisition: its ownership and live-pid
+      # invariants are pinned by the watcher-wake-lock family, not only by the
+      # session-start digest.
+      printf '%s\n' session-bootstrap
+      printf '%s\n' watcher-wake-lock
       ;;
     bin/fm-sessionstart-run.sh|.claude/settings.json|.codex/hooks.json|\
     .pi/extensions/fm-primary-turnend-guard.ts)
@@ -1247,8 +1254,12 @@ families_for_changed_path() {
       ;;
     bin/fm-spawn.sh|bin/fm-send.sh|bin/fm-harness.sh|\
     bin/fm-peek.sh|bin/fm-composer*)
+      # fm-spawn.sh and fm-send.sh are fleet-mutation entry points, and the
+      # worker launch environment decides whether a spawned worker inherits the
+      # spawning session's helm, so the ownership family selects here too.
       printf '%s\n' backend-dispatch
       printf '%s\n' pure-contract-unit
+      printf '%s\n' watcher-wake-lock
       ;;
     bin/fm-bearings-snapshot.sh|bin/fm-fleet-snapshot.sh|bin/fm-fleet-view.sh)
       printf '%s\n' snapshot-bearings

@@ -343,6 +343,43 @@ test_an_inherited_helm_records_its_own_live_pid() {
   pass "a helm inherited by conversation id records the continuation's own live pid"
 }
 
+# The recorded pid can also die AFTER the helm was legitimately inherited, and
+# bin/fm-lock.sh does not run again on an ordinary turn. The Stop auto-arm does,
+# so it is what has to notice - and an ownership-keyed reclaim never would,
+# because ownership resolves perfectly well through the conversation id.
+test_the_autoarm_reclaims_a_dead_recorded_pid_under_an_inherited_helm() {
+  local dir holder continuation rc out recorded
+  dir="$TMP_ROOT/autoarm-reclaim"
+  make_home "$dir"
+  holder=$(start_lock_holder "$dir")
+
+  CLAUDE_PID="$holder" CLAUDE_CODE_SESSION_ID=conv-epsilon \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$dir/bin/fm-lock.sh" >/dev/null \
+    || fail "the holder could not record its own conversation on the lock"
+
+  kill "$holder" 2>/dev/null || true
+  wait_for_pid_gone "$holder" || fail "the fixture lock holder never exited"
+  continuation=$(start_harness_process "$TMP_ROOT/autoarm-continuation.pid")
+
+  detached_run env CLAUDE_PID="$continuation" CLAUDE_CODE_SESSION_ID=conv-epsilon \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
+    "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/fm-claude-stop-autoarm.sh" >/dev/null
+
+  recorded=$(cat "$dir/state/.lock" 2>/dev/null || true)
+  [ "$recorded" = "$continuation" ] \
+    || fail "the auto-arm left the lock naming $recorded, not the live continuation $continuation"
+
+  rc=$(detached_run env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
+    "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/fm-wake-drain.sh")
+  out=$(run_output)
+  [ "$rc" != 0 ] || fail "an unrelated session mutated a home the auto-arm had left reading as free"
+  assert_contains "$out" "does not hold the fleet lock" \
+    "an unrelated session was not refused after the auto-arm ran"
+
+  pass "the Stop auto-arm reclaims a dead recorded pid under an inherited helm"
+}
+
 # A worker firstmate launches is a descendant of the spawning session, so it
 # inherits that session's declared identity unless the launch boundary clears
 # it. This drives the REAL bin/fm-spawn.sh against a fake pane backend, then
@@ -551,6 +588,7 @@ test_a_caller_outside_any_harness_session_is_not_a_competing_session
 test_lock_output_states_ownership_in_words
 test_a_background_continuation_of_the_same_conversation_inherits_the_helm
 test_an_inherited_helm_records_its_own_live_pid
+test_the_autoarm_reclaims_a_dead_recorded_pid_under_an_inherited_helm
 test_a_spawned_worker_does_not_inherit_the_spawning_sessions_helm
 test_autoarm_declines_without_recording_a_failure
 test_turnend_guard_reports_the_decline_once_then_stops_blocking
