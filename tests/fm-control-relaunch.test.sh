@@ -297,6 +297,54 @@ test_relaunch_preserves_durable_task_metadata() {
   pass "fm-control relaunch: durable task metadata survives replacement launch publication"
 }
 
+# The quality posture and its base commit are the two records a hardened task's
+# quality loop reads back, so a replacement agent must inherit both unchanged.
+# base_sha is the one that is easy to get wrong and hard to notice: each loop
+# round commits, so a base recaptured at relaunch would quietly move forward and
+# narrow every later measurement to the newest work while still reporting success.
+# This drives the worktree's HEAD past the recorded base before relaunching, so a
+# recapture would be visible rather than coincidentally equal.
+test_relaunch_reuses_the_quality_posture_and_base_commit() {
+  local dir out rc base moved
+  dir=$(new_case quality-anchor rl40)
+  add_ship_task "$dir" rl40 claude
+  base=$(git -C "$dir/wt" rev-parse HEAD)
+  {
+    printf 'quality=hardened\n'
+    printf 'base_sha=%s\n' "$base"
+  } >> "$dir/home/state/rl40.meta"
+  # A hardened task's instructions carry the contract lines the spawn re-checks
+  # on every launch, so the replacement worker cannot be handed instructions that
+  # disagree with the task's own record.
+  {
+    printf '\n# Definition of done\n'
+    printf 'Delivery contract: mode=no-mistakes\n'
+    printf 'Quality contract: quality=hardened\n'
+  } >> "$dir/home/data/rl40/brief.md"
+
+  # A round of the loop lands on the branch, exactly as it would in real work.
+  printf 'a killed mutant\n' > "$dir/wt/round-1.txt"
+  git -C "$dir/wt" add round-1.txt
+  git -C "$dir/wt" -c user.email=t@example.com -c user.name=t commit --quiet -m "quality round 1"
+  moved=$(git -C "$dir/wt" rev-parse HEAD)
+  [ "$moved" != "$base" ] || fail "the fixture failed to move HEAD past the recorded base"
+
+  out=$(run_control "$dir" rl40 relaunch --note "continuing the quality loop"); rc=$?
+  expect_code 0 "$rc" "a hardened task should relaunch"$'\n'"$out"
+  [ "$(meta_field "$dir" rl40 quality)" = hardened ] \
+    || fail "the quality posture must survive relaunch, got '$(meta_field "$dir" rl40 quality)'"
+  [ "$(meta_field "$dir" rl40 base_sha)" = "$base" ] \
+    || fail "base_sha must be read back, not recaptured: got '$(meta_field "$dir" rl40 base_sha)', expected $base"
+  [ "$(meta_field "$dir" rl40 base_sha)" != "$moved" ] \
+    || fail "base_sha was recaptured at relaunch and now points at the loop's own newest commit"
+  [ "$(grep -c '^quality=' "$dir/home/state/rl40.meta")" = 1 ] \
+    || fail "relaunch left more than one quality= line in the task record"
+  [ "$(grep -c '^base_sha=' "$dir/home/state/rl40.meta")" = 1 ] \
+    || fail "relaunch left more than one base_sha= line in the task record"
+  [ "$(meta_field "$dir" rl40 mode)" = no-mistakes ] || fail "the delivery mode must survive alongside it"
+  pass "fm-control relaunch: the quality posture survives and the base commit is read back, never recaptured"
+}
+
 test_relaunch_serializes_concurrent_durable_metadata_publication() {
   local dir control_pid link_pid rc i=0 traceparent prepare ready exported release
   dir=$(new_case metadata-race rl28)
@@ -1284,6 +1332,9 @@ test_spawn_relaunch_refuses_contradicting_flags() {
   out=$(run_spawn "$dir" rl16 --relaunch --scout); rc=$?
   expect_code 1 "$rc" "--scout should be refused alongside --relaunch"
   assert_contains "$out" "recorded kind" "the refusal should name the recorded kind rule"
+  out=$(run_spawn "$dir" rl16 --relaunch --quality hardened); rc=$?
+  expect_code 1 "$rc" "--quality should be refused alongside --relaunch"
+  assert_contains "$out" "recorded quality posture" "the refusal should name the recorded quality rule"
   out=$(run_spawn "$dir" rl16 "$dir/proj" --relaunch); rc=$?
   expect_code 1 "$rc" "a project positional should be refused alongside --relaunch"
   assert_contains "$out" "takes the task id only" "the refusal should name the positional rule"
@@ -1314,6 +1365,7 @@ test_spawn_relaunch_refuses_a_pane_outside_the_worktree() {
 
 test_same_harness_relaunch_keeps_identity_and_reuses_the_endpoint
 test_relaunch_preserves_durable_task_metadata
+test_relaunch_reuses_the_quality_posture_and_base_commit
 test_relaunch_serializes_concurrent_durable_metadata_publication
 test_disabled_relaunch_clears_prior_trace_context
 test_relaunch_appends_the_progress_note_to_the_instructions

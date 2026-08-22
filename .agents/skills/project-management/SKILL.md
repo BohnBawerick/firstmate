@@ -42,11 +42,17 @@ Choose that posture when adding or creating the project:
 - `direct-PR` pushes and opens a PR without the no-mistakes pipeline.
 - `local-only` has no required remote or PR and lands only through the approved local fast-forward path.
 - `no-mistakes-prod-only` is a conditional policy rather than one flat mode: genuinely internal-only tooling, automation, contributor or operator process, and release or submission work ships `direct-PR`, while product-facing, mixed, and uncertain work ships `no-mistakes`.
+- `+hardened` is the highest-rigor choice on this list, adding the quality gate that runs before validation; it rides alongside one of the flat modes above rather than replacing it, so a hardened project is registered as `[no-mistakes +hardened]`, `[direct-PR +hardened]`, or `[local-only +hardened]`.
 
 `no-mistakes-prod-only` is the default for a newly added or created remote-backed project when the captain specifies nothing, and a project with no remote defaults to `local-only`.
 State that resolved default while confirming the source, local name, and posture instead of asking the captain to choose from scratch, and record a flat mode instead whenever they ask for one.
 Existing registry entries keep the meaning they already have and are never migrated or reinterpreted, so a legacy entry with no bracket stays `no-mistakes`.
 Registering a conditional policy is a one-time choice and never requires classifying any change; the per-task surface classification happens at each task's intake, and internal-only is never inferred from file location or project name.
+
+`+hardened` is off for every project unless the captain asks for it, so a project registered without it is `standard`.
+Refuse `+hardened` together with `no-mistakes-prod-only` and tell the captain to pick a flat delivery mode instead.
+A conditional policy decides per task, so a quality standard that covers only part of a project is a posture nobody can state in one sentence.
+`AGENTS.md` section 7 owns how each task's quality resolves at intake, and `bin/fm-project-mode.sh --quality` owns how the registered token is read.
 
 The optional `+yolo` posture changes routine approval authority but does not change the delivery mode.
 Default it off for every project and every posture, and enable it only on the captain's explicit instruction.

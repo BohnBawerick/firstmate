@@ -9,8 +9,15 @@
 # A scout records no delivery posture, so promotion is where this task's delivery
 # contract is decided: --mode and --yolo are REQUIRED and written into the meta
 # alongside the kind= flip. Firstmate resolves both at promotion time, having just
-# read the scout's report (AGENTS.md section 7); data/projects.md holds the
-# captain's standing posture as context, and this script never looks it up.
+# read the scout's report (AGENTS.md section 7). data/projects.md holds the captain's
+# standing posture, and this script reads only its quality half, only to print one
+# advisory notice on stderr after a successful promotion; the delivery mode stays the
+# caller's explicit decision.
+# A promoted task deliberately records no quality= and no base_sha=. The base commit
+# cannot be captured here, because the promoted worker resets to a clean
+# default-branch base only afterwards, and a hardened record with no anchor would look
+# complete to the quality loop while being unanchored. Both keys belong to the task
+# that owns the base-capture question (bin/fm-quality.sh).
 # no-mistakes-prod-only is a registry policy rather than a task mode and is refused.
 # Usage: fm-promote.sh <task-id> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off>
 set -eu
@@ -119,6 +126,19 @@ mv "$TMP" "$META"
 TMP=
 fm_lock_release "$META_LOCK"
 META_LOCK_HELD=0
+
+# The quality sibling of the standing-posture notice in bin/fm-spawn.sh: advisory
+# only, printed after the record is already rewritten so it can never affect the
+# promotion. A record with no project=, a missing registry, or a failed lookup simply
+# skips it, exactly as the spawn notice tolerates an empty standing mode.
+PROMOTED_PROJECT=$(sed -n 's/^project=//p' "$META" | tail -n 1)
+PROMOTED_PROJECT=${PROMOTED_PROJECT##*/}
+if [ -n "$PROMOTED_PROJECT" ]; then
+  STANDING_QUALITY=$("$FM_ROOT/bin/fm-project-mode.sh" --quality "$PROMOTED_PROJECT" 2>/dev/null) || STANDING_QUALITY=
+  if [ "$STANDING_QUALITY" = hardened ]; then
+    echo "notice: $ID promotes carrying no quality posture while the standing posture for $PROMOTED_PROJECT is hardened - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state" >&2
+  fi
+fi
 
 HOME_Q=$(printf '%q' "$FM_HOME")
 echo "promoted $ID to ship mode=$MODE yolo=$YOLO (teardown protection restored)"
