@@ -24,6 +24,8 @@
 # keyword written beside a $ref, which this checker does not apply, and a $ref
 # that does not resolve: both are refused when the schema is loaded.
 # A receipt that is read but is not JSON is the phase command's fault, exit 1.
+# The schema subset understood here is draft 2020-12 minus, among others, an
+# array-valued "type" such as ["string", "integer"], which is unsupported.
 # FM_QUALITY_RECEIPT_SCHEMA overrides the schema path (test seam).
 set -eu
 

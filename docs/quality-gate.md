@@ -146,6 +146,9 @@ Exit 0 is a valid receipt, 1 an invalid one, 2 a usage or tool error.
 The split matters to the loop controller: a receipt that is read but is not JSON, or does not fit the schema, is the phase command's fault.
 A receipt path that cannot be read at all, git failing to run, or a schema keyword the checker cannot enforce, is a wiring fault and must not be read as a verdict on the change.
 
+The checker implements a subset of JSON Schema draft 2020-12, and `bin/fm-quality-receipt.sh` is the owner of which keywords that subset covers.
+An array-valued `type`, such as `"type": ["string", "integer"]`, is not supported: the committed schema never uses that form, and adding one crashes the checker with exit 1 instead of refusing it cleanly at exit 2.
+
 The receipt may arrive as a file operand, as `-`, or on stdin with no operand, so a phase command that prints its receipt on stdout can be piped straight in.
 
 `--check-head` resolves `head_sha` in that tree and requires it to be that tree's `HEAD`.
