@@ -136,6 +136,7 @@ printf '%s\n' "$START_PID" > "$STATE/.lock"
 printf '%s\n' "$START_ID" > "$STATE/.lock.session"
 
 owned_with() {
+  # shellcheck disable=SC2016 # $1/$2 are the inner bash -c positional parameters
   env -u CLAUDE_PID CLAUDE_CODE_SESSION_ID="$1" bash -c '
     . "$1/bin/fm-session-lock-lib.sh"
     fm_session_lock_owned_by_self "$2"
