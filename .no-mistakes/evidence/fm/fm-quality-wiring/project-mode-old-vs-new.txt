@@ -1,0 +1,39 @@
+project                old two-word             new two-word             new --quality verdict
+-------------------------------------------------------------------------------------------------
+legacy                 no-mistakes off          no-mistakes off          standard   same
+flat-nm                no-mistakes off          no-mistakes off          standard   same
+flat-dpr               direct-PR off            direct-PR off            standard   same
+flat-lo                local-only off           local-only off           standard   same
+policy                 no-mistakes off          no-mistakes off          standard   same
+yolo-nm                no-mistakes on           no-mistakes on           standard   same
+yolo-dpr               direct-PR on             direct-PR on             standard   same
+yolo-lo                local-only on            local-only on            standard   same
+yolo-policy            no-mistakes on           no-mistakes on           standard   same
+typo                   no-mistakes off          no-mistakes off          standard   same
+typo-yolo              no-mistakes off          no-mistakes off          standard   same
+unknown-flag           direct-PR off            direct-PR off            standard   same
+hardened-nm            no-mistakes off          no-mistakes off          hardened   same
+hardened-dpr           direct-PR off            direct-PR off            hardened   same
+hardened-lo            local-only off           local-only off           hardened   same
+hardened-yolo          no-mistakes on           no-mistakes on           hardened   same
+hardened-policy        no-mistakes off          no-mistakes off          standard   same
+not-registered         no-mistakes off          no-mistakes off          standard   same
+
+RESULT: the two-word contract is byte-identical on every registry shape that
+existed before this change, including the unknown-mode typo, the conditional
+policy, and an unrecognised future flag.
+
+Two shapes resolve differently, and both are declared in the change:
+
+1. The new flag-first form, which no old registry could carry:
+  old -> warn: unknown mode "+hardened" for flag-first; defaulting to no-mistakes off no-mistakes off 
+  new -> local-only off  (quality: hardened)
+
+2. The previously-broken flag-first
+shape '[+yolo <mode>]', which the old parser silently dropped the mode from:
+  old -> no-mistakes on 
+  new -> direct-PR on 
+
+Registry lines in this repo that use the flag-first form (should be none):
+  (no data/projects.md in a fresh checkout, and no flag-first line anywhere in tracked docs)
+  none in tracked docs

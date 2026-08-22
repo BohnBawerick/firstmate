@@ -1,0 +1,140 @@
+############ 1. The registry line the captain writes ############
+
+$ cat '/tmp/fm-demo-sbx.PGLdWR/home/data/projects.md'
+- plain [direct-PR] - an ordinary project (added 2026-01-01)
+- guarded [direct-PR +hardened] - the fourth option picked at registration (added 2026-01-01)
+- flipped [+hardened local-only] - same flag, written before the mode (added 2026-01-01)
+- proj [direct-PR +hardened] - the sandbox project the spawns below use (added 2026-01-01)
+
+############ 2. The two-word stdout its three callers parse ############
+plain    -> direct-PR off
+guarded  -> direct-PR off
+flipped  -> local-only off
+
+############ 3. The new one-word --quality output ############
+plain                  -> standard
+guarded                -> hardened
+flipped                -> hardened
+absent-from-registry   -> standard
+
+############ 4. A standard brief is byte-identical to the pre-change scaffold ############
+
+$ diff '/tmp/fm-demo-sbx.PGLdWR/brief-before.md' '/tmp/fm-demo-sbx.PGLdWR/brief-after.md' && echo 'IDENTICAL: base-commit scaffold vs new scaffold, no --quality'
+IDENTICAL: base-commit scaffold vs new scaffold, no --quality
+
+$ diff '/tmp/fm-demo-sbx.PGLdWR/brief-before.md' '/tmp/fm-demo-sbx.PGLdWR/brief-after-explicit.md' && echo 'IDENTICAL: base-commit scaffold vs new scaffold with --quality standard'
+IDENTICAL: base-commit scaffold vs new scaffold with --quality standard
+
+$ sha256sum '/tmp/fm-demo-sbx.PGLdWR/brief-before.md' '/tmp/fm-demo-sbx.PGLdWR/brief-after.md' '/tmp/fm-demo-sbx.PGLdWR/brief-after-explicit.md'
+ae3adb2d46f907b006985653867ed5981e8e65397d02157cd2521faf024f5d68  /tmp/fm-demo-sbx.PGLdWR/brief-before.md
+ae3adb2d46f907b006985653867ed5981e8e65397d02157cd2521faf024f5d68  /tmp/fm-demo-sbx.PGLdWR/brief-after.md
+ae3adb2d46f907b006985653867ed5981e8e65397d02157cd2521faf024f5d68  /tmp/fm-demo-sbx.PGLdWR/brief-after-explicit.md
+
+$ grep -ic quality <standard brief>
+0 line(s) mentioning quality in a standard brief
+############ 5. What the worker actually reads in a hardened brief ############
+
+$ diff standard-brief hardened-brief
+12c12
+< You are in a disposable git worktree of plain, at a detached HEAD on a clean default branch.
+---
+> You are in a disposable git worktree of guarded, at a detached HEAD on a clean default branch.
+20c20
+< Then create your branch: `git checkout -b fm/demo-1`
+---
+> Then create your branch: `git checkout -b fm/ship-hard`
+23c23
+< 1. Never push to the default branch (push only your `fm/demo-1` branch). Never merge a PR.
+---
+> 1. Never push to the default branch (push only your `fm/ship-hard` branch). Never merge a PR.
+27c27
+<    `echo "{state}: {one short line}" >> '/tmp/fm-demo-sbx.PGLdWR/bhome/state/demo-1.status'`
+---
+>    `echo "{state}: {one short line}" >> '/tmp/fm-demo-sbx.PGLdWR/home/state/ship-hard.status'`
+54a55,62
+> # Quality gate
+> This task ships **hardened**, so an extra quality pass runs before the definition of done below, and `/home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0JW8XRQC62ZWQ2YVC83RZQG/bin/fm-quality.sh` drives it.
+> 
+> 1. The base commit is fixed when this task starts and is recorded in the task's durable record as `base_sha=`. Measure every phase as a diff against THAT commit, never against `HEAD~1`: each round of the loop commits, so `HEAD~1` would narrow the gate to the last round alone while still reporting success.
+> 2. Run the clean loop first, then the harden loop, and finish both before you start on that definition of done - on a no-mistakes task, that means before the pipeline starts.
+> 3. Do not hand-roll either loop. The rounds, the bounds, the receipt, and the outcome vocabulary belong to that script; `/home/paiva/.no-mistakes/worktrees/3437026af8a8/01M0JW8XRQC62ZWQ2YVC83RZQG/bin/fm-quality.sh --help` is authoritative for its mechanics.
+> 4. Only a pass continues. If a surviving mutant exposes a real product defect rather than a missing test, report it (rule 6) instead of writing a test around it - a test that passes against a defect is exactly how a quality gate gets gamed.
+> 
+56a65
+> Quality contract: quality=hardened
+
+
+$ tail of the hardened brief (the contract lines the worker and fm-spawn.sh both read)
+64:Delivery contract: mode=direct-PR
+65:Quality contract: quality=hardened
+
+############ 6. The spawn records it durably ############
+
+$ the base commit at spawn time: d81b5a97cfb201b935b20f6e8f853e57c2455c4c
+
+$ SPAWN ship-hard '/tmp/fm-demo-sbx.PGLdWR/proj' --mode direct-PR --yolo off --quality hardened
+spawned ship-hard harness=claude kind=ship mode=direct-PR yolo=off window=firstmate:fm-ship-hard worktree=/tmp/fm-demo-sbx.PGLdWR/wt
+
+$ state/ship-hard.meta
+kind=ship
+mode=direct-PR
+yolo=off
+quality=hardened
+base_sha=d81b5a97cfb201b935b20f6e8f853e57c2455c4c
+OK: base_sha equals the commit the worktree sat on at spawn
+
+############ 7. The base commit is pinned, not re-derived from a moved HEAD ############
+
+$ the worker has now made two commits; HEAD~1 no longer describes the base
+HEAD    = 4f5d6f0430272f382183707b01a88c6eb36f5a4c
+HEAD~1  = dabc5bba0402599113d193dc4b88c631e068c744  <- what a naive gate would use
+base_sha= d81b5a97cfb201b935b20f6e8f853e57c2455c4c  <- what was recorded
+
+$ git -C '/tmp/fm-demo-sbx.PGLdWR/wt' log --oneline 'd81b5a97cfb201b935b20f6e8f853e57c2455c4c'..HEAD
+4f5d6f0 loop round 2
+dabc5bb loop round 1
+
+$ the agent has exited; the endpoint window is still there but runs no agent
+
+$ SPAWN --relaunch ship-hard
+spawned ship-hard harness=claude kind=ship mode=direct-PR yolo=off window=firstmate:fm-ship-hard worktree=/tmp/fm-demo-sbx.PGLdWR/wt
+
+$ state/ship-hard.meta after relaunch
+quality=hardened
+base_sha=d81b5a97cfb201b935b20f6e8f853e57c2455c4c
+OK: quality and the pinned base commit survived the relaunch unchanged
+
+############ 8. A project without +hardened is untouched ############
+
+$ the standard brief carries no Quality contract: line
+0
+0 - none, as before the change
+
+$ SPAWN ship-plain '/tmp/fm-demo-sbx.PGLdWR/proj' --mode direct-PR --yolo off
+notice: ship-plain ships quality=standard while the standing posture for proj is hardened - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned ship-plain harness=claude kind=ship mode=direct-PR yolo=off window=firstmate:fm-ship-plain worktree=/tmp/fm-demo-sbx.PGLdWR/wt
+
+$ state/ship-plain.meta
+kind=ship
+mode=direct-PR
+yolo=off
+quality=standard
+base_sha=d81b5a97cfb201b935b20f6e8f853e57c2455c4c
+
+############ 9. Brief and flag must agree, in both directions ############
+
+$ a quality-silent brief + --quality hardened
+
+$ SPAWN ship-plain2 '/tmp/fm-demo-sbx.PGLdWR/proj' --mode direct-PR --yolo off --quality hardened
+error: quality mismatch for ship-plain2: the brief says quality=standard but this spawn passed --quality hardened; correct the flag or re-scaffold the brief so the worker's instructions and the task record agree
+
+$ a hardened brief + --quality standard
+
+$ SPAWN ship-plain2 '/tmp/fm-demo-sbx.PGLdWR/proj' --mode direct-PR --yolo off --quality standard
+error: quality mismatch for ship-plain2: the brief says quality=hardened but this spawn passed --quality standard; correct the flag or re-scaffold the brief so the worker's instructions and the task record agree
+
+$ and --quality standard against a quality-silent brief agrees silently
+
+$ SPAWN ship-plain3 '/tmp/fm-demo-sbx.PGLdWR/proj' --mode direct-PR --yolo off --quality standard
+notice: ship-plain3 ships quality=standard while the standing posture for proj is hardened - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned ship-plain3 harness=claude kind=ship mode=direct-PR yolo=off window=firstmate:fm-ship-plain3 worktree=/tmp/fm-demo-sbx.PGLdWR/wt

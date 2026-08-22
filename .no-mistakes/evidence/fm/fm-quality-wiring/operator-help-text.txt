@@ -1,0 +1,47 @@
+======================================================================
+$ bin/fm-brief.sh --help | sed -n 1,13p;51,64p   (the --quality choice)
+
+Scaffold a crewmate brief or persistent secondmate charter at
+data/<task-id>/brief.md under the active firstmate home.
+For ordinary tasks, the standard Setup/Rules/Definition-of-done contract is
+filled in. Firstmate then replaces the {TASK} placeholder with the task
+description, acceptance criteria, and context, and may adjust other sections
+when the task genuinely deviates (e.g. working an existing external PR instead
+of shipping a new one).
+Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--quality <standard|hardened>] [--herdr-lab]
+       fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab]
+       fm-brief.sh <task-id> <repo-name> --dreamer [--herdr-lab]
+       fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
+  --scout writes the scout contract instead: the deliverable is a report at
+  data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
+   ...
+section 7) from the project's registered "+hardened" annotation, and it defaults to
+standard so every existing call site scaffolds exactly as before:
+  standard  the ordinary path: implement, then the mode's definition of done
+  hardened  a clean loop then a harden loop, both against the base commit fixed at
+            spawn, both before validation, driven by bin/fm-quality.sh
+A hardened brief carries the sibling machine-readable line
+"Quality contract: quality=hardened" plus one short quality-gate section; a standard
+brief carries neither, so an absent line means standard and a standard brief stays
+byte-identical to what this scaffold produced before --quality existed. bin/fm-spawn.sh
+checks that line against its own --quality exactly as it checks the mode line.
+--quality is refused on scout, dreamer and secondmate scaffolds, for the same reason
+--mode is.
+Ship briefs begin with a worktree-isolation assertion before the branch step.
+--mode is refused on scout, dreamer and secondmate scaffolds: a scout or dreamer
+
+======================================================================
+$ grep -n "quality posture resolves at intake" AGENTS.md   (D9: one added sentence, section 7)
+
+289:A task's quality posture resolves at intake with the same precedence, a current explicit captain instruction first, then the project's registered posture, then `standard`, with the one-line reason for any deviation recorded in the same backlog note.
+
+======================================================================
+Operator-facing copy: hardened written as the fourth option on the list,
+not as a second independent axis.
+
+--- README.md ---
+48:- **Explicit project modes** - each project ships via `no-mistakes`, `direct-PR`, `local-only`, or one of those plus `+hardened` for the highest-rigor quality gate, with an optional `+yolo` autonomy flag.
+
+--- .agents/skills/project-management/SKILL.md ---
+45:- `+hardened` is the highest-rigor choice on this list, adding the quality gate that runs before validation; it rides alongside one of the flat modes above rather than replacing it, so a hardened project is registered as `[no-mistakes +hardened]`, `[direct-PR +hardened]`, or `[local-only +hardened]`.
+46-
