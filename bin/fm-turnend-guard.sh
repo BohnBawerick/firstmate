@@ -82,10 +82,11 @@
 # checks ownership BEFORE any blocking path, states the decline once per
 # (session, lock owner) pair, and then stops blocking.
 # state/.turnend-unowned-notice.<session> records the owner this session was
-# already told about - one slot per session, because a single shared slot would
-# be overwritten by the next non-owning session and the two would block each
-# other forever. It is a one-line notice, not fleet state, and a change of
-# either half correctly reports again.
+# already told about, plus the writer's own process identity - one slot per
+# session, because a single shared slot would be overwritten by the next
+# non-owning session and the two would block each other forever. It is a small
+# notice, not fleet state, a change of either half correctly reports again, and
+# a record whose identity no longer resolves to a live process is retired.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -176,7 +177,7 @@ BUDGET_LOCK="$STATE/.turnend-claude-blocks.lock"
 OWNER_LOCK="$STATE/.claude-autoarm.lock"
 FAILURE_NOTICE="$STATE/.claude-autoarm-failure-notified"
 FAILURE_ALARM="$STATE/.claude-autoarm-failure-alarmed"
-SESSION_ID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id // "unknown"' 2>/dev/null || printf 'unknown')
+SESSION_ID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id // .sessionId // "unknown"' 2>/dev/null || printf 'unknown')
 budget_reset() {
   [ "$CLAUDE_MODE" -eq 1 ] || return 0
   fm_lock_try_acquire "$BUDGET_LOCK" || return 0
@@ -205,25 +206,89 @@ fi
 # Supervision is off AND this session does not hold the home: report the decline
 # once for this (session, lock owner) pair, then stand down for good. Blocking
 # again would nag a session that has no authority to fix it, forever.
-# Pi and grok send a stop payload with no session_id, so the payload id alone
-# would collapse every session in the home onto one shared slot and turn "report
-# once per session" into "report once, ever". Fall back to this caller's own
-# resolved session identity, which is stable within a session and distinct
-# across sessions for exactly the harnesses that publish no id.
+# Pi sends a stop payload with no session id at all, so the payload id alone
+# would collapse every Pi session in the home onto one shared slot and turn
+# "report once per session" into "report once, ever". Fall back to this caller's
+# own resolved harness pid, which is stable within a session and distinct across
+# sessions for exactly the harnesses that publish no id.
+UNOWNED_NOTICE_HOLDER=$(fm_session_lock_self_pid 2>/dev/null || true)
+UNOWNED_NOTICE_IDENTITY=$(fm_pid_identity "${UNOWNED_NOTICE_HOLDER:-}" 2>/dev/null || printf 'unresolved')
+UNOWNED_NOTICE_KEYED_BY_PID=0
 UNOWNED_NOTICE_SLUG=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9._-' '_')
 case "$UNOWNED_NOTICE_SLUG" in
   ''|unknown)
-    UNOWNED_NOTICE_SLUG=self-$(fm_session_lock_self_pid 2>/dev/null || printf 'unresolved')
+    UNOWNED_NOTICE_SLUG=self-${UNOWNED_NOTICE_HOLDER:-unresolved}
+    UNOWNED_NOTICE_KEYED_BY_PID=1
     ;;
 esac
 UNOWNED_NOTICE="$STATE/.turnend-unowned-notice.$UNOWNED_NOTICE_SLUG"
+
+# Every record carries the writer's fm_pid_identity (pid plus start time plus
+# command line - bin/fm-wake-lib.sh). It is what makes retirement decidable
+# below, and where the slot is keyed on a pid rather than a real session id it
+# is also part of what the record must match: a recycled pid then reads as a
+# mismatch and correctly reports again, instead of letting a brand-new session
+# take a retired session's record for its own and stand down having been told
+# nothing. A real session id already identifies the session, so a record found
+# under one matches on the owner alone, whichever process of that session wrote
+# it.
+notice_record() {  # <owner-pid>
+  printf 'owner=%s\nholder=%s\nidentity=%s\n' \
+    "$1" "${UNOWNED_NOTICE_HOLDER:-unresolved}" "$UNOWNED_NOTICE_IDENTITY"
+}
+
+notice_want_key() {  # <owner-pid>
+  if [ "$UNOWNED_NOTICE_KEYED_BY_PID" -eq 1 ]; then
+    printf 'owner=%s identity=%s\n' "$1" "$UNOWNED_NOTICE_IDENTITY"
+  else
+    printf 'owner=%s\n' "$1"
+  fi
+}
+
+notice_have_key() {
+  local owner identity
+  owner=$(sed -n 's/^owner=//p' "$UNOWNED_NOTICE" 2>/dev/null | head -1)
+  [ -n "$owner" ] || return 1
+  if [ "$UNOWNED_NOTICE_KEYED_BY_PID" -eq 1 ]; then
+    identity=$(sed -n 's/^identity=//p' "$UNOWNED_NOTICE" 2>/dev/null | head -1)
+    printf 'owner=%s identity=%s\n' "$owner" "$identity"
+  else
+    printf 'owner=%s\n' "$owner"
+  fi
+}
+
+# Retire the records of sessions that are gone, so state/ cannot grow without
+# bound on a long-lived home. A record is removed ONLY when its recorded
+# identity no longer resolves to a live process: never on age, never on count,
+# never as a blanket sweep. Deleting a live session's own record would let the
+# decline be reported to it a second time, which is the repeated blocking this
+# whole path exists to end, so every uncertain case keeps the record.
+prune_retired_notices() {
+  local file holder recorded current
+  for file in "$STATE"/.turnend-unowned-notice.*; do
+    [ -f "$file" ] || continue
+    [ "$file" = "$UNOWNED_NOTICE" ] && continue
+    holder=$(sed -n 's/^holder=//p' "$file" 2>/dev/null | head -1)
+    recorded=$(sed -n 's/^identity=//p' "$file" 2>/dev/null | head -1)
+    [ -n "$holder" ] && [ -n "$recorded" ] || continue
+    [ "$recorded" = unresolved ] && continue
+    if fm_pid_alive "$holder"; then
+      current=$(fm_pid_identity "$holder" 2>/dev/null || true)
+      [ -n "$current" ] || continue
+      [ "$current" = "$recorded" ] && continue
+    fi
+    rm -f "$file" 2>/dev/null || true
+  done
+}
+
 decline_stop() {
   local owner want have rule
+  prune_retired_notices
   owner=$(fm_session_lock_pid "$STATE" 2>/dev/null || printf 'unknown')
-  want="owner=$owner"
-  have=$(cat "$UNOWNED_NOTICE" 2>/dev/null || true)
+  want=$(notice_want_key "$owner")
+  have=$(notice_have_key 2>/dev/null || true)
   [ "$have" = "$want" ] && exit 0
-  printf '%s\n' "$want" > "$UNOWNED_NOTICE" 2>/dev/null || true
+  notice_record "$owner" > "$UNOWNED_NOTICE" 2>/dev/null || true
   rule='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
   {
     printf '●%s\n' "$rule"

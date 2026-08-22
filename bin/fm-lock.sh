@@ -63,11 +63,19 @@ publish_session_id() {
 
 # One wording for every successful acquisition, so the ownership verdict never
 # reads as a bare pid the caller has to interpret.
+# The parenthetical names the tier that actually granted ownership, because
+# tier 2 and tier 3 both reach this with a recorded pid that is not `me`, and
+# claiming a conversation match the ancestry walk made would be wrong.
 report_acquired() {
-  if [ "$me" = "$1" ]; then
-    echo "lock acquired: THIS session holds the fleet lock (harness pid $1)"
+  local recorded=$1 self_id recorded_id
+  if [ "$me" = "$recorded" ]; then
+    echo "lock acquired: THIS session holds the fleet lock (harness pid $recorded)"
+  elif self_id=$(fm_harness_session_id) \
+    && recorded_id=$(fm_session_lock_recorded_id "$STATE") \
+    && [ "$self_id" = "$recorded_id" ]; then
+    echo "lock acquired: THIS session holds the fleet lock (recorded harness pid $recorded, same conversation as this session)"
   else
-    echo "lock acquired: THIS session holds the fleet lock (recorded harness pid $1, same conversation as this session)"
+    echo "lock acquired: THIS session holds the fleet lock (recorded harness pid $recorded, inside this session's harness ancestry)"
   fi
 }
 probe=$(mktemp "$STATE/.lock-write.XXXXXX" 2>/dev/null) || {

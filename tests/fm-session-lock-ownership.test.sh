@@ -599,6 +599,48 @@ test_a_harness_that_sends_no_session_id_reports_once_per_session() {
   pass "a harness that sends no session id still reports the decline once per session"
 }
 
+# The notice records are per session and nothing else retires them, so a
+# long-lived home would accumulate one per session forever. Retirement is
+# decided by the recorded process identity ALONE: a live session's own record
+# must survive, because deleting it would report the decline to it a second time
+# and reopen the repeated blocking this path exists to end.
+test_retired_notice_records_are_swept_and_live_ones_survive() {
+  local dir live retired rc stale_slot live_slot
+
+  dir="$TMP_ROOT/turnend-notice-sweep"
+  make_home "$dir"
+  start_lock_holder "$dir" >/dev/null
+
+  # Two notice records in the documented on-disk shape (AGENTS.md's state
+  # inventory), identical but for one thing: whose process is still alive.
+  live=$(start_harness_process "$TMP_ROOT/notice-live.pid")
+  retired=$(start_harness_process "$TMP_ROOT/notice-retired.pid")
+  live_slot="$dir/state/.turnend-unowned-notice.live-peer"
+  stale_slot="$dir/state/.turnend-unowned-notice.retired-peer"
+  printf 'owner=1\nholder=%s\nidentity=%s\n' \
+    "$live" "$(fm_test_pid_identity "$live")" > "$live_slot"
+  printf 'owner=1\nholder=%s\nidentity=%s\n' \
+    "$retired" "$(fm_test_pid_identity "$retired")" > "$stale_slot"
+
+  kill "$retired" 2>/dev/null || true
+  wait_for_pid_gone "$retired" || fail "the retired fixture process never exited"
+
+  # A third session ends a turn, which is when retirement runs.
+  rc=$(detached_run env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
+    "$FAKE_CLAUDE" -c '
+      printf "%s\n" "{\"session_id\":\"third-peer\",\"stop_hook_active\":false}" | "$1"
+      exit $?
+    ' _ "$dir/bin/fm-turnend-guard.sh")
+  expect_code 2 "$rc" "the third session did not report its own decline"
+
+  [ -e "$stale_slot" ] && fail "a record whose process is gone was never retired"
+  [ -f "$live_slot" ] \
+    || fail "a live session's own record was swept, so it will be told the decline twice"
+
+  pass "notice records are retired only when their recorded identity is gone"
+}
+
 test_turnend_guard_reports_again_when_the_holder_changes() {
   local dir first second rc out
   dir="$TMP_ROOT/turnend-rehold"
@@ -633,4 +675,5 @@ test_autoarm_declines_without_recording_a_failure
 test_turnend_guard_reports_the_decline_once_then_stops_blocking
 test_two_non_owning_sessions_each_report_once_and_both_stand_down
 test_a_harness_that_sends_no_session_id_reports_once_per_session
+test_retired_notice_records_are_swept_and_live_ones_survive
 test_turnend_guard_reports_again_when_the_holder_changes

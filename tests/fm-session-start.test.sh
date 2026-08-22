@@ -923,6 +923,10 @@ EOF
   assert_contains "$out" "FLEET LOCK OWNERSHIP WAS NOT VERIFIED" "lock publication failure was misreported as a live holder"
   assert_contains "$out" "lacks verified fleet-lock ownership" "lock publication failure did not explain why queued wakes remain untouched"
   assert_not_contains "$out" "ANOTHER LIVE FIRSTMATE SESSION HOLDS THE FLEET LOCK" "lock publication failure falsely claimed a live lock holder"
+  assert_contains "$out" "HELM: fleet-lock ownership could NOT be resolved" \
+    "the helm line did not name the real cause of a non-competing acquisition failure"
+  assert_not_contains "$out" "HELM: ANOTHER session holds the fleet lock" \
+    "the helm line named a competing holder for a home whose lock is free"
   [ -s "$home/state/.wake-queue" ] || fail "lock publication failure allowed the wake queue to mutate"
 
   pass "session start stays read-only when lock ownership cannot be published"
