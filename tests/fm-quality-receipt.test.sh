@@ -634,6 +634,105 @@ PY
   pass "fm-quality-receipt: dropping head_sha from the schema file is what lets the fail-open through"
 }
 
+test_usage_prints_the_header_and_no_shell_code() {
+  local out rc
+  out=$("$RECEIPT" --help); rc=$?
+  expect_code 0 "$rc" "--help"
+  assert_contains "$out" "Usage:" "--help did not print the usage block"$'\n'"$out"
+  assert_contains "$out" "FM_QUALITY_RECEIPT_SCHEMA" "--help stopped before the last header line"$'\n'"$out"
+  assert_not_contains "$out" "set -eu" "--help leaked a line of shell code"$'\n'"$out"
+  out=$("$RECEIPT" 2>&1 >/dev/null); rc=$?
+  expect_code 2 "$rc" "no command"
+  assert_contains "$out" "Usage:" "the usage error did not print the usage block"$'\n'"$out"
+  assert_not_contains "$out" "set -eu" "the usage error leaked a line of shell code"$'\n'"$out"
+  pass "fm-quality-receipt: usage prints the header block and stops before the code"
+}
+
+test_dashdash_reads_the_named_file_not_stdin() {
+  local good bad out rc
+  good="$TMP_ROOT/dd-good.json"
+  clean_pass_py | write_receipt "$good"
+  bad="$TMP_ROOT/dd-bad.json"
+  cat <<PY | write_receipt "$bad"
+{
+  "schema_version": 1,
+  "phase": "clean",
+  "outcome": "not-applicable",
+  "base_sha": "$BASE",
+  "duration_ms": 12,
+  "engine": {"name": "eslint", "version": "10.1.0"},
+  "threshold": {"crap_max": 15},
+  "findings": [],
+}
+PY
+  out=$(validate -- "$bad" <"$good" 2>&1); rc=$?
+  expect_code 1 "$rc" "validate -- <invalid file> while stdin holds a valid receipt"$'\n'"$out"
+  assert_contains "$out" "head_sha" "validate -- read stdin instead of the named file"$'\n'"$out"
+  out=$(validate -- "$good" </dev/null 2>&1); rc=$?
+  expect_code 0 "$rc" "validate -- <valid file> with empty stdin"$'\n'"$out"
+  out=$(validate -- "$good" "$bad" </dev/null 2>&1); rc=$?
+  expect_code 2 "$rc" "two operands after --"$'\n'"$out"
+  pass "fm-quality-receipt: an operand after -- is the file to validate, not stdin"
+}
+
+test_sha_pattern_rejects_a_trailing_newline() {
+  local rec out rc
+  rec="$TMP_ROOT/sha-newline.json"
+  cat <<PY | write_receipt "$rec"
+{
+  "schema_version": 1,
+  "phase": "clean",
+  "outcome": "pass",
+  "base_sha": "$BASE",
+  "head_sha": "$HEAD\n",
+  "duration_ms": 10,
+  "engine": {"name": "eslint", "version": "10.1.0"},
+  "threshold": {"crap_max": 15},
+  "findings": [],
+}
+PY
+  out=$(validate "$rec" 2>&1); rc=$?
+  expect_code 1 "$rc" "head_sha with a trailing newline"$'\n'"$out"
+  assert_contains "$out" "head_sha" "trailing-newline rejection did not name head_sha"$'\n'"$out"
+  rec="$TMP_ROOT/sha-clean.json"
+  clean_pass_py | write_receipt "$rec"
+  validate "$rec" >/dev/null 2>&1 || fail "the same sha without the newline was rejected"
+  pass "fm-quality-receipt: a sha with trailing whitespace is not a sha"
+}
+
+test_a_schema_keyword_this_checker_cannot_enforce_is_refused() {
+  local rec schema out rc
+  rec="$TMP_ROOT/keyword-two-findings.json"
+  harden_exhausted_py | write_receipt "$rec"
+  validate "$rec" >/dev/null 2>&1 || fail "the fixture receipt is not valid against the committed schema"
+  schema="$TMP_ROOT/schema-maxitems.json"
+  python3 - "$ROOT/docs/quality-receipt.schema.json" "$schema" <<'PY'
+import json, sys
+src, dst = sys.argv[1], sys.argv[2]
+doc = json.load(open(src))
+doc["$defs"]["phase_result"]["properties"]["findings"]["maxItems"] = 1
+json.dump(doc, open(dst, "w"))
+PY
+  out=$(FM_QUALITY_RECEIPT_SCHEMA="$schema" validate "$rec" 2>&1); rc=$?
+  expect_code 2 "$rc" "a schema tightened with maxItems, which this checker does not implement"$'\n'"$out"
+  assert_contains "$out" "maxItems" "the refusal did not name the keyword"$'\n'"$out"
+  pass "fm-quality-receipt: an unenforceable schema keyword is refused, not ignored"
+}
+
+test_check_head_separates_git_failure_from_a_bad_sha() {
+  local repo rec out rc
+  rec="$TMP_ROOT/check-head-tool.json"
+  clean_pass_py | write_receipt "$rec"
+  out=$(validate --check-head "$TMP_ROOT/not-a-git-tree" "$rec" 2>&1); rc=$?
+  expect_code 2 "$rc" "--check-head pointed at a path that is not a git tree"$'\n'"$out"
+  repo="$TMP_ROOT/check-head-repo"
+  fm_git_init_commit "$repo"
+  out=$(validate --check-head "$repo" "$rec" 2>&1); rc=$?
+  expect_code 1 "$rc" "head_sha that git resolved and rejected"$'\n'"$out"
+  assert_contains "$out" "head_sha" "the receipt rejection did not name head_sha"$'\n'"$out"
+  pass "fm-quality-receipt: git failing to run is exit 2, a sha git disowns is exit 1"
+}
+
 test_schema_command_prints_json() {
   local out rc
   out=$("$RECEIPT" schema); rc=$?
@@ -658,4 +757,9 @@ test_verify_forbids_flat_findings
 test_verify_child_shas_must_match_envelope
 test_check_head_rejects_a_constant_sha
 test_schema_file_is_the_owner_not_a_constant_list
+test_usage_prints_the_header_and_no_shell_code
+test_dashdash_reads_the_named_file_not_stdin
+test_sha_pattern_rejects_a_trailing_newline
+test_a_schema_keyword_this_checker_cannot_enforce_is_refused
+test_check_head_separates_git_failure_from_a_bad_sha
 test_schema_command_prints_json

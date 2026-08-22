@@ -17,6 +17,9 @@
 #   - finding ids are unique inside each findings array
 #   - each verify child's base_sha and head_sha equal the envelope's
 # --check-head <git-dir> then requires head_sha to resolve to that tree's HEAD.
+# Tool errors (exit 2) include git failing to run under --check-head, and a
+# schema using a keyword this checker does not implement: an unenforced schema
+# keyword is refused, never ignored.
 # FM_QUALITY_RECEIPT_SCHEMA overrides the schema path (test seam).
 set -eu
 
@@ -26,7 +29,7 @@ SCHEMA="${FM_QUALITY_RECEIPT_SCHEMA:-$FM_ROOT/docs/quality-receipt.schema.json}"
 SELF="$SCRIPT_DIR/fm-quality-receipt.sh"
 
 fm_quality_receipt_usage() {
-  sed -n '2,21{s/^# \{0,1\}//;p;}' "$SELF"
+  sed -n '2,/^[^#]/{/^[^#]/d;s/^# \{0,1\}//;p;}' "$SELF"
 }
 
 if ! command -v python3 >/dev/null 2>&1; then
@@ -94,6 +97,15 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+while [ "$#" -gt 0 ]; do
+  [ -z "$FILE" ] || {
+    printf 'fm-quality-receipt: unexpected extra argument %s\n' "$1" >&2
+    exit 2
+  }
+  FILE=$1
+  shift
+done
+
 [ -z "$CMD" ] && {
   fm_quality_receipt_usage >&2
   exit 2
@@ -138,6 +150,77 @@ class SchemaError(Exception):
         super().__init__(f"{path}: {message}")
         self.path = path
         self.message = message
+
+
+class ToolError(Exception):
+    pass
+
+
+ANNOTATION_KEYWORDS = frozenset(
+    {
+        "$schema",
+        "$id",
+        "$comment",
+        "$defs",
+        "title",
+        "description",
+        "default",
+        "examples",
+        "deprecated",
+    }
+)
+APPLIED_KEYWORDS = frozenset(
+    {
+        "$ref",
+        "allOf",
+        "if",
+        "then",
+        "else",
+        "not",
+        "type",
+        "const",
+        "enum",
+        "pattern",
+        "minLength",
+        "minimum",
+        "minItems",
+        "minProperties",
+        "items",
+        "properties",
+        "required",
+        "additionalProperties",
+    }
+)
+KNOWN_KEYWORDS = ANNOTATION_KEYWORDS | APPLIED_KEYWORDS
+KNOWN_TYPES = frozenset({"object", "array", "string", "integer", "number"})
+
+
+def check_schema(schema: object, path: str) -> None:
+    if isinstance(schema, bool):
+        return
+    if not isinstance(schema, dict):
+        raise SchemaError(path, "invalid schema")
+    for key in schema:
+        if key not in KNOWN_KEYWORDS:
+            raise SchemaError(path, f"unsupported schema keyword {key}")
+    expected_type = schema.get("type")
+    if expected_type is not None and expected_type not in KNOWN_TYPES:
+        raise SchemaError(path, f"unsupported type {expected_type!r}")
+    for key in ("if", "then", "else", "not", "items", "additionalProperties"):
+        if key in schema:
+            check_schema(schema[key], f"{path}/{key}")
+    if "allOf" in schema:
+        if not isinstance(schema["allOf"], list):
+            raise SchemaError(f"{path}/allOf", "expected array")
+        for i, sub in enumerate(schema["allOf"]):
+            check_schema(sub, f"{path}/allOf/{i}")
+    for key in ("properties", "$defs"):
+        block = schema.get(key)
+        if key in schema and not isinstance(block, dict):
+            raise SchemaError(f"{path}/{key}", "expected object")
+        if isinstance(block, dict):
+            for name, sub in block.items():
+                check_schema(sub, f"{path}/{key}/{name}")
 
 
 def is_int(value: object) -> bool:
@@ -221,7 +304,7 @@ def validate(instance: object, schema: object, root: dict, path: str) -> None:
     if "enum" in schema and instance not in schema["enum"]:
         raise SchemaError(path, f"expected one of {schema['enum']!r}")
     if "pattern" in schema:
-        if not isinstance(instance, str) or re.search(schema["pattern"], instance) is None:
+        if not isinstance(instance, str) or re.fullmatch(schema["pattern"], instance) is None:
             raise SchemaError(path, f"expected to match {schema['pattern']}")
     if "minLength" in schema:
         if not isinstance(instance, str) or len(instance) < schema["minLength"]:
@@ -309,7 +392,7 @@ def git_rev_parse(git_dir: str, *args: str) -> str:
     )
     if proc.returncode != 0:
         detail = proc.stderr.strip() or "git rev-parse failed"
-        raise SchemaError("$/head_sha", detail)
+        raise ToolError(detail)
     return proc.stdout.strip()
 
 
@@ -322,8 +405,8 @@ def check_head(receipt: object, git_dir: str) -> None:
     actual = git_rev_parse(git_dir, "HEAD")
     try:
         resolved = git_rev_parse(git_dir, "--verify", f"{head_sha}^{{commit}}")
-    except SchemaError as exc:
-        raise SchemaError("$/head_sha", f"does not resolve in {git_dir}: {exc.message}") from exc
+    except ToolError as exc:
+        raise SchemaError("$/head_sha", f"does not resolve in {git_dir}: {exc}") from exc
     if resolved != actual:
         raise SchemaError(
             "$/head_sha",
@@ -338,6 +421,11 @@ def main() -> int:
             schema = json.load(handle)
     except (OSError, json.JSONDecodeError) as exc:
         print(f"fm-quality-receipt: cannot read schema: {exc}", file=sys.stderr)
+        return 2
+    try:
+        check_schema(schema, "$")
+    except SchemaError as exc:
+        print(f"fm-quality-receipt: schema is not enforceable: {exc}", file=sys.stderr)
         return 2
     try:
         if source == "-":
@@ -358,6 +446,9 @@ def main() -> int:
     except SchemaError as exc:
         print(f"fm-quality-receipt: {exc}", file=sys.stderr)
         return 1
+    except ToolError as exc:
+        print(f"fm-quality-receipt: git failed: {exc}", file=sys.stderr)
+        return 2
     return 0
 
 

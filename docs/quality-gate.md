@@ -142,6 +142,9 @@ bin/fm-quality-receipt.sh validate --check-head <git-dir> <receipt.json>
 bin/fm-quality-receipt.sh schema
 ```
 
+Exit 0 is a valid receipt, 1 an invalid one, 2 a usage or tool error.
+The split matters to the loop controller: a broken receipt is the phase command's fault, while git failing to run, or a schema keyword the checker cannot enforce, is a wiring fault and must not be read as a verdict on the change.
+
 `--check-head` resolves `head_sha` in that tree and requires it to be that tree's `HEAD`.
 A receipt that stuffed a constant in `head_sha` fails as soon as `HEAD` moves.
 The Stage 0a fail-open, a `not-applicable` object with no `head_sha` at all, fails even without that flag.
