@@ -228,8 +228,9 @@ The composer verdict itself is deliberately unchanged: a right-aligned status to
 The poll density bounds the residual possibility of an extremely fast complete turn; a missed native transition falls through to the composer verdict rather than reporting a false swallow.
 
 `pane read --lines N` can return empty output when N is below the viewport height.
-The capture owner requests at least 200 lines from Herdr and trims locally to the caller's bound.
-This generous floor is required for small composer and peek reads.
+Both capture owners therefore request at least 200 lines from Herdr.
+The plain scrollback capture then trims locally to the caller's bound, which is what small peek reads need.
+The composer's `visible` ANSI capture is deliberately not trimmed: the viewport is already the bound, and a further tail can clip the composer's opening rule (see "Composer and injection safety").
 
 Herdr's native agent state can read idle while a harness waits on its own long foreground tool.
 The shared crew-state path therefore accepts a native `busy` as evidence of activity but never a native `idle` as evidence that a worker has stopped; the task's own semantic busy state (`bin/fm-busy-lib.sh`) decides that.
