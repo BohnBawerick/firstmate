@@ -237,13 +237,26 @@ The CLI matrix was checked directly:
 | Explicit session routing | `herdr <verb> ... --session <name>` | Reached the named session even while another server was running. |
 | Literal send | `herdr pane send-text <pane> <text> --session <name>` | Left text unsubmitted until Enter. |
 | Keys | `herdr pane send-keys <pane> enter|escape|ctrl+c|up --session <name>` | Enter and Escape worked; Ctrl-C interrupted foreground work. `up` was checked separately on 0.8.0 (2026-08-13) against `cat -v`: `up` and `Up` emit the real `^[[A`, while `arrow_up`, `ArrowUp`, and `up_arrow` exit nonzero, so only `Up`/`up` is wired into the adapter's key vocabulary. |
-| Capture | `herdr pane read <pane> --source recent --lines N` | Small N could return empty below viewport height; a 200-line request plus local trim was stable. |
+| Capture | `herdr pane read <pane> --source recent --lines N` | Small N could return empty below viewport height; a 200-line request plus local trim was stable. This remains the shape of `fm_backend_herdr_capture`, the plain scrollback read used by the rendered busy footer and the peek paths. |
+| Composer capture | `herdr pane read <pane> --source visible --lines N --format ansi` | The composer read is separate and uses the live viewport. `--lines` is still clamped up to at least 200 so the small-N empty read cannot apply, and the result is NOT locally tailed: `visible` is already viewport-bounded, and tailing it dropped Claude's opening `─` from the idle pair. Verified 2026-08-22 on Herdr 0.8.0 with Claude Code 2.1.239 (see "Composer capture source"). |
 | Native state | `herdr agent get <pane>` | Working and done transitions were visible on some harnesses; live Claude Code 2.1.236 on Herdr 0.8.0 kept `agent_status=idle` for an entire landed turn, including a multi-second tool call, so submit confirmation falls through to the shared composer verdict. Native `busy` remains positive activity evidence, while native `idle` cannot close a turn and the adapter's semantic lifecycle decides worker state. |
 | Restart | guarded named-session stop then start | Workspace, tab, pane, and labels persisted; the agent process and registration did not. |
 | Close | `herdr pane close <pane> --session <name>` | The exact one-pane task tab closed; closing a final tab could remove the workspace. |
 
 All destructive verification used `bin/fm-herdr-lab.sh` with a non-default `fm-lab-` name and a byte-identical default-session tripwire.
 No ambient `herdr server stop` command is a supported test operation.
+
+### Composer capture source
+
+Measured 2026-08-22 against Herdr 0.8.0 and Claude Code 2.1.239 in an isolated `fm-lab-` session, after an overnight away run logged 1555 `composer=unknown` defers on a not-busy captain pane.
+
+`herdr pane read <pane> --source visible --lines 200 --format ansi` succeeded and returned the live viewport.
+An idle-between-turns Claude pane carried the full `─` / `❯` / `─` composer pair in that viewport and classified `empty`, so `inject_msg` delivered on the ordinary empty path (rc=0).
+On the same pane `fm_backend_herdr_composer_unknown_deliverable` returned 1, because the verdict was `empty` rather than `unknown`.
+That is the intended split: the empty path is the normal delivery route, and the unknown override never fires on a pane the classifier can already prove empty.
+
+The retired composer read was `--source recent` plus a local tail to `FM_COMPOSER_CAPTURE_LINES`.
+That combination could keep the idle `❯` and the closing `─` while dropping the matching opening `─`, which is the clipped pair that classified `unknown` all night.
 
 ### Submit confirmation
 

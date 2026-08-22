@@ -188,6 +188,26 @@ test_matrix_claude_bare_nbsp_row() {
   pass "matrix: claude's ❯+NBSP row reads empty on every profile in both locales (#1988)"
 }
 
+test_matrix_claude_clipped_closing_rule_is_empty() {
+  # 2026-08-22 away-mode wedge: a 20-line herdr `recent` tail can keep Claude's
+  # idle ❯ and the closing ─ while dropping the matching opening ─. That used
+  # to fail cursorless selection (unpaired Pi separator below the glyph) and
+  # classify unknown for the whole away run. The glyph plus an immediately
+  # following rule is still Claude's idle composer. A separator that is NOT
+  # the next row stays unknown, so a transcript leftover cannot outrank a
+  # clipped live Pi pair.
+  local clipped typed far
+  clipped=$'❯'"$NBSP"$'\n────────────────────────\n  bypass permissions on · 1 shell'
+  assert_screen "clipped claude idle on herdr" empty "$CAPS_STYLED" "$clipped" '' probe-absent
+  assert_screen "clipped claude idle on zellij" empty "$CAPS_STYLED_NOID" "$clipped"
+  assert_screen "clipped claude idle on cmux/orca" empty "$CAPS_PLAIN" "$clipped"
+  typed=$'❯ land the parked workers\n────────────────────────\n  bypass permissions'
+  assert_screen "clipped claude typed on herdr" pending "$CAPS_STYLED" "$typed" '' probe-absent
+  far=$'❯\nstatus line\n────────────────────────'
+  assert_screen "glyph then distant separator on herdr" unknown "$CAPS_STYLED" "$far" '' probe-absent
+  pass "matrix: a clipped Claude closing rule immediately under idle ❯ reads empty, not unknown"
+}
+
 test_matrix_codex_dim_hint_row() {
   # Real idle codex: bold `›`, reset, then an SGR-2 dim hint. Styled captures
   # strip the ghost and prove empty; plain captures must defer as unknown -
@@ -664,6 +684,7 @@ test_idle_placeholder_is_empty
 test_idle_placeholder_case_mode_is_explicit
 test_real_text_is_pending
 test_matrix_claude_bare_nbsp_row
+test_matrix_claude_clipped_closing_rule_is_empty
 test_matrix_codex_dim_hint_row
 test_matrix_muse_truecolor_glyph_survives_signal_loss
 test_matrix_cursor_reverse_video_placeholder_remnant
