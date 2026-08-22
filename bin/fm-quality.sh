@@ -778,7 +778,7 @@ measure() {  # <command> <secs>
     return 0
   fi
   receipt_base=$(receipt_field "$out" base_sha || true)
-  if [ "$receipt_base" != "$BASE_SHA" ]; then
+  if ! same_commit "$receipt_base" "$BASE_SHA"; then
     MEASURE_STATUS=drift
     MEASURE_DETAIL="the $PHASE receipt measured against $receipt_base, not this task's base commit $BASE_SHA"
     return 0

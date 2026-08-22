@@ -118,20 +118,22 @@ SEP=' · '
 # This runs only when the task record says quality=hardened, so every state on
 # every ordinary task is byte-for-byte what it was before.
 quality_gate_override() {  # <detail> -> "<state>|<detail>" or nothing
-  local detail=$1 verdict note
+  local detail=$1 verdict note state reason
   [ "${QUALITY_POSTURE:-}" = hardened ] || return 0
   verdict=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_DATA_OVERRIDE="$DATA" \
     "$SCRIPT_DIR/fm-quality.sh" status "$ID" 2>/dev/null) || verdict=""
   note=${verdict##*"$SEP"}
   case "$verdict" in
-    'quality: satisfied-stale'*)
-      printf 'done|%s' "${detail:+$detail$SEP}quality gate passed on an earlier commit: $note" ;;
+    'quality: satisfied-stale'*) state="done";    reason="quality gate passed on an earlier commit: $note" ;;
     'quality: satisfied'*|'quality: not-required'*) return 0 ;;
-    'quality: missing'*)    printf 'blocked|%s%squality gate never ran: %s' "$detail" "$SEP" "$note" ;;
-    'quality: not-passed'*) printf 'blocked|%s%squality gate did not pass: %s' "$detail" "$SEP" "$note" ;;
-    'quality: unreadable'*) printf 'unknown|%s%squality gate unreadable: %s' "$detail" "$SEP" "$note" ;;
-    *)                      printf 'unknown|%s%squality gate verdict unavailable' "$detail" "$SEP" ;;
+    'quality: missing'*)         state="blocked"; reason="quality gate never ran: $note" ;;
+    'quality: not-passed'*)      state="blocked"; reason="quality gate did not pass: $note" ;;
+    'quality: unreadable'*)      state="unknown"; reason="quality gate unreadable: $note" ;;
+    *)                           state="unknown"; reason="quality gate verdict unavailable" ;;
   esac
+  # One construction for every arm: an incoming detail may be empty, and a
+  # leading separator would put an empty field in a line supervision parses.
+  printf '%s|%s' "$state" "${detail:+$detail$SEP}$reason"
 }
 
 # Emit the one canonical line and exit 0. Detail is optional. A `done` verdict

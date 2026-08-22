@@ -1732,6 +1732,28 @@ test_hardened_with_stale_receipt_is_done_and_says_so() {
   pass "a hardened task whose receipt predates HEAD reports done and names the drift"
 }
 
+# Every quality verdict builds its line the same way, so a task whose own status
+# line carried no detail never produces an empty field in the line supervision
+# parses. A degenerate `done:` with nothing after the colon is the one input
+# that reaches emit with an empty detail.
+test_quality_gate_line_has_no_empty_field() {
+  reset_fakes
+  local d out; d=$(new_case quality-empty-detail)
+  setup_hardened_case "$d"
+  printf 'done:\n' > "$d/state/q.status"
+  FM_FAKE_AXI_STATUS="$(run_running fm/some-other)"
+  FM_FAKE_BUSY=0
+  arm_idle_record "$d/state" q
+  out=$(run_crew_state_with_data "$d" q)
+  assert_contains "$out" "quality gate never ran" "a missing receipt still says why"
+  assert_not_contains "$out" " ·  · " "no arm may leave an empty field in the line"
+  write_clean_receipt "$d" exhausted
+  out=$(run_crew_state_with_data "$d" q)
+  assert_contains "$out" "quality gate did not pass" "a failed receipt still says why"
+  assert_not_contains "$out" " ·  · " "the sibling arm builds its line the same way"
+  pass "a quality verdict on a detail-less status line leaves no empty field"
+}
+
 # Same ternary discipline as run attribution: an unreadable receipt is "cannot
 # tell", a different answer from a missing one and not itself an instruction to
 # act.
@@ -1851,6 +1873,7 @@ test_coarse_diverged_newest_row_blocks_older_row
 test_hardened_without_receipt_is_not_done
 test_hardened_with_passing_receipt_is_done
 test_hardened_with_stale_receipt_is_done_and_says_so
+test_quality_gate_line_has_no_empty_field
 test_hardened_with_unreadable_receipt_is_unknown
 test_hardened_receipt_that_did_not_pass_is_not_done
 test_standard_task_line_is_unchanged

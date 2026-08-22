@@ -1376,6 +1376,38 @@ test_an_abbreviated_base_is_the_same_commit() {
   pass "an abbreviated base_sha names the same base commit, a near miss does not"
 }
 
+# The base commit is compared by the same rule as the head: a conforming engine
+# may abbreviate it, and refusing that would hard-block the gate for the whole
+# run rather than only mislabelling a status line.
+test_an_abbreviated_base_in_the_measurement_is_accepted() {
+  local d out rc=0
+  d=$(new_case measure-short-base)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  out=$(FMQ_OUTCOME=pass FMQ_FORCE_BASE="$(git -C "$d/wt" rev-parse --short=12 HEAD)" \
+    run_quality "$d" run task --phase clean) || rc=$?
+  expect_code 0 "$rc" "an abbreviated base commit is this task's base commit"
+  assert_contains "$out" "outcome: pass" "the run measures and passes"
+  assert_not_contains "$out" "outcome: blocked" "an abbreviation is not drift"
+  pass "a measurement naming the base commit in short form is accepted"
+}
+
+# The twin: a 12-character sha that shares all but its last character with the
+# base is a different commit, and the run still refuses it as drift.
+test_a_near_miss_base_in_the_measurement_is_drift() {
+  local d out rc=0
+  d=$(new_case measure-near-miss-base)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  out=$(FMQ_OUTCOME=pass FMQ_FORCE_BASE="$(near_miss_sha "$(git -C "$d/wt" rev-parse HEAD)")" \
+    run_quality "$d" run task --phase clean) || rc=$?
+  expect_code 3 "$rc" "a base commit that is not this task's is blocked"
+  assert_contains "$out" "outcome: blocked" "a near miss is could-not-measure"
+  assert_contains "$out" "measured against" "the refusal names the base it was given"
+  assert_not_contains "$out" "outcome: pass" "a different base never earns a pass"
+  pass "a measurement naming a near-miss base commit is still refused as drift"
+}
+
 test_pass
 test_read_only_is_not_pass
 test_read_only_cannot_measure_is_blocked
@@ -1431,6 +1463,8 @@ test_status_marks_a_receipt_from_an_earlier_head
 test_an_abbreviated_head_is_the_same_commit
 test_a_near_miss_short_head_is_drift
 test_an_abbreviated_base_is_the_same_commit
+test_an_abbreviated_base_in_the_measurement_is_accepted
+test_a_near_miss_base_in_the_measurement_is_drift
 test_unknown_contract_version_refuses
 test_contract_without_verify_refuses
 test_missing_base_anchor_is_blocked
