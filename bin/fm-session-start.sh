@@ -643,7 +643,7 @@ printf '%s\n' "$LOCK_OUT"
 if [ "$LOCK_RC" -eq 0 ]; then
   printf 'HELM: THIS session holds the fleet lock - it may change fleet state.\n'
 elif fm_session_lock_owned_by_self "$STATE"; then
-  printf 'HELM: ownership resolves to THIS session, but the fleet lock was NOT acquired - this session is READ-ONLY.\n'
+  printf 'HELM: ownership resolves to THIS session, but the fleet lock was NOT acquired - stay READ-ONLY by instruction; the fleet-mutation gate refuses only a live foreign owner, so nothing will stop this session.\n'
 elif fm_session_lock_held_by_other "$STATE"; then
   printf 'HELM: ANOTHER session holds the fleet lock - this session is READ-ONLY.\n'
 else

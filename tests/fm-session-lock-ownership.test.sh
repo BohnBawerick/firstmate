@@ -271,6 +271,83 @@ test_lock_output_states_ownership_in_words() {
   pass "the lock path names ownership in words, never as a bare pid"
 }
 
+# A caller whose ordinary tool shell has the recorded holder somewhere above it
+# in the real process tree is granted the helm by the ancestry walk, not by the
+# conversation. It inherits an existing owner's record and has no authority to
+# rename the conversation on it - doing so would lock that owner's own
+# background continuation out of a home the owner still holds.
+test_an_ancestry_grant_never_renames_the_recorded_conversation() {
+  local dir inner rc out sidecar
+  dir="$TMP_ROOT/tier3-sidecar"
+  make_home "$dir"
+
+  # Two nested live harnesses. The INNER one records itself as the holder under
+  # conversation conv-owner, then runs fm-lock.sh and stays alive so the home is
+  # still genuinely held while the assertions below run.
+  cat > "$TMP_ROOT/tier3-inner.sh" <<'SH'
+#!/usr/bin/env bash
+set -u
+home=$1
+out=$2
+rcfile=$3
+printf '%s\n' "$$" > "$home/state/.lock"
+printf 'conv-owner\n' > "$home/state/.lock.session"
+"$home/bin/fm-lock.sh" > "$out" 2>&1
+printf '%s\n' "$?" > "$rcfile"
+sleep 600
+:
+SH
+  cat > "$TMP_ROOT/tier3-outer.sh" <<'SH'
+#!/usr/bin/env bash
+set -u
+fake=$1
+inner=$2
+shift 2
+"$fake" "$inner" "$@"
+:
+SH
+
+  env -u CLAUDE_PID CLAUDE_CODE_SESSION_ID=conv-intruder \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
+    "$FAKE_CLAUDE" "$TMP_ROOT/tier3-outer.sh" "$FAKE_CLAUDE" "$TMP_ROOT/tier3-inner.sh" \
+    "$dir" "$TMP_ROOT/tier3.out" "$TMP_ROOT/tier3.rc" > /dev/null 2>&1 &
+  printf '%s\n' "$!" >> "$TMP_ROOT/holders"
+  wait_for_file "$TMP_ROOT/tier3.rc" || fail "the nested ancestry fixture never ran fm-lock.sh"
+  inner=$(cat "$dir/state/.lock" 2>/dev/null || true)
+  printf '%s\n' "$inner" >> "$TMP_ROOT/holders"
+
+  rc=$(tr -d '[:space:]' < "$TMP_ROOT/tier3.rc")
+  out=$(cat "$TMP_ROOT/tier3.out" 2>/dev/null || true)
+  expect_code 0 "$rc" "the ancestry walk no longer grants the helm: $out"
+  assert_contains "$out" "inside this session's harness ancestry" \
+    "an ancestry grant named a conversation match that never happened"
+
+  # state/.lock.session is the recorded conversation (AGENTS.md's state
+  # inventory), and it must still name the owner's.
+  sidecar=$(cat "$dir/state/.lock.session" 2>/dev/null || true)
+  [ "$sidecar" = conv-owner ] \
+    || fail "an ancestry grant rewrote the recorded conversation to '$sidecar'"
+
+  # The consequence that matters: the owner's own continuation still inherits
+  # the helm, and the unrelated conversation still does not.
+  detached_run env -u CLAUDE_PID CLAUDE_CODE_SESSION_ID=conv-owner \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
+    "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/fm-wake-drain.sh" > /dev/null
+  out=$(run_output)
+  assert_not_contains "$out" "does not hold the fleet lock" \
+    "the recorded owner's own continuation was locked out of the home it holds"
+
+  rc=$(detached_run env -u CLAUDE_PID CLAUDE_CODE_SESSION_ID=conv-intruder \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
+    "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/fm-wake-drain.sh")
+  out=$(run_output)
+  [ "$rc" != 0 ] || fail "an unrelated conversation inherited the helm through a renamed record"
+  assert_contains "$out" "does not hold the fleet lock" \
+    "an unrelated conversation was not refused"
+
+  pass "an ancestry grant inherits the recorded conversation instead of renaming it"
+}
+
 test_a_background_continuation_of_the_same_conversation_inherits_the_helm() {
   local dir holder rc out
   dir="$TMP_ROOT/continuation"
@@ -560,8 +637,9 @@ test_two_non_owning_sessions_each_report_once_and_both_stand_down() {
   pass "two non-owning sessions in one home each report once, then both stand down"
 }
 
-# Pi and grok end a turn with a payload that carries no session_id at all, so
-# the payload id alone cannot tell two of their sessions apart in one home.
+# Pi ends a turn with a payload that carries no session id at all, so the
+# payload id alone cannot tell two of its sessions apart in one home. (grok does
+# carry one, spelled sessionId, which the guard reads alongside session_id.)
 test_a_harness_that_sends_no_session_id_reports_once_per_session() {
   local dir rc out
   dir="$TMP_ROOT/turnend-no-session-id"
@@ -668,6 +746,7 @@ test_the_lock_holder_itself_still_mutates
 test_a_caller_outside_any_harness_session_is_not_a_competing_session
 test_lock_output_states_ownership_in_words
 test_a_background_continuation_of_the_same_conversation_inherits_the_helm
+test_an_ancestry_grant_never_renames_the_recorded_conversation
 test_an_inherited_helm_records_its_own_live_pid
 test_the_autoarm_reclaims_a_dead_recorded_pid_under_an_inherited_helm
 test_a_spawned_worker_does_not_inherit_the_spawning_sessions_helm

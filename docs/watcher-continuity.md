@@ -29,7 +29,8 @@ Identity is answered in three tiers, and the first that applies wins.
 `CLAUDE_PID` names the Claude Code session process; `CLAUDE_CODE_SESSION_ID` names the conversation; the harness-ancestry walk answers for every harness that publishes neither.
 The two declared values win because a harness exports them identically into every tool shell and every hook process of a session, while the ancestry walk answers a slightly different question at each call site: it climbs to the first harness match and then stops at the first non-harness ancestor, so how deep the caller sits inside the harness's own worker chain decides which pid it reports.
 A Claude Code background continuation runs in a detached process tree, where that walk from a hook stops short of the session that took the helm while the walk from an ordinary tool shell can climb past it into an unrelated harness further up the real tree.
-`bin/fm-lock.sh` records the conversation in `state/.lock.session` beside the pid in `state/.lock`, replacing or removing it at every acquisition, so a continuation of the lock-holding conversation inherits the helm and an unrelated session never can.
+`bin/fm-lock.sh` records the conversation in `state/.lock.session` beside the pid in `state/.lock`, replacing or removing it whenever it takes or re-confirms the home as its own, so a continuation of the lock-holding conversation inherits the helm and an unrelated session never can.
+Which tier granted ownership is decided before that record is written, and an ancestry grant is the one case that does not write it: such a caller inherits an existing owner's record because the recorded holder happens to sit above it in the real process tree, and renaming the conversation there would lock that owner's own background continuation out of a home it still holds.
 Liveness is the only evidence another process has that the home is held at all, so a dead recorded pid reads as a free home fleet-wide, and inheriting the helm by conversation id is what makes a dead pid reachable while a session still holds the home.
 `bin/fm-lock.sh` rewrites a dead pid at every acquisition, and `bin/fm-claude-stop-autoarm.sh` - the only caller that fires on an ordinary turn - reclaims through it whenever it finds one, whether or not this session already owns the home.
 That reclaim stays behind the away-mode and supervision-need gates by design, so an away home and an idle home keep a dead pid indefinitely and read as free; a dead recorded pid is therefore rarer than before but never impossible, and no predicate may assume it away.
@@ -49,6 +50,8 @@ A caller outside any harness session is no competing session either - that is th
 `bin/fm-session-start.sh`'s LOCK section states the verdict in words on its own `HELM:` line, so a reading agent never has to compare pids by hand.
 The line reads the acquisition's exit code rather than recomputing ownership, because `bin/fm-lock.sh` owns that decision and exits 0 only after verifying it; the helm line can therefore never contradict the acquisition line above it or the read-only banner below it.
 The resolver is consulted only to explain a failed acquisition, where ownership can still resolve to this session while the lock cannot be written at all.
+That branch says read-only by instruction rather than as an enforced fact, because the gate refuses only a live foreign owner and there is none here, so nothing would actually stop the session.
+Narrowing the gate to acquisition success instead would refuse the parent home reaching into a secondmate's endpoint over ssh, detached jobs, and CI, so the restraint stays with the reading agent and the digest says so plainly.
 
 ## Actionable wake ordering
 

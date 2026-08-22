@@ -61,22 +61,41 @@ publish_session_id() {
   fi
 }
 
-# One wording for every successful acquisition, so the ownership verdict never
-# reads as a bare pid the caller has to interpret.
-# The parenthetical names the tier that actually granted ownership, because
-# tier 2 and tier 3 both reach this with a recorded pid that is not `me`, and
-# claiming a conversation match the ancestry walk made would be wrong.
-report_acquired() {
+# Which of the three tiers granted ownership over recorded pid $1. Must be
+# called while state/.lock.session still holds the PRIOR value: publishing this
+# session's id first would make the conversation comparison trivially true and
+# report every grant as a conversation match.
+ownership_tier() {  # <recorded-pid>
   local recorded=$1 self_id recorded_id
   if [ "$me" = "$recorded" ]; then
-    echo "lock acquired: THIS session holds the fleet lock (harness pid $recorded)"
-  elif self_id=$(fm_harness_session_id) \
+    printf 'self\n'
+    return 0
+  fi
+  if self_id=$(fm_harness_session_id) \
     && recorded_id=$(fm_session_lock_recorded_id "$STATE") \
     && [ "$self_id" = "$recorded_id" ]; then
-    echo "lock acquired: THIS session holds the fleet lock (recorded harness pid $recorded, same conversation as this session)"
-  else
-    echo "lock acquired: THIS session holds the fleet lock (recorded harness pid $recorded, inside this session's harness ancestry)"
+    printf 'conversation\n'
+    return 0
   fi
+  printf 'ancestry\n'
+}
+
+# One wording for every successful acquisition, so the ownership verdict never
+# reads as a bare pid the caller has to interpret. The parenthetical names the
+# tier that actually granted it, because tier 2 and tier 3 both reach this with
+# a recorded pid that is not `me`.
+report_acquired() {  # <recorded-pid> <tier>
+  case "$2" in
+    self)
+      echo "lock acquired: THIS session holds the fleet lock (harness pid $1)"
+      ;;
+    conversation)
+      echo "lock acquired: THIS session holds the fleet lock (recorded harness pid $1, same conversation as this session)"
+      ;;
+    *)
+      echo "lock acquired: THIS session holds the fleet lock (recorded harness pid $1, inside this session's harness ancestry)"
+      ;;
+  esac
 }
 probe=$(mktemp "$STATE/.lock-write.XXXXXX" 2>/dev/null) || {
   echo "error: cannot write session lock; operate read-only until resolved" >&2
@@ -106,8 +125,12 @@ if [ -f "$LOCK" ] && [ ! -L "$LOCK" ]; then
   old=$(cat "$LOCK" 2>/dev/null || true)
   if fm_harness_pid_alive "$old"; then
     if fm_session_lock_owned_by_self "$STATE"; then
-      publish_session_id
-      report_acquired "$old"
+      # An ancestry grant inherits an existing owner's record. It has no
+      # authority to rename the conversation on it, and doing so would lock
+      # that owner's own background continuation out of a home it still holds.
+      tier=$(ownership_tier "$old")
+      [ "$tier" = ancestry ] || publish_session_id
+      report_acquired "$old" "$tier"
       exit 0
     fi
     echo "error: NOT THIS SESSION - another live firstmate session holds the lock (harness pid $old); operate read-only until resolved" >&2
@@ -153,4 +176,4 @@ if [ ! -f "$LOCK" ] || [ -L "$LOCK" ] || [ "$written" != "$me" ]; then
 fi
 publish_session_id
 release_claim_lock
-report_acquired "$me"
+report_acquired "$me" self
