@@ -848,8 +848,8 @@ test_status_protocol_shows_documented_decision_key_placement() {
     assert_no_grep '`needs-decision: {summary of options}`' "$brief" \
       "$kind brief still shows the colon-first needs-decision template"
     # shellcheck disable=SC2016 # Literal backticks and braces must remain unexpanded.
-    assert_no_grep '`resolved: {how it cleared}`' "$brief" \
-      "$kind brief still shows the colon-first resolved template"
+    assert_grep '`resolved: {how it cleared}` yourself (key it with `[key=<slug>]` if you opened it with one, omit it otherwise)' "$brief" \
+      "$kind brief did not restore optional-key self-close phrasing"
   done
   pass "fm-brief.sh: every scaffold shows documented [key=...] placement on needs-decision and resolved"
 }
