@@ -127,6 +127,15 @@ done
 cat > /dev/null
 [ -z "${FMQ_TURN_EDIT:-}" ] || printf 'round\n' >> "$FMQ_TURN_EDIT"
 [ -z "${FMQ_TURN_EXCLUDE:-}" ] || printf '    - "%s"\n' "$FMQ_TURN_EXCLUDE" >> .quality-gate.yaml
+[ -z "${FMQ_TURN_THRESHOLD:-}" ] || python3 - "$FMQ_TURN_THRESHOLD" <<'EDIT'
+import re
+import sys
+
+with open(".quality-gate.yaml", encoding="utf-8") as handle:
+    text = handle.read()
+with open(".quality-gate.yaml", "w", encoding="utf-8") as handle:
+    handle.write(re.sub(r"crap_max: .*", "crap_max: " + sys.argv[1], text))
+EDIT
 printf '{"action":"%s"}\n' "${FMQ_TURN_ACTION:-tested}"
 exit 0
 SH
@@ -162,7 +171,45 @@ json.dump(receipt, sys.stdout)
 sys.stdout.write("\n")
 PY
 
-  chmod +x "$d/ctl/phase.sh" "$d/ctl/test.sh" "$d/ctl/exclude-phase.sh" "$d/fakebin/claude"
+  # A phase command that judges against the threshold the loop hands it, so a
+  # widened bar turns the same measurement into a pass.
+  cat > "$d/ctl/threshold-phase.sh" <<'SH'
+#!/usr/bin/env sh
+exec python3 "$FMQ_CTL/threshold-receipt.py"
+SH
+
+  cat > "$d/ctl/threshold-receipt.py" <<'PY'
+import json
+import os
+import sys
+
+observed = 20.0
+bar = 0.0
+for line in os.environ.get("FM_QUALITY_THRESHOLD", "").splitlines():
+    if line.startswith("crap_max="):
+        bar = float(line.split("=", 1)[1])
+met = observed <= bar
+findings = [] if met else [
+    {"id": "m1", "file": "src/a.ts", "line": 3, "classification": "over-threshold"}
+]
+receipt = {
+    "schema_version": 1,
+    "phase": os.environ["FM_QUALITY_PHASE"],
+    "outcome": "pass" if met else "exhausted",
+    "base_sha": os.environ["FM_QUALITY_BASE_SHA"],
+    "head_sha": os.environ["FM_QUALITY_HEAD_SHA"],
+    "duration_ms": 7,
+    "engine": {"name": "fixture-engine", "version": "1.2.3"},
+    "threshold": {"crap_max": bar},
+    "metrics": {"observed": observed},
+    "findings": findings,
+}
+json.dump(receipt, sys.stdout)
+sys.stdout.write("\n")
+PY
+
+  chmod +x "$d/ctl/phase.sh" "$d/ctl/test.sh" "$d/ctl/exclude-phase.sh" \
+    "$d/ctl/threshold-phase.sh" "$d/fakebin/claude"
   printf '%s\n' "$d"
 }
 
@@ -853,7 +900,8 @@ bounds:
   started=$(date +%s)
   out=$(run_quality "$d" run task --phase clean) || rc=$?
   ended=$(date +%s)
-  [ "$rc" -ne 0 ] || fail "a red suite must not pass: $out"
+  expect_code 3 "$rc" "a red suite the bound cut short is blocked, not exhausted"
+  assert_contains "$out" "outcome: blocked" "a red suite that outran the bound is still could-not-measure"
   assert_not_contains "$out" "outcome: pass" "a red suite is never a pass"
   [ $((ended - started)) -lt 9 ] \
     || fail "the suite check spent more than one bound: $((ended - started))s of a 6s bound"
@@ -912,6 +960,105 @@ bounds:
   pass "a perl-only host measures a green suite normally"
 }
 
+# A dry run is an inspection, so it must file no supervision event either. A
+# hardened task is dirty for most of its working life, and bin/fm-classify-lib.sh
+# reads a `blocked:` status line as a decision-opening event about a real crew.
+test_dry_run_files_no_supervision_event() {
+  local d rc=0
+  d=$(new_case dry-run-quiet)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  printf 'uncommitted\n' > "$d/wt/scratch.txt"
+  run_quality "$d" run task --phase clean --dry-run >/dev/null 2>&1 || rc=$?
+  assert_absent "$d/state/task.status" "a dry run must append no status line at all"
+  rc=0
+  run_quality "$d" run task --phase clean >/dev/null 2>&1 || rc=$?
+  expect_code 3 "$rc" "the same state without --dry-run refuses"
+  assert_grep "blocked: quality clean could not measure" "$d/state/task.status" \
+    "the same state without --dry-run does file the blocked event"
+  pass "a dry run reports without filing the supervision event a real run files"
+}
+
+# The loop re-reads the contract each round so an exclusion lands, and the agent
+# turn runs with full write access to the worktree. The bar it is judged against
+# is not one of the things it gets to move.
+THRESHOLD_CONTRACT='version: 1
+verify: "true"
+test: "sh $FMQ_CTL/test.sh"
+bounds:
+  max_iterations: 4
+  no_progress_limit: 3
+  budget_minutes: 5
+clean:
+  command: "sh $FMQ_CTL/threshold-phase.sh"
+  threshold:
+    crap_max: 15'
+
+test_a_round_cannot_widen_its_own_threshold() {
+  local d out rc=0
+  d=$(new_case threshold-tamper)
+  write_contract "$d" "$THRESHOLD_CONTRACT"
+  write_meta "$d" hardened
+  out=$(FMQ_TURN_THRESHOLD=9999 run_quality "$d" run task --phase clean) || rc=$?
+  expect_code 3 "$rc" "a widened threshold is blocked, not honoured"
+  assert_contains "$out" "outcome: blocked" "moving the bar mid-run is could-not-measure"
+  assert_contains "$out" "threshold" "the refusal names what the round changed"
+  assert_not_contains "$out" "outcome: pass" "the same measurement must not become a pass"
+  assert_absent "$(receipt_of "$d" clean)" "a tampered run leaves no receipt vouching for the code"
+  pass "a round that widens its own threshold is blocked instead of passing"
+}
+
+# The twin: same contract, same rounds, same agent turn, no threshold edit. The
+# phase must run to its bound below the unchanged bar, so the case above cannot
+# be satisfied by blocking every multi-round run.
+test_an_untouched_threshold_runs_the_rounds_out() {
+  local d out rc=0
+  d=$(new_case threshold-intact)
+  write_contract "$d" "$THRESHOLD_CONTRACT"
+  write_meta "$d" hardened
+  out=$(run_quality "$d" run task --phase clean) || rc=$?
+  expect_code 1 "$rc" "an unchanged bar leaves the phase below threshold"
+  assert_not_contains "$out" "outcome: blocked" "an unchanged contract is not a refusal"
+  assert_not_contains "$out" "outcome: pass" "the measurement never met the unchanged bar"
+  pass "a run that leaves the contract alone measures against its own bar to the end"
+}
+
+# budget_usd is the harness spend ceiling. A value the harness cannot read is
+# not a ceiling, and swallowing it turns every agent turn into a silent no-op.
+test_unreadable_budget_usd_refuses() {
+  local d out rc=0
+  d=$(new_case bad-budget-usd)
+  write_contract "$d" 'version: 1
+verify: "true"
+clean:
+  command: "sh $FMQ_CTL/phase.sh"
+bounds:
+  budget_usd: unlimited'
+  write_meta "$d" hardened
+  out=$(run_quality "$d" run task --phase clean 2>&1) || rc=$?
+  expect_code 2 "$rc" "a spend ceiling that is not a number is a contract error"
+  assert_contains "$out" "budget_usd" "the refusal names the bound it could not read"
+  assert_absent "$d/ctl/round" "no measurement runs under an unreadable spend ceiling"
+  pass "a budget_usd that is not a positive number is refused, not passed to the harness"
+}
+
+# The twin: the same contract with a readable ceiling must measure normally, so
+# the case above cannot be satisfied by refusing whenever budget_usd is set.
+test_a_readable_budget_usd_is_accepted() {
+  local d rc=0
+  d=$(new_case good-budget-usd)
+  write_contract "$d" 'version: 1
+verify: "true"
+clean:
+  command: "sh $FMQ_CTL/phase.sh"
+bounds:
+  budget_usd: 3'
+  write_meta "$d" hardened
+  FMQ_OUTCOME=pass run_quality "$d" run task --phase clean >/dev/null || rc=$?
+  expect_code 0 "$rc" "a numeric spend ceiling is accepted"
+  pass "a budget_usd the harness can read is accepted and the phase measures"
+}
+
 test_pass
 test_read_only_is_not_pass
 test_read_only_cannot_measure_is_blocked
@@ -948,6 +1095,11 @@ test_repeated_empty_findings_is_stuck
 test_the_suite_recheck_stays_inside_the_bound
 test_signal_killed_suite_is_red_without_gnu_timeout
 test_perl_host_still_measures_a_green_suite
+test_dry_run_files_no_supervision_event
+test_a_round_cannot_widen_its_own_threshold
+test_an_untouched_threshold_runs_the_rounds_out
+test_unreadable_budget_usd_refuses
+test_a_readable_budget_usd_is_accepted
 test_unknown_contract_version_refuses
 test_contract_without_verify_refuses
 test_missing_base_anchor_is_blocked

@@ -80,7 +80,9 @@
 # flag in its own --help; a harness that does not is refused as `blocked` naming
 # the harness and its version. The loop never falls back to parsing prose. This
 # check applies to hardened mode alone: read-only makes no agent call, so it runs
-# on any harness.
+# on any harness. bounds.budget_usd is handed to the harness, so it is a real
+# ceiling on claude and an unenforced declaration on codex, which has no spend
+# flag to give it to; the wall-clock bound is what bounds a codex turn.
 #
 # STATUS LINES. A hardened run appends the sparse supervisor-actionable lines the
 # firstmate status contract expects: one when the phase starts and one for its
@@ -373,6 +375,8 @@ load_bounds() {
   done
   positive_number "$BOUND_BUDGET_MINUTES" \
     || die "bounds.budget_minutes must be a positive number (got '$BOUND_BUDGET_MINUTES')"
+  positive_number "$BOUND_BUDGET_USD" \
+    || die "bounds.budget_usd must be a positive number (got '$BOUND_BUDGET_USD')"
   BUDGET_SECONDS=$(python3 -c 'import sys; print(max(1, round(float(sys.argv[1]) * 60)))' "$BOUND_BUDGET_MINUTES")
 }
 BUDGET_SECONDS=1200
@@ -509,6 +513,7 @@ outcome_exit() {  # <outcome>
 }
 
 status_append() {  # <line>
+  [ "$DRY_RUN" -eq 0 ] || return 0
   [ "$MODE" = hardened ] || return 0
   [ -d "$STATE" ] || return 0
   printf '%s\n' "$1" >> "$STATE/$ID.status"
@@ -760,7 +765,7 @@ check_suite() {  # <command> <secs>
   # takes what is left of the bound, not another full copy of it.
   secs=$(remaining_seconds)
   if [ "$secs" -le 0 ]; then
-    printf 'exhausted the wall-clock bound ran out re-running the red test suite, so red and flaky could not be told apart\n'
+    printf 'blocked the ordinary test suite is red before any quality work, and the bound ran out before red and flaky could be told apart\n'
     return 0
   fi
   rc=0
@@ -861,7 +866,7 @@ cmd_run() {
   local state suite phase_cmd test_cmd secs rc detail
   local round=1 no_progress=0 prev_ids="" ids="" last_receipt="" turn_action=""
   local have_prev=0
-  local round_head=""
+  local round_head="" pinned_threshold=""
 
   [ -n "$WT" ] || die "the task record for $ID names no worktree"
   [ -d "$WT" ] || die "the task copy for $ID is gone: $WT"
@@ -917,6 +922,8 @@ cmd_run() {
 
   status_append "working: quality $PHASE started"
 
+  pinned_threshold=$(cfg_keys_under "$PHASE.threshold" | tr '\t' '=')
+
   test_cmd=$(cfg_get test)
   if [ -n "$test_cmd" ]; then
     secs=$(remaining_seconds)
@@ -924,7 +931,6 @@ cmd_run() {
     suite=$(check_suite "$test_cmd" "$secs")
     case "$suite" in
       blocked*) finish blocked "${suite#blocked }" ;;
-      exhausted*) finish exhausted "${suite#exhausted }" ;;
     esac
   fi
 
@@ -945,6 +951,8 @@ cmd_run() {
       esac
       [ -n "$(cfg_get "$PHASE.command")" ] \
         || finish blocked "round $((round - 1)) removed the $PHASE command from .quality-gate.yaml"
+      [ "$(cfg_keys_under "$PHASE.threshold" | tr '\t' '=')" = "$pinned_threshold" ] \
+        || finish blocked "round $((round - 1)) changed the $PHASE threshold in .quality-gate.yaml, so the bar this run is measured against is no longer the one it started with"
     fi
     measure "$phase_cmd" "$secs"
     case "$MEASURE_STATUS" in
