@@ -9,9 +9,14 @@
 # spawns carry no delivery posture at all. The registry keeps only the captain's
 # standing posture, for the mechanical consumers and for one advisory notice.
 #
-# Every spawn case here stops before any endpoint exists: the delivery checks run
-# ahead of backend creation, and a fake `tmux` that exits non-zero backstops the
-# cases that are meant to get past them, so no window or worktree is ever created.
+# The delivery-check cases stop before any endpoint exists: those checks run ahead
+# of backend creation, and a fake `tmux` that exits non-zero backstops the cases
+# that are meant to get past them, so no window or worktree is ever created. The
+# metadata and standing-posture cases are the opposite on purpose: make_spawning_home
+# builds a real git worktree and a fake `tmux` that exits 0 and answers the
+# pane-path query, so run_spawning carries a ship spawn all the way to its durable
+# record. Those cases really do create things, including /tmp/fm-<id> outside
+# TMP_ROOT, so they own the teardown in delivery_cleanup below.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -25,14 +30,33 @@ TMP_ROOT=$(fm_test_tmproot fm-task-delivery)
 # A spawn that gets all the way to metadata also creates /tmp/fm-<id>, which is
 # outside TMP_ROOT and therefore outside fm_test_tmproot's cleanup. Track and
 # remove each one so this suite leaks nothing on a shared host.
-SPAWNED_TASK_TMPS=()
+#
+# The tracking goes through a `$$`-keyed file, not an array, for the reason
+# tests/lib.sh gives under "self-cleaning temp root": every spawn here is invoked
+# as `out=$(run_spawning ...)`, which forks a subshell, so an array append made
+# inside it dies with that subshell and never reaches this shell. `$$` stays the
+# invoking shell's PID across that boundary, so the file does reach cleanup.
+#
+# This trap replaces the shared EXIT trap tests/lib.sh arms at source time, so it
+# ends by calling fm_test_cleanup itself: TMP_ROOT and lib.sh's own registry still
+# go, and they go on the failing path too, because fail() exits.
+SPAWNED_TASK_REGISTRY=$(mktemp "${TMPDIR:-/tmp}/.fm-task-delivery-tmps.$$.XXXXXX")
+track_spawned_task_tmp() {  # <dir>
+  printf '%s\n' "$1" >> "$SPAWNED_TASK_REGISTRY" 2>/dev/null || true
+}
 delivery_cleanup() {
   local d
-  for d in "${SPAWNED_TASK_TMPS[@]:-}"; do
-    [ -z "$d" ] || rm -rf "$d"
-  done
+  if [ -f "$SPAWNED_TASK_REGISTRY" ]; then
+    while IFS= read -r d; do
+      [ -z "$d" ] || rm -rf "$d"
+    done < "$SPAWNED_TASK_REGISTRY"
+    rm -f "$SPAWNED_TASK_REGISTRY"
+  fi
+  fm_test_cleanup
 }
 trap delivery_cleanup EXIT
+trap 'delivery_cleanup; exit 130' INT
+trap 'delivery_cleanup; exit 143' TERM
 
 # A home with one registered project, one project directory, and a fake tmux that
 # refuses, so a spawn that clears the delivery checks still creates nothing.
@@ -354,6 +378,11 @@ ROWS
   [ "$out" = "no-mistakes off" ] || fail "a typo'd mode alongside +hardened resolved '$out'"
   out=$(FM_HOME="$home" "$PROJECT_MODE" qproj 2>&1 >/dev/null)
   assert_contains "$out" "unknown mode" "a typo'd mode alongside +hardened stopped warning"
+  # The quality posture resolves on its own, so the mode fallback does not take the
+  # +hardened down with it: a typo in the mode must not silently drop the gate.
+  out=$(FM_HOME="$home" "$PROJECT_MODE" --quality qproj 2>/dev/null)
+  [ "$out" = hardened ] \
+    || fail "a typo'd mode dropped the registered quality posture to '$out', expected hardened"
   pass "fm-project-mode: the two-word stdout its three callers parse is unchanged by the quality posture"
 }
 
@@ -469,7 +498,7 @@ SH
 run_spawning() {  # <home> <worktree> <fakebin> <spawn-args...>
   local home=$1 wt=$2 fakebin=$3
   shift 3
-  SPAWNED_TASK_TMPS+=("/tmp/fm-$1")
+  track_spawned_task_tmp "/tmp/fm-$1"
   # `env -u` keeps the recorded key set hermetic against an ambient
   # FM_TRACE_CONTEXT, which would otherwise add a traceparent= line.
   env -u FM_TRACE_CONTEXT \
