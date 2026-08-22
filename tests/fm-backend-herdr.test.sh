@@ -3269,6 +3269,46 @@ test_unknown_deliverable_refuses_unidentified_row() {
   pass "fm_backend_herdr_composer_unknown_deliverable: refuses an unidentified row with no container proof"
 }
 
+test_unknown_deliverable_refuses_unread_separator_pair_with_typed_text() {
+  local dir log resp fb native case_id agent idx
+  # _fm_composer_pi_verdict answers `unknown` and returns EARLY, before it
+  # reads a single content row, when the separator pair is over-tall or the
+  # native identity is not exactly pi. Both screens below hold the captain's
+  # unsent draft inside that pair, so treating them as a proven container
+  # would type the digest straight into it - the same "typed text spelled
+  # unknown" leak the styled-capture rule closes for the degraded read.
+  for case_id in over-tall non-pi; do
+    dir="$TMP_ROOT/unknown-deliverable-pair-$case_id"; mkdir -p "$dir/responses"
+    log="$dir/log"; resp="$dir/responses"; : > "$log"
+    case "$case_id" in
+      over-tall) agent=pi ;;
+      non-pi) agent=claude ;;
+    esac
+    {
+      printf '─────────────────────────────────────────────────────\n'
+      if [ "$case_id" = over-tall ]; then
+        for idx in $(seq 1 9); do printf 'land the parked worker row %s\n' "$idx"; done
+      else
+        printf 'land the parked workers\n'
+      fi
+      printf '─────────────────────────────────────────────────────\n'
+    } > "$resp/1.out"
+    printf '{"result":{"agent":{"agent":"%s","agent_status":"idle"}}}\n' "$agent" > "$resp/2.out"
+    printf '{"result":{"agent":{"agent":"%s","agent_status":"idle"}}}\n' "$agent" > "$resp/3.out"
+    fb=$(make_herdr_fakebin "$dir")
+    if PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+      bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_composer_unknown_deliverable lab:w1:p2' "$ROOT"; then
+      fail "a '$case_id' separator pair holding unsent text must never be deliverable"
+    fi
+    : > "$log"; rm -f "$resp/.count"
+    printf '{"result":{"agent":{"agent":"%s","agent_status":"idle"}}}\n' "$agent" > "$resp/1.out"
+    native=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+      bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_busy_state lab:w1:p2' "$ROOT" )
+    [ "$native" = idle ] || fail "the '$case_id' hazard needs native idle to be real, got '$native'"
+  done
+  pass "fm_backend_herdr_composer_unknown_deliverable: refuses an over-tall or non-Pi separator pair whose text was never read"
+}
+
 test_composer_state_claude_unbordered_prompt_is_pending() {
   local dir log resp fb out
   dir="$TMP_ROOT/composer-claude-bare-pending"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
@@ -4642,6 +4682,7 @@ test_unknown_deliverable_accepts_styled_container_when_native_idle
 test_unknown_deliverable_refuses_unstyled_fallback_with_typed_text
 test_unknown_deliverable_refuses_dead_shell_reporting_done
 test_unknown_deliverable_refuses_unidentified_row
+test_unknown_deliverable_refuses_unread_separator_pair_with_typed_text
 test_composer_state_claude_unbordered_prompt_is_pending
 test_composer_state_bare_prompt_below_stale_bordered_banner_wins
 test_composer_state_claude_dim_prompt_suggestion_ghost_is_empty

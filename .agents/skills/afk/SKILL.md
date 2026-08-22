@@ -99,7 +99,8 @@ backend (tmux or herdr; see "Auto-discovered supervisor pane" below):
   `pending` always defers (a human draft or swallowed digest).
   `unknown` defers unless the backend can prove otherwise.
   Only herdr can, and only when a fresh styled (ANSI) re-read still shows a genuine agent composer container AND native agent-state is idle, so a false-unknown idle Claude composer cannot stall away-mode overnight.
-  A dead shell, a modal, an unidentified or blank row, and a degraded unstyled read all have no such proof and still defer.
+  A dead shell, a modal, an unidentified or blank row, a degraded unstyled read, and a Pi separator pair the identity gate rejected all have no such proof and still defer.
+  The container rule is one sentence: `unknown` may only mean "proven container, unjudgeable styling", never "proven container, unread text".
   Native-hosted away auto-discovers the captain pane (`HERDR_PANE_ID`); it does not need a different flush target.
   Each adapter contributes only capture and capability facts to the fleet-wide screen classifier in `bin/fm-composer-lib.sh`, which owns every shape and verdict.
   See `docs/herdr-backend.md` "Composer and injection safety" for the operator contract.

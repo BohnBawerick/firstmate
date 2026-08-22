@@ -2642,25 +2642,39 @@ fm_backend_herdr_composer_identity() {  # <target> -> "<agent>\t<status>"
   fm_backend_herdr_agent_identity_raw "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE"
 }
 
-# fm_backend_herdr_composer_state: thin adapter - capture plus capabilities
-# in, shared verdict out. The ANSI capture is preferred (styled=1 lets the
+# fm_backend_herdr_composer_read: the ONE capture-classify-resolve-identity
+# block this adapter has. The ANSI capture is preferred (styled=1 lets the
 # shared classifier strip ghost/placeholder text); when it fails on an older
 # herdr, the plain capture degrades the descriptor to styled=0 rather than
 # letting ghost text be misread as typed input. Identity is fetched lazily,
 # only when the classifier reports the verdict depends on it (a pi separator
 # pair below every other candidate), preserving this adapter's original
 # consult-only-when-needed behavior.
-fm_backend_herdr_composer_state() {  # <target> -> empty|pending|pending-unproven|unknown
-  local target=$1 cap caps verdict identity
-  fm_backend_herdr_parse_target "$target" || { printf 'unknown'; return 0; }
+#
+# Returns 1 when no capture succeeded, and with [styled-only]=1 also when the
+# ANSI capture failed - the away-mode override needs that refusal, because the
+# plain fallback spells real typed text `unknown` instead of `pending`.
+# Otherwise it publishes the whole read through globals, so a caller can act
+# on the verdict AND the exact screen and identity that produced it without
+# re-capturing:
+#   FM_BACKEND_HERDR_COMPOSER_CAP       the captured screen
+#   FM_BACKEND_HERDR_COMPOSER_VERDICT   resolved verdict, never need-identity
+#   FM_BACKEND_HERDR_COMPOSER_IDENTITY  the identity consulted, else empty
+# Both consumers share this body so the override's styled and container rules
+# can never drift from the verdict they are qualifying.
+fm_backend_herdr_composer_read() {  # <target> [styled-only]
+  local target=$1 styled_only=${2:-0} cap caps styled verdict identity=''
+  fm_backend_herdr_parse_target "$target" || return 1
   if cap=$(fm_backend_herdr_capture_ansi "$target" "$FM_COMPOSER_CAPTURE_LINES" 2>/dev/null); then
-    caps=$(printf 'styled=1\ncursor=0\nidentity=1\nrows=%s' "$FM_COMPOSER_CAPTURE_LINES")
+    styled=1
+  elif [ "$styled_only" = 1 ]; then
+    return 1
   elif cap=$(fm_backend_herdr_capture "$target" "$FM_COMPOSER_CAPTURE_LINES"); then
-    caps=$(printf 'styled=0\ncursor=0\nidentity=1\nrows=%s' "$FM_COMPOSER_CAPTURE_LINES")
+    styled=0
   else
-    printf 'unknown'
-    return 0
+    return 1
   fi
+  caps=$(printf 'styled=%s\ncursor=0\nidentity=1\nrows=%s' "$styled" "$FM_COMPOSER_CAPTURE_LINES")
   verdict=$(fm_composer_classify_screen "$caps" "$cap")
   if [ "$verdict" = need-identity ]; then
     if ! identity=$(fm_backend_herdr_composer_identity "$target" 2>/dev/null) || [ -z "$identity" ]; then
@@ -2669,7 +2683,17 @@ fm_backend_herdr_composer_state() {  # <target> -> empty|pending|pending-unprove
     verdict=$(fm_composer_classify_screen "$caps" "$cap" '' "$identity")
     [ "$verdict" != need-identity ] || verdict=unknown
   fi
-  printf '%s' "$verdict"
+  FM_BACKEND_HERDR_COMPOSER_CAP=$cap
+  FM_BACKEND_HERDR_COMPOSER_VERDICT=$verdict
+  FM_BACKEND_HERDR_COMPOSER_IDENTITY=$identity
+  return 0
+}
+
+# fm_backend_herdr_composer_state: the fleet-wide verdict contract - capture
+# plus capabilities in, shared verdict out. An unreadable pane is unknown.
+fm_backend_herdr_composer_state() {  # <target> -> empty|pending|pending-unproven|unknown
+  fm_backend_herdr_composer_read "$1" || { printf 'unknown'; return 0; }
+  printf '%s' "$FM_BACKEND_HERDR_COMPOSER_VERDICT"
 }
 
 # fm_backend_herdr_composer_unknown_deliverable: the narrow away-mode override
@@ -2681,31 +2705,24 @@ fm_backend_herdr_composer_state() {  # <target> -> empty|pending|pending-unprove
 #      bin/fm-composer-lib.sh), so a degraded read must keep deferring or the
 #      digest merges into a human's half-typed line.
 #   2. The classifier still says `unknown` - proven `pending` never delivers.
-#   3. The screen carries a genuine agent composer container. A pane whose
-#      harness exited leaves a bare login-shell row, and herdr keeps reporting
-#      agent_status=done (which maps to idle), so native state alone cannot
-#      tell a waiting agent from a dead shell. A modal or mid-redraw pane has
-#      no container either, and away mode must never answer one.
+#   3. The screen carries a genuine agent composer container whose content the
+#      classifier actually read. A pane whose harness exited leaves a bare
+#      login-shell row, and herdr keeps reporting agent_status=done (which
+#      maps to idle), so native state alone cannot tell a waiting agent from a
+#      dead shell. A modal or mid-redraw pane has no container either. Neither
+#      does a pi separated pair the identity gate rejected, because that
+#      verdict is reached without reading the region's text.
 #   4. Native agent-state is idle: positive proof a registered agent is
 #      waiting between turns rather than mid-turn.
 # Together these let a false-unknown composer (a clipped idle Claude the
 # classifier cannot prove empty) deliver instead of stalling away mode for
 # hours, without widening the target set any further.
 fm_backend_herdr_composer_unknown_deliverable() {  # <target>
-  local target=$1 cap caps verdict identity
-  fm_backend_herdr_parse_target "$target" || return 1
-  cap=$(fm_backend_herdr_capture_ansi "$target" "$FM_COMPOSER_CAPTURE_LINES" 2>/dev/null) || return 1
-  caps=$(printf 'styled=1\ncursor=0\nidentity=1\nrows=%s' "$FM_COMPOSER_CAPTURE_LINES")
-  verdict=$(fm_composer_classify_screen "$caps" "$cap")
-  if [ "$verdict" = need-identity ]; then
-    if ! identity=$(fm_backend_herdr_composer_identity "$target" 2>/dev/null) || [ -z "$identity" ]; then
-      identity=probe-absent
-    fi
-    verdict=$(fm_composer_classify_screen "$caps" "$cap" '' "$identity")
-    [ "$verdict" != need-identity ] || verdict=unknown
-  fi
-  [ "$verdict" = unknown ] || return 1
-  fm_composer_screen_has_agent_container "$cap" || return 1
+  local target=$1
+  fm_backend_herdr_composer_read "$target" 1 || return 1
+  [ "$FM_BACKEND_HERDR_COMPOSER_VERDICT" = unknown ] || return 1
+  fm_composer_screen_has_agent_container \
+    "$FM_BACKEND_HERDR_COMPOSER_CAP" "$FM_BACKEND_HERDR_COMPOSER_IDENTITY" || return 1
   [ "$(fm_backend_herdr_busy_state "$target" 2>/dev/null)" = idle ] || return 1
   return 0
 }

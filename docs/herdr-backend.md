@@ -251,7 +251,10 @@ A bare shell prompt is never an empty agent composer.
 Away-mode injection proceeds on an affirmative `empty` result.
 On herdr it also proceeds on `unknown` when `fm_backend_herdr_composer_unknown_deliverable` proves all of: the styled ANSI re-read succeeded, the verdict is still unknown rather than pending, the screen carries a genuine agent composer container, and native agent-state is idle.
 A dead login shell is not a container, so `agent_status=done` mapping to idle cannot make it an injection target; a modal, an unidentified row, and a read that fell back to the unstyled capture are all refused for the same reason.
-The unstyled fallback matters here: it spells real typed text `unknown` instead of `pending`, so accepting it would merge the digest into the captain's half-typed line.
+A Pi separator pair counts as a container only when the native identity is exactly Pi and the pair is inside `FM_COMPOSER_PI_MAX_LINES`, because the shared verdict rejects an over-tall or non-Pi pair without reading its content rows, and an unread region may hold the captain's unsent draft.
+Both refusals are the same rule: `unknown` may only ever mean "proven container, unjudgeable styling", never "proven container, unread text".
+The unstyled fallback matters here for the same reason: it spells real typed text `unknown` instead of `pending`, so accepting it would merge the digest into the captain's half-typed line.
+`fm_backend_herdr_composer_read` is the single capture-classify-resolve-identity body behind both `fm_backend_herdr_composer_state` and this override, so the override's styled and container rules cannot drift from the verdict they qualify.
 
 The current operational envelope starts with U+2063 and `FIRSTMATE_OP: `.
 The separate routed-request carrier uses `[fm-from-firstmate]` plus U+2063.
