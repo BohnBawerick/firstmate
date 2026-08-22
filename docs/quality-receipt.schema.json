@@ -72,7 +72,8 @@
         "not-applicable",
         "exhausted",
         "stuck",
-        "defect-found"
+        "defect-found",
+        "read-only"
       ]
     },
     "engine": {

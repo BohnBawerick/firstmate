@@ -634,6 +634,49 @@ PY
   pass "fm-quality-receipt: dropping head_sha from the schema file is what lets the fail-open through"
 }
 
+# read-only is its own enum member, not a flag beside pass, so a machine reading
+# `outcome` alone can tell a reported score from a gate that ran and approved.
+# The pair also pins that the enum is a real list: an outcome word nobody
+# defined is still refused.
+test_read_only_is_an_outcome_of_its_own() {
+  local rec rc=0
+  rec="$TMP_ROOT/read-only.json"
+  cat <<PY | write_receipt "$rec"
+{
+  "schema_version": 1,
+  "phase": "harden",
+  "outcome": "read-only",
+  "base_sha": "$BASE",
+  "head_sha": "$HEAD",
+  "duration_ms": 52000,
+  "engine": {"name": "@stryker-mutator/core", "version": "10.0.0"},
+  "threshold": {"kill_rate_min": 0.80},
+  "metrics": {"kill_rate": 0.71},
+  "findings": [],
+}
+PY
+  validate "$rec" >/dev/null 2>&1 || fail "a read-only receipt was rejected"
+  [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["outcome"])' "$rec")" != pass ] \
+    || fail "a read-only receipt must not be recorded as a pass"
+  rec="$TMP_ROOT/made-up-outcome.json"
+  cat <<PY | write_receipt "$rec"
+{
+  "schema_version": 1,
+  "phase": "harden",
+  "outcome": "advisory",
+  "base_sha": "$BASE",
+  "head_sha": "$HEAD",
+  "duration_ms": 52000,
+  "engine": {"name": "@stryker-mutator/core", "version": "10.0.0"},
+  "threshold": {"kill_rate_min": 0.80},
+  "findings": [],
+}
+PY
+  validate "$rec" >/dev/null 2>&1 && rc=0 || rc=1
+  [ "$rc" = 1 ] || fail "an outcome word outside the enum should be refused"
+  pass "fm-quality-receipt: read-only is a distinct outcome and unknown outcomes are still refused"
+}
+
 test_schema_command_prints_json() {
   local out rc
   out=$("$RECEIPT" schema); rc=$?
@@ -644,6 +687,7 @@ test_schema_command_prints_json() {
 }
 
 test_valid_clean_pass
+test_read_only_is_an_outcome_of_its_own
 test_valid_harden_same_line_distinct_ids
 test_valid_verify_envelope
 test_missing_head_sha_is_the_fail_open

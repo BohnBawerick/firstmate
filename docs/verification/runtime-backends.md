@@ -957,3 +957,32 @@ Refresh this harness-dependent proof before accepting a cursor upgrade:
 ```sh
 FM_HARNESS_LIVENESS_DRIFT=1 bin/fm-test-run.sh tests/fm-harness-liveness-drift-live-e2e.test.sh
 ```
+
+## Hardened quality-loop structured output
+
+The hardened quality loop refuses any harness whose final answer cannot be schema-validated, and it establishes that from the resolved binary's own help rather than from a name.
+Verified on 2026-08-22 on WSL2 Linux 6.6.87.2.
+
+```sh
+claude --version && claude --help | grep -- --json-schema
+codex --version && codex exec --help | grep -- --output-schema
+```
+
+Observed output:
+
+```text
+2.1.239 (Claude Code)
+  --json-schema <schema>                JSON Schema for structured output
+codex-cli 0.149.0
+      --output-schema <FILE>
+```
+
+The help surface that carries the flag differs between them: `claude` documents `--json-schema` at the top level, while `codex` documents `--output-schema` under `codex exec`, not under `codex`.
+Asking the wrong surface refuses a harness that is in fact fine, which is what the drift guard caught on its first run.
+
+The portable regression is `tests/fm-quality.test.sh`, which drives both verdicts from a stub whose help does and does not carry the flag.
+Refresh this harness-dependent proof after any claude or codex upgrade:
+
+```sh
+FM_QUALITY_STRUCTURED_OUTPUT_DRIFT=1 bin/fm-test-run.sh tests/fm-quality-structured-output-live-e2e.test.sh
+```

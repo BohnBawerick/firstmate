@@ -6,8 +6,8 @@ This is the moved owner for those two contracts from the parked Stage 0 spec, re
 This page describes a capability.
 Firstmate itself is not a project the bar is applied to, and this repository does not ship a `.quality-gate.yaml`.
 
-`bin/fm-quality.sh`, the loop controller, is not in this revision.
-It consumes the receipt schema defined here, so the schema had to land first.
+[`bin/fm-quality.sh`](../bin/fm-quality.sh) is the loop controller that consumes this schema.
+Its header owns the loop's mechanics: the round shape, the bounds it enforces, the outcome-to-exit-code table, and where each phase's receipt is written.
 
 ## D1. `.quality-gate.yaml`
 
@@ -101,6 +101,18 @@ What breaks, and why:
 
 `outcome` is still the one field a caller reads to decide anything.
 `metrics` is still an open map of numbers, because a Python project and a TypeScript project will not report the same keys.
+
+### `read-only`, the reported-but-not-gated outcome
+
+Measurement and reporting are always on wherever they can run; only blocking is gated on the hardened posture.
+A project that has not committed to a threshold still gets its scores, which is how it earns an informed decision about switching the bar on.
+
+`read-only` is that outcome, and it exists as its own enum member rather than as a flag beside `pass` so a machine cannot confuse the two.
+A score that was merely reported must never read as a gate that ran and approved; a read-only outcome that looked like a pass would be worse than having no read-only mode at all.
+It says the measurement ran and its numbers are in `metrics`, and that nothing was gated on them - whether or not the threshold in `threshold` was met.
+
+A read-only run that could not measure still reports `blocked`, never `read-only`.
+Relaxing the block does not relax the honesty, and the pilot's failure mode was a flattering silent one, not a loud one.
 
 ### Classification
 
