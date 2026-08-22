@@ -81,7 +81,7 @@ receipt = {
     "phase": phase,
     "outcome": outcome,
     "base_sha": os.environ.get("FMQ_FORCE_BASE") or os.environ["FM_QUALITY_BASE_SHA"],
-    "head_sha": os.environ["FM_QUALITY_HEAD_SHA"],
+    "head_sha": os.environ.get("FMQ_FORCE_HEAD") or os.environ["FM_QUALITY_HEAD_SHA"],
     "duration_ms": 7,
     "engine": {"name": "fixture-engine", "version": "1.2.3"},
     "threshold": json.loads(os.environ["FMQ_FORCE_THRESHOLD"])
@@ -259,6 +259,34 @@ assert_clean_worktree() {  # <case-dir> <why>
   local dirty
   dirty=$(git -C "$1/wt" status --porcelain 2>/dev/null)
   [ -z "$dirty" ] || fail "$2: the task copy was left dirty: $dirty"
+}
+
+set_receipt_sha() {  # <file> <field> <value>
+  python3 - "$1" "$2" "$3" <<'PY'
+import json
+import sys
+
+path, field, value = sys.argv[1:4]
+with open(path, encoding="utf-8") as handle:
+    doc = json.load(handle)
+doc[field] = value
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(doc, handle, indent=2, sort_keys=True)
+    handle.write("\n")
+PY
+}
+
+# A 12-character sha that shares every character but its last with the one given,
+# so it is a near miss rather than a prefix. A rule that compared a fixed number
+# of leading characters would call this the same commit.
+near_miss_sha() {  # <sha>
+  local short=${1:0:12} last
+  last=${short:11:1}
+  case "$last" in
+    a) last=b ;;
+    *) last=a ;;
+  esac
+  printf '%s%s' "${short:0:11}" "$last"
 }
 
 receipt_exclusions() {  # <file> -> one glob per line
@@ -1274,6 +1302,80 @@ test_status_marks_a_receipt_from_an_earlier_head() {
   pass "status reports satisfied-stale once HEAD moves past the receipt"
 }
 
+# The schema lets a receipt abbreviate the head it measured, so a conforming
+# engine that records `git rev-parse --short HEAD` must not read as drift. The
+# comparison is over the shorter value's own length, not raw string equality.
+test_an_abbreviated_head_is_the_same_commit() {
+  local d out short
+  d=$(new_case status-short-head)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  short=$(git -C "$d/wt" rev-parse --short=12 HEAD)
+  FMQ_OUTCOME=pass FMQ_FORCE_HEAD="$short" \
+    run_quality "$d" run task --phase clean >/dev/null \
+    || fail "a receipt naming the head in short form should still pass"
+  [ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["head_sha"])' \
+    "$(receipt_of "$d" clean)")" = "$short" ] \
+    || fail "the fixture must file the abbreviated head it was told to"
+  out=$(run_quality "$d" status task)
+  case "$out" in
+    "quality: satisfied "*) : ;;
+    *) fail "an abbreviated head at the current HEAD is not drift: $out" ;;
+  esac
+  git -C "$d/wt" commit -q --allow-empty -m "a later fix round"
+  out=$(run_quality "$d" status task)
+  case "$out" in
+    "quality: satisfied-stale "*) : ;;
+    *) fail "the same abbreviated receipt must go stale once HEAD moves: $out" ;;
+  esac
+  pass "an abbreviated head_sha reads as the same commit until HEAD moves"
+}
+
+# The twin that pins the length discipline: a 12-character sha that shares all
+# but its last character with HEAD is a different commit, not a prefix of it.
+test_a_near_miss_short_head_is_drift() {
+  local d out
+  d=$(new_case status-near-miss-head)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  FMQ_OUTCOME=pass run_quality "$d" run task --phase clean >/dev/null \
+    || fail "the measuring run should pass"
+  set_receipt_sha "$(receipt_of "$d" clean)" head_sha \
+    "$(near_miss_sha "$(git -C "$d/wt" rev-parse HEAD)")"
+  out=$(run_quality "$d" status task)
+  case "$out" in
+    "quality: satisfied-stale "*) : ;;
+    *) fail "a short sha that is not a prefix of HEAD is drift: $out" ;;
+  esac
+  pass "a near-miss short sha reads as drift, not as the same commit"
+}
+
+# The sibling comparison in the same verdict: an abbreviated base_sha names the
+# same base commit too, and must not read as an unreadable receipt.
+test_an_abbreviated_base_is_the_same_commit() {
+  local d out
+  d=$(new_case status-short-base)
+  write_contract "$d" "$STD_CONTRACT"
+  write_meta "$d" hardened
+  FMQ_OUTCOME=pass run_quality "$d" run task --phase clean >/dev/null \
+    || fail "the measuring run should pass"
+  set_receipt_sha "$(receipt_of "$d" clean)" base_sha \
+    "$(git -C "$d/wt" rev-parse --short=12 HEAD)"
+  out=$(run_quality "$d" status task)
+  case "$out" in
+    "quality: satisfied "*) : ;;
+    *) fail "an abbreviated base commit is the same base commit: $out" ;;
+  esac
+  set_receipt_sha "$(receipt_of "$d" clean)" base_sha \
+    "$(near_miss_sha "$(git -C "$d/wt" rev-parse HEAD)")"
+  out=$(run_quality "$d" status task)
+  case "$out" in
+    "quality: unreadable "*) : ;;
+    *) fail "a base commit that is not this task's is still unreadable: $out" ;;
+  esac
+  pass "an abbreviated base_sha names the same base commit, a near miss does not"
+}
+
 test_pass
 test_read_only_is_not_pass
 test_read_only_cannot_measure_is_blocked
@@ -1326,6 +1428,9 @@ test_a_receipt_judged_against_another_bar_is_blocked
 test_the_same_bar_written_differently_still_passes
 test_the_receipt_keeps_the_engines_own_exclusions
 test_status_marks_a_receipt_from_an_earlier_head
+test_an_abbreviated_head_is_the_same_commit
+test_a_near_miss_short_head_is_drift
+test_an_abbreviated_base_is_the_same_commit
 test_unknown_contract_version_refuses
 test_contract_without_verify_refuses
 test_missing_base_anchor_is_blocked

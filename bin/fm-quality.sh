@@ -438,6 +438,22 @@ bounded_sh() {  # <secs> <dir> <command-string>
 }
 
 # --- receipt helpers --------------------------------------------------------
+# The schema lets a receipt abbreviate a sha to as few as seven characters, so
+# two of them name the same commit when the shorter is a prefix of the longer
+# over its own length. Equal length and different, or shorter and not a prefix,
+# is a different commit. This stays pure string work: a receipt may legitimately
+# name a commit this checkout does not have, and a failed lookup would turn a
+# readable receipt into an unreadable one.
+same_commit() {  # <sha> <sha>
+  local a=$1 b=$2
+  [ -n "$a" ] && [ -n "$b" ] || return 1
+  if [ "${#a}" -gt "${#b}" ]; then
+    [ "${a:0:${#b}}" = "$b" ]
+  else
+    [ "${b:0:${#a}}" = "$a" ]
+  fi
+}
+
 
 receipt_field() {  # <file> <dotted-key>
   python3 - "$1" "$2" <<'PY'
@@ -909,7 +925,7 @@ cmd_status() {
       printf 'quality: unreadable · mode: hardened · the %s receipt is present but not a valid receipt\n' "$phase"
       return 0
     fi
-    if [ "$(receipt_field "$file" base_sha || true)" != "$BASE_SHA" ]; then
+    if ! same_commit "$(receipt_field "$file" base_sha || true)" "$BASE_SHA"; then
       printf 'quality: unreadable · mode: hardened · the %s receipt measured a different base commit than this task\n' "$phase"
       return 0
     fi
@@ -921,7 +937,7 @@ cmd_status() {
         return 0 ;;
     esac
     recorded=$(receipt_field "$file" head_sha || true)
-    if [ -n "$head_sha" ] && [ -n "$recorded" ] && [ "$recorded" != "$head_sha" ]; then
+    if [ -n "$head_sha" ] && [ -n "$recorded" ] && ! same_commit "$recorded" "$head_sha"; then
       stale="${stale}the $phase receipt measured $recorded, "
     fi
   done
