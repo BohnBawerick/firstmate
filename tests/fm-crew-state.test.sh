@@ -1484,9 +1484,9 @@ EOF
 )"
   out=$(run_crew_state "$d" advcoarse)
   assert_not_contains "$out" "state: failed" "the coarse walk must not fall through to a superseded failed row"
-  assert_contains "$out" "state: working" "the branch's newest row is its current run"
-  assert_contains "$out" "source: run-step" "coarse-resolved run remains run-step sourced"
-  pass "coarse walk stops at the branch's newest row instead of a stale failure"
+  assert_not_contains "$out" "source: run-step" "an unresolvable coarse head is unknown attribution, not a binding"
+  assert_contains "$out" "state: unknown" "with no pane or log to answer, unbindable attribution reports unknown"
+  pass "coarse walk stops at an unresolvable newest row instead of binding a stale failure"
 }
 
 # The run's submitted head - the head it was LAUNCHED against, which is what the

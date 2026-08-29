@@ -472,9 +472,14 @@ nm_runs_status_for_branch() {  # <branch> -> "<status>|<identity>", or empty
       # failed: its own row was rejected on a head this worktree does not hold,
       # and the newest STALE row underneath it (failed at the very head the
       # worktree still had) matched instead.
+      # Only a VERIFIED match binds through the coarse list. The runs list is a
+      # bare status word with no launch anchor, so an unresolvable head here can
+      # never be confirmed the way `axi status` can confirm one through
+      # fm_nm_submitted_head - it is unknown attribution, not a weaker binding.
+      # Stop the walk without binding and let the pane/log fallback answer.
       identity=$(nm_coarse_head_identity "$sha")
       case "$identity" in
-        match|unverified) printf '%s|%s' "$st" "$identity" ;;
+        match) printf '%s|%s' "$st" "$identity" ;;
       esac
       return 0
     fi
@@ -542,17 +547,28 @@ if [ "$KIND" = ship ] && [ -n "$CREW_BRANCH" ] && command -v no-mistakes >/dev/n
     run_branch=$(strip_quotes "$(nm_field branch)")
     if [ -n "$run_branch" ] && [ "$run_branch" = "$CREW_BRANCH" ]; then
       case "$(nm_run_head_identity)" in
-        match)      HAVE_RUN=1 ;;
-        unverified) HAVE_RUN=1; HEAD_IDENTITY=unverified ;;
+        match) HAVE_RUN=1 ;;
+        unverified)
+          # An unresolvable head is decided by whatever branch-custody evidence
+          # the run actually carries, strongest first:
+          #   pipeline_owned + active -> the daemon's own branch attribution is
+          #     authoritative and the lane head need not be a git object here
+          #     (fm_nm_run_is_pipeline_owned_active). A verified binding, so
+          #     HEAD_IDENTITY stays `match`.
+          #   any other branch_sync state -> the run states positively that the
+          #     pipeline does NOT own this branch, so an unresolvable head is
+          #     evidence against attribution. Refuse and let pane/log answer.
+          #   no branch_sync block at all -> no evidence either way. Bind it,
+          #     because it is still this branch's current run, but record
+          #     `unverified` so it can never carry a terminal verdict.
+          if fm_nm_run_is_pipeline_owned_active "$RUN_OUT"; then
+            HAVE_RUN=1
+          elif [ -z "$(fm_nm_branch_sync_state "$RUN_OUT")" ]; then
+            HAVE_RUN=1
+            HEAD_IDENTITY=unverified
+          fi
+          ;;
       esac
-      # The pipeline-owned-active exemption sits beside the ternary: while the
-      # pipeline owns this branch, the daemon's own branch attribution is
-      # authoritative and the lane head need not be a git object here
-      # (fm_nm_run_is_pipeline_owned_active in bin/fm-nm-run-lib.sh). A run
-      # bound this way is a verified binding, so HEAD_IDENTITY stays `match`.
-      if [ "$HAVE_RUN" = 0 ] && fm_nm_run_is_pipeline_owned_active "$RUN_OUT"; then
-        HAVE_RUN=1
-      fi
     fi
     if [ "$HAVE_RUN" = 0 ]; then
       # The active-or-most-recent run is for another branch, or same branch with
