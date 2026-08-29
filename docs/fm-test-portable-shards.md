@@ -5,35 +5,35 @@
 
 ## Verification inputs
 
-The current candidate timings came from the 2026-07-29 concurrent proof recorded in [fm-test-isolation-proof.md](fm-test-isolation-proof.md).
+The current candidate timings came from the 2026-08-20 concurrent proof recorded in [fm-test-isolation-proof.md](fm-test-isolation-proof.md).
 The proof ran 24 candidates with four workers and no failures.
 
 | duration_ms | script |
 |---:|---|
-| 52939 | `tests/fm-x-mode.test.sh` |
-| 48294 | `tests/fm-backend-herdr.test.sh` |
-| 46788 | `tests/fm-arm-pretool-check.test.sh` |
-| 34207 | `tests/fm-cd-pretool-check.test.sh` |
-| 30771 | `tests/fm-decision-hold-lifecycle.test.sh` |
-| 25365 | `tests/fm-crew-state.test.sh` |
-| 15674 | `tests/fm-test-run.test.sh` |
-| 15422 | `tests/fm-herdr-lab.test.sh` |
-| 9065 | `tests/fm-composer-ghost.test.sh` |
-| 8564 | `tests/fm-pr-merge.test.sh` |
-| 6251 | `tests/fm-grok-harness.test.sh` |
-| 5644 | `tests/fm-send-popup-settle.test.sh` |
-| 5237 | `tests/fm-lint.test.sh` |
-| 4816 | `tests/fm-tmux-submit-busy.test.sh` |
-| 2945 | `tests/fm-pi-primary-types.test.sh` |
-| 2911 | `tests/fm-send-settle.test.sh` |
-| 2875 | `tests/fm-review-diff.test.sh` |
-| 2747 | `tests/fm-send-strict.test.sh` |
-| 2224 | `tests/fm-brief.test.sh` |
-| 855 | `tests/fm-spawn-batch.test.sh` |
-| 703 | `tests/fm-supervision-instructions.test.sh` |
-| 581 | `tests/fm-ensure-agents-md.test.sh` |
-| 248 | `tests/fm-transition-lib.test.sh` |
-| 64 | `tests/fm-composer-lib.test.sh` |
+| 45356 | `tests/fm-backend-herdr.test.sh` |
+| 35415 | `tests/fm-x-mode.test.sh` |
+| 35095 | `tests/fm-captain-hold-lifecycle.test.sh` |
+| 27529 | `tests/fm-arm-pretool-check.test.sh` |
+| 20922 | `tests/fm-test-run.test.sh` |
+| 17558 | `tests/fm-crew-state.test.sh` |
+| 16582 | `tests/fm-cd-pretool-check.test.sh` |
+| 9766 | `tests/fm-lint.test.sh` |
+| 9562 | `tests/fm-herdr-lab.test.sh` |
+| 6768 | `tests/fm-grok-harness.test.sh` |
+| 6290 | `tests/fm-pr-merge.test.sh` |
+| 5569 | `tests/fm-composer-ghost.test.sh` |
+| 4563 | `tests/fm-send-popup-settle.test.sh` |
+| 4021 | `tests/fm-tmux-submit-busy.test.sh` |
+| 3544 | `tests/fm-composer-lib.test.sh` |
+| 3025 | `tests/fm-send-strict.test.sh` |
+| 2753 | `tests/fm-send-settle.test.sh` |
+| 2166 | `tests/fm-review-diff.test.sh` |
+| 1315 | `tests/fm-brief.test.sh` |
+| 975 | `tests/fm-spawn-batch.test.sh` |
+| 598 | `tests/fm-pi-primary-types.test.sh` |
+| 513 | `tests/fm-ensure-agents-md.test.sh` |
+| 331 | `tests/fm-supervision-instructions.test.sh` |
+| 99 | `tests/fm-transition-lib.test.sh` |
 
 ## Parallel lanes
 
@@ -41,9 +41,9 @@ The two parallel lanes use longest-processing-time assignment from those measure
 
 | Lane | Script count | Estimated duration |
 |---|---:|---:|
-| `portable-parallel-1` | 11 | 162436 ms (~162.4 s) |
-| `portable-parallel-2` | 13 | 162754 ms (~162.8 s) |
-| imbalance | | 318 ms |
+| `portable-parallel-1` | 11 | 134295 ms (~134.3 s) |
+| `portable-parallel-2` | 13 | 126020 ms (~126.0 s) |
+| imbalance | | 8275 ms |
 
 `bin/fm-test-run.sh` contains the exact ordered memberships in `list_portable_parallel_1` and `list_portable_parallel_2`.
 
@@ -69,6 +69,9 @@ Three short scripts had no measured value in that run because shard 4 was cancel
 A script with no hint gets the conservative `PORTABLE_SERIAL_DEFAULT_WEIGHT_MS` default.
 Hints only affect balance: the coverage guard keeps the partition complete and disjoint whatever they say, so a stale hint costs a slower shard rather than lost coverage.
 Let the hints go stale for long enough and that slower shard hits the job timeout, which is what happened on run 32555114248: 46 unhinted scripts pushed shard 4 to 904 s against a 445 s shard 2.
+Refresh the hints whenever the serial lane gains scripts, rather than waiting for a shard to time out.
+Three hints carry upstream's measurement rather than this fork's, because the scripts arrived with the 2026-08-29 upstream reconciliation and this fork has not measured them yet: `tests/fm-bootstrap-network-parallel.test.sh`, `tests/fm-tool-update-check.test.sh`, and `tests/fm-watch-recovery-loop.test.sh`.
+The table below therefore predates those three and is refreshed on the next full green run.
 
 | Lane | Script count | Estimated duration |
 |---|---:|---:|

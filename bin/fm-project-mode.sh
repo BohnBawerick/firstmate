@@ -32,9 +32,8 @@
 #                          Mechanical output maps it to its most rigorous leg,
 #                          no-mistakes, so sync, seeding, and init treat such a
 #                          project as the remote-backed pipeline project it is.
-# yolo (orthogonal) = when on, firstmate may make routine approval decisions itself.
-#   AGENTS.md section 7 is the single owner of authority exceptions, including
-#   ask-user contract expansion and stronger captain boundaries.
+# yolo (orthogonal) = merge authority only: when on, firstmate merges green,
+#   in-scope work itself (AGENTS.md section 7).
 #
 # +hardened = the registered quality posture. From the captain's side this is the
 #   fourth option on the same list he picks from when he registers a project, after

@@ -162,14 +162,16 @@
 # status log path, and AGENTS.md section 8 treats a status line as a wake EVENT
 # rather than current state - bin/fm-crew-state.sh owns current state.
 #
-# RUNTIME BOUND: the digest is now executed on a session-open hook (see
-# bin/fm-sessionstart-run.sh), which blocks session initialization while it
-# runs, so an unbounded digest is no longer merely slow - it can strand a whole
-# session behind one hung subprocess. Every remaining step is local, but local is
-# not the same as bounded: tool version probes, the backlog listing, and the
-# per-task endpoint reads are all unbounded subprocesses. So the whole digest
-# still runs as ONE bounded child of this script (FM_SESSION_START_TIMEOUT,
-# default 120s). The deferred network stage deliberately sits OUTSIDE that bound,
+# RUNTIME BOUND: the digest is now executed through a native session-open
+# adapter (see bin/fm-sessionstart-run.sh), which blocks either hook-driven
+# session initialization or Pi's first provider preflight while it runs, so an
+# unbounded digest is no longer merely slow - it can strand a whole session or
+# first turn behind one hung subprocess. Every remaining step is local, but
+# local is not the same as bounded: tool version probes, the backlog listing,
+# and the per-task endpoint reads are all unbounded subprocesses. So the whole
+# digest still runs as ONE bounded child of this script
+# (FM_SESSION_START_TIMEOUT, default 120s). The deferred network stage
+# deliberately sits OUTSIDE that bound,
 # in its own process group under its own aggregate deadline, so a truncated
 # digest neither waits for it nor orphans it unbounded. The
 # child writes the digest straight to this script's stdout, so everything it
@@ -677,6 +679,12 @@ if [ "$READ_ONLY" -eq 0 ]; then
     rm -f "$COMPLETION_FILE" 2>/dev/null || true
   fi
   fm_trace_context_session_start "$CONFIG" "$STATE/.trace-context-effective"
+  # A full locked start publishes this home's current structured summary.
+  # Publication is side-band and best-effort, so it can never change the
+  # session-start result. A context re-emit is not another session start.
+  if [ "$REEMIT" -eq 0 ]; then
+    "$SCRIPT_DIR/fm-home-summary-refresh.sh" --best-effort || true
+  fi
   # Every network call this session start owes is launched HERE, detached and
   # bounded, so it runs concurrently with the whole digest below instead of in
   # front of it. Step 7 harvests whatever it has finished, without ever waiting.
@@ -742,6 +750,19 @@ else
     "$SCRIPT_DIR/fm-inactive-reconcile.sh" scan --startup 2>&1) || INACTIVE_OUT=
   if [ -n "$INACTIVE_OUT" ]; then
     printf 'inactive outcome reconciliation: %s\n' "$INACTIVE_OUT"
+  fi
+  # Pi supervision-branch recovery, locked path only: clear leases whose
+  # supervising session died, and surface outcomes the branch stored durably
+  # that never reached main (docs/pi-supervision-branch.md). Gated to the
+  # pi/pi-signed primary so a non-Pi home runs neither step - homes on any
+  # other harness stay entirely untouched (captain-decided criterion).
+  if [ "$PRIMARY_HARNESS" = pi ] || [ "$PRIMARY_HARNESS" = pi-signed ]; then
+    FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/fm-lease.sh" sweep 2>/dev/null || true
+    BRANCH_REPLAY_OUT=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-branch-outcome.sh" startup-replay 2>&1) || BRANCH_REPLAY_OUT=
+    if [ -n "$BRANCH_REPLAY_OUT" ]; then
+      printf '%s\n' "$BRANCH_REPLAY_OUT"
+    fi
   fi
   DRAIN_OUT=$("$SCRIPT_DIR/fm-wake-drain.sh" 2>&1)
   if [ -n "$DRAIN_OUT" ]; then
@@ -880,11 +901,12 @@ if fm_pf_relay_active "$FM_HOME" \
   && { fm_pf_has_registrations "$STATE" || fm_pf_has_events "$STATE"; }; then
   PUBLIC_FOLLOWUP=$("$SCRIPT_DIR/fm-public-followup.sh" pending 2>/dev/null) || PUBLIC_FOLLOWUP=
   if [ -n "$PUBLIC_FOLLOWUP" ]; then
-    subsection "Public commitments awaiting delivery"
+    subsection "Public commitments"
     printf '%s\n' "$PUBLIC_FOLLOWUP"
-    printf '\nEach line is a public reply this home still owes. Reconcile terminal results with\n'
-    printf '%s/bin/fm-public-followup.sh consume, then deliver a ready one with\n' "$FM_ROOT"
-    printf '%s/bin/fm-public-followup.sh deliver <id>. Load fmx-respond for the procedure.\n' "$FM_ROOT"
+    printf '\nEach line is a public loop this home still holds: a reply still owed, or an open loop with nothing owed.\n'
+    printf 'Reconcile terminal results with %s/bin/fm-public-followup.sh consume, then deliver a ready one with\n' "$FM_ROOT"
+    printf '%s/bin/fm-public-followup.sh deliver <id>. Hand a delivered loop on with rechain, or close it with\n' "$FM_ROOT"
+    printf '%s/bin/fm-public-followup.sh retire <id> --reason "...". Load fmx-respond for the procedure.\n' "$FM_ROOT"
   fi
 fi
 

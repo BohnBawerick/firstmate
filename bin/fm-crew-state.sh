@@ -8,9 +8,8 @@
 # or blocked and the crew resumes (responds to the gate, the pipeline fixes, it
 # re-validates), the log's last line stays stale. This helper never infers the
 # current state from a tail of the log: it reads the authoritative source (a
-# no-mistakes run-step attributed to this crew's branch and current code
-# identity, else the pane busy-signature) and reconciles the possibly-stale log
-# against it.
+# no-mistakes run-step attributed under bin/fm-nm-run-lib.sh's contract, else
+# the pane busy-signature) and reconciles the possibly-stale log against it.
 #
 # The determinism lives entirely here - only run-step / pane / log reads plus
 # fixed mapping logic, no heuristics and no LLM. Output is one stable, parseable,
@@ -42,7 +41,12 @@
 #      verdict it would produce becomes `unknown`, because `failed` routes
 #      firstmate into recovery and `done` into teardown. The coarse runs list is
 #      newest-first and the first row for this branch is its current run, so the
-#      walk never falls through to an older, superseded row.
+#      walk never falls through to an older, superseded row. One exemption sits
+#      beside the ternary: while the pipeline OWNS the branch, the daemon's own
+#      branch attribution is authoritative and the lane head need not be a git
+#      object here (fm_nm_run_is_pipeline_owned_active). The branch, head,
+#      pipeline-custody, and newest-first rules are all owned by
+#      bin/fm-nm-run-lib.sh.
 #      The run-step is AUTHORITATIVE: running/fixing -> working, ci -> working,
 #      awaiting_approval/fix_review -> parked (with gate findings), terminal
 #      passed/checks-passed -> done, failed/cancelled -> failed. EXCEPT: while
@@ -180,7 +184,7 @@ fi
 
 # --- status log ------------------------------------------------------------
 
-# Last non-empty status line, and its leading verb (the word before the colon).
+# Last non-empty status line; fm-classify-lib.sh owns leading-verb normalization.
 log_last_line() {
   [ -f "$LOG" ] || return 1
   grep -v '^[[:space:]]*$' "$LOG" 2>/dev/null | tail -1
@@ -279,7 +283,7 @@ crew_busy_verdict() {  # <target>
 
 # --- no-mistakes run lookup (authoritative when a run matches this branch) --
 # trim, strip_quotes, the bounded nm_run call, nm_field's TOON parse, and the
-# branch+head attribution rule below are thin wrappers over the ONE owner in
+# attribution helpers below are thin wrappers over the ONE owner in
 # bin/fm-nm-run-lib.sh, shared with fm-teardown.sh's pre-teardown run abort.
 
 trim() { fm_nm_trim "$@"; }
@@ -541,6 +545,14 @@ if [ "$KIND" = ship ] && [ -n "$CREW_BRANCH" ] && command -v no-mistakes >/dev/n
         match)      HAVE_RUN=1 ;;
         unverified) HAVE_RUN=1; HEAD_IDENTITY=unverified ;;
       esac
+      # The pipeline-owned-active exemption sits beside the ternary: while the
+      # pipeline owns this branch, the daemon's own branch attribution is
+      # authoritative and the lane head need not be a git object here
+      # (fm_nm_run_is_pipeline_owned_active in bin/fm-nm-run-lib.sh). A run
+      # bound this way is a verified binding, so HEAD_IDENTITY stays `match`.
+      if [ "$HAVE_RUN" = 0 ] && fm_nm_run_is_pipeline_owned_active "$RUN_OUT"; then
+        HAVE_RUN=1
+      fi
     fi
     if [ "$HAVE_RUN" = 0 ]; then
       # The active-or-most-recent run is for another branch, or same branch with

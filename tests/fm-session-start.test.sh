@@ -99,7 +99,7 @@ SH
   cat > "$fakebin/no-mistakes" <<'SH'
 #!/usr/bin/env bash
 if [ "${1:-}" = --version ]; then
-  printf '%s\n' 'no-mistakes version v1.31.2 (fake) 2026-06-27T00:02:18Z'
+  printf '%s\n' 'no-mistakes version v1.46.0 (fake) 2026-06-27T00:02:18Z'
   exit 0
 fi
 exit 0
@@ -714,6 +714,12 @@ EOF
 
   out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
 
+  jq -e --arg home "$home" '
+    .schema == "fm-secondmate-home-summary.v1"
+    and .home == $home
+    and (.generated_epoch | type) == "number"
+  ' "$home/state/home-summary.json" >/dev/null \
+    || fail "a locked session start did not publish the home summary ledger"
   assert_contains "$out" "data/projects.md" "digest did not label the projects.md section"
   assert_contains "$out" "- demo [no-mistakes] - a demo project (added 2026-07-01)" "digest did not print projects.md content"
 
@@ -1483,36 +1489,63 @@ EOF
   pass "fm-session-start.sh composes the real fm-lock.sh, fm-bootstrap.sh, and fm-wake-drain.sh output verbatim"
 }
 
-# Ownership and acquisition are two different questions, and they can disagree:
-# the recorded pid can resolve to this session while the acquisition still
-# fails. The digest must never answer them with two opposite instructions in the
-# same section.
-test_the_helm_line_never_contradicts_the_read_only_banner() {
+test_branch_outcome_replay_and_lease_sweep() {
   local rec root home fakebin out
-  rec=$(new_world helm-unacquired)
+  rec=$(new_world branch-recovery)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_harness "$fakebin" pi
+
+  # A crash window the locked start must close: the supervision branch stored
+  # an outcome durably that never reached main, plus one lease whose
+  # supervising process died and one still held by a live process.
+  FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append \
+    --task task-b --verdict captain --summary 'PR https://example.com/pr/b checks green' >/dev/null \
+    || fail "could not seed the unread branch outcome"
+  printf 'branch\t999999\t123\n' > "$home/state/.lease-task-dead"
+  FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_LEASE_HOLDER_PID=$$ "$ROOT/bin/fm-lease.sh" claim task-live --actor branch \
+    || fail "could not seed the live lease"
+
+  out=$(run_pi_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_contains "$out" "BRANCH OUTCOMES (handled by the supervision branch, not yet seen by this session):" \
+    "locked start did not replay the unread branch outcome"
+  assert_contains "$out" "https://example.com/pr/b" "replayed outcome lost its content"
+  [ ! -e "$home/state/.lease-task-dead" ] || fail "locked start left a provably dead lease in place"
+  [ -e "$home/state/.lease-task-live" ] || fail "locked start swept a live lease"
+
+  # Replay is one-shot: presenting the digest is the delivery, so the next
+  # locked start stays silent about the same outcome.
+  out=$(run_pi_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  case "$out" in
+    *"BRANCH OUTCOMES"*) fail "second start re-presented already-replayed branch outcomes" ;;
+  esac
+  pass "locked Pi session start replays unread branch outcomes once and sweeps only dead leases"
+}
+
+test_non_pi_session_start_leaves_branch_state_untouched() {
+  local rec root home fakebin out
+  rec=$(new_world non-pi-branch-recovery)
   IFS='|' read -r root home fakebin <<EOF
 $rec
 EOF
   make_fake_toolchain "$fakebin"
   make_fake_ps_claude "$fakebin"
 
-  # The lock names this session's own declared pid, so ownership resolves; it is
-  # a symlink rather than a regular file, so fm-lock.sh refuses to acquire it.
-  printf '%s\n' "$$" > "$home/state/lock-target"
-  ln -s "$home/state/lock-target" "$home/state/.lock"
+  FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append \
+    --task task-b --verdict captain --summary 'unread Pi branch outcome' >/dev/null \
+    || fail "could not seed the non-Pi unread branch outcome"
+  rm -f "$home/state/.branch-outcomes-cursor"
+  printf 'branch\t999999\t123\n' > "$home/state/.lease-task-dead"
 
-  out=$(env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
-    CLAUDE_PID="$$" FM_HOME="$home" FM_ROOT_OVERRIDE="$root" \
-    PATH="$fakebin:$BASE_PATH" "$SESSION_START")
-
-  assert_contains "$out" "READ-ONLY SESSION - FLEET LOCK OWNERSHIP WAS NOT VERIFIED" \
-    "the digest did not go read-only when the lock could not be acquired"
-  assert_not_contains "$out" "HELM: THIS session holds the fleet lock" \
-    "the helm line said this session may change fleet state, right above the read-only banner"
-  assert_contains "$out" "HELM: ownership resolves to THIS session, but the fleet lock was NOT acquired" \
-    "the digest did not name the resolved-but-unacquired state"
-
-  pass "the helm line agrees with the read-only banner when ownership resolves but acquisition fails"
+  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  case "$out" in
+    *"BRANCH OUTCOMES"*|*"unread Pi branch outcome"*) fail "non-Pi session replayed Pi branch outcomes" ;;
+  esac
+  [ -e "$home/state/.lease-task-dead" ] || fail "non-Pi session swept a Pi branch lease"
+  [ ! -e "$home/state/.branch-outcomes-cursor" ] || fail "non-Pi session marked a Pi branch outcome read"
+  pass "non-Pi session start neither sweeps nor replays Pi branch state"
 }
 
 # --- deferred network stage -------------------------------------------------
@@ -2543,6 +2576,38 @@ EOF
   pass "session start rejects Pi loaded markers from previous sessions"
 }
 
+# Ownership and acquisition are two different questions, and they can disagree:
+# the recorded pid can resolve to this session while the acquisition still
+# fails. The digest must never answer them with two opposite instructions in the
+# same section.
+test_the_helm_line_never_contradicts_the_read_only_banner() {
+  local rec root home fakebin out
+  rec=$(new_world helm-unacquired)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+
+  # The lock names this session's own declared pid, so ownership resolves; it is
+  # a symlink rather than a regular file, so fm-lock.sh refuses to acquire it.
+  printf '%s\n' "$$" > "$home/state/lock-target"
+  ln -s "$home/state/lock-target" "$home/state/.lock"
+
+  out=$(env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
+    CLAUDE_PID="$$" FM_HOME="$home" FM_ROOT_OVERRIDE="$root" \
+    PATH="$fakebin:$BASE_PATH" "$SESSION_START")
+
+  assert_contains "$out" "READ-ONLY SESSION - FLEET LOCK OWNERSHIP WAS NOT VERIFIED" \
+    "the digest did not go read-only when the lock could not be acquired"
+  assert_not_contains "$out" "HELM: THIS session holds the fleet lock" \
+    "the helm line said this session may change fleet state, right above the read-only banner"
+  assert_contains "$out" "HELM: ownership resolves to THIS session, but the fleet lock was NOT acquired" \
+    "the digest did not name the resolved-but-unacquired state"
+
+  pass "the helm line agrees with the read-only banner when ownership resolves but acquisition fails"
+}
+
 test_context_digest_absent_empty_present
 test_context_digest_compiles_curated_memory_when_the_layout_exists
 test_context_digest_keeps_whole_files_when_no_memory_layout_exists
@@ -2570,7 +2635,8 @@ test_orphan_status_logs_are_printed
 test_endpoint_liveness_tmux
 test_endpoint_liveness_herdr
 test_composition_invokes_real_scripts
-test_the_helm_line_never_contradicts_the_read_only_banner
+test_branch_outcome_replay_and_lease_sweep
+test_non_pi_session_start_leaves_branch_state_untouched
 test_backlog_compact_tasks_axi_omits_bodies_and_keeps_metadata
 test_backlog_queued_bound_discloses_its_remainder
 test_backlog_compact_manual_backend_skips_indented_bodies
@@ -2594,5 +2660,6 @@ test_read_only_pi_compact_refreshes_against_its_own_session_identity
 test_codex_unreachable_reset_sources_do_not_claim_instruction_refresh
 test_agents_baseline_requires_sha256_and_successful_completion
 test_reemit_keeps_repair_ownership_with_the_lock_holder
+test_the_helm_line_never_contradicts_the_read_only_banner
 
 echo "# fm-session-start.test.sh: all assertions passed"

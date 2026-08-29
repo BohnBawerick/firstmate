@@ -54,9 +54,9 @@ Refuse `+hardened` together with `no-mistakes-prod-only` and tell the captain to
 A conditional policy decides per task, so a quality standard that covers only part of a project is a posture nobody can state in one sentence.
 `AGENTS.md` section 7 owns how each task's quality resolves at intake, and `bin/fm-project-mode.sh --quality` owns how the registered token is read.
 
-The optional `+yolo` posture changes routine approval authority but does not change the delivery mode.
+The optional `+yolo` posture changes merge authority only and does not change the delivery mode.
 Default it off for every project and every posture, and enable it only on the captain's explicit instruction.
-`AGENTS.md` section 7 owns the complete authority boundary and exceptions when it is on.
+`AGENTS.md` section 7 owns the merge-authority contract.
 
 ## Add or clone an existing project
 
