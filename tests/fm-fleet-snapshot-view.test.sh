@@ -151,6 +151,37 @@ test_empty_fleet_json() {
   pass "empty fleet snapshot and view use explicit absence markers"
 }
 
+test_large_backlog_does_not_hit_jq_argument_limit() {
+  local home out bearings summary encoded_bytes padding i
+  home=$(make_home large-backlog)
+  padding=$(printf '%*s' 220 '' | tr ' ' x)
+  {
+    printf '## In flight\n\n## Queued\n'
+    i=0
+    while [ "$i" -lt 700 ]; do
+      printf '%s\n' "- [ ] bulk-$i - $padding (repo: alpha) (kind: ship)"
+      i=$((i + 1))
+    done
+    printf '\n## Done\n'
+  } > "$home/data/backlog.md"
+  out=$(FM_HOME="$home" "$SNAPSHOT" --json) \
+    || fail "a backlog larger than jq's argument limit must still produce a snapshot"
+  printf '%s' "$out" | jq -e '.schema == "fm-fleet-snapshot.v1" and .backlog.present == true' >/dev/null \
+    || fail "large backlog snapshot was not valid JSON"
+  bearings=$(FM_HOME="$home" "$ROOT/bin/fm-bearings-snapshot.sh" --json) \
+    || fail "the bearings wrapper must accept a backlog larger than jq's argument limit"
+  printf '%s' "$bearings" | jq -e '.schema == "fm-bearings.v1"' >/dev/null \
+    || fail "large backlog bearings output was not valid JSON"
+  summary=$(FM_HOME="$home" "$SNAPSHOT" --secondmate-home-summary) \
+    || fail "a large backlog must not break the secondmate home summary"
+  printf '%s' "$summary" | jq -e '.schema == "fm-secondmate-home-summary.v1"' >/dev/null \
+    || fail "large backlog secondmate home summary was not valid JSON"
+  encoded_bytes=$(printf '%s' "$out" | jq -c '.backlog' | wc -c | tr -d ' ')
+  [ "$encoded_bytes" -gt 131072 ] \
+    || fail "large backlog regression fixture did not exceed 128 KiB when encoded ($encoded_bytes bytes)"
+  pass "large backlog snapshot avoids jq's per-argument size limit"
+}
+
 test_fixture_snapshot_json() {
   local home fakebin out ids
   home=$(make_home fixture)
@@ -800,6 +831,7 @@ test_parked_scout_decision_stays_pending() {
 }
 
 test_empty_fleet_json
+test_large_backlog_does_not_hit_jq_argument_limit
 test_fixture_snapshot_json
 test_main_inventory_orphan_and_unstructured_disclosure
 test_normalized_roles_and_plural_blocker_readiness
