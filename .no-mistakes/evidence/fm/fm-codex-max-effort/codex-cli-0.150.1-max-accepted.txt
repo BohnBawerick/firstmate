@@ -1,0 +1,42 @@
+Real codex CLI check - does 0.150.1 accept model_reasoning_effort=max?
+Generated: 2026-08-29T01:17:01Z
+
+$ codex --version
+codex-cli 0.150.1
+
+--- 1. invalid effort: the API enumerates the accepted set ---
+$ codex exec --model gpt-5.6-luna -c 'model_reasoning_effort="notaneffort"' --skip-git-repo-check "say hi"
+  "status": 400
+}
+ERROR: {
+  "type": "error",
+  "error": {
+    "type": "invalid_request_error",
+    "code": null,
+    "message": "[ReasoningEffortParam] [reasoning.effort] [invalid_enum_value] Invalid value: 'notaneffort'. Supported values are: 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', and 'max'.",
+    "param": null
+  },
+  "status": 400
+}
+
+--- 2. control run at max: accepted, real work ---
+$ codex exec --model gpt-5.6-luna -c 'model_reasoning_effort="max"' --skip-git-repo-check "Reply with exactly: MAX-EFFORT-OK"
+Reading additional input from stdin...
+OpenAI Codex v0.150.1
+--------
+workdir: /tmp/fm-max-evidence
+model: gpt-5.6-luna
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: max
+reasoning summaries: none
+session id: 01a04b17-988d-7733-b63f-e9b5fb214848
+--------
+user
+Reply with exactly: MAX-EFFORT-OK
+codex
+MAX-EFFORT-OK
+tokens used
+17,099
+MAX-EFFORT-OK

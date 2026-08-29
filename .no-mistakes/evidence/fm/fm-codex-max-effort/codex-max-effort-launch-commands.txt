@@ -1,0 +1,27 @@
+Codex max reasoning effort - end-to-end launch-command evidence
+Generated: 2026-08-29T01:13:56Z
+
+Each row drives the real bin/fm-spawn.sh against a fake tmux pane and prints
+the literal command tmux would run for a codex crewmate.
+(the trailing --dangerously-bypass... and brief argument are trimmed)
+
+=== BEFORE the fix (tree b62b515^) ===
+low     -> env -u CURSOR_AGENT -u CURSOR_INVOKED_AS env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID codex --model 'gpt-5.6-luna' -c 'model_reasoning_effort="low"'
+medium  -> env -u CURSOR_AGENT -u CURSOR_INVOKED_AS env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID codex --model 'gpt-5.6-luna' -c 'model_reasoning_effort="medium"'
+high    -> env -u CURSOR_AGENT -u CURSOR_INVOKED_AS env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID codex --model 'gpt-5.6-luna' -c 'model_reasoning_effort="high"'
+xhigh   -> env -u CURSOR_AGENT -u CURSOR_INVOKED_AS env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID codex --model 'gpt-5.6-luna' -c 'model_reasoning_effort="xhigh"'
+max     -> env -u CURSOR_AGENT -u CURSOR_INVOKED_AS env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID codex --model 'gpt-5.6-luna'
+bogus   -> 
+
+=== AFTER the fix (tree b62b515) ===
+low     -> env -u CURSOR_AGENT -u CURSOR_INVOKED_AS env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID codex --model 'gpt-5.6-luna' -c 'model_reasoning_effort="low"'
+medium  -> env -u CURSOR_AGENT -u CURSOR_INVOKED_AS env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID codex --model 'gpt-5.6-luna' -c 'model_reasoning_effort="medium"'
+high    -> env -u CURSOR_AGENT -u CURSOR_INVOKED_AS env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID codex --model 'gpt-5.6-luna' -c 'model_reasoning_effort="high"'
+xhigh   -> env -u CURSOR_AGENT -u CURSOR_INVOKED_AS env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID codex --model 'gpt-5.6-luna' -c 'model_reasoning_effort="xhigh"'
+max     -> env -u CURSOR_AGENT -u CURSOR_INVOKED_AS env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID codex --model 'gpt-5.6-luna' -c 'model_reasoning_effort="max"'
+bogus   -> 
+
+=== Out-of-vocabulary efforts are still refused, never passed through (AFTER) ===
+none     exit=1 msg=error: --effort must be one of low, medium, high, xhigh, max launch=
+minimal  exit=1 msg=error: --effort must be one of low, medium, high, xhigh, max launch=
+ultra    exit=1 msg=error: --effort must be one of low, medium, high, xhigh, max launch=

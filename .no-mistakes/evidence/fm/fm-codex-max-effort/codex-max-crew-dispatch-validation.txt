@@ -1,0 +1,14 @@
+crew-dispatch effort validation - real bin/fm-bootstrap.sh runs
+Generated: 2026-08-29T01:15:36Z
+
+=== BEFORE the fix (tree b62b515^) ===
+codex effort=max         -> CREW_DISPATCH: invalid config/crew-dispatch.json - invalid effort: codex:max
+codex effort=xhigh       -> <accepted, no complaint>
+codex effort=none        -> CREW_DISPATCH: invalid config/crew-dispatch.json - invalid effort: codex:none
+grok effort=max          -> CREW_DISPATCH: invalid config/crew-dispatch.json - invalid effort: grok:max
+
+=== AFTER the fix (tree b62b515) ===
+codex effort=max         -> <accepted, no complaint>
+codex effort=xhigh       -> <accepted, no complaint>
+codex effort=none        -> CREW_DISPATCH: invalid config/crew-dispatch.json - invalid effort: codex:none
+grok effort=max          -> CREW_DISPATCH: invalid config/crew-dispatch.json - invalid effort: grok:max
