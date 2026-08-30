@@ -374,9 +374,18 @@ kill_pid_hard() {  # <pid>
 # lane only ever blocks in short sleeps and in `wait`, both of which let a signal
 # through immediately.
 run_script_contained() {  # <script> <output-file> <status-file>
-  local script=$1 out=$2 status=$3 pid pgid rc timed_out=0 unreaped=0 inflight
+  local script=$1 out=$2 status=$3 pid pgid rc timed_out=0 unreaped=0 inflight bounded=0
   set -m
-  bash "$script" >"$out" 2>&1 &
+  # PER_SCRIPT_TIMEOUT_SECS is the tighter, opt-in bound (and the automatic one
+  # on the --changed path); SCRIPT_TIMEOUT below stays the lane-wide backstop.
+  # The shared timeout lib owns the mechanism so every bounded call in this repo
+  # agrees on what "the bound was hit" means.
+  if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ]; then
+    bounded=1
+    fm_run_timed "$PER_SCRIPT_TIMEOUT_SECS" bash "$script" >"$out" 2>&1 &
+  else
+    bash "$script" >"$out" 2>&1 &
+  fi
   pid=$!
   set +m
   pgid=$(script_process_group "$pid") || pgid=
@@ -402,6 +411,11 @@ run_script_contained() {  # <script> <output-file> <status-file>
     wait "$pid" 2>/dev/null || rc=$?
   fi
   [ "$timed_out" -eq 0 ] || rc=124
+  if [ "$bounded" -eq 1 ] && [ "$timed_out" -eq 0 ] && [ "$rc" -eq 124 ]; then
+    printf 'not ok - %s exceeded the per-script bound of %ss and was terminated\n' \
+      "$script" "$PER_SCRIPT_TIMEOUT_SECS" >>"$out"
+    log "per-script bound of ${PER_SCRIPT_TIMEOUT_SECS}s exceeded, terminated: $script"
+  fi
   # Anything the script left behind dies here, while its group id still names it
   # and nothing else. A descendant that ignored TERM is escalated, because one
   # swallowed signal is all it takes to hold the lane. The leak is reported but
