@@ -16,7 +16,7 @@
 #       wedging staging, and a payload caller with --stdin still delivers its
 #       bytes through the worker.
 #   Stage litter older than the reap age does not survive a worker pass while
-#   fresh staging does.
+#   staging a live owner still holds does.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -40,6 +40,10 @@ FAKEBIN=$(fm_fakebin "$TMP_ROOT/fakebin")
 mkdir -p "$REMOTE_ROOT/bin" "$HOME_A" "$HOME_B" "$HOME_EDGE" "$LOCAL_HOME/data" "$ACCOUNT_HOME"
 
 cleanup_lane_fixture() {
+  if [ -n "${STAGE_OWNER_PID:-}" ]; then
+    kill "$STAGE_OWNER_PID" 2>/dev/null || true
+    wait "$STAGE_OWNER_PID" 2>/dev/null || true
+  fi
   if [ -f "$STATE_ROOT/worker.pid" ]; then
     fm_remote_job_stop_worker_tree "$(cat "$STATE_ROOT/worker.pid")" || true
   fi
@@ -408,18 +412,29 @@ assert_grep 'stdin=payload byte two' "$TMP_ROOT/payload-out" "--stdin lost part 
 pass "--stdin still delivers a payload caller's bytes"
 
 # Stage litter: an abandoned .stage.* older than the reap age does not survive
-# a worker pass, while fresh staging is left alone.
+# a worker pass, while staging a live owner still holds is left alone even once
+# it passes that age. Owner liveness, not the age bound, is what protects
+# staging in use: mtime has one-second granularity, so a stage created just
+# before a second boundary already reads as a full second old on the next sweep.
 OLD_STAGE="$STATE_ROOT/jobs/.stage.abandoned"
-FRESH_STAGE="$STATE_ROOT/jobs/.stage.fresh"
-mkdir -p "$OLD_STAGE" "$FRESH_STAGE"
-touch -t 200001010000 "$OLD_STAGE"
+LIVE_STAGE="$STATE_ROOT/jobs/.stage.inuse"
+mkdir -p "$OLD_STAGE" "$LIVE_STAGE"
+sleep 120 &
+STAGE_OWNER_PID=$!
+printf '%s\n' "$STAGE_OWNER_PID" > "$LIVE_STAGE/.owner-pid"
+fm_remote_job_process_start "$STAGE_OWNER_PID" > "$LIVE_STAGE/.owner-start" \
+  || fail "the in-use staging fixture could not record its owner"
+touch -t 200001010000 "$OLD_STAGE" "$LIVE_STAGE"
 for _ in $(seq 1 100); do
   [ ! -d "$OLD_STAGE" ] && break
   sleep 0.05
 done
 [ ! -d "$OLD_STAGE" ] || fail "stage litter older than the reap age survived the worker pass"
-assert_present "$FRESH_STAGE" "the worker reaped fresh staging that is still in use"
-rmdir "$FRESH_STAGE"
-pass "abandoned stage litter is reaped by age while fresh staging survives"
+assert_present "$LIVE_STAGE" "the worker reaped staging its live owner still holds"
+kill "$STAGE_OWNER_PID" 2>/dev/null || true
+wait "$STAGE_OWNER_PID" 2>/dev/null || true
+STAGE_OWNER_PID=
+rm -rf -- "$LIVE_STAGE"
+pass "abandoned stage litter is reaped by age while staging in use survives"
 
 echo "ALL TESTS PASSED"

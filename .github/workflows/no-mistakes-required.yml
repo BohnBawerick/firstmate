@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 # GitHub concurrency groups retain at most one pending run, replacing older
 # pending runs even when cancel-in-progress is false. Give body-bearing events
@@ -26,5 +27,62 @@ jobs:
       github.event.pull_request.user.login != 'github-actions[bot]' &&
       github.event.pull_request.user.login != 'dependabot[bot]'
     steps:
+      # The event payload is a snapshot taken when the event fired. A push and
+      # the matching body re-attestation are two separate forge writes, so the
+      # synchronize payload can carry the new head next to the previous body
+      # and the gate then fails on an attestation the PR no longer has. Read
+      # body and head together from the API instead, so the verdict describes
+      # the PR as it is now and a re-run clears a verdict that is out of date.
+      - name: Read the current pull request body and head
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          # Reading live still lands in the gap between those two writes: the
+          # push wakes this run, and the body catches up a moment later. Re-read
+          # the pull request while its attestation still names an older head, so
+          # the verdict describes the finished pipeline and not the gap.
+          attempts=${NM_BODY_SYNC_ATTEMPTS:-6}
+          delay=${NM_BODY_SYNC_DELAY_SECONDS:-10}
+          attempt=1
+          while :; do
+            gh api "repos/${PR_REPO}/pulls/${PR_NUMBER}" > pull-request.json
+            head_sha=$(jq -r '.head.sha // ""' pull-request.json)
+            attested=$(jq -r '
+              (.body // "")
+              | capture("no-mistakes-pipeline-attestation:v1 (?<json>\\{.*?\\}) -->")
+              | .json
+              | fromjson
+              | .head_sha // ""
+            ' pull-request.json 2>/dev/null) || attested=""
+            # Nothing to wait for: no attestation at all, or it names this head.
+            [ -n "$attested" ] && [ "$attested" != "$head_sha" ] || break
+            [ "$attempt" -lt "$attempts" ] || break
+            echo "attestation names ${attested}, head is ${head_sha}; re-reading in ${delay}s"
+            attempt=$((attempt + 1))
+            sleep "$delay"
+          done
+          # Random heredoc delimiter: the body is author-controlled, so a fixed
+          # marker would let a PR body forge extra step outputs.
+          delimiter="NM_BODY_$(openssl rand -hex 16)"
+          {
+            printf 'head-sha=%s\n' "$(jq -r '.head.sha // ""' pull-request.json)"
+            printf 'head-ref=%s\n' "$(jq -r '.head.ref // ""' pull-request.json)"
+            printf 'author=%s\n' "$(jq -r '.user.login // ""' pull-request.json)"
+            printf 'body<<%s\n' "$delimiter"
+            jq -r '.body // ""' pull-request.json
+            printf '%s\n' "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+          rm -f pull-request.json
+
       - name: Verify no-mistakes signature and pipeline attestation
         uses: kunchenguid/no-mistakes/.github/actions/require-no-mistakes@32d396ac0f29135daf7fcb9964aba9d5f4e796d6 # post-v1.57.1, untagged (action added in #819)
+        with:
+          pr-body: ${{ steps.pr.outputs.body }}
+          pr-head-sha: ${{ steps.pr.outputs.head-sha }}
+          pr-head-ref: ${{ steps.pr.outputs.head-ref }}
+          pr-author: ${{ steps.pr.outputs.author }}
+          pr-number: ${{ github.event.pull_request.number }}

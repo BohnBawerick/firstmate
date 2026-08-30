@@ -57,6 +57,7 @@ That is what turns a swallowed signal from a lane-wide multi-hour hang into a re
 | Guarantee | Regression |
 |---|---|
 | A descendant that outlives its script never holds the lane's own output stream, and the lane waits only on the PID it started. | `tests/fm-test-run.test.sh::test_lane_reaps_a_leaked_child_and_keeps_going` |
+| The same containment holds while a per-script bound is in force, which is the default on `--changed`. | `tests/fm-test-run.test.sh::test_lane_reaps_a_leaked_child_under_a_per_script_bound` |
 | A script that stops making progress is terminated at the per-script budget and reported by name with `exit=124`. | `tests/fm-test-run.test.sh::test_lane_times_out_a_hung_script_and_names_it` |
 | Replacing the shared pipe with a private file and a follower keeps every byte of stdout and stderr, in order. | `tests/fm-test-run.test.sh::test_lane_output_is_complete_and_ordered_without_a_shared_pipe` |
 | A process a test registers is reaped even when the test fails before its own reap runs. | `tests/fm-test-run.test.sh::test_test_helper_reaps_processes_a_failing_script_left_running` |

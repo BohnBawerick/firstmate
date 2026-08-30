@@ -1494,11 +1494,13 @@ effort_flag_for_harness() {
       esac
       ;;
     codex)
-      # The installed codex config schema uses model_reasoning_effort, and the
-      # bundled model catalog advertises low|medium|high|xhigh. Omit max rather
-      # than passing an unsupported value.
+      # The installed codex config schema uses model_reasoning_effort.
+      # Verified 2026-08-29 on codex-cli 0.150.1: an invalid-effort 400 lists
+      # none|minimal|low|medium|high|xhigh|max, and model_reasoning_effort="max"
+      # with --model gpt-5.6-luna started real work. Omit values outside
+      # low|medium|high|xhigh|max rather than passing a known-bad value.
       case "$effort" in
-        low|medium|high|xhigh) printf -- '-c %s ' "$(shell_quote "model_reasoning_effort=\"$effort\"")" ;;
+        low|medium|high|xhigh|max) printf -- '-c %s ' "$(shell_quote "model_reasoning_effort=\"$effort\"")" ;;
       esac
       ;;
     grok)
