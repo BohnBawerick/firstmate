@@ -63,7 +63,7 @@ branch_sync:
 ## Regression coverage
 
 `tests/fm-crew-state.test.sh` pins both directions over throwaway git repos and a fake CLI serving the exact shapes above.
-Seven assertions cover the case: a live run at an unresolvable head reported through `axi status` and through the coarse runs list; a terminal verdict preserved when `submitted_head` binds the run; a terminal verdict withheld as `unknown` on both paths when nothing binds it; a genuine failure at the current head still reported `failed`; and a provably diverged newest row blocking attribution instead of falling through to an older row.
+Seven assertions cover the case: a live run at an unresolvable head reported through `axi status`, which binds as unverified because that run carries no `branch_sync` block; the same shape reached through the coarse runs list, which carries no launch anchor and no custody block, so the walk stops at unknown attribution instead of binding; a terminal verdict preserved when `submitted_head` binds the run; a terminal verdict withheld as `unknown` on both paths when nothing binds it; a genuine failure at the current head still reported `failed`; and a provably diverged newest row blocking attribution instead of falling through to an older row.
 
 ```console
 $ bash tests/fm-crew-state.test.sh | tail -1
