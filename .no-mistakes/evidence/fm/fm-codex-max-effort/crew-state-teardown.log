@@ -1,0 +1,139 @@
+FM_TEST_BEGIN 2026-08-30T06:54:53Z tests/fm-crew-state.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - active run-step is authoritative
+ok - stale needs-decision over active run is superseded
+ok - stale blocked over active run is superseded
+ok - genuine parked run is not flagged superseded
+ok - scalar gate parked run is not flagged superseded
+ok - gate block parked run is not flagged superseded
+ok - ci-ready status log beats monitoring run
+ok - ci-monitoring run with checks already green surfaces done
+ok - top-level ci status uses ci log green marker
+ok - terminal no-checks ci-monitor marker surfaces done
+ok - base-advance rearm after green stays working
+ok - pending no-checks ci-monitor marker stays working
+ok - ci-monitoring run with checks not yet green stays working
+ok - a fresh issue after an earlier green reading is not masked
+ok - stale checks-green status log does not mask CI relapse
+ok - ci fixing is not overridden by an earlier green marker
+ok - top-level fixing is not overridden by a stale ci running row
+ok - top-level fixing is not overridden by a stale done log
+ok - terminal passed run is authoritative
+ok - terminal failed run is authoritative
+ok - cross-branch run is attributed via the real runs list
+ok - cross-branch attribution picks the branch's most recent row
+ok - coarse run does not probe another branch's ci log
+ok - another branch's run is ignored, falls back
+ok - no run + a busy semantic record reads working, attributed to its source
+ok - a converted adapter never reads working from rendered footer text
+ok - grok still reads working through its isolated rendered-tail fallback
+ok - herdr's native busy verdict reads working with no record present
+ok - a mid-tool-call crew stays working because its record outranks herdr's generation state
+ok - an idle record with idle agent_status stays not-busy (no regression for a human-blocked agent)
+ok - no run + idle pane uses the status-log verb
+ok - no run + idle pane parses keyed status syntax
+ok - no run + idle pane on a paused: status reports state: paused with its reason
+ok - no run + idle pane honors the configured paused verb
+ok - a trailing resolved: event does not corrupt state render (idle stays idle)
+ok - dead window ignores stale status log
+ok - closed pane still reports a terminal run-step
+ok - closed pane still reports an active run-step
+ok - no timeout command uses perl bound
+ok - scout skips the run lookup
+ok - torn-down worktree is handled gracefully
+ok - fm-crew-state remote: alive endpoint falls through to the routed status log
+ok - fm-crew-state remote: an idle alive endpoint reads alive, never gone or dead
+ok - fm-crew-state remote: an unreachable host reads unknown-remote, never gone or dead
+ok - fm-crew-state remote: the remote host's own dead verdict is reported truthfully
+ok - missing meta is handled gracefully
+ok - crew_is_provably_working absorbs a validating crew found only via the runs-list fallback
+ok - crew_is_provably_working still surfaces a genuinely stopped crew (safety property preserved)
+ok - usage error exits 2
+ok - historical same-branch rewritten head is not attributed as current
+ok - active run with valid descendant fix head remains current
+ok - local work advanced past run head invalidates attribution
+ok - pipeline-owned active run binds without head equality and beats the failed row
+ok - a genuinely failed run with no later run is not hidden
+ok - coarse scan stops on an unresolvable active row instead of binding an older one
+ok - the exemption requires branch_sync.state=pipeline_owned
+ok - the exemption never applies to a terminal run
+ok - missing run head falls back instead of matching by branch
+ok - pipeline-advanced run head is not reported as a stale failure
+ok - coarse walk stops at an unresolvable newest row instead of binding a stale failure
+ok - submitted head binds an advanced-head run and preserves its terminal verdict
+ok - terminal verdict is withheld when run identity cannot be established
+ok - coarse terminal verdict is withheld when identity cannot be established
+ok - genuine failed run at the current head is still reported failed
+ok - provably diverged newest row blocks attribution instead of falling through
+ok - a hardened task with a finished run but no quality receipt is not done
+ok - a hardened task with a passing quality receipt reports done unchanged
+ok - a hardened task whose receipt predates HEAD reports done and names the drift
+ok - a quality verdict on a detail-less status line leaves no empty field
+ok - an unreadable quality receipt reports unknown, distinct from a missing one
+ok - a hardened task whose receipt only reported a score is not done
+ok - a task with any posture but hardened is untouched by the quality gate
+ok - the quality gate filters only a done verdict, never an in-flight one
+all fm-crew-state tests passed
+FM_TEST_END 2026-08-30T06:55:21Z tests/fm-crew-state.test.sh exit=0 duration_ms=28322 gate_skip=false
+FM_TEST_BEGIN 2026-08-30T06:55:21Z tests/fm-teardown.test.sh family=pr-forge expected_gate_skip=none
+ok - local-only worktree with HEAD on a fork remote is torn down and the home summary is refreshed
+ok - teardown prompts tasks-axi backlog refresh when compatible
+ok - teardown honors config/backlog-backend=manual even when tasks-axi is compatible
+ok - local-only worktree with truly unpushed work is refused (safety preserved)
+ok - local-only worktree with work merged into local main is torn down (no regression)
+ok - no-mistakes worktree with HEAD on origin is torn down (no regression)
+ok - no-mistakes worktree with work merged into local main is torn down
+ok - no-mistakes worktree with genuinely unlanded work is refused (safety preserved)
+ok - local-only worktree with unpushed work is torn down under --force (escape hatch)
+ok - teardown completes when an exact busy-state sidecar is already absent
+ok - herdr teardown removes pane-owned escalation dedupe state
+ok - teardown retires window-keyed and task-keyed watcher internal markers
+ok - herdr flat teardown refuses before returning the isolated copy under lock contention and the retry completes cleanly
+ok - herdr flat teardown never erases records when pane presence is unparseable
+ok - herdr flat teardown preflight refuses before every destructive change
+ok - forced secondmate teardown preflights every Herdr child before cleanup mutation
+ok - forced secondmate teardown holds every descendant lifecycle and metadata lock
+ok - forced secondmate teardown retains Herdr child identity until exact pane disappearance
+ok - forced teardown retains a nested secondmate home and its grandchild's Herdr identity when the grandchild close is unconfirmed
+ok - herdr projection teardown retires its journal only after confirming the exact recorded pane is gone
+ok - herdr projection teardown retains every record when post-close presence is unknown
+ok - herdr projection teardown surfaces failed focus restoration without turning confirmed cleanup into a hard failure
+ok - squash-merged + deleted-branch worktree (PR merged) is torn down (the fix)
+ok - squash-merged PR accepts a local HEAD that is an ancestor of the final PR head
+ok - teardown discovers a merged PR by branch name and tears down when no pr= was ever recorded
+ok - squash-merged PR accepts replayed unpushed local patches contained in the PR head
+ok - merged PR does not allow teardown after a later local commit
+ok - fm-pr-check does not refresh PR head after HEAD moves
+ok - fm-pr-check records the remote PR head when the local worktree lags
+ok - worktree whose content already landed in the default branch is torn down (content fallback)
+ok - content fallback refreshes origin default before comparing trees
+ok - dirty worktree is refused even when its committed work has landed (dirty always wins)
+ok - gh lookup error with content not in default refuses (fail-safe)
+ok - provably-stale worktree index.lock (old, no live holder) is cleared and teardown succeeds
+ok - live-held worktree index.lock is never removed and teardown refuses
+ok - lsof errors leave worktree index.lock in place and refuse teardown
+ok - stale lock cleanup rechecks and refuses dirty worktree before return
+ok - normal repo index.lock is resolved from the worktree and cleared when stale
+ok - lock mtime read failures leave worktree index.lock in place and refuse teardown
+ok - transient index.lock cleared after first failed return is retried successfully without force-remove
+ok - persistent index.lock exhausts retries and refuses without force-removing the lock
+ok - empty retry wait overrides use the default without aborting teardown
+ok - fractional legacy retry wait remains supported without arithmetic
+ok - a task's own parked no-mistakes run is aborted, not orphaned, before the worker is removed
+ok - teardown refuses before reap or removal when a task-owned run remains parked
+ok - a different run cannot confirm the targeted abort
+ok - empty post-abort status is not accepted as confirmation
+ok - the CLI's exact run-not-found signal confirms completion
+ok - a parked run on another branch is never aborted by this task's teardown (ownership is precise)
+ok - a task-owned autonomous running step is left alone rather than aborted
+ok - a leaked descendant process rooted under the task's worktree is reaped by teardown, not left surviving
+ok - a leaked descendant process rooted under the task's per-task tasktmp is reaped by teardown too
+ok - missing lsof falls back to reaping the tmux pane process group
+ok - an erroring lsof scan refuses teardown and preserves the task
+ok - a reused pid with a different start time is never force-killed
+not ok - exec-changed-process: teardown should succeed: expected exit 0, got 1
+FM_TEST_END 2026-08-30T07:00:52Z tests/fm-teardown.test.sh exit=1 duration_ms=330307 gate_skip=false
+FM_TEST_SUMMARY total=2 failed=1 skipped_gate=0 duration_ms=359088
+FM_TEST_SUMMARY_FAMILY family=pr-forge count=1 duration_ms=330307 failed=1
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=28322 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-teardown.test.sh duration_ms=330307
+FM_TEST_SLOWEST rank=2 script=tests/fm-crew-state.test.sh duration_ms=28322

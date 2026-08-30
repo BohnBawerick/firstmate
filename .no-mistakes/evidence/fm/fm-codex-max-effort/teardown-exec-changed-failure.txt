@@ -1,0 +1,20 @@
+tests/fm-teardown.test.sh :: test_exec_changed_process_is_still_reaped fails on this
+host. Diagnosis (instrumented run of bin/fm-teardown.sh's reap loop):
+
+  teardown: reaping leaked worktree process(es) for task-x1: 28105
+  DEBUG recheck pass=1 tracked=[28105] ident=[lstart=Sun Aug 30 15:05:19 2026] now=[lstart=Sun Aug 30 15:05:18 2026]
+  DEBUG recheck pass=2 tracked=[28105] ident=[lstart=Sun Aug 30 15:05:18 2026] now=[lstart=Sun Aug 30 15:05:17 2026]
+  DEBUG recheck pass=3 tracked=[28105] ident=[lstart=Sun Aug 30 15:05:17 2026] now=[lstart=Sun Aug 30 15:05:16 2026]
+  REFUSED: leaked worktree processes for task-x1 remain after 3 reap attempts
+
+The test pins FM_PROC_ROOT_OVERRIDE at a missing directory, so process identity
+falls back to `ps -p <pid> -o lstart=`. On this WSL2 host that value is not
+stable for a live pid (see wsl2-ps-lstart-drift.txt), so the identity re-check
+never matches and the SIGTERM-ignoring process is never force-killed.
+
+Not caused by this branch: bin/fm-teardown.sh's task_process_identity /
+task_process_identity_matches / reap_task_worktree_processes are byte-identical
+at base 672c6d0 and at target a25825b, and the test body is unchanged.
+`git diff 672c6d0..a25825b -- bin/fm-teardown.sh` touches only a comment in
+that region. The /proc path used on normal Linux CI runners reads a stable
+starttime tick count instead.

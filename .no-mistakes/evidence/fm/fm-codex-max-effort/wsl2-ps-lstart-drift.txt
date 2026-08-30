@@ -1,0 +1,7 @@
+host ps lstart stability probe (same live pid, 5 consecutive reads)
+  read 1: Sun Aug 30 15:06:16 2026
+  read 2: Sun Aug 30 15:06:15 2026
+  read 3: Sun Aug 30 15:06:15 2026
+  read 4: Sun Aug 30 15:06:15 2026
+  read 5: Sun Aug 30 15:06:15 2026
+/proc starttime (stable ticks): 74920747
