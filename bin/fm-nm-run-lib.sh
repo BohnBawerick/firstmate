@@ -132,18 +132,6 @@ fm_nm_submitted_head() {  # <worktree> <timeout_secs>
 # fm_nm_head_identity directly instead.
 fm_nm_head_matches_worktree() {  # <worktree> <run_head>
   [ "$(fm_nm_head_identity "$1" "$2")" = match ]
-  [ "$(fm_nm_head_identity "$1" "$2")" = match ]
-}
-
-# 0 if head $2 resolves to a commit object in worktree $1 at all. This
-# distinguishes a PROVEN mismatch (resolvable but not current: a historical or
-# diverged head fm_nm_head_matches_worktree correctly rejects) from UNKNOWN
-# attribution (unresolvable: e.g. a pipeline-owned lane head that never
-# reached this worktree). A caller scanning run rows newest-first must stop on
-# unknown attribution rather than surface an older, superseded run.
-fm_nm_head_resolvable() {  # <worktree> <head>
-  [ -n "$2" ] || return 1
-  git -C "$1" rev-parse --verify --quiet "$2^{commit}" >/dev/null 2>&1
 }
 
 # branch_sync.state from captured `axi status` TOON $1: the scalar directly
