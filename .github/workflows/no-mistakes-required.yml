@@ -41,7 +41,30 @@ jobs:
           PR_REPO: ${{ github.repository }}
         run: |
           set -eu
-          gh api "repos/${PR_REPO}/pulls/${PR_NUMBER}" > pull-request.json
+          # Reading live still lands in the gap between those two writes: the
+          # push wakes this run, and the body catches up a moment later. Re-read
+          # the pull request while its attestation still names an older head, so
+          # the verdict describes the finished pipeline and not the gap.
+          attempts=${NM_BODY_SYNC_ATTEMPTS:-6}
+          delay=${NM_BODY_SYNC_DELAY_SECONDS:-10}
+          attempt=1
+          while :; do
+            gh api "repos/${PR_REPO}/pulls/${PR_NUMBER}" > pull-request.json
+            head_sha=$(jq -r '.head.sha // ""' pull-request.json)
+            attested=$(jq -r '
+              (.body // "")
+              | capture("no-mistakes-pipeline-attestation:v1 (?<json>\\{.*?\\}) -->")
+              | .json
+              | fromjson
+              | .head_sha // ""
+            ' pull-request.json 2>/dev/null) || attested=""
+            # Nothing to wait for: no attestation at all, or it names this head.
+            [ -n "$attested" ] && [ "$attested" != "$head_sha" ] || break
+            [ "$attempt" -lt "$attempts" ] || break
+            echo "attestation names ${attested}, head is ${head_sha}; re-reading in ${delay}s"
+            attempt=$((attempt + 1))
+            sleep "$delay"
+          done
           # Random heredoc delimiter: the body is author-controlled, so a fixed
           # marker would let a PR body forge extra step outputs.
           delimiter="NM_BODY_$(openssl rand -hex 16)"

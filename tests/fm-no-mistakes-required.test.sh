@@ -128,9 +128,11 @@ with open(path, "w", encoding="utf-8") as handle:
 PY
 }
 
-# Run the workflow's own resolve step, with `gh` stubbed to serve one payload.
+# Run the workflow's own resolve step, with `gh` stubbed to serve one payload
+# per call. The last payload repeats once the list runs out, so a single body
+# models a pull request whose body never moves.
 run_resolve_step() {
-  local api_body=$1
+  local body index=0
   rm -rf "$RESOLVE_DIR"
   mkdir -p "$RESOLVE_DIR/bin" "$RESOLVE_DIR/work"
   python3 - "$WORKFLOW" "$RESOLVE_DIR/step.sh" <<'PY' || fail "could not read the resolve step out of the workflow"
@@ -145,22 +147,34 @@ step = next(s for s in document["jobs"]["check"]["steps"] if s.get("id") == "pr"
 with open(destination, "w", encoding="utf-8") as handle:
     handle.write(step["run"])
 PY
-  write_json_file "$RESOLVE_DIR/api-payload.json" pull-request "$api_body"
+  for body in "$@"; do
+    index=$((index + 1))
+    write_json_file "$RESOLVE_DIR/api-payload-$index.json" pull-request "$body"
+  done
   cat > "$RESOLVE_DIR/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$GH_ARGS_LOG"
 [ "$1" = api ] || { echo "unexpected gh subcommand: $1" >&2; exit 9; }
-cat "$GH_PAYLOAD"
+call=$(wc -l < "$GH_ARGS_LOG" | tr -d ' ')
+[ "$call" -le "$GH_PAYLOAD_COUNT" ] || call=$GH_PAYLOAD_COUNT
+cat "$GH_PAYLOAD_DIR/api-payload-$call.json"
 EOF
   chmod +x "$RESOLVE_DIR/bin/gh"
   (
     cd "$RESOLVE_DIR/work" || exit 1
     PATH="$RESOLVE_DIR/bin:$PATH" \
-      GH_ARGS_LOG="$RESOLVE_DIR/gh-args" GH_PAYLOAD="$RESOLVE_DIR/api-payload.json" \
+      GH_ARGS_LOG="$RESOLVE_DIR/gh-args" GH_PAYLOAD_DIR="$RESOLVE_DIR" \
+      GH_PAYLOAD_COUNT="$index" \
+      NM_BODY_SYNC_ATTEMPTS="${RESOLVE_ATTEMPTS:-2}" NM_BODY_SYNC_DELAY_SECONDS=0 \
       GH_TOKEN=stub PR_NUMBER=3006 PR_REPO=acme/widgets \
       GITHUB_OUTPUT="$RESOLVE_DIR/outputs" \
       bash "$RESOLVE_DIR/step.sh"
   )
+}
+
+# How many times the resolve step asked the API for the pull request.
+resolve_step_reads() {
+  wc -l < "$RESOLVE_DIR/gh-args" | tr -d ' '
 }
 
 # Hand the resolve step's outputs to the verifier the way the action does,
@@ -249,6 +263,54 @@ test_resolve_step_keeps_an_out_of_date_body_failing() {
   pass "reading the pull request live does not excuse an older attestation"
 }
 
+# --- the body catches up a moment after the push ----------------------------
+#
+# The push wakes this workflow and the body re-attestation lands right after it,
+# so even a live read can arrive in the gap between the two writes. The resolve
+# step re-reads the pull request while the attestation still names an older
+# head, and stops once it catches up, once its bound runs out, or at once when
+# there is no attestation to wait for.
+
+test_resolve_step_waits_for_the_body_to_catch_up() {
+  local output rc=0 reads
+  write_json_file "$STALE_EVENT" event "$(attested_body "$OLD_SHA")"
+  RESOLVE_ATTEMPTS=3 run_resolve_step "$(attested_body "$OLD_SHA")" "$(attested_body "$NEW_SHA")" \
+    || fail "the workflow resolve step failed against a stubbed gh"
+  reads=$(resolve_step_reads)
+  [ "$reads" -eq 2 ] || fail "expected one re-read of the pull request, saw $reads read(s)"
+  output=$(verify_from_resolved_outputs 2>&1) || rc=$?
+  expect_code 0 "$rc" "the re-attested body was rejected: $output"
+  assert_contains "$output" "Found structurally compliant pipeline step attestation." \
+    "the re-read body did not reach the shared verifier"
+  pass "the resolve step waits for a body that is still catching up with the head"
+}
+
+test_resolve_step_stops_re_reading_at_its_bound() {
+  local output rc=0 reads
+  write_json_file "$STALE_EVENT" event "$(attested_body "$OLD_SHA")"
+  RESOLVE_ATTEMPTS=3 run_resolve_step "$(attested_body "$OLD_SHA")" \
+    || fail "the workflow resolve step failed against a stubbed gh"
+  reads=$(resolve_step_reads)
+  [ "$reads" -eq 3 ] || fail "expected 3 reads of the pull request, saw $reads"
+  output=$(verify_from_resolved_outputs 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "a body that never catches up must not pass"
+  assert_contains "$output" "$NEW_SHA" \
+    "the failure did not name the head the pull request actually has"
+  pass "the resolve step gives up on its bound and lets the older attestation fail"
+}
+
+test_resolve_step_does_not_wait_without_an_attestation() {
+  local output rc=0 reads
+  write_json_file "$STALE_EVENT" event "$(attested_body "$OLD_SHA")"
+  RESOLVE_ATTEMPTS=3 run_resolve_step "$SIGNATURE" \
+    || fail "the workflow resolve step failed against a stubbed gh"
+  reads=$(resolve_step_reads)
+  [ "$reads" -eq 1 ] || fail "expected a single read for a body with no attestation, saw $reads"
+  output=$(verify_from_resolved_outputs 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "a body with no attestation must not pass"
+  pass "a body carrying no attestation fails at once instead of waiting"
+}
+
 fetch_shared_verifier
 test_matching_head_and_completed_steps_pass
 test_mismatched_head_fails_with_both_shas
@@ -256,3 +318,6 @@ test_missing_head_fails
 test_event_payload_alone_fails_on_a_re_attested_pull_request
 test_resolve_step_supplies_the_current_body
 test_resolve_step_keeps_an_out_of_date_body_failing
+test_resolve_step_waits_for_the_body_to_catch_up
+test_resolve_step_stops_re_reading_at_its_bound
+test_resolve_step_does_not_wait_without_an_attestation
