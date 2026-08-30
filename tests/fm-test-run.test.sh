@@ -294,7 +294,6 @@ test_changed_uses_bounded_automatic_concurrency() {
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-changed-consent.XXXXXX")
   repo="$tmp/repo"
   init_changed_fixture_repo "$repo"
-  cp "$ROOT/bin/fm-timeout-lib.sh" "$repo/bin/fm-timeout-lib.sh"
   for script in fm-backend-herdr-smoke.test.sh fm-daemon.test.sh fm-pi-watch-extension.test.sh; do
     cat >"$repo/tests/$script" <<'SH'
 #!/usr/bin/env bash
@@ -336,35 +335,36 @@ assert automatic["selection"].split(";")[-1] == f"jobs={expected}"
 assert serial["selection"].split(";")[-1] == "jobs=1"
 PY
 
+  # The automatic bound is 900s, so what a fast run can observe is the bound the
+  # run resolved, not the bound firing. test_per_script_timeout_bounds_a_hang
+  # below proves a resolved bound really terminates a hung script.
   timeout_repo="$tmp/timeout-repo"
   timeout_script=tests/fm-calm-pi-extension.test.sh
   mkdir -p "$timeout_repo/bin" "$timeout_repo/tests"
   cp "$RUNNER" "$timeout_repo/bin/fm-test-run.sh"
-  cat >"$timeout_repo/bin/fm-timeout-lib.sh" <<'SH'
-fm_run_timed() {
-  [ "$1" -eq 900 ] || return 99
-  return 124
-}
-SH
   cat >"$timeout_repo/$timeout_script" <<'SH'
 #!/usr/bin/env bash
-touch should-not-run
-echo "not ok - automatic timeout helper was bypassed"
+echo "ok - single unproven changed script"
 SH
   chmod +x "$timeout_repo/bin/fm-test-run.sh" "$timeout_repo/$timeout_script"
   git -C "$timeout_repo" init -q
   git -C "$timeout_repo" add .
   git -C "$timeout_repo" -c user.name=test -c user.email=test@example.invalid commit -qm baseline
   printf '\n' >>"$timeout_repo/$timeout_script"
-  set +e
-  (cd "$timeout_repo" && bin/fm-test-run.sh --changed --base HEAD) \
-    >"$tmp/timeout.out" 2>"$tmp/timeout.err"
-  rc=$?
-  set -e
-  [ "$rc" -eq 1 ] || fail "single-script automatic timeout must fail the run, got $rc"
-  grep -Eq '^FM_TEST_END .+ tests/fm-calm-pi-extension\.test\.sh exit=124 ' "$tmp/timeout.out" \
-    || fail "single unproven changed script did not receive the automatic timeout: $(cat "$tmp/timeout.out")"
-  [ ! -e "$timeout_repo/should-not-run" ] || fail "automatic timeout helper did not own the single changed script"
+  (cd "$timeout_repo" && bin/fm-test-run.sh --changed --base HEAD --json "$tmp/auto-bound.json") \
+    >"$tmp/timeout.out" 2>"$tmp/timeout.err" \
+    || fail "automatic changed run failed: $(cat "$tmp/timeout.err")"
+  (cd "$timeout_repo" && bin/fm-test-run.sh --changed --base HEAD --per-script-timeout-secs 42 \
+    --json "$tmp/explicit-bound.json") >"$tmp/explicit.out" 2>"$tmp/explicit.err" \
+    || fail "explicit changed bound run failed: $(cat "$tmp/explicit.err")"
+  python3 - "$tmp/auto-bound.json" "$tmp/explicit-bound.json" <<'PY' \
+    || fail "changed timing artifacts did not record their resolved per-script bounds"
+import json, sys
+automatic = json.load(open(sys.argv[1], encoding="utf-8"))
+explicit = json.load(open(sys.argv[2], encoding="utf-8"))
+assert "per-script-timeout=900s" in automatic["selection"].split(";")
+assert "per-script-timeout=42s" in explicit["selection"].split(";")
+PY
 
   rm -rf "$tmp"
   pass "changed defaults to bounded automatic scheduling with serial override"
@@ -794,7 +794,6 @@ test_per_script_timeout_bounds_a_hang() {
   hang=tests/fm-hang-fixture.test.sh
   mkdir -p "$repo/bin" "$repo/tests"
   cp "$RUNNER" "$runner"
-  cp "$ROOT/bin/fm-timeout-lib.sh" "$repo/bin/fm-timeout-lib.sh"
   grandchild_pid="$tmp/grandchild.pid"
   cat >"$repo/$hang" <<'SH'
 #!/usr/bin/env bash
@@ -1188,6 +1187,48 @@ SH
   pass "a leaked descendant is reaped by pid and the lane keeps running"
 }
 
+# The same containment has to hold while a per-script bound is in force, which is
+# the default on --changed. A bound implemented by wrapping the script in its own
+# timeout process moves the script into that process's group; the reap below then
+# inspects an empty group and lets every leaked descendant through in silence.
+test_lane_reaps_a_leaked_child_under_a_per_script_bound() {
+  local tmp leak_pid_file after_marker out rc leaked
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-leak-bound.XXXXXX")
+  leak_pid_file="$tmp/leaked.pid"
+  after_marker="$tmp/after.ran"
+  write_stubborn_leak_fixture "$tmp/leaky.test.sh" "$leak_pid_file"
+  cat >"$tmp/after.test.sh" <<SH
+#!/usr/bin/env bash
+: >"$after_marker"
+echo "ok - the lane reached the next script"
+SH
+  chmod +x "$tmp/after.test.sh"
+
+  out="$tmp/out"
+  rc=0
+  # Both limits are generous: this case must be decided by reaping, not by either
+  # of them firing.
+  "$RUNNER" --script-timeout 120 --per-script-timeout-secs 60 \
+    "$tmp/leaky.test.sh" "$tmp/after.test.sh" >"$out" 2>"$tmp/err" || rc=$?
+
+  [ -f "$after_marker" ] \
+    || { rm -rf "$tmp"; fail "the bounded lane never reached the script after the leaking one"; }
+  grep -Fq "FM_TEST_LEAK $tmp/leaky.test.sh" "$out" \
+    || { rm -rf "$tmp"; fail "a leaked descendant was not reported under a per-script bound: $(cat "$out")"; }
+  grep -Fq "$tmp/leaky.test.sh exit=0 " "$out" \
+    || { rm -rf "$tmp"; fail "the leaking script's own result was not preserved: $(cat "$out")"; }
+  leaked=$(cat "$leak_pid_file" 2>/dev/null || true)
+  [ -n "$leaked" ] || { rm -rf "$tmp"; fail "fixture recorded no leaked pid"; }
+  if ! wait_pid_gone "$leaked" 50; then
+    kill -KILL "$leaked" 2>/dev/null || true
+    rm -rf "$tmp"
+    fail "the bounded lane left pid $leaked running after the script that started it exited"
+  fi
+  [ "$rc" -eq 0 ] || { rm -rf "$tmp"; fail "a reaped leak must not fail the lane, got $rc"; }
+  rm -rf "$tmp"
+  pass "a leaked descendant is reaped under a per-script bound too"
+}
+
 test_lane_times_out_a_hung_script_and_names_it() {
   local tmp out rc started elapsed
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-hang.XXXXXX")
@@ -1434,6 +1475,7 @@ test_jobs_parallel_scheduler_and_failure_propagation
 test_herdr_ci_family_run_has_a_step_timeout
 test_aggregate_json
 test_lane_reaps_a_leaked_child_and_keeps_going
+test_lane_reaps_a_leaked_child_under_a_per_script_bound
 test_lane_times_out_a_hung_script_and_names_it
 test_lane_output_is_complete_and_ordered_without_a_shared_pipe
 test_test_helper_reaps_processes_a_failing_script_left_running

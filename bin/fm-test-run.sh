@@ -68,6 +68,9 @@
 #                   approaches it, so it only converts a HUNG
 #                   script into a bounded failure. --max-wall-ms is checked
 #                   after the run and so cannot catch a hang on its own.
+#                   The effective wait is the tighter of this bound and
+#                   --script-timeout, so the lane-wide backstop can never be
+#                   outrun by a looser per-script value.
 #                   External interruption cleanup is outside this runner's
 #                   guarantee; configured per-script bounds remain authoritative.
 #   --max-wall-ms N fail the run when its measured invocation wall clock exceeds
@@ -374,18 +377,21 @@ kill_pid_hard() {  # <pid>
 # lane only ever blocks in short sleeps and in `wait`, both of which let a signal
 # through immediately.
 run_script_contained() {  # <script> <output-file> <status-file>
-  local script=$1 out=$2 status=$3 pid pgid rc timed_out=0 unreaped=0 inflight bounded=0
-  set -m
+  local script=$1 out=$2 status=$3 pid pgid rc timed_out=0 unreaped=0 inflight
+  local budget=$SCRIPT_TIMEOUT limit_name=budget
   # PER_SCRIPT_TIMEOUT_SECS is the tighter, opt-in bound (and the automatic one
-  # on the --changed path); SCRIPT_TIMEOUT below stays the lane-wide backstop.
-  # The shared timeout lib owns the mechanism so every bounded call in this repo
-  # agrees on what "the bound was hit" means.
-  if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ]; then
-    bounded=1
-    fm_run_timed "$PER_SCRIPT_TIMEOUT_SECS" bash "$script" >"$out" 2>&1 &
-  else
-    bash "$script" >"$out" 2>&1 &
+  # on the --changed path); SCRIPT_TIMEOUT stays the lane-wide backstop, so the
+  # wait is whichever of the two is tighter and neither can be outrun. The lane
+  # owns the bound itself rather than wrapping the script in a second timeout
+  # mechanism: every such mechanism puts the command in a process group of its
+  # own, which would move the script out of the group reaped below and leave the
+  # containment looking at an empty one.
+  if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ] && [ "$PER_SCRIPT_TIMEOUT_SECS" -lt "$budget" ]; then
+    budget=$PER_SCRIPT_TIMEOUT_SECS
+    limit_name=bound
   fi
+  set -m
+  bash "$script" >"$out" 2>&1 &
   pid=$!
   set +m
   pgid=$(script_process_group "$pid") || pgid=
@@ -394,16 +400,16 @@ run_script_contained() {  # <script> <output-file> <status-file>
     inflight="$LANE_INFLIGHT_DIR/$pid"
     printf '%s %s\n' "$pid" "$pgid" >"$inflight" 2>/dev/null || inflight=
   fi
-  if ! wait_pid_within_budget "$pid" "$SCRIPT_TIMEOUT"; then
+  if ! wait_pid_within_budget "$pid" "$budget"; then
     timed_out=1
-    printf 'not ok - %s exceeded the per-script budget of %ss and was terminated\n' \
-      "$script" "$SCRIPT_TIMEOUT" >>"$out"
-    log "per-script budget of ${SCRIPT_TIMEOUT}s exceeded, terminating: $script"
+    printf 'not ok - %s exceeded the per-script %s of %ss and was terminated\n' \
+      "$script" "$limit_name" "$budget" >>"$out"
+    log "per-script $limit_name of ${budget}s exceeded, terminating: $script"
     if ! kill_pid_hard "$pid"; then
       unreaped=1
-      printf 'not ok - %s survived SIGKILL after its budget and was abandoned\n' \
-        "$script" >>"$out"
-      log "could not reap $script after its budget; moving on without waiting on it"
+      printf 'not ok - %s survived SIGKILL after its %s and was abandoned\n' \
+        "$script" "$limit_name" >>"$out"
+      log "could not reap $script after its $limit_name; moving on without waiting on it"
     fi
   fi
   rc=0
@@ -411,11 +417,6 @@ run_script_contained() {  # <script> <output-file> <status-file>
     wait "$pid" 2>/dev/null || rc=$?
   fi
   [ "$timed_out" -eq 0 ] || rc=124
-  if [ "$bounded" -eq 1 ] && [ "$timed_out" -eq 0 ] && [ "$rc" -eq 124 ]; then
-    printf 'not ok - %s exceeded the per-script bound of %ss and was terminated\n' \
-      "$script" "$PER_SCRIPT_TIMEOUT_SECS" >>"$out"
-    log "per-script bound of ${PER_SCRIPT_TIMEOUT_SECS}s exceeded, terminated: $script"
-  fi
   # Anything the script left behind dies here, while its group id still names it
   # and nothing else. A descendant that ignored TERM is escalated, because one
   # swallowed signal is all it takes to hold the lane. The leak is reported but
@@ -2071,6 +2072,9 @@ if [ "$MODE" = changed ] && [ "$JOBS_EXPLICIT" -eq 0 ]; then
     [ "$JOBS" -eq 1 ] || AUTO_CONCURRENCY=1
   fi
 fi
+if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ]; then
+  SELECTION_DESC="${SELECTION_DESC};per-script-timeout=${PER_SCRIPT_TIMEOUT_SECS}s"
+fi
 if [ "$JOBS" -gt 1 ] || [ "$MODE" = changed ]; then
   SELECTION_DESC="${SELECTION_DESC};jobs=$JOBS"
 fi
@@ -2119,12 +2123,6 @@ if [ "$JOBS" -gt 1 ]; then
     CONCURRENT_SCRIPTS+=("$s")
   done < <(LC_ALL=C sort -t"$(printf '\t')" -k1,1nr -k2,2 "$SCHEDULE_TMP")
   rm -f "$SCHEDULE_TMP"
-fi
-
-if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ]; then
-  [ -r "$ROOT/bin/fm-timeout-lib.sh" ] || die "per-script timeout helper not found: bin/fm-timeout-lib.sh"
-  # shellcheck source=bin/fm-timeout-lib.sh
-  . "$ROOT/bin/fm-timeout-lib.sh"
 fi
 
 RUN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run.XXXXXX")
