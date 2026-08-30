@@ -47,6 +47,26 @@ LOOP_SCRIPT=
 fail() { printf 'not ok - %s\n' "$1" >&2; cleanup_all; exit 1; }
 pass() { printf 'ok - %s\n' "$1"; }
 
+wait_for_file() {
+  local file=$1 attempts=${2:-80} attempt=0
+  while [ "$attempt" -lt "$attempts" ]; do
+    [ -e "$file" ] && return 0
+    sleep 0.25
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
+wait_for_log() {
+  local pattern=$1 file=$2 attempts=${3:-80} attempt=0
+  while [ "$attempt" -lt "$attempts" ]; do
+    grep -q "$pattern" "$file" 2>/dev/null && return 0
+    sleep 0.25
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
 cleanup_all() {
   if [ -n "${DAEMON_PID:-}" ]; then
     afk_exit "${STATE_DIR:-}" 2>/dev/null || true
@@ -277,7 +297,8 @@ test_scenario_a() {
   echo "done: PR https://example.test/pr/100" > "$STATE_DIR/fake-c1.status"
 
   # Wait for the watcher to detect the change and the daemon to attempt inject.
-  sleep 6
+  wait_for_file "$STATE_DIR/.subsuper-escalations" \
+    || fail "Scenario A: escalation was not buffered while input was pending"
 
   # Assert: the digest was NOT injected while the pane had pending input.
   if grep -q 'Supervisor escalate' "$LOG_FILE"; then
@@ -295,16 +316,12 @@ test_scenario_a() {
   sleep 0.5
 
   # Wait for the daemon to retry injection (housekeeping tick = 1s).
-  sleep 6
-
-  # Assert: human text was submitted alone (as a user message).
-  grep -q 'human draft text' "$LOG_FILE" \
-    || fail "Scenario A: human text not in log after submit"
-
-  # Assert: digest arrived after the pane went idle.
-  grep -q 'Supervisor escalate' "$LOG_FILE" \
+  wait_for_log 'human draft text' "$LOG_FILE" \
+    || fail "Scenario A: human text was not submitted after idle"
+  wait_for_log 'Supervisor escalate' "$LOG_FILE" \
     || fail "Scenario A: digest not injected after pane went idle"
 
+  # Assert: human text was submitted alone (as a user message).
   # Assert: human text and digest are on SEPARATE lines (never merged).
   if grep -q 'human draft text.*Supervisor escalate' "$LOG_FILE" || \
      grep -q 'Supervisor escalate.*human draft text' "$LOG_FILE"; then
@@ -347,7 +364,8 @@ test_scenario_b() {
 
   # Wait for the daemon to process the escalation and attempt inject (with the
   # swallowed Enter, the retry path fires).
-  sleep 8
+  wait_for_log 'Supervisor escalate' "$LOG_FILE" \
+    || fail "Scenario B: digest was not delivered"
 
   # Assert: exactly ONE terminal-safe marker in the log (no duplicate, no loss).
   local marker_count
@@ -389,7 +407,8 @@ test_scenario_c() {
   start_daemon
 
   echo "done: PR https://example.test/pr/300" > "$STATE_DIR/fake-c1.status"
-  sleep 6
+  wait_for_log 'Supervisor escalate' "$LOG_FILE" \
+    || fail "Scenario C: digest was not delivered"
 
   # Exactly one terminal-safe marker in the submitted log (no duplicate, no loss).
   local marker_count

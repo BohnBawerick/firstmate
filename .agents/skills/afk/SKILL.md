@@ -26,15 +26,16 @@ batched digest rather than per-wake injections.
 2. **Ensure the sub-supervisor daemon is running as a tracked background process.**
    Its hosting differs by harness.
    Pick the right path:
-   - **Harness WITH a native in-pane tracked-background tool** (e.g. claude's
-     background bash, grok's background tool): first run
+   - **Harness WITH a native in-pane tracked-background tool** (e.g. grok's
+     background tool, or Claude on a non-Herdr backend): first run
      `bin/fm-afk-launch.sh start-native`, then run
      `FM_AFK_STATE_PREPARED=1 bin/fm-afk-start.sh` through that native tool.
      This is a deliberate no-separate-terminal exception because the harness-hosted job creates no terminal or layout mutation, and a shell launcher cannot invoke a harness-native background tool.
      The launcher still owns lifecycle state and records the no-terminal mode, while the daemon inherits and auto-discovers the captain pane.
      If the native launch fails, run `bin/fm-afk-launch.sh stop` to roll back the prepared lifecycle.
      Do not wrap it in `nohup ... &` (Codex/herdr can reap fire-and-forget shell children after a tool call returns).
-   - **Harness WITHOUT one** (e.g. pi): run `bin/fm-afk-launch.sh start`. It is
+   - **Harness WITHOUT one** (e.g. pi, or Claude on Herdr): run
+     `bin/fm-afk-launch.sh start`. It is
      the single owner of the daemon terminal: it creates a NON-VISIBLE tracked
      terminal for the current backend (a herdr dedicated `--no-focus` workspace,
      a detached tmux session), records its exact id, and passes the captain pane
@@ -101,7 +102,7 @@ backend (tmux or herdr; see "Auto-discovered supervisor pane" below):
   Only herdr can, and only when a fresh styled (ANSI) re-read still shows a genuine agent composer container AND native agent-state is idle, so a false-unknown idle Claude composer cannot stall away-mode overnight.
   A dead shell, a modal, an unidentified or blank row, a degraded unstyled read, and a Pi separator pair the identity gate rejected all have no such proof and still defer.
   The container rule is one sentence: `unknown` may only mean "proven container, unjudgeable styling", never "proven container, unread text".
-  Native-hosted away auto-discovers the captain pane (`HERDR_PANE_ID`); it does not need a different flush target.
+  Native-hosted away on supported non-Herdr paths auto-discovers the captain pane (`HERDR_PANE_ID`); Claude on Herdr uses the dedicated terminal path above instead.
   Each adapter contributes only capture and capability facts to the fleet-wide screen classifier in `bin/fm-composer-lib.sh`, which owns every shape and verdict.
   See `docs/herdr-backend.md` "Composer and injection safety" for the operator contract.
   `pane_input_pending` stays fail-closed for other callers: every result except exact `empty` is pending.

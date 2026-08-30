@@ -29,6 +29,9 @@
 #   fm-afk-launch.sh start-native
 #                              Prepare lifecycle state for a harness-native
 #                              background job and record that no terminal exists.
+#                              Claude + Herdr redirects to start for safety.
+#                              That redirect requires explicit Herdr session and
+#                              supervisor-target configuration.
 #   fm-afk-launch.sh stop      Correct-ordered exit: SIGTERM the daemon so its
 #                              cleanup flushes WHILE state/.afk is still present,
 #                              wait for it, close the recorded terminal by exact
@@ -527,6 +530,21 @@ fm_afk_launch_start() {
   return "$result"
 }
 
+fm_afk_launch_require_explicit_herdr_target() {
+  local session=${HERDR_SESSION:-} target=${FM_SUPERVISOR_TARGET:-}
+  if [ -z "$session" ] || [ -z "$target" ]; then
+    fm_afk_launch_log "Claude + Herdr native launch requires explicit HERDR_SESSION and FM_SUPERVISOR_TARGET"
+    return 1
+  fi
+  case "$target" in
+    "$session":*) ;;
+    *)
+      fm_afk_launch_log "Claude + Herdr native launch target '$target' is outside HERDR_SESSION '$session'"
+      return 1
+      ;;
+  esac
+}
+
 fm_afk_launch_start_native() {
   local backup artifact had_afk=0 result=0
   mkdir -p "$FM_AFK_LAUNCH_STATE" || return 1
@@ -637,7 +655,17 @@ fm_afk_launch_main() {
   fm_afk_launch_lock_acquire || return 1
   case "${1:-start}" in
     start) fm_afk_launch_start ;;
-    start-native) fm_afk_launch_start_native ;;
+    start-native)
+      # Claude's Herdr background job would make its own supervisor target busy forever.
+      if [ "$("$FM_ROOT/bin/fm-harness.sh" 2>/dev/null || printf 'unknown')" = claude ] \
+        && [ "$(discover_supervisor_backend 2>/dev/null || true)" = herdr ]; then
+        fm_afk_launch_require_explicit_herdr_target || return 1
+        fm_afk_launch_log "Claude + Herdr native launch redirected to a non-visible daemon terminal"
+        fm_afk_launch_start
+      else
+        fm_afk_launch_start_native
+      fi
+      ;;
     stop) fm_afk_launch_stop ;;
     reconcile) fm_afk_launch_reconcile ;;
     -h|--help|help) fm_afk_launch_usage ;;

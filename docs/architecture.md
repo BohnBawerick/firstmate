@@ -108,7 +108,7 @@ It leads with a prominent bordered tangle banner, while `bin/fm-guard.sh` owns t
 On every verified primary harness, tracked hook integration gives the primary session a push-based backstop: when work, a process-event source, or Relay polling needs supervision and no identity-matched watcher lock with a fresh beacon is live, blocking-capable Stop hooks block and nonblocking turn-end integrations force one bounded follow-up.
 The guard covers the main primary and genuinely marked secondmate homes, exempts child crewmate/scout worktrees, is loop-safe per harness, and is documented in [turnend-guard.md](turnend-guard.md).
 
-A presence-gated sub-supervisor (`bin/fm-supervise-daemon.sh`) extends this for walk-away supervision: the `/afk` skill starts it through the tracked foreground helper `bin/fm-afk-start.sh`, after which the watcher reverts to daemon-managed one-shot mode and the daemon self-handles routine wakes in bash.
+A presence-gated sub-supervisor (`bin/fm-supervise-daemon.sh`) extends this for walk-away supervision: the `/afk` skill starts it through `bin/fm-afk-launch.sh` or a harness-native tracked background job, after which the watcher reverts to daemon-managed one-shot mode and the daemon self-handles routine wakes in bash.
 The watcher and daemon share `bin/fm-classify-lib.sh` for captain-relevant status verbs, declared-wait vocabulary (a `paused:` external wait and a verified `captain-held` transfer alike, through one combined predicate), and status-scan primitives.
 Terminal verbs remain captain-relevant, while a nonterminal progress verb cannot become terminal merely because its prose contains a legacy free-text token such as `merged`; bare legacy free-text lines remain compatible.
 The always-on watcher also uses that library's absorb classification on no-verb signals and first-sighting stale panes before status-log terminality is trusted, while the daemon maintains distinct wedge and declared-wait recheck cadences.
@@ -126,7 +126,7 @@ Composer classification has one shared owner, `bin/fm-composer-lib.sh`: tmux, he
 The daemon injects into an affirmatively `empty` composer.
 Pending text always defers.
 Unknown defers unless the backend proves the pane is a live agent composer waiting between turns; only herdr can, requiring a fresh styled re-read that still shows a genuine composer container plus native agent-state idle, so a clipped idle Claude composer cannot stall away-mode overnight while a dead shell, a modal, an unidentified row, and a degraded unstyled read still cannot receive an escalation.
-Native-hosted away auto-discovers the captain pane and does not use a second flush target.
+Native-hosted away on supported non-Herdr paths auto-discovers the captain pane and does not use a second flush target.
 The current operator boundary is in [Composer and injection safety](herdr-backend.md#composer-and-injection-safety).
 Unsupported supervisor backends refuse at daemon startup.
 Stalled escalation delivery retries the flush after `FM_MAX_DEFER_SECS`, including herdr native-idle delivery when the composer is unknown, and only then writes `state/.subsuper-inject-wedged` and attempts a configured backend-independent active alert.
