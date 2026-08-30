@@ -70,7 +70,9 @@
 #                   after the run and so cannot catch a hang on its own.
 #                   The effective wait is the tighter of this bound and
 #                   --script-timeout, so the lane-wide backstop can never be
-#                   outrun by a looser per-script value.
+#                   outrun by a looser per-script value. The timing artifact
+#                   records the effective bound, and the requested one beside it
+#                   whenever the backstop clamped it.
 #                   External interruption cleanup is outside this runner's
 #                   guarantee; configured per-script bounds remain authoritative.
 #   --max-wall-ms N fail the run when its measured invocation wall clock exceeds
@@ -157,6 +159,9 @@ JOBS_EXPLICIT=0
 JOBS_MAX=8
 MAX_WALL_MS=
 PER_SCRIPT_TIMEOUT_SECS=0
+# The per-script bound the lane actually waits on, resolved once from the
+# requested bound and the lane-wide backstop. 0 means the backstop decides.
+PER_SCRIPT_BOUND_SECS=0
 # Bound applied automatically on the automatic --changed path, derived from
 # measured healthy runtimes with margin rather than picked: the slowest measured
 # behavior test is the 341s Herdr presentation E2E, and the slowest script in a
@@ -379,15 +384,15 @@ kill_pid_hard() {  # <pid>
 run_script_contained() {  # <script> <output-file> <status-file>
   local script=$1 out=$2 status=$3 pid pgid rc timed_out=0 unreaped=0 inflight
   local budget=$SCRIPT_TIMEOUT limit_name=budget
-  # PER_SCRIPT_TIMEOUT_SECS is the tighter, opt-in bound (and the automatic one
-  # on the --changed path); SCRIPT_TIMEOUT stays the lane-wide backstop, so the
-  # wait is whichever of the two is tighter and neither can be outrun. The lane
-  # owns the bound itself rather than wrapping the script in a second timeout
-  # mechanism: every such mechanism puts the command in a process group of its
-  # own, which would move the script out of the group reaped below and leave the
-  # containment looking at an empty one.
-  if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ] && [ "$PER_SCRIPT_TIMEOUT_SECS" -lt "$budget" ]; then
-    budget=$PER_SCRIPT_TIMEOUT_SECS
+  # PER_SCRIPT_BOUND_SECS is the resolved opt-in bound: set only when it is
+  # tighter than SCRIPT_TIMEOUT, so the lane-wide backstop can never be outrun
+  # and the artifact, the log line and this wait all name the same seconds. The
+  # lane owns the bound itself rather than wrapping the script in a second
+  # timeout mechanism: every such mechanism puts the command in a process group
+  # of its own, which would move the script out of the group reaped below and
+  # leave the containment looking at an empty one.
+  if [ "$PER_SCRIPT_BOUND_SECS" -gt 0 ]; then
+    budget=$PER_SCRIPT_BOUND_SECS
     limit_name=bound
   fi
   set -m
@@ -2072,8 +2077,18 @@ if [ "$MODE" = changed ] && [ "$JOBS_EXPLICIT" -eq 0 ]; then
     [ "$JOBS" -eq 1 ] || AUTO_CONCURRENCY=1
   fi
 fi
+# Record the bound the run will really wait on, not the one it was asked for: a
+# requested bound at or above the lane backstop never fires, and an artifact that
+# claimed otherwise would disagree with the run's own failure line. The requested
+# value is kept beside it so a clamp is visible rather than silent.
 if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ]; then
-  SELECTION_DESC="${SELECTION_DESC};per-script-timeout=${PER_SCRIPT_TIMEOUT_SECS}s"
+  if [ "$PER_SCRIPT_TIMEOUT_SECS" -lt "$SCRIPT_TIMEOUT" ]; then
+    PER_SCRIPT_BOUND_SECS=$PER_SCRIPT_TIMEOUT_SECS
+    SELECTION_DESC="${SELECTION_DESC};per-script-timeout=${PER_SCRIPT_TIMEOUT_SECS}s"
+  else
+    SELECTION_DESC="${SELECTION_DESC};per-script-timeout=${SCRIPT_TIMEOUT}s"
+    SELECTION_DESC="${SELECTION_DESC};per-script-timeout-requested=${PER_SCRIPT_TIMEOUT_SECS}s"
+  fi
 fi
 if [ "$JOBS" -gt 1 ] || [ "$MODE" = changed ]; then
   SELECTION_DESC="${SELECTION_DESC};jobs=$JOBS"

@@ -357,13 +357,23 @@ SH
   (cd "$timeout_repo" && bin/fm-test-run.sh --changed --base HEAD --per-script-timeout-secs 42 \
     --json "$tmp/explicit-bound.json") >"$tmp/explicit.out" 2>"$tmp/explicit.err" \
     || fail "explicit changed bound run failed: $(cat "$tmp/explicit.err")"
-  python3 - "$tmp/auto-bound.json" "$tmp/explicit-bound.json" <<'PY' \
-    || fail "changed timing artifacts did not record their resolved per-script bounds"
+  # A bound at or above the lane backstop can never fire, so the artifact has to
+  # record the seconds the run will really wait on, with the request beside it.
+  (cd "$timeout_repo" && bin/fm-test-run.sh --changed --base HEAD --script-timeout 60 \
+    --per-script-timeout-secs 900 --json "$tmp/clamped-bound.json") \
+    >"$tmp/clamped.out" 2>"$tmp/clamped.err" \
+    || fail "clamped changed bound run failed: $(cat "$tmp/clamped.err")"
+  python3 - "$tmp/auto-bound.json" "$tmp/explicit-bound.json" "$tmp/clamped-bound.json" <<'PY' \
+    || fail "changed timing artifacts did not record their effective per-script bounds"
 import json, sys
 automatic = json.load(open(sys.argv[1], encoding="utf-8"))
 explicit = json.load(open(sys.argv[2], encoding="utf-8"))
+clamped = json.load(open(sys.argv[3], encoding="utf-8"))
 assert "per-script-timeout=900s" in automatic["selection"].split(";")
 assert "per-script-timeout=42s" in explicit["selection"].split(";")
+fields = clamped["selection"].split(";")
+assert "per-script-timeout=60s" in fields
+assert "per-script-timeout-requested=900s" in fields
 PY
 
   rm -rf "$tmp"
