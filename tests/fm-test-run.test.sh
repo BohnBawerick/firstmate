@@ -307,14 +307,14 @@ SH
   git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm fixtures
   printf '\n' >>"$repo/bin/shared-probe-lib.sh"
 
-  (cd "$repo" && bin/fm-test-run.sh --changed --base HEAD --json "$tmp/parallel.json") \
+  (cd "$repo" && FM_TEST_SCRIPT_TIMEOUT='' bin/fm-test-run.sh --changed --base HEAD --json "$tmp/parallel.json") \
     >"$tmp/parallel.out" 2>"$tmp/parallel.err" \
     || fail "default changed fixture run failed: $(cat "$tmp/parallel.err")"
   parallel_shape=$(grep -E '^FM_TEST_(BEGIN|END)' "$tmp/parallel.out" | head -n 2 | awk '{print $1}' | paste -sd, -)
   [ "$parallel_shape" = FM_TEST_BEGIN,FM_TEST_BEGIN ] \
     || fail "plain --changed did not use bounded concurrent scheduling: $parallel_shape"
 
-  (cd "$repo" && bin/fm-test-run.sh --changed --base HEAD --jobs 1 --json "$tmp/serial.json") \
+  (cd "$repo" && FM_TEST_SCRIPT_TIMEOUT='' bin/fm-test-run.sh --changed --base HEAD --jobs 1 --json "$tmp/serial.json") \
     >"$tmp/serial.out" 2>"$tmp/serial.err" \
     || fail "explicit serial changed fixture run failed: $(cat "$tmp/serial.err")"
   serial_shape=$(grep -E '^FM_TEST_(BEGIN|END)' "$tmp/serial.out" | head -n 2 | awk '{print $1}' | paste -sd, -)
@@ -382,7 +382,7 @@ test_empty_selection_emits_summary() {
   repo="$tmp/repo"
   init_changed_fixture_repo "$repo"
   printf 'documentation only\n' >"$repo/README.md"
-  out=$(cd "$repo" && bin/fm-test-run.sh --changed --base HEAD --json "$tmp/artifacts/timing.json" 2>"$tmp/err") \
+  out=$(cd "$repo" && FM_TEST_SCRIPT_TIMEOUT='' bin/fm-test-run.sh --changed --base HEAD --json "$tmp/artifacts/timing.json" 2>"$tmp/err") \
     || fail "empty valid changed selection must pass"
   printf '%s\n' "$out" | grep -Eq \
     '^FM_TEST_SUMMARY total=0 failed=0 skipped_gate=0 duration_ms=[0-9]+$' \
@@ -397,6 +397,7 @@ assert doc["summary"]["skipped_gate"] == 0
 assert doc["summary"]["duration_ms"] >= 0
 assert doc["scripts"] == []
 assert doc["families"] == []
+assert doc["selection"] == "changed:base=HEAD;timeout=900;jobs=1"
 ' "$json" || { rm -rf "$tmp"; fail "empty selection JSON summary is wrong"; }
   fake_bin="$tmp/fake-bin"
   real_git=$(command -v git)
@@ -849,6 +850,38 @@ SH
 
   rm -rf "$tmp"
   pass "--per-script-timeout-secs turns a hung script into a bounded failure"
+}
+
+test_timeout_flags_only_tighten() {
+  local tmp fixture
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-timeout-min.XXXXXX")
+  fixture="$tmp/fast.test.sh"
+  cat >"$fixture" <<'SH'
+#!/usr/bin/env bash
+echo "ok - fast timeout minimum fixture"
+SH
+  chmod +x "$fixture"
+
+  "$RUNNER" --script-timeout 3 --script-timeout 30 \
+    --json "$tmp/repeated.json" "$fixture" >"$tmp/repeated.out" 2>"$tmp/repeated.err" \
+    || fail "repeated --script-timeout run failed: $(cat "$tmp/repeated.err")"
+  "$RUNNER" --per-script-timeout-secs 3 --per-script-timeout-secs 0 \
+    --json "$tmp/zero.json" "$fixture" >"$tmp/zero.out" 2>"$tmp/zero.err" \
+    || fail "zero sentinel timeout run failed: $(cat "$tmp/zero.err")"
+  "$RUNNER" --script-timeout 30 --per-script-timeout-secs 3 \
+    --json "$tmp/cross.json" "$fixture" >"$tmp/cross.out" 2>"$tmp/cross.err" \
+    || fail "cross-flag timeout run failed: $(cat "$tmp/cross.err")"
+
+  python3 - "$tmp/repeated.json" "$tmp/zero.json" "$tmp/cross.json" <<'PY' \
+    || fail "timeout flags did not preserve the tightest requested budget"
+import json, sys
+for path in sys.argv[1:]:
+    doc = json.load(open(path, encoding="utf-8"))
+    assert doc["selection"] == "scripts;timeout=3", doc["selection"]
+PY
+
+  rm -rf "$tmp"
+  pass "repeated timeout flags preserve the tightest positive budget"
 }
 
 # The duration regression this guard exists for: a suite whose scripts are all
@@ -1435,6 +1468,7 @@ test_jobs_requires_proven_isolated
 test_jobs_admits_a_concurrent_safe_family
 test_concurrent_runs_are_ordered_longest_first
 test_per_script_timeout_bounds_a_hang
+test_timeout_flags_only_tighten
 test_max_wall_ms_is_a_result_not_advice
 test_jobs_parallel_scheduler_and_failure_propagation
 test_herdr_ci_family_run_has_a_step_timeout

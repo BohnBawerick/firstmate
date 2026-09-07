@@ -162,6 +162,7 @@ JOBS_EXPLICIT=0
 JOBS_MAX=8
 MAX_WALL_MS=
 PER_SCRIPT_TIMEOUT_SECS=0
+REQUESTED_SCRIPT_TIMEOUT=0
 # Bound applied automatically on the automatic --changed path, derived from
 # measured healthy runtimes with margin rather than picked: the slowest measured
 # behavior test is the 341s Herdr presentation E2E, and the slowest script in a
@@ -1783,10 +1784,24 @@ while [ "$#" -gt 0 ]; do
     --script-timeout)
       [ "$#" -gt 1 ] || die "--script-timeout requires a positive integer"
       SCRIPT_TIMEOUT=$2
+      case "$SCRIPT_TIMEOUT" in
+        ''|*[!0-9]*) die "--script-timeout must be a positive integer number of seconds" ;;
+      esac
+      [ "$SCRIPT_TIMEOUT" -ge 1 ] || die "--script-timeout must be >= 1"
+      if [ "$REQUESTED_SCRIPT_TIMEOUT" -eq 0 ] || [ "$SCRIPT_TIMEOUT" -lt "$REQUESTED_SCRIPT_TIMEOUT" ]; then
+        REQUESTED_SCRIPT_TIMEOUT=$SCRIPT_TIMEOUT
+      fi
       shift 2
       ;;
     --script-timeout=*)
       SCRIPT_TIMEOUT=${1#--script-timeout=}
+      case "$SCRIPT_TIMEOUT" in
+        ''|*[!0-9]*) die "--script-timeout must be a positive integer number of seconds" ;;
+      esac
+      [ "$SCRIPT_TIMEOUT" -ge 1 ] || die "--script-timeout must be >= 1"
+      if [ "$REQUESTED_SCRIPT_TIMEOUT" -eq 0 ] || [ "$SCRIPT_TIMEOUT" -lt "$REQUESTED_SCRIPT_TIMEOUT" ]; then
+        REQUESTED_SCRIPT_TIMEOUT=$SCRIPT_TIMEOUT
+      fi
       shift
       ;;
     --jobs)
@@ -1812,10 +1827,24 @@ while [ "$#" -gt 0 ]; do
     --per-script-timeout-secs)
       [ "$#" -gt 1 ] || die "--per-script-timeout-secs requires a whole number of seconds"
       PER_SCRIPT_TIMEOUT_SECS=$2
+      case "$PER_SCRIPT_TIMEOUT_SECS" in
+        ''|*[!0-9]*) die "--per-script-timeout-secs requires a whole number of seconds (0 adds no bound of its own; --script-timeout still applies)" ;;
+      esac
+      if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ] \
+        && { [ "$REQUESTED_SCRIPT_TIMEOUT" -eq 0 ] || [ "$PER_SCRIPT_TIMEOUT_SECS" -lt "$REQUESTED_SCRIPT_TIMEOUT" ]; }; then
+        REQUESTED_SCRIPT_TIMEOUT=$PER_SCRIPT_TIMEOUT_SECS
+      fi
       shift 2
       ;;
     --per-script-timeout-secs=*)
       PER_SCRIPT_TIMEOUT_SECS=${1#--per-script-timeout-secs=}
+      case "$PER_SCRIPT_TIMEOUT_SECS" in
+        ''|*[!0-9]*) die "--per-script-timeout-secs requires a whole number of seconds (0 adds no bound of its own; --script-timeout still applies)" ;;
+      esac
+      if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ] \
+        && { [ "$REQUESTED_SCRIPT_TIMEOUT" -eq 0 ] || [ "$PER_SCRIPT_TIMEOUT_SECS" -lt "$REQUESTED_SCRIPT_TIMEOUT" ]; }; then
+        REQUESTED_SCRIPT_TIMEOUT=$PER_SCRIPT_TIMEOUT_SECS
+      fi
       shift
       ;;
     --list)
@@ -1939,6 +1968,9 @@ case "$JOBS" in
   ''|*[!0-9]*) die "--jobs must be a positive integer" ;;
 esac
 [ "$JOBS" -ge 1 ] || die "--jobs must be >= 1"
+if [ "$REQUESTED_SCRIPT_TIMEOUT" -gt 0 ]; then
+  SCRIPT_TIMEOUT=$REQUESTED_SCRIPT_TIMEOUT
+fi
 case "$SCRIPT_TIMEOUT" in
   ''|*[!0-9]*) die "--script-timeout must be a positive integer number of seconds" ;;
 esac
@@ -1955,16 +1987,6 @@ fi
 case "$PER_SCRIPT_TIMEOUT_SECS" in
   ''|*[!0-9]*) die "--per-script-timeout-secs requires a whole number of seconds (0 adds no bound of its own; --script-timeout still applies)" ;;
 esac
-
-# --per-script-timeout-secs and --script-timeout name the same thing: the
-# per-script wall-clock budget run_script_contained enforces. Only SCRIPT_TIMEOUT
-# reaches that enforcement, so a positive --per-script-timeout-secs has to resolve
-# into it or it is documentation with nothing behind it. Bounds resolve by
-# tightening only: a caller who asked for a bound never has it widened by another
-# flag, and the effective budget is the smallest one requested.
-if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ] && [ "$PER_SCRIPT_TIMEOUT_SECS" -lt "$SCRIPT_TIMEOUT" ]; then
-  SCRIPT_TIMEOUT=$PER_SCRIPT_TIMEOUT_SECS
-fi
 
 case "${MODE:-}" in
   all)
@@ -2021,6 +2043,33 @@ if [ "$LIST_ONLY" -eq 1 ] || [ "$LIST_SCHEDULED" -eq 1 ]; then
   exit 0
 fi
 
+# The automatic bound belongs to --changed itself, not to the automatic
+# scheduler below it: --changed --jobs 1 is still a changed run, and a hang in it
+# needs the same guard.
+if [ "$MODE" = changed ] && [ "$SCRIPT_TIMEOUT" -gt "$CHANGED_DEFAULT_TIMEOUT_SECS" ]; then
+  SCRIPT_TIMEOUT=$CHANGED_DEFAULT_TIMEOUT_SECS
+fi
+
+# Plain --changed uses the bounded representative-suite scheduler; numeric
+# --jobs retains the strict all-script admission rule below.
+AUTO_CONCURRENCY=0
+if [ "$MODE" = changed ] && [ "$JOBS_EXPLICIT" -eq 0 ] && [ "${#SCRIPTS[@]}" -gt 0 ]; then
+  auto_admissible=0
+  for s in "${SCRIPTS[@]}"; do
+    script_allows_concurrency "$s" && auto_admissible=$((auto_admissible + 1))
+  done
+  if [ "$auto_admissible" -gt 1 ]; then
+    JOBS=$(cpu_count)
+    [ "$JOBS" -le 4 ] || JOBS=4
+    [ "$JOBS" -ge 1 ] || JOBS=1
+    [ "$JOBS" -eq 1 ] || AUTO_CONCURRENCY=1
+  fi
+fi
+SELECTION_DESC="${SELECTION_DESC};timeout=$SCRIPT_TIMEOUT"
+if [ "$JOBS" -gt 1 ] || [ "$MODE" = changed ]; then
+  SELECTION_DESC="${SELECTION_DESC};jobs=$JOBS"
+fi
+
 # An empty selection is a clean result, not a no-op that falls through. Exiting
 # here also keeps every array expansion below off the empty-array path: under
 # `set -u`, bash 3.2 (the stock macOS shell) treats "${arr[@]}" on an empty
@@ -2063,33 +2112,6 @@ for s in "${SCRIPTS[@]}"; do
   [ -f "$s" ] || die "test script not found: $s"
   [ -x "$s" ] || [ -r "$s" ] || die "test script not readable: $s"
 done
-
-# The automatic bound belongs to --changed itself, not to the automatic
-# scheduler below it: --changed --jobs 1 is still a changed run, and a hang in it
-# needs the same guard.
-if [ "$MODE" = changed ] && [ "$SCRIPT_TIMEOUT" -gt "$CHANGED_DEFAULT_TIMEOUT_SECS" ]; then
-  SCRIPT_TIMEOUT=$CHANGED_DEFAULT_TIMEOUT_SECS
-fi
-
-# Plain --changed uses the bounded representative-suite scheduler; numeric
-# --jobs retains the strict all-script admission rule below.
-AUTO_CONCURRENCY=0
-if [ "$MODE" = changed ] && [ "$JOBS_EXPLICIT" -eq 0 ]; then
-  auto_admissible=0
-  for s in "${SCRIPTS[@]}"; do
-    script_allows_concurrency "$s" && auto_admissible=$((auto_admissible + 1))
-  done
-  if [ "$auto_admissible" -gt 1 ]; then
-    JOBS=$(cpu_count)
-    [ "$JOBS" -le 4 ] || JOBS=4
-    [ "$JOBS" -ge 1 ] || JOBS=1
-    [ "$JOBS" -eq 1 ] || AUTO_CONCURRENCY=1
-  fi
-fi
-SELECTION_DESC="${SELECTION_DESC};timeout=$SCRIPT_TIMEOUT"
-if [ "$JOBS" -gt 1 ] || [ "$MODE" = changed ]; then
-  SELECTION_DESC="${SELECTION_DESC};jobs=$JOBS"
-fi
 
 # An explicit --jobs names a concurrency for exactly the selection given, so an
 # unproven script in it is a refusal rather than something to schedule around.
