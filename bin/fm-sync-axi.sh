@@ -11,9 +11,6 @@
 # HARD SAFETY GUARANTEES:
 # - Never pushes to any remote, never opens PRs, never forks.
 # - Never stashes, forces, resets, or discards unlanded work or dirty trees.
-# - Only ever updates a repository's default branch, plus a detached scratch
-#   worktree it removes afterwards. Never checks out, moves, resets, or deletes
-#   any other local branch, so every other branch keeps its commits either way.
 # - Evaluates updates on a scratch worktree first; never mutates a real tree if
 #   conflicts occur.
 # - Reports dirty trees, checkouts parked on a non-default branch, fetch
