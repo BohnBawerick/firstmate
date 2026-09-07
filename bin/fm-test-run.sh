@@ -66,8 +66,10 @@
 #                   unproven remainder runs serially after that group.
 #   --per-script-timeout-secs N
 #                   another spelling of --script-timeout: terminate a script that
-#                   runs longer than N seconds and record it as exit 124 (0
-#                   disables, the default). --changed applies 900s automatically.
+#                   runs longer than N seconds and record it as exit 124. Zero
+#                   adds no bound of its own; the run remains bounded by
+#                   --script-timeout (default 1800, or FM_TEST_SCRIPT_TIMEOUT).
+#                   --changed applies 900s automatically.
 #                   Every bound resolves by tightening, never loosening, so the
 #                   effective budget is the smallest one asked for and no flag can
 #                   widen a bound another one already set. No real script
@@ -1951,7 +1953,7 @@ if [ -n "$MAX_WALL_MS" ]; then
 fi
 
 case "$PER_SCRIPT_TIMEOUT_SECS" in
-  ''|*[!0-9]*) die "--per-script-timeout-secs requires a whole number of seconds (0 disables)" ;;
+  ''|*[!0-9]*) die "--per-script-timeout-secs requires a whole number of seconds (0 adds no bound of its own; --script-timeout still applies)" ;;
 esac
 
 # --per-script-timeout-secs and --script-timeout name the same thing: the

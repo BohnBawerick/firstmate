@@ -840,7 +840,7 @@ SH
     fail "the timed-out script left grandchild $grandchild running"
   fi
 
-  # 0 keeps the historical unbounded behavior, so no existing caller changes.
+  # 0 contributes no tighter legacy bound; --script-timeout still bounds the run.
   set +e
   "$runner" --per-script-timeout-secs nope "$hang" >"$tmp/o2" 2>"$tmp/e2"
   rc=$?
