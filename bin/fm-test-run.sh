@@ -47,6 +47,9 @@
 #                   FM_TEST_SCRIPT_TIMEOUT). A script that exceeds it is
 #                   terminated, its process group reaped, and the script
 #                   reported as failed with exit=124 rather than hanging the lane.
+#                   This is the one budget the runner enforces; every other bound
+#                   below resolves into it, and the resolved value is reported as
+#                   timeout=<secs> in the run's selection description.
 #   --jobs N        run the selected scripts with up to N concurrent workers.
 #                   Plain --changed uses min(4, cpus) workers when multiple
 #                   selected scripts are admissible.
@@ -62,10 +65,13 @@
 #                   --changed, which uses the bounded automatic scheduler. Any
 #                   unproven remainder runs serially after that group.
 #   --per-script-timeout-secs N
-#                   terminate a script that runs longer than N seconds and
-#                   record it as exit 124 (0 disables, the default). The
-#                   --changed applies 900s automatically: no real script
-#                   approaches it, so it only converts a HUNG
+#                   another spelling of --script-timeout: terminate a script that
+#                   runs longer than N seconds and record it as exit 124 (0
+#                   disables, the default). --changed applies 900s automatically.
+#                   Every bound resolves by tightening, never loosening, so the
+#                   effective budget is the smallest one asked for and no flag can
+#                   widen a bound another one already set. No real script
+#                   approaches 900s, so the automatic bound only converts a HUNG
 #                   script into a bounded failure. --max-wall-ms is checked
 #                   after the run and so cannot catch a hang on its own.
 #                   External interruption cleanup is outside this runner's
@@ -988,6 +994,13 @@ select_lane() {
 run_coverage_guard() {
   local tmp missing extra a b shard
   local -a saved_scripts=()
+  # Every list here is built with LC_ALL=C sort, so the comparisons over them
+  # have to agree on that collation. comm and cmp read the ambient locale, and
+  # under a UTF-8 collation they reject C-sorted input as unsorted and compare
+  # garbage. CI runs C.UTF-8, which collates like C and hides this, so the guard
+  # only breaks on a developer's own machine. Local to the function, restored on
+  # return, and exported so the tools it runs see it.
+  local -x LC_ALL=C
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-coverage.XXXXXX")
 
   all_repo_tests | LC_ALL=C sort -u >"$tmp/all"
@@ -1941,6 +1954,16 @@ case "$PER_SCRIPT_TIMEOUT_SECS" in
   ''|*[!0-9]*) die "--per-script-timeout-secs requires a whole number of seconds (0 disables)" ;;
 esac
 
+# --per-script-timeout-secs and --script-timeout name the same thing: the
+# per-script wall-clock budget run_script_contained enforces. Only SCRIPT_TIMEOUT
+# reaches that enforcement, so a positive --per-script-timeout-secs has to resolve
+# into it or it is documentation with nothing behind it. Bounds resolve by
+# tightening only: a caller who asked for a bound never has it widened by another
+# flag, and the effective budget is the smallest one requested.
+if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ] && [ "$PER_SCRIPT_TIMEOUT_SECS" -lt "$SCRIPT_TIMEOUT" ]; then
+  SCRIPT_TIMEOUT=$PER_SCRIPT_TIMEOUT_SECS
+fi
+
 case "${MODE:-}" in
   all)
     select_all
@@ -2039,13 +2062,17 @@ for s in "${SCRIPTS[@]}"; do
   [ -x "$s" ] || [ -r "$s" ] || die "test script not readable: $s"
 done
 
+# The automatic bound belongs to --changed itself, not to the automatic
+# scheduler below it: --changed --jobs 1 is still a changed run, and a hang in it
+# needs the same guard.
+if [ "$MODE" = changed ] && [ "$SCRIPT_TIMEOUT" -gt "$CHANGED_DEFAULT_TIMEOUT_SECS" ]; then
+  SCRIPT_TIMEOUT=$CHANGED_DEFAULT_TIMEOUT_SECS
+fi
+
 # Plain --changed uses the bounded representative-suite scheduler; numeric
 # --jobs retains the strict all-script admission rule below.
 AUTO_CONCURRENCY=0
 if [ "$MODE" = changed ] && [ "$JOBS_EXPLICIT" -eq 0 ]; then
-  if [ "${#SCRIPTS[@]}" -gt 0 ] && [ "$PER_SCRIPT_TIMEOUT_SECS" -eq 0 ]; then
-    PER_SCRIPT_TIMEOUT_SECS=$CHANGED_DEFAULT_TIMEOUT_SECS
-  fi
   auto_admissible=0
   for s in "${SCRIPTS[@]}"; do
     script_allows_concurrency "$s" && auto_admissible=$((auto_admissible + 1))
@@ -2057,6 +2084,7 @@ if [ "$MODE" = changed ] && [ "$JOBS_EXPLICIT" -eq 0 ]; then
     [ "$JOBS" -eq 1 ] || AUTO_CONCURRENCY=1
   fi
 fi
+SELECTION_DESC="${SELECTION_DESC};timeout=$SCRIPT_TIMEOUT"
 if [ "$JOBS" -gt 1 ] || [ "$MODE" = changed ]; then
   SELECTION_DESC="${SELECTION_DESC};jobs=$JOBS"
 fi
@@ -2105,12 +2133,6 @@ if [ "$JOBS" -gt 1 ]; then
     CONCURRENT_SCRIPTS+=("$s")
   done < <(LC_ALL=C sort -t"$(printf '\t')" -k1,1nr -k2,2 "$SCHEDULE_TMP")
   rm -f "$SCHEDULE_TMP"
-fi
-
-if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ]; then
-  [ -r "$ROOT/bin/fm-timeout-lib.sh" ] || die "per-script timeout helper not found: bin/fm-timeout-lib.sh"
-  # shellcheck source=bin/fm-timeout-lib.sh
-  . "$ROOT/bin/fm-timeout-lib.sh"
 fi
 
 RUN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run.XXXXXX")

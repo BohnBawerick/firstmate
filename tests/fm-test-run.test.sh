@@ -327,29 +327,34 @@ SH
   [ "$expected_jobs" -le 4 ] || expected_jobs=4
   [ "$expected_jobs" -ge 1 ] || expected_jobs=1
   python3 - "$tmp/parallel.json" "$tmp/serial.json" "$expected_jobs" <<'PY' \
-    || fail "changed timing artifacts did not record their resolved worker counts"
+    || fail "changed timing artifacts did not record their resolved workers and bound"
 import json, sys
 automatic = json.load(open(sys.argv[1], encoding="utf-8"))
 serial = json.load(open(sys.argv[2], encoding="utf-8"))
 expected = int(sys.argv[3])
 assert automatic["selection"].split(";")[-1] == f"jobs={expected}"
 assert serial["selection"].split(";")[-1] == "jobs=1"
+# The automatic 900s bound belongs to --changed itself, so the explicit --jobs 1
+# run carries it too. Pinning the resolved number here is what keeps the
+# enforcement check below fast: nothing has to wait 900s to prove the value.
+assert "timeout=900" in automatic["selection"].split(";"), automatic["selection"]
+assert "timeout=900" in serial["selection"].split(";"), serial["selection"]
 PY
 
+  # The bound is enforced by the runner's own containment path, which starts the
+  # script and then kills it, so the proof is a script that really hangs and never
+  # reaches the marker on the far side of its sleep. The environment supplies the
+  # tighter number the automatic rule resolves against, because a test cannot wait
+  # out the 900s the unconfigured path resolves; that value is pinned above.
   timeout_repo="$tmp/timeout-repo"
   timeout_script=tests/fm-calm-pi-extension.test.sh
   mkdir -p "$timeout_repo/bin" "$timeout_repo/tests"
   cp "$RUNNER" "$timeout_repo/bin/fm-test-run.sh"
-  cat >"$timeout_repo/bin/fm-timeout-lib.sh" <<'SH'
-fm_run_timed() {
-  [ "$1" -eq 900 ] || return 99
-  return 124
-}
-SH
   cat >"$timeout_repo/$timeout_script" <<'SH'
 #!/usr/bin/env bash
+echo "ok - fixture is about to hang past its bound"
+sleep 600
 touch should-not-run
-echo "not ok - automatic timeout helper was bypassed"
 SH
   chmod +x "$timeout_repo/bin/fm-test-run.sh" "$timeout_repo/$timeout_script"
   git -C "$timeout_repo" init -q
@@ -357,14 +362,15 @@ SH
   git -C "$timeout_repo" -c user.name=test -c user.email=test@example.invalid commit -qm baseline
   printf '\n' >>"$timeout_repo/$timeout_script"
   set +e
-  (cd "$timeout_repo" && bin/fm-test-run.sh --changed --base HEAD) \
+  (cd "$timeout_repo" && FM_TEST_SCRIPT_TIMEOUT=3 bin/fm-test-run.sh --changed --base HEAD) \
     >"$tmp/timeout.out" 2>"$tmp/timeout.err"
   rc=$?
   set -e
   [ "$rc" -eq 1 ] || fail "single-script automatic timeout must fail the run, got $rc"
   grep -Eq '^FM_TEST_END .+ tests/fm-calm-pi-extension\.test\.sh exit=124 ' "$tmp/timeout.out" \
     || fail "single unproven changed script did not receive the automatic timeout: $(cat "$tmp/timeout.out")"
-  [ ! -e "$timeout_repo/should-not-run" ] || fail "automatic timeout helper did not own the single changed script"
+  [ ! -e "$timeout_repo/should-not-run" ] \
+    || fail "the automatic timeout let the single changed script run to completion"
 
   rm -rf "$tmp"
   pass "changed defaults to bounded automatic scheduling with serial override"
@@ -815,7 +821,7 @@ SH
   [ "$rc" -ne 0 ] || fail "a terminated script must fail the run: $(cat "$tmp/out")"
   [ "$((ended - began))" -lt 120 ] \
     || fail "the per-script bound did not stop a 600s hang (took $((ended - began))s)"
-  grep -Fq 'exceeded the per-script bound' "$tmp/out" \
+  grep -Fq 'exceeded the per-script budget' "$tmp/out" \
     || fail "the terminated script was not named: $(cat "$tmp/out")"
   grep -Eq 'FM_TEST_END .* exit=124 ' "$tmp/out" \
     || fail "a terminated script must be recorded as exit 124: $(cat "$tmp/out")"
