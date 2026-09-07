@@ -340,31 +340,46 @@ PY
   timeout_script=tests/fm-calm-pi-extension.test.sh
   mkdir -p "$timeout_repo/bin" "$timeout_repo/tests"
   cp "$RUNNER" "$timeout_repo/bin/fm-test-run.sh"
-  cat >"$timeout_repo/bin/fm-timeout-lib.sh" <<'SH'
-fm_run_timed() {
-  [ "$1" -eq 900 ] || return 99
-  return 124
+  # Advance only the runner's shell clock so the automatic 900s deadline can
+  # be exercised without making the fixture's own 600s sleep return early.
+  cat >"$timeout_repo/accelerate-runner.sh" <<'SH'
+sleep() {
+  if [ "$$" = "${FM_TIMEOUT_RUNNER_PID:-}" ]; then
+    SECONDS=$((SECONDS + 900))
+    command sleep 0.05
+  else
+    command sleep "$@"
+  fi
 }
+SH
+  cat >"$timeout_repo/run-changed.sh" <<'SH'
+#!/usr/bin/env bash
+export FM_TIMEOUT_RUNNER_PID=$$
+exec /bin/bash bin/fm-test-run.sh "$@"
 SH
   cat >"$timeout_repo/$timeout_script" <<'SH'
 #!/usr/bin/env bash
+touch timeout-script-started
+sleep 600
 touch should-not-run
-echo "not ok - automatic timeout helper was bypassed"
 SH
-  chmod +x "$timeout_repo/bin/fm-test-run.sh" "$timeout_repo/$timeout_script"
+  chmod +x "$timeout_repo/bin/fm-test-run.sh" "$timeout_repo/run-changed.sh" \
+    "$timeout_repo/$timeout_script"
   git -C "$timeout_repo" init -q
   git -C "$timeout_repo" add .
   git -C "$timeout_repo" -c user.name=test -c user.email=test@example.invalid commit -qm baseline
   printf '\n' >>"$timeout_repo/$timeout_script"
   set +e
-  (cd "$timeout_repo" && bin/fm-test-run.sh --changed --base HEAD) \
+  (cd "$timeout_repo" && BASH_ENV="$timeout_repo/accelerate-runner.sh" \
+    /bin/bash "$timeout_repo/run-changed.sh" --changed --base HEAD) \
     >"$tmp/timeout.out" 2>"$tmp/timeout.err"
   rc=$?
   set -e
   [ "$rc" -eq 1 ] || fail "single-script automatic timeout must fail the run, got $rc"
   grep -Eq '^FM_TEST_END .+ tests/fm-calm-pi-extension\.test\.sh exit=124 ' "$tmp/timeout.out" \
     || fail "single unproven changed script did not receive the automatic timeout: $(cat "$tmp/timeout.out")"
-  [ ! -e "$timeout_repo/should-not-run" ] || fail "automatic timeout helper did not own the single changed script"
+  [ -e "$timeout_repo/timeout-script-started" ] || fail "automatic timeout fixture never started"
+  [ ! -e "$timeout_repo/should-not-run" ] || fail "automatic timeout did not stop the single changed script"
 
   rm -rf "$tmp"
   pass "changed defaults to bounded automatic scheduling with serial override"
