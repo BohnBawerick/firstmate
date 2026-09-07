@@ -385,17 +385,11 @@ run_script_contained() {  # <script> <output-file> <status-file>
     inflight="$LANE_INFLIGHT_DIR/$pid"
     printf '%s %s\n' "$pid" "$pgid" >"$inflight" 2>/dev/null || inflight=
   fi
-  if ! wait_pid_within_budget "$pid" "$RUN_SCRIPT_TIMEOUT"; then
+  if ! wait_pid_within_budget "$pid" "$SCRIPT_TIMEOUT"; then
     timed_out=1
-    if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ]; then
-      printf 'not ok - %s exceeded the per-script bound of %ss and was terminated\n' \
-        "$script" "$RUN_SCRIPT_TIMEOUT" >>"$out"
-      log "per-script bound of ${RUN_SCRIPT_TIMEOUT}s exceeded, terminating: $script"
-    else
-      printf 'not ok - %s exceeded the per-script budget of %ss and was terminated\n' \
-        "$script" "$RUN_SCRIPT_TIMEOUT" >>"$out"
-      log "per-script budget of ${RUN_SCRIPT_TIMEOUT}s exceeded, terminating: $script"
-    fi
+    printf 'not ok - %s exceeded the per-script budget of %ss and was terminated\n' \
+      "$script" "$SCRIPT_TIMEOUT" >>"$out"
+    log "per-script budget of ${SCRIPT_TIMEOUT}s exceeded, terminating: $script"
     if ! kill_pid_hard "$pid"; then
       unreaped=1
       printf 'not ok - %s survived SIGKILL after its budget and was abandoned\n' \
@@ -2113,9 +2107,10 @@ if [ "$JOBS" -gt 1 ]; then
   rm -f "$SCHEDULE_TMP"
 fi
 
-RUN_SCRIPT_TIMEOUT=$SCRIPT_TIMEOUT
 if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ]; then
-  RUN_SCRIPT_TIMEOUT=$PER_SCRIPT_TIMEOUT_SECS
+  [ -r "$ROOT/bin/fm-timeout-lib.sh" ] || die "per-script timeout helper not found: bin/fm-timeout-lib.sh"
+  # shellcheck source=bin/fm-timeout-lib.sh
+  . "$ROOT/bin/fm-timeout-lib.sh"
 fi
 
 RUN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run.XXXXXX")
