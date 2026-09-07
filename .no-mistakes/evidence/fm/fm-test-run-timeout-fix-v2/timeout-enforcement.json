@@ -1,0 +1,30 @@
+{
+  "families": [
+    {
+      "count": 1,
+      "duration_ms": 1818,
+      "failed": 1,
+      "name": "unclassified"
+    }
+  ],
+  "finished_at": "2026-09-07T23:22:32Z",
+  "run_id": "fm-test-run-1788823350287-488465",
+  "scripts": [
+    {
+      "duration_ms": 1818,
+      "exit": 124,
+      "expected_gate_skip": "none",
+      "family": "unclassified",
+      "gate_skip": false,
+      "path": "tests/.fm-timeout-evidence-fixture.test.sh"
+    }
+  ],
+  "selection": "scripts;timeout=2",
+  "started_at": "2026-09-07T23:22:30Z",
+  "summary": {
+    "duration_ms": 1870,
+    "failed": 1,
+    "skipped_gate": 0,
+    "total": 1
+  }
+}
