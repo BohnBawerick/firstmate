@@ -865,23 +865,32 @@ SH
   "$RUNNER" --script-timeout 3 --script-timeout 30 \
     --json "$tmp/repeated.json" "$fixture" >"$tmp/repeated.out" 2>"$tmp/repeated.err" \
     || fail "repeated --script-timeout run failed: $(cat "$tmp/repeated.err")"
+  "$RUNNER" --script-timeout 30 --script-timeout 3 \
+    --json "$tmp/reversed.json" "$fixture" >"$tmp/reversed.out" 2>"$tmp/reversed.err" \
+    || fail "reversed --script-timeout run failed: $(cat "$tmp/reversed.err")"
   "$RUNNER" --per-script-timeout-secs 3 --per-script-timeout-secs 0 \
     --json "$tmp/zero.json" "$fixture" >"$tmp/zero.out" 2>"$tmp/zero.err" \
     || fail "zero sentinel timeout run failed: $(cat "$tmp/zero.err")"
   "$RUNNER" --script-timeout 30 --per-script-timeout-secs 3 \
     --json "$tmp/cross.json" "$fixture" >"$tmp/cross.out" 2>"$tmp/cross.err" \
     || fail "cross-flag timeout run failed: $(cat "$tmp/cross.err")"
+  FM_TEST_SCRIPT_TIMEOUT=2 "$RUNNER" --script-timeout 30 \
+    --json "$tmp/default.json" "$fixture" >"$tmp/default.out" 2>"$tmp/default.err" \
+    || fail "explicit timeout did not replace the environment default: $(cat "$tmp/default.err")"
 
-  python3 - "$tmp/repeated.json" "$tmp/zero.json" "$tmp/cross.json" <<'PY' \
-    || fail "timeout flags did not preserve the tightest requested budget"
+  python3 - "$tmp/repeated.json" "$tmp/reversed.json" "$tmp/zero.json" \
+    "$tmp/cross.json" "$tmp/default.json" <<'PY' \
+    || fail "timeout flags did not preserve their precedence and minimum"
 import json, sys
-for path in sys.argv[1:]:
+for path in sys.argv[1:5]:
     doc = json.load(open(path, encoding="utf-8"))
     assert doc["selection"] == "scripts;timeout=3", doc["selection"]
+default = json.load(open(sys.argv[5], encoding="utf-8"))
+assert default["selection"] == "scripts;timeout=30", default["selection"]
 PY
 
   rm -rf "$tmp"
-  pass "repeated timeout flags preserve the tightest positive budget"
+  pass "timeout flags replace defaults and preserve the tightest positive budget"
 }
 
 # The duration regression this guard exists for: a suite whose scripts are all

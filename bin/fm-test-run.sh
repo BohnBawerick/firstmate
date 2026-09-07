@@ -43,12 +43,16 @@
 #                   The required Herdr CI lane uses this so a missing pin cannot
 #                   silently pass as a gate skip.
 #   --script-timeout N
-#                   per-script wall-clock budget in seconds (default 1800, or
-#                   FM_TEST_SCRIPT_TIMEOUT). A script that exceeds it is
+#                   per-script wall-clock budget in seconds. The default is
+#                   FM_TEST_SCRIPT_TIMEOUT when set, otherwise 1800. The first
+#                   positive occurrence of either timeout flag replaces that
+#                   default outright. Each later positive occurrence only
+#                   tightens the budget, so repeated timeout flags resolve to
+#                   the tightest positive value and never widen one another.
+#                   A script that exceeds the resolved budget is
 #                   terminated, its process group reaped, and the script
 #                   reported as failed with exit=124 rather than hanging the lane.
-#                   This is the one budget the runner enforces; every other bound
-#                   below resolves into it, and the resolved value is reported as
+#                   This is the one budget the runner enforces, and it is reported as
 #                   timeout=<secs> in the run's selection description.
 #   --jobs N        run the selected scripts with up to N concurrent workers.
 #                   Plain --changed uses min(4, cpus) workers when multiple
@@ -67,14 +71,11 @@
 #   --per-script-timeout-secs N
 #                   another spelling of --script-timeout: terminate a script that
 #                   runs longer than N seconds and record it as exit 124. Zero
-#                   adds no bound of its own; the run remains bounded by
-#                   --script-timeout (default 1800, or FM_TEST_SCRIPT_TIMEOUT).
-#                   --changed applies 900s automatically.
-#                   Every bound resolves by tightening, never loosening, so the
-#                   effective budget is the smallest one asked for and no flag can
-#                   widen a bound another one already set. No real script
-#                   approaches 900s, so the automatic bound only makes an
-#                   otherwise stuck script fail sooner. --max-wall-ms is checked
+#                   is ignored and does not replace or tighten the default.
+#                   After timeout flags resolve, --changed tightens the budget to
+#                   at most 900s. No real script approaches 900s, so the automatic
+#                   bound only makes an otherwise stuck script fail sooner.
+#                   --max-wall-ms is checked
 #                   after the run and so cannot catch a hang on its own.
 #                   External interruption cleanup is outside this runner's
 #                   guarantee; the resolved per-script budget remains authoritative.
@@ -161,8 +162,6 @@ JOBS=1
 JOBS_EXPLICIT=0
 JOBS_MAX=8
 MAX_WALL_MS=
-PER_SCRIPT_TIMEOUT_SECS=0
-REQUESTED_SCRIPT_TIMEOUT=0
 # Bound applied to every --changed run, derived from
 # measured healthy runtimes with margin rather than picked: the slowest measured
 # behavior test is the 341s Herdr presentation E2E, and the slowest script in a
@@ -177,6 +176,7 @@ CHANGED_DEFAULT_TIMEOUT_SECS=900
 # terminated and reported as a failure naming it, so no lane can sit silently for
 # hours behind one wedged descendant.
 SCRIPT_TIMEOUT=${FM_TEST_SCRIPT_TIMEOUT:-1800}
+SCRIPT_TIMEOUT_FLAG_SEEN=0
 # Ticks of 0.05s a reap allows between TERM and KILL, and again after KILL.
 REAP_GRACE_TICKS=100
 
@@ -1715,6 +1715,11 @@ with open(out, "w", encoding="utf-8") as fh:
 PY
 }
 
+case "$SCRIPT_TIMEOUT" in
+  ''|*[!0-9]*) die "--script-timeout must be a positive integer number of seconds" ;;
+esac
+[ "$SCRIPT_TIMEOUT" -ge 1 ] || die "--script-timeout must be >= 1"
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --all)
@@ -1778,25 +1783,25 @@ while [ "$#" -gt 0 ]; do
       ;;
     --script-timeout)
       [ "$#" -gt 1 ] || die "--script-timeout requires a positive integer"
-      SCRIPT_TIMEOUT=$2
-      case "$SCRIPT_TIMEOUT" in
+      case "$2" in
         ''|*[!0-9]*) die "--script-timeout must be a positive integer number of seconds" ;;
       esac
-      [ "$SCRIPT_TIMEOUT" -ge 1 ] || die "--script-timeout must be >= 1"
-      if [ "$REQUESTED_SCRIPT_TIMEOUT" -eq 0 ] || [ "$SCRIPT_TIMEOUT" -lt "$REQUESTED_SCRIPT_TIMEOUT" ]; then
-        REQUESTED_SCRIPT_TIMEOUT=$SCRIPT_TIMEOUT
+      [ "$2" -ge 1 ] || die "--script-timeout must be >= 1"
+      if [ "$SCRIPT_TIMEOUT_FLAG_SEEN" -eq 0 ] || [ "$2" -lt "$SCRIPT_TIMEOUT" ]; then
+        SCRIPT_TIMEOUT=$2
       fi
+      SCRIPT_TIMEOUT_FLAG_SEEN=1
       shift 2
       ;;
     --script-timeout=*)
-      SCRIPT_TIMEOUT=${1#--script-timeout=}
-      case "$SCRIPT_TIMEOUT" in
+      case "${1#--script-timeout=}" in
         ''|*[!0-9]*) die "--script-timeout must be a positive integer number of seconds" ;;
       esac
-      [ "$SCRIPT_TIMEOUT" -ge 1 ] || die "--script-timeout must be >= 1"
-      if [ "$REQUESTED_SCRIPT_TIMEOUT" -eq 0 ] || [ "$SCRIPT_TIMEOUT" -lt "$REQUESTED_SCRIPT_TIMEOUT" ]; then
-        REQUESTED_SCRIPT_TIMEOUT=$SCRIPT_TIMEOUT
+      [ "${1#--script-timeout=}" -ge 1 ] || die "--script-timeout must be >= 1"
+      if [ "$SCRIPT_TIMEOUT_FLAG_SEEN" -eq 0 ] || [ "${1#--script-timeout=}" -lt "$SCRIPT_TIMEOUT" ]; then
+        SCRIPT_TIMEOUT=${1#--script-timeout=}
       fi
+      SCRIPT_TIMEOUT_FLAG_SEEN=1
       shift
       ;;
     --jobs)
@@ -1821,24 +1826,26 @@ while [ "$#" -gt 0 ]; do
       ;;
     --per-script-timeout-secs)
       [ "$#" -gt 1 ] || die "--per-script-timeout-secs requires a whole number of seconds"
-      PER_SCRIPT_TIMEOUT_SECS=$2
-      case "$PER_SCRIPT_TIMEOUT_SECS" in
+      case "$2" in
         ''|*[!0-9]*) die "--per-script-timeout-secs requires a whole number of seconds (0 adds no bound of its own; --script-timeout still applies)" ;;
       esac
-      if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ] \
-        && { [ "$REQUESTED_SCRIPT_TIMEOUT" -eq 0 ] || [ "$PER_SCRIPT_TIMEOUT_SECS" -lt "$REQUESTED_SCRIPT_TIMEOUT" ]; }; then
-        REQUESTED_SCRIPT_TIMEOUT=$PER_SCRIPT_TIMEOUT_SECS
+      if [ "$2" -gt 0 ]; then
+        if [ "$SCRIPT_TIMEOUT_FLAG_SEEN" -eq 0 ] || [ "$2" -lt "$SCRIPT_TIMEOUT" ]; then
+          SCRIPT_TIMEOUT=$2
+        fi
+        SCRIPT_TIMEOUT_FLAG_SEEN=1
       fi
       shift 2
       ;;
     --per-script-timeout-secs=*)
-      PER_SCRIPT_TIMEOUT_SECS=${1#--per-script-timeout-secs=}
-      case "$PER_SCRIPT_TIMEOUT_SECS" in
+      case "${1#--per-script-timeout-secs=}" in
         ''|*[!0-9]*) die "--per-script-timeout-secs requires a whole number of seconds (0 adds no bound of its own; --script-timeout still applies)" ;;
       esac
-      if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ] \
-        && { [ "$REQUESTED_SCRIPT_TIMEOUT" -eq 0 ] || [ "$PER_SCRIPT_TIMEOUT_SECS" -lt "$REQUESTED_SCRIPT_TIMEOUT" ]; }; then
-        REQUESTED_SCRIPT_TIMEOUT=$PER_SCRIPT_TIMEOUT_SECS
+      if [ "${1#--per-script-timeout-secs=}" -gt 0 ]; then
+        if [ "$SCRIPT_TIMEOUT_FLAG_SEEN" -eq 0 ] || [ "${1#--per-script-timeout-secs=}" -lt "$SCRIPT_TIMEOUT" ]; then
+          SCRIPT_TIMEOUT=${1#--per-script-timeout-secs=}
+        fi
+        SCRIPT_TIMEOUT_FLAG_SEEN=1
       fi
       shift
       ;;
@@ -1963,13 +1970,6 @@ case "$JOBS" in
   ''|*[!0-9]*) die "--jobs must be a positive integer" ;;
 esac
 [ "$JOBS" -ge 1 ] || die "--jobs must be >= 1"
-if [ "$REQUESTED_SCRIPT_TIMEOUT" -gt 0 ]; then
-  SCRIPT_TIMEOUT=$REQUESTED_SCRIPT_TIMEOUT
-fi
-case "$SCRIPT_TIMEOUT" in
-  ''|*[!0-9]*) die "--script-timeout must be a positive integer number of seconds" ;;
-esac
-[ "$SCRIPT_TIMEOUT" -ge 1 ] || die "--script-timeout must be >= 1"
 [ "$JOBS" -le "$JOBS_MAX" ] || die "--jobs is capped at $JOBS_MAX (got $JOBS)"
 
 if [ -n "$MAX_WALL_MS" ]; then
@@ -1978,10 +1978,6 @@ if [ -n "$MAX_WALL_MS" ]; then
   esac
   [ "$MAX_WALL_MS" -gt 0 ] || die "--max-wall-ms requires a positive integer"
 fi
-
-case "$PER_SCRIPT_TIMEOUT_SECS" in
-  ''|*[!0-9]*) die "--per-script-timeout-secs requires a whole number of seconds (0 adds no bound of its own; --script-timeout still applies)" ;;
-esac
 
 case "${MODE:-}" in
   all)
