@@ -1715,11 +1715,6 @@ with open(out, "w", encoding="utf-8") as fh:
 PY
 }
 
-case "$SCRIPT_TIMEOUT" in
-  ''|*[!0-9]*) die "--script-timeout must be a positive integer number of seconds" ;;
-esac
-[ "$SCRIPT_TIMEOUT" -ge 1 ] || die "--script-timeout must be >= 1"
-
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --all)
@@ -2033,6 +2028,11 @@ if [ "$LIST_ONLY" -eq 1 ] || [ "$LIST_SCHEDULED" -eq 1 ]; then
   fi
   exit 0
 fi
+
+case "$SCRIPT_TIMEOUT" in
+  ''|*[!0-9]*) die "--script-timeout must be a positive integer number of seconds" ;;
+esac
+[ "$SCRIPT_TIMEOUT" -ge 1 ] || die "--script-timeout must be >= 1"
 
 # The automatic bound belongs to --changed itself, not to the automatic
 # scheduler below it: --changed --jobs 1 is still a changed run, and a hang in it

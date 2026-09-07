@@ -853,7 +853,7 @@ SH
 }
 
 test_timeout_flags_only_tighten() {
-  local tmp fixture
+  local tmp fixture rc
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-timeout-min.XXXXXX")
   fixture="$tmp/fast.test.sh"
   cat >"$fixture" <<'SH'
@@ -877,16 +877,32 @@ SH
   FM_TEST_SCRIPT_TIMEOUT=2 "$RUNNER" --script-timeout 30 \
     --json "$tmp/default.json" "$fixture" >"$tmp/default.out" 2>"$tmp/default.err" \
     || fail "explicit timeout did not replace the environment default: $(cat "$tmp/default.err")"
+  FM_TEST_SCRIPT_TIMEOUT=bogus "$RUNNER" --script-timeout 30 \
+    --json "$tmp/invalid-default.json" "$fixture" >"$tmp/invalid-default.out" 2>"$tmp/invalid-default.err" \
+    || fail "explicit timeout did not replace the invalid environment default: $(cat "$tmp/invalid-default.err")"
+  FM_TEST_SCRIPT_TIMEOUT=bogus "$RUNNER" --help >"$tmp/help.out" 2>"$tmp/help.err" \
+    || fail "invalid environment default blocked --help: $(cat "$tmp/help.err")"
+  grep -Fq -- '--script-timeout N' "$tmp/help.err" \
+    || fail "--help did not print the timeout option header"
+
+  set +e
+  FM_TEST_SCRIPT_TIMEOUT=bogus "$RUNNER" "$fixture" >"$tmp/invalid.out" 2>"$tmp/invalid.err"
+  rc=$?
+  set -e
+  [ "$rc" -eq 2 ] || fail "invalid environment default without an override must fail, got $rc"
+  grep -Fq -- '--script-timeout must be a positive integer number of seconds' "$tmp/invalid.err" \
+    || fail "invalid environment default did not report the timeout error"
 
   python3 - "$tmp/repeated.json" "$tmp/reversed.json" "$tmp/zero.json" \
-    "$tmp/cross.json" "$tmp/default.json" <<'PY' \
+    "$tmp/cross.json" "$tmp/default.json" "$tmp/invalid-default.json" <<'PY' \
     || fail "timeout flags did not preserve their precedence and minimum"
 import json, sys
 for path in sys.argv[1:5]:
     doc = json.load(open(path, encoding="utf-8"))
     assert doc["selection"] == "scripts;timeout=3", doc["selection"]
-default = json.load(open(sys.argv[5], encoding="utf-8"))
-assert default["selection"] == "scripts;timeout=30", default["selection"]
+for path in sys.argv[5:]:
+    doc = json.load(open(path, encoding="utf-8"))
+    assert doc["selection"] == "scripts;timeout=30", doc["selection"]
 PY
 
   rm -rf "$tmp"
