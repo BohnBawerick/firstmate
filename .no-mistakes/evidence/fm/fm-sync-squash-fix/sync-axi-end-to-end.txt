@@ -1,0 +1,28 @@
+Scenario: squash-merged branch, before and after the fix
+fixture relation: fm/squashed-task is not an ancestor of main
+base script output: squashrepo: unlanded work in progress - not applied
+target script output: squashrepo: updated, 1 new commit from upstream
+task branch unchanged: yes
+updated checkout files: task=landed upstream=upstream
+updated main history:
+  squash landing
+  upstream-update
+  initial
+
+Scenario: retained dirty-tree guard
+script output: squashrepo: uncommitted changes - not applied
+head unchanged: yes
+working tree still dirty: yes
+
+Scenario: retained non-default-branch guard
+script output: squashrepo: unlanded work in progress - not applied
+current branch: fm/squashed-task
+head unchanged: yes
+
+Scenario: retained conflict trial leaves the real checkout untouched
+script output: conflict: CONFLICTS in 1 file - not applied
+head unchanged: yes
+working tree clean: yes
+real checkout content: local
+
+Result: every sync scenario matched the required observable behavior.

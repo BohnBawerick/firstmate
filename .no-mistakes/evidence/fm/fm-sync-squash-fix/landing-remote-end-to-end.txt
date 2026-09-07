@@ -1,0 +1,30 @@
+Scenario: landing-remote apply before and after the fix
+base script exit: 1
+base script output:
+unknown flag: --yes
+error: no-mistakes init failed, so its stored PR target would still name the previous remote and the pipeline would open PRs there. The checkout was restored, so re-run apply once the cause is fixed
+base no-mistakes argv: --yes init
+remotes after failed base apply and rollback:
+  fork	file:///tmp/tmp.6MzHjAetUo/ours.git (fetch)
+  fork	file:///tmp/tmp.6MzHjAetUo/ours.git (push)
+  origin	file:///tmp/tmp.6MzHjAetUo/parent.git (fetch)
+  origin	file:///tmp/tmp.6MzHjAetUo/parent.git (push)
+
+target script exit: 0
+target script output:
+landing-remote: origin now points at the landing remote
+origin=file:///tmp/tmp.6MzHjAetUo/ours.git
+upstream=file:///tmp/tmp.6MzHjAetUo/parent.git
+fork=absent
+gh-default=origin
+target no-mistakes argv: init
+remotes after target apply:
+  origin	file:///tmp/tmp.6MzHjAetUo/ours.git (fetch)
+  origin	file:///tmp/tmp.6MzHjAetUo/ours.git (push)
+  upstream	file:///tmp/tmp.6MzHjAetUo/parent.git (fetch)
+  upstream	file:///tmp/tmp.6MzHjAetUo/parent.git (push)
+git defaults: checkout.defaultRemote=origin remote.pushDefault=origin gh-default=base
+verify output:
+origin=file:///tmp/tmp.6MzHjAetUo/ours.git
+
+Result: the rejected base invocation rolled back, while bare init let apply persist the remap.
