@@ -791,8 +791,8 @@ test_concurrent_runs_are_ordered_longest_first() {
 }
 
 # --max-wall-ms is checked after the run, so it cannot end a run that never
-# finishes. A hung script has to become a bounded failure, because an unbounded
-# suite is exactly what silently outruns its caller's invocation budget.
+# finishes. A requested per-script budget must reach enforcement, or the 1800s
+# default can outlast its caller's invocation budget.
 test_per_script_timeout_bounds_a_hang() {
   local tmp repo runner hang rc began ended grandchild_pid grandchild waited
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-hang.XXXXXX")

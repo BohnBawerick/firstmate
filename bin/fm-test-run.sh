@@ -73,16 +73,16 @@
 #                   Every bound resolves by tightening, never loosening, so the
 #                   effective budget is the smallest one asked for and no flag can
 #                   widen a bound another one already set. No real script
-#                   approaches 900s, so the automatic bound only converts a HUNG
-#                   script into a bounded failure. --max-wall-ms is checked
+#                   approaches 900s, so the automatic bound only makes an
+#                   otherwise stuck script fail sooner. --max-wall-ms is checked
 #                   after the run and so cannot catch a hang on its own.
 #                   External interruption cleanup is outside this runner's
-#                   guarantee; configured per-script bounds remain authoritative.
+#                   guarantee; the resolved per-script budget remains authoritative.
 #   --max-wall-ms N fail the run when its measured invocation wall clock exceeds
 #                   N milliseconds, including an empty selection. It is
 #                   evaluated after selection and suite execution and cannot
-#                   interrupt a running script; per-script hangs are
-#                   bounded by --per-script-timeout-secs. Pathological output
+#                   interrupt a running script; the resolved per-script budget
+#                   above bounds per-script hangs. Pathological output
 #                   sinks that block finalization are explicitly out of scope.
 #   -h, --help      print this header
 #
@@ -163,15 +163,14 @@ JOBS_MAX=8
 MAX_WALL_MS=
 PER_SCRIPT_TIMEOUT_SECS=0
 REQUESTED_SCRIPT_TIMEOUT=0
-# Bound applied automatically on the automatic --changed path, derived from
+# Bound applied to every --changed run, derived from
 # measured healthy runtimes with margin rather than picked: the slowest measured
 # behavior test is the 341s Herdr presentation E2E, and the slowest script in a
 # runner-file changed selection is tests/fm-calm-pi-extension.test.sh at 77s
 # once its Chrome reap terminates. 900s leaves roughly 2.6x headroom over the
 # slowest real script, so this can only ever fire on a script that is genuinely
-# stuck. It is a guard, not a speed control: a HUNG script becomes a bounded
-# failure instead of an unbounded suite, which is the shape that silently
-# outruns a caller's invocation budget.
+# stuck. It is a guard, not a speed control: without a tighter caller bound, a
+# stuck script fails after 900s instead of reaching the 1800s default.
 CHANGED_DEFAULT_TIMEOUT_SECS=900
 
 # Per-script wall-clock budget in seconds. A script that stops making progress is
@@ -997,12 +996,8 @@ select_lane() {
 run_coverage_guard() {
   local tmp missing extra a b shard
   local -a saved_scripts=()
-  # Every list here is built with LC_ALL=C sort, so the comparisons over them
-  # have to agree on that collation. comm and cmp read the ambient locale, and
-  # under a UTF-8 collation they reject C-sorted input as unsorted and compare
-  # garbage. CI runs C.UTF-8, which collates like C and hides this, so the guard
-  # only breaks on a developer's own machine. Local to the function, restored on
-  # return, and exported so the tools it runs see it.
+  # comm and cmp must use the same collation as these C-sorted inputs, because
+  # an ambient non-C collation can reject the inputs as unsorted.
   local -x LC_ALL=C
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-coverage.XXXXXX")
 
