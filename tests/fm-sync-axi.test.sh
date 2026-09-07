@@ -211,41 +211,52 @@ case "$out" in
   *) fail "expected updated output for merged task branch, got: $out" ;;
 esac
 
-# --- Test 7c: Multiple merged branches plus one unmerged branch still refuses ---
-mix_home="$TMP_ROOT/home-mix-branch"
-mkdir -p "$mix_home/projects" "$mix_home/remotes"
+# --- Test 7c: Squash-merged task branch is NOT treated as unlanded ---
+# A squash merge rewrites a branch's commits into one new commit on the default
+# branch, so the branch tip is never an ancestor of it however completely the
+# content landed. Syncing must still apply.
+squash_home="$TMP_ROOT/home-squash-branch"
+mkdir -p "$squash_home/projects" "$squash_home/remotes"
 
-git init -q --bare "$mix_home/remotes/mixrepo.git"
-git -C "$mix_home/remotes/mixrepo.git" symbolic-ref HEAD refs/heads/main
+git init -q --bare "$squash_home/remotes/squashrepo.git"
+git -C "$squash_home/remotes/squashrepo.git" symbolic-ref HEAD refs/heads/main
 
-work_mix="$TMP_ROOT/work-mix"
-git clone -q "$mix_home/remotes/mixrepo.git" "$work_mix" 2>/dev/null
-commit_file "$work_mix" file.txt v1 C1
-git -C "$work_mix" push -q origin main
+work_squash="$TMP_ROOT/work-squash"
+git clone -q "$squash_home/remotes/squashrepo.git" "$work_squash" 2>/dev/null
+commit_file "$work_squash" file.txt v1 C1
+git -C "$work_squash" push -q origin main
 
-git clone -q "$mix_home/remotes/mixrepo.git" "$mix_home/projects/mixrepo" 2>/dev/null
+git clone -q "$squash_home/remotes/squashrepo.git" "$squash_home/projects/squashrepo" 2>/dev/null
 
-# Create 2 merged branches
-git -C "$mix_home/projects/mixrepo" checkout -q -b fm/merged1
-commit_file "$mix_home/projects/mixrepo" m1.txt m1 C-m1
-git -C "$mix_home/projects/mixrepo" checkout -q main
-git -C "$mix_home/projects/mixrepo" merge -q fm/merged1
+# Create a task branch and squash-merge it into main in the clone
+git -C "$squash_home/projects/squashrepo" checkout -q -b fm/squashed-task
+commit_file "$squash_home/projects/squashrepo" squashed.txt s1 C-squashed
+git -C "$squash_home/projects/squashrepo" checkout -q main
+git -C "$squash_home/projects/squashrepo" merge -q --squash fm/squashed-task >/dev/null 2>&1
+git -C "$squash_home/projects/squashrepo" commit -qm "C-squashed (squashed)"
 
-git -C "$mix_home/projects/mixrepo" checkout -q -b fm/merged2
-commit_file "$mix_home/projects/mixrepo" m2.txt m2 C-m2
-git -C "$mix_home/projects/mixrepo" checkout -q main
-git -C "$mix_home/projects/mixrepo" merge -q fm/merged2
+if git -C "$squash_home/projects/squashrepo" merge-base --is-ancestor fm/squashed-task main; then
+  fail "test setup wrong: squash-merged branch tip is an ancestor of main"
+else
+  pass "squash-merged branch tip is not an ancestor of main"
+fi
 
-# Create 1 unmerged branch
-git -C "$mix_home/projects/mixrepo" checkout -q -b fm/unmerged1
-commit_file "$mix_home/projects/mixrepo" u1.txt u1 C-u1
-git -C "$mix_home/projects/mixrepo" checkout -q main
+# Advance upstream origin
+commit_file "$work_squash" file.txt v2 C2-upstream
+git -C "$work_squash" push -q origin main
 
-out=$(FM_HOME="$mix_home" "$SYNC_SCRIPT" "$mix_home/projects/mixrepo" 2>&1)
+out=$(FM_HOME="$squash_home" "$SYNC_SCRIPT" "$squash_home/projects/squashrepo" 2>&1)
 case "$out" in
-  *"mixrepo: unlanded work in progress - not applied"*) pass "mixed merged and unmerged branches correctly refused" ;;
-  *) fail "expected unlanded output for mixed branches, got: $out" ;;
+  *"squashrepo: updated, 1 new commit from upstream"*) pass "squash-merged task branch allowed and updated cleanly" ;;
+  *) fail "expected updated output for squash-merged task branch, got: $out" ;;
 esac
+
+squash_branch_sha=$(git -C "$squash_home/projects/squashrepo" rev-parse fm/squashed-task 2>/dev/null || true)
+if [ -n "$squash_branch_sha" ]; then
+  pass "sync left the other local branch in place"
+else
+  fail "sync removed local branch fm/squashed-task"
+fi
 
 # --- Test 8: Firstmate restart note ---
 fm_world="$TMP_ROOT/fm-world"
