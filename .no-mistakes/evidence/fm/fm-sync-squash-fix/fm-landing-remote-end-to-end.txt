@@ -1,0 +1,22 @@
+fm-landing-remote base-to-target regression evidence
+===================================================
+
+Strict executable substitute: only one bare no-mistakes init argument succeeds.
+
+Base commit 7697953
+$ fm-landing-remote.sh apply --ours <landing> --upstream <parent>
+rejected no-mistakes arguments: --yes init
+error: no-mistakes init failed, so its stored PR target would still name the previous remote and the pipeline would open PRs there. The checkout was restored, so re-run apply once the cause is fixed
+base result: exit=1 recorded_call=no-mistakes:--yes init origin=file://<fixture>/parent.git fork=file://<fixture>/ours.git upstream=absent
+
+Target commit 5c9e659
+$ fm-landing-remote.sh apply --ours <landing> --upstream <parent>
+landing-remote: origin now points at the landing remote
+origin=file://<fixture>/ours.git
+upstream=file://<fixture>/parent.git
+fork=absent
+gh-default=origin
+target result: exit=0 recorded_call=no-mistakes:init origin=file://<fixture>/ours.git upstream=file://<fixture>/parent.git fork=absent
+
+$ fm-landing-remote.sh verify --ours <landing>
+origin=file://<fixture>/ours.git

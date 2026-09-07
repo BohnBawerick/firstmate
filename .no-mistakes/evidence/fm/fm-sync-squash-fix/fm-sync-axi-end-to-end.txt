@@ -1,0 +1,23 @@
+fm-sync-axi end-to-end acceptance evidence
+==========================================
+
+Scenario 1: squash-merged topic branch remains while main receives an upstream update
+before: checked_out=main topic_is_ancestor_of_main=no topic_sha=a430b83ed2fb9440eb5deac9f01e1b4eafc49d90
+$ fm-sync-axi.sh squash-demo
+squash-demo: updated, 1 new commit from upstream
+after: upstream_file=arrived squash_file=landed topic_preserved=yes worktree=clean
+
+Scenario 2: dirty checkout is refused with its existing message
+$ fm-sync-axi.sh dirty-demo
+dirty-demo: uncommitted changes - not applied
+after: head_unchanged=yes edit_still_present=yes
+
+Scenario 3: checkout parked on a non-default branch is refused with its existing message
+$ fm-sync-axi.sh branch-demo
+branch-demo: unlanded work in progress - not applied
+after: checked_out=feature/work head_unchanged=yes
+
+Scenario 4: conflicting upstream update is reported without touching the real checkout
+$ fm-sync-axi.sh conflict-demo
+conflict-demo: CONFLICTS in 1 file - not applied
+after: head_unchanged=yes tree_unchanged=yes worktree=clean file_content=local

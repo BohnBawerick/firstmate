@@ -1,0 +1,14 @@
+fm-sync-axi squash-merge regression evidence
+============================================
+
+same fixture: checked_out=main topic_is_ancestor_of_main=no topic_sha=13d87ff970755006cafe30fd716ee900e2ca1650
+
+Base commit 7697953
+$ fm-sync-axi.sh squash-demo
+squash-demo: unlanded work in progress - not applied
+base result: upstream_update_applied=no
+
+Target commit 5c9e659
+$ fm-sync-axi.sh squash-demo
+squash-demo: updated, 1 new commit from upstream
+target result: upstream_update_applied=yes squash_content=landed topic_preserved=yes worktree=clean
