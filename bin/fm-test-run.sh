@@ -44,7 +44,7 @@
 #                   silently pass as a gate skip.
 #   --script-timeout N
 #                   per-script wall-clock budget in seconds. The default is
-#                   FM_TEST_SCRIPT_TIMEOUT when set, otherwise 1800. The first
+#                   FM_TEST_SCRIPT_TIMEOUT when non-empty, otherwise 1800. The first
 #                   positive occurrence of either timeout flag replaces that
 #                   default outright. Each later positive occurrence only
 #                   tightens the budget, so repeated timeout flags resolve to
