@@ -1,0 +1,11 @@
+FM_TEST_BEGIN 2026-09-07T21:41:24Z ./.timeout-hang-fixture.test.sh family=unclassified expected_gate_skip=none
+ok - fixture entered the script before its requested timeout
+fm-test-run: per-script budget of 1s exceeded, terminating: ./.timeout-hang-fixture.test.sh
+not ok - ./.timeout-hang-fixture.test.sh exceeded the per-script budget of 1s and was terminated
+fm-test-run: reaping processes ./.timeout-hang-fixture.test.sh left behind (group 2916804)
+FM_TEST_LEAK ./.timeout-hang-fixture.test.sh pgid=2916804
+FM_TEST_END 2026-09-07T21:41:25Z ./.timeout-hang-fixture.test.sh exit=124 duration_ms=1085 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=1 skipped_gate=0 duration_ms=1144
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=1085 failed=1
+FM_TEST_SLOWEST rank=1 script=./.timeout-hang-fixture.test.sh duration_ms=1085
+fm-test-run: wrote timing artifact: /home/bohn/.no-mistakes/evidence/01M1YSR84ANVENM3A1R1W4AAZQ/timeout-enforcement.json
