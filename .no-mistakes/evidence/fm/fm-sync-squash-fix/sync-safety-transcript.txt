@@ -1,0 +1,15 @@
+Scenario: retained sync safety checks
+
+Dirty working tree
+  sync-clone: uncommitted changes - not applied
+  main unchanged: yes
+  local edit preserved: yes
+
+Checkout on a non-default branch
+  sync-clone: unlanded work in progress - not applied
+  checked-out branch unchanged: yes
+
+Conflicting upstream and local updates
+  conflict-clone: CONFLICTS in 1 file - not applied
+  main unchanged: yes
+  working tree clean after refusal: yes

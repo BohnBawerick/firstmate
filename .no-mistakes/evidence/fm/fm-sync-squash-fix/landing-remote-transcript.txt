@@ -1,0 +1,27 @@
+Scenario: remap a fork checkout onto its landing remote
+
+Previous behavior from base commit
+  exit code: 1
+  error: no-mistakes init failed, so its stored PR target would still name the previous remote and the pipeline would open PRs there. The checkout was restored, so re-run apply once the cause is fixed
+  Tool calls:
+  gh repo set-default origin
+  no-mistakes --yes init
+  origin restored to parent: yes
+
+Current behavior
+landing-remote: origin now points at the landing remote
+origin=file:///tmp/tmp.oIDFOoM1s5/landing-ours.git
+upstream=file:///tmp/tmp.oIDFOoM1s5/landing-parent.git
+fork=absent
+gh-default=origin
+
+Tool calls made by apply
+  gh repo set-default origin
+  no-mistakes init
+
+Persisted repository settings
+  origin=file:///tmp/tmp.oIDFOoM1s5/landing-ours.git
+  upstream=file:///tmp/tmp.oIDFOoM1s5/landing-parent.git
+  checkout.defaultRemote=origin
+  remote.pushDefault=origin
+  gh default=base

@@ -1,0 +1,18 @@
+Scenario: sync a clean main branch while an unmerged local branch exists
+
+Before sync
+  checked-out branch: main
+  main: 1e937ea1f01206f9665a0ac6a885e6c4ba322a17
+  feature/unmerged: f60d956fa3379d3189de6c1e733145b1e317bd65
+  feature/unmerged is merged into main: no
+
+Previous behavior from base commit
+  sync-clone: unlanded work in progress - not applied
+  main changed: no
+
+Current behavior
+  sync-clone: updated, 1 new commit from upstream
+  main now matches origin/main: yes
+  upstream file on main: upstream content
+  feature/unmerged still exists: yes
+  feature/unmerged tip preserved in this default configuration: yes
