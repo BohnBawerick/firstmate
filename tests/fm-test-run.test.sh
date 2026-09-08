@@ -307,14 +307,14 @@ SH
   git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm fixtures
   printf '\n' >>"$repo/bin/shared-probe-lib.sh"
 
-  (cd "$repo" && bin/fm-test-run.sh --changed --base HEAD --json "$tmp/parallel.json") \
+  (cd "$repo" && FM_TEST_SCRIPT_TIMEOUT='' bin/fm-test-run.sh --changed --base HEAD --json "$tmp/parallel.json") \
     >"$tmp/parallel.out" 2>"$tmp/parallel.err" \
     || fail "default changed fixture run failed: $(cat "$tmp/parallel.err")"
   parallel_shape=$(grep -E '^FM_TEST_(BEGIN|END)' "$tmp/parallel.out" | head -n 2 | awk '{print $1}' | paste -sd, -)
   [ "$parallel_shape" = FM_TEST_BEGIN,FM_TEST_BEGIN ] \
     || fail "plain --changed did not use bounded concurrent scheduling: $parallel_shape"
 
-  (cd "$repo" && bin/fm-test-run.sh --changed --base HEAD --jobs 1 --json "$tmp/serial.json") \
+  (cd "$repo" && FM_TEST_SCRIPT_TIMEOUT='' bin/fm-test-run.sh --changed --base HEAD --jobs 1 --json "$tmp/serial.json") \
     >"$tmp/serial.out" 2>"$tmp/serial.err" \
     || fail "explicit serial changed fixture run failed: $(cat "$tmp/serial.err")"
   serial_shape=$(grep -E '^FM_TEST_(BEGIN|END)' "$tmp/serial.out" | head -n 2 | awk '{print $1}' | paste -sd, -)
@@ -327,29 +327,34 @@ SH
   [ "$expected_jobs" -le 4 ] || expected_jobs=4
   [ "$expected_jobs" -ge 1 ] || expected_jobs=1
   python3 - "$tmp/parallel.json" "$tmp/serial.json" "$expected_jobs" <<'PY' \
-    || fail "changed timing artifacts did not record their resolved worker counts"
+    || fail "changed timing artifacts did not record their resolved workers and bound"
 import json, sys
 automatic = json.load(open(sys.argv[1], encoding="utf-8"))
 serial = json.load(open(sys.argv[2], encoding="utf-8"))
 expected = int(sys.argv[3])
 assert automatic["selection"].split(";")[-1] == f"jobs={expected}"
 assert serial["selection"].split(";")[-1] == "jobs=1"
+# The automatic 900s bound belongs to --changed itself, so the explicit --jobs 1
+# run carries it too. Pinning the resolved number here is what keeps the
+# enforcement check below fast: nothing has to wait 900s to prove the value.
+assert "timeout=900" in automatic["selection"].split(";"), automatic["selection"]
+assert "timeout=900" in serial["selection"].split(";"), serial["selection"]
 PY
 
+  # The bound is enforced by the runner's own containment path, which starts the
+  # script and then kills it, so the proof is a script that really hangs and never
+  # reaches the marker on the far side of its sleep. The environment supplies the
+  # tighter number the automatic rule resolves against, because a test cannot wait
+  # out the 900s the unconfigured path resolves; that value is pinned above.
   timeout_repo="$tmp/timeout-repo"
   timeout_script=tests/fm-calm-pi-extension.test.sh
   mkdir -p "$timeout_repo/bin" "$timeout_repo/tests"
   cp "$RUNNER" "$timeout_repo/bin/fm-test-run.sh"
-  cat >"$timeout_repo/bin/fm-timeout-lib.sh" <<'SH'
-fm_run_timed() {
-  [ "$1" -eq 900 ] || return 99
-  return 124
-}
-SH
   cat >"$timeout_repo/$timeout_script" <<'SH'
 #!/usr/bin/env bash
+echo "ok - fixture is about to hang past its bound"
+sleep 600
 touch should-not-run
-echo "not ok - automatic timeout helper was bypassed"
 SH
   chmod +x "$timeout_repo/bin/fm-test-run.sh" "$timeout_repo/$timeout_script"
   git -C "$timeout_repo" init -q
@@ -357,14 +362,15 @@ SH
   git -C "$timeout_repo" -c user.name=test -c user.email=test@example.invalid commit -qm baseline
   printf '\n' >>"$timeout_repo/$timeout_script"
   set +e
-  (cd "$timeout_repo" && bin/fm-test-run.sh --changed --base HEAD) \
+  (cd "$timeout_repo" && FM_TEST_SCRIPT_TIMEOUT=3 bin/fm-test-run.sh --changed --base HEAD) \
     >"$tmp/timeout.out" 2>"$tmp/timeout.err"
   rc=$?
   set -e
   [ "$rc" -eq 1 ] || fail "single-script automatic timeout must fail the run, got $rc"
   grep -Eq '^FM_TEST_END .+ tests/fm-calm-pi-extension\.test\.sh exit=124 ' "$tmp/timeout.out" \
     || fail "single unproven changed script did not receive the automatic timeout: $(cat "$tmp/timeout.out")"
-  [ ! -e "$timeout_repo/should-not-run" ] || fail "automatic timeout helper did not own the single changed script"
+  [ ! -e "$timeout_repo/should-not-run" ] \
+    || fail "the automatic timeout let the single changed script run to completion"
 
   rm -rf "$tmp"
   pass "changed defaults to bounded automatic scheduling with serial override"
@@ -376,7 +382,7 @@ test_empty_selection_emits_summary() {
   repo="$tmp/repo"
   init_changed_fixture_repo "$repo"
   printf 'documentation only\n' >"$repo/README.md"
-  out=$(cd "$repo" && bin/fm-test-run.sh --changed --base HEAD --json "$tmp/artifacts/timing.json" 2>"$tmp/err") \
+  out=$(cd "$repo" && FM_TEST_SCRIPT_TIMEOUT='' bin/fm-test-run.sh --changed --base HEAD --json "$tmp/artifacts/timing.json" 2>"$tmp/err") \
     || fail "empty valid changed selection must pass"
   printf '%s\n' "$out" | grep -Eq \
     '^FM_TEST_SUMMARY total=0 failed=0 skipped_gate=0 duration_ms=[0-9]+$' \
@@ -391,6 +397,7 @@ assert doc["summary"]["skipped_gate"] == 0
 assert doc["summary"]["duration_ms"] >= 0
 assert doc["scripts"] == []
 assert doc["families"] == []
+assert doc["selection"] == "changed:base=HEAD;timeout=900;jobs=1"
 ' "$json" || { rm -rf "$tmp"; fail "empty selection JSON summary is wrong"; }
   fake_bin="$tmp/fake-bin"
   real_git=$(command -v git)
@@ -784,8 +791,8 @@ test_concurrent_runs_are_ordered_longest_first() {
 }
 
 # --max-wall-ms is checked after the run, so it cannot end a run that never
-# finishes. A hung script has to become a bounded failure, because an unbounded
-# suite is exactly what silently outruns its caller's invocation budget.
+# finishes. A requested per-script budget must reach enforcement, or the 1800s
+# default can outlast its caller's invocation budget.
 test_per_script_timeout_bounds_a_hang() {
   local tmp repo runner hang rc began ended grandchild_pid grandchild waited
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-hang.XXXXXX")
@@ -815,7 +822,7 @@ SH
   [ "$rc" -ne 0 ] || fail "a terminated script must fail the run: $(cat "$tmp/out")"
   [ "$((ended - began))" -lt 120 ] \
     || fail "the per-script bound did not stop a 600s hang (took $((ended - began))s)"
-  grep -Fq 'exceeded the per-script bound' "$tmp/out" \
+  grep -Fq 'exceeded the per-script budget' "$tmp/out" \
     || fail "the terminated script was not named: $(cat "$tmp/out")"
   grep -Eq 'FM_TEST_END .* exit=124 ' "$tmp/out" \
     || fail "a terminated script must be recorded as exit 124: $(cat "$tmp/out")"
@@ -834,7 +841,7 @@ SH
     fail "the timed-out script left grandchild $grandchild running"
   fi
 
-  # 0 keeps the historical unbounded behavior, so no existing caller changes.
+  # 0 contributes no tighter legacy bound; --script-timeout still bounds the run.
   set +e
   "$runner" --per-script-timeout-secs nope "$hang" >"$tmp/o2" 2>"$tmp/e2"
   rc=$?
@@ -843,6 +850,63 @@ SH
 
   rm -rf "$tmp"
   pass "--per-script-timeout-secs turns a hung script into a bounded failure"
+}
+
+test_timeout_flags_only_tighten() {
+  local tmp fixture rc
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-timeout-min.XXXXXX")
+  fixture="$tmp/fast.test.sh"
+  cat >"$fixture" <<'SH'
+#!/usr/bin/env bash
+echo "ok - fast timeout minimum fixture"
+SH
+  chmod +x "$fixture"
+
+  "$RUNNER" --script-timeout 3 --script-timeout 30 \
+    --json "$tmp/repeated.json" "$fixture" >"$tmp/repeated.out" 2>"$tmp/repeated.err" \
+    || fail "repeated --script-timeout run failed: $(cat "$tmp/repeated.err")"
+  "$RUNNER" --script-timeout 30 --script-timeout 3 \
+    --json "$tmp/reversed.json" "$fixture" >"$tmp/reversed.out" 2>"$tmp/reversed.err" \
+    || fail "reversed --script-timeout run failed: $(cat "$tmp/reversed.err")"
+  "$RUNNER" --per-script-timeout-secs 3 --per-script-timeout-secs 0 \
+    --json "$tmp/zero.json" "$fixture" >"$tmp/zero.out" 2>"$tmp/zero.err" \
+    || fail "zero sentinel timeout run failed: $(cat "$tmp/zero.err")"
+  "$RUNNER" --script-timeout 30 --per-script-timeout-secs 3 \
+    --json "$tmp/cross.json" "$fixture" >"$tmp/cross.out" 2>"$tmp/cross.err" \
+    || fail "cross-flag timeout run failed: $(cat "$tmp/cross.err")"
+  FM_TEST_SCRIPT_TIMEOUT=2 "$RUNNER" --script-timeout 30 \
+    --json "$tmp/default.json" "$fixture" >"$tmp/default.out" 2>"$tmp/default.err" \
+    || fail "explicit timeout did not replace the environment default: $(cat "$tmp/default.err")"
+  FM_TEST_SCRIPT_TIMEOUT=bogus "$RUNNER" --script-timeout 30 \
+    --json "$tmp/invalid-default.json" "$fixture" >"$tmp/invalid-default.out" 2>"$tmp/invalid-default.err" \
+    || fail "explicit timeout did not replace the invalid environment default: $(cat "$tmp/invalid-default.err")"
+  FM_TEST_SCRIPT_TIMEOUT=bogus "$RUNNER" --help >"$tmp/help.out" 2>"$tmp/help.err" \
+    || fail "invalid environment default blocked --help: $(cat "$tmp/help.err")"
+  grep -Fq -- '--script-timeout N' "$tmp/help.err" \
+    || fail "--help did not print the timeout option header"
+
+  set +e
+  FM_TEST_SCRIPT_TIMEOUT=bogus "$RUNNER" "$fixture" >"$tmp/invalid.out" 2>"$tmp/invalid.err"
+  rc=$?
+  set -e
+  [ "$rc" -eq 2 ] || fail "invalid environment default without an override must fail, got $rc"
+  grep -Fq -- '--script-timeout must be a positive integer number of seconds' "$tmp/invalid.err" \
+    || fail "invalid environment default did not report the timeout error"
+
+  python3 - "$tmp/repeated.json" "$tmp/reversed.json" "$tmp/zero.json" \
+    "$tmp/cross.json" "$tmp/default.json" "$tmp/invalid-default.json" <<'PY' \
+    || fail "timeout flags did not preserve their precedence and minimum"
+import json, sys
+for path in sys.argv[1:5]:
+    doc = json.load(open(path, encoding="utf-8"))
+    assert doc["selection"] == "scripts;timeout=3", doc["selection"]
+for path in sys.argv[5:]:
+    doc = json.load(open(path, encoding="utf-8"))
+    assert doc["selection"] == "scripts;timeout=30", doc["selection"]
+PY
+
+  rm -rf "$tmp"
+  pass "timeout flags replace defaults and preserve the tightest positive budget"
 }
 
 # The duration regression this guard exists for: a suite whose scripts are all
@@ -1429,6 +1493,7 @@ test_jobs_requires_proven_isolated
 test_jobs_admits_a_concurrent_safe_family
 test_concurrent_runs_are_ordered_longest_first
 test_per_script_timeout_bounds_a_hang
+test_timeout_flags_only_tighten
 test_max_wall_ms_is_a_result_not_advice
 test_jobs_parallel_scheduler_and_failure_propagation
 test_herdr_ci_family_run_has_a_step_timeout

@@ -43,10 +43,17 @@
 #                   The required Herdr CI lane uses this so a missing pin cannot
 #                   silently pass as a gate skip.
 #   --script-timeout N
-#                   per-script wall-clock budget in seconds (default 1800, or
-#                   FM_TEST_SCRIPT_TIMEOUT). A script that exceeds it is
+#                   per-script wall-clock budget in seconds. The default is
+#                   FM_TEST_SCRIPT_TIMEOUT when non-empty, otherwise 1800. The first
+#                   positive occurrence of either timeout flag replaces that
+#                   default outright. Each later positive occurrence only
+#                   tightens the budget, so repeated timeout flags resolve to
+#                   the tightest positive value and never widen one another.
+#                   A script that exceeds the resolved budget is
 #                   terminated, its process group reaped, and the script
 #                   reported as failed with exit=124 rather than hanging the lane.
+#                   This is the one budget the runner enforces, and it is reported as
+#                   timeout=<secs> in the run's selection description.
 #   --jobs N        run the selected scripts with up to N concurrent workers.
 #                   Plain --changed uses min(4, cpus) workers when multiple
 #                   selected scripts are admissible.
@@ -62,19 +69,21 @@
 #                   --changed, which uses the bounded automatic scheduler. Any
 #                   unproven remainder runs serially after that group.
 #   --per-script-timeout-secs N
-#                   terminate a script that runs longer than N seconds and
-#                   record it as exit 124 (0 disables, the default). The
-#                   --changed applies 900s automatically: no real script
-#                   approaches it, so it only converts a HUNG
-#                   script into a bounded failure. --max-wall-ms is checked
+#                   another spelling of --script-timeout: terminate a script that
+#                   runs longer than N seconds and record it as exit 124. Zero
+#                   is ignored and does not replace or tighten the default.
+#                   After timeout flags resolve, --changed tightens the budget to
+#                   at most 900s. No real script approaches 900s, so the automatic
+#                   bound only makes an otherwise stuck script fail sooner.
+#                   --max-wall-ms is checked
 #                   after the run and so cannot catch a hang on its own.
 #                   External interruption cleanup is outside this runner's
-#                   guarantee; configured per-script bounds remain authoritative.
+#                   guarantee; the resolved per-script budget remains authoritative.
 #   --max-wall-ms N fail the run when its measured invocation wall clock exceeds
 #                   N milliseconds, including an empty selection. It is
 #                   evaluated after selection and suite execution and cannot
-#                   interrupt a running script; per-script hangs are
-#                   bounded by --per-script-timeout-secs. Pathological output
+#                   interrupt a running script; the resolved per-script budget
+#                   above bounds per-script hangs. Pathological output
 #                   sinks that block finalization are explicitly out of scope.
 #   -h, --help      print this header
 #
@@ -153,22 +162,21 @@ JOBS=1
 JOBS_EXPLICIT=0
 JOBS_MAX=8
 MAX_WALL_MS=
-PER_SCRIPT_TIMEOUT_SECS=0
-# Bound applied automatically on the automatic --changed path, derived from
+# Bound applied to every --changed run, derived from
 # measured healthy runtimes with margin rather than picked: the slowest measured
 # behavior test is the 341s Herdr presentation E2E, and the slowest script in a
 # runner-file changed selection is tests/fm-calm-pi-extension.test.sh at 77s
 # once its Chrome reap terminates. 900s leaves roughly 2.6x headroom over the
 # slowest real script, so this can only ever fire on a script that is genuinely
-# stuck. It is a guard, not a speed control: a HUNG script becomes a bounded
-# failure instead of an unbounded suite, which is the shape that silently
-# outruns a caller's invocation budget.
+# stuck. It is a guard, not a speed control: without a tighter caller bound, a
+# stuck script fails after 900s instead of reaching the 1800s default.
 CHANGED_DEFAULT_TIMEOUT_SECS=900
 
 # Per-script wall-clock budget in seconds. A script that stops making progress is
 # terminated and reported as a failure naming it, so no lane can sit silently for
 # hours behind one wedged descendant.
 SCRIPT_TIMEOUT=${FM_TEST_SCRIPT_TIMEOUT:-1800}
+SCRIPT_TIMEOUT_FLAG_SEEN=0
 # Ticks of 0.05s a reap allows between TERM and KILL, and again after KILL.
 REAP_GRACE_TICKS=100
 
@@ -988,6 +996,9 @@ select_lane() {
 run_coverage_guard() {
   local tmp missing extra a b shard
   local -a saved_scripts=()
+  # comm and cmp must use the same collation as these C-sorted inputs, because
+  # an ambient non-C collation can reject the inputs as unsorted.
+  local -x LC_ALL=C
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-coverage.XXXXXX")
 
   all_repo_tests | LC_ALL=C sort -u >"$tmp/all"
@@ -1767,11 +1778,25 @@ while [ "$#" -gt 0 ]; do
       ;;
     --script-timeout)
       [ "$#" -gt 1 ] || die "--script-timeout requires a positive integer"
-      SCRIPT_TIMEOUT=$2
+      case "$2" in
+        ''|*[!0-9]*) die "--script-timeout must be a positive integer number of seconds" ;;
+      esac
+      [ "$2" -ge 1 ] || die "--script-timeout must be >= 1"
+      if [ "$SCRIPT_TIMEOUT_FLAG_SEEN" -eq 0 ] || [ "$2" -lt "$SCRIPT_TIMEOUT" ]; then
+        SCRIPT_TIMEOUT=$2
+      fi
+      SCRIPT_TIMEOUT_FLAG_SEEN=1
       shift 2
       ;;
     --script-timeout=*)
-      SCRIPT_TIMEOUT=${1#--script-timeout=}
+      case "${1#--script-timeout=}" in
+        ''|*[!0-9]*) die "--script-timeout must be a positive integer number of seconds" ;;
+      esac
+      [ "${1#--script-timeout=}" -ge 1 ] || die "--script-timeout must be >= 1"
+      if [ "$SCRIPT_TIMEOUT_FLAG_SEEN" -eq 0 ] || [ "${1#--script-timeout=}" -lt "$SCRIPT_TIMEOUT" ]; then
+        SCRIPT_TIMEOUT=${1#--script-timeout=}
+      fi
+      SCRIPT_TIMEOUT_FLAG_SEEN=1
       shift
       ;;
     --jobs)
@@ -1796,11 +1821,27 @@ while [ "$#" -gt 0 ]; do
       ;;
     --per-script-timeout-secs)
       [ "$#" -gt 1 ] || die "--per-script-timeout-secs requires a whole number of seconds"
-      PER_SCRIPT_TIMEOUT_SECS=$2
+      case "$2" in
+        ''|*[!0-9]*) die "--per-script-timeout-secs requires a whole number of seconds (0 adds no bound of its own; --script-timeout still applies)" ;;
+      esac
+      if [ "$2" -gt 0 ]; then
+        if [ "$SCRIPT_TIMEOUT_FLAG_SEEN" -eq 0 ] || [ "$2" -lt "$SCRIPT_TIMEOUT" ]; then
+          SCRIPT_TIMEOUT=$2
+        fi
+        SCRIPT_TIMEOUT_FLAG_SEEN=1
+      fi
       shift 2
       ;;
     --per-script-timeout-secs=*)
-      PER_SCRIPT_TIMEOUT_SECS=${1#--per-script-timeout-secs=}
+      case "${1#--per-script-timeout-secs=}" in
+        ''|*[!0-9]*) die "--per-script-timeout-secs requires a whole number of seconds (0 adds no bound of its own; --script-timeout still applies)" ;;
+      esac
+      if [ "${1#--per-script-timeout-secs=}" -gt 0 ]; then
+        if [ "$SCRIPT_TIMEOUT_FLAG_SEEN" -eq 0 ] || [ "${1#--per-script-timeout-secs=}" -lt "$SCRIPT_TIMEOUT" ]; then
+          SCRIPT_TIMEOUT=${1#--per-script-timeout-secs=}
+        fi
+        SCRIPT_TIMEOUT_FLAG_SEEN=1
+      fi
       shift
       ;;
     --list)
@@ -1924,10 +1965,6 @@ case "$JOBS" in
   ''|*[!0-9]*) die "--jobs must be a positive integer" ;;
 esac
 [ "$JOBS" -ge 1 ] || die "--jobs must be >= 1"
-case "$SCRIPT_TIMEOUT" in
-  ''|*[!0-9]*) die "--script-timeout must be a positive integer number of seconds" ;;
-esac
-[ "$SCRIPT_TIMEOUT" -ge 1 ] || die "--script-timeout must be >= 1"
 [ "$JOBS" -le "$JOBS_MAX" ] || die "--jobs is capped at $JOBS_MAX (got $JOBS)"
 
 if [ -n "$MAX_WALL_MS" ]; then
@@ -1936,10 +1973,6 @@ if [ -n "$MAX_WALL_MS" ]; then
   esac
   [ "$MAX_WALL_MS" -gt 0 ] || die "--max-wall-ms requires a positive integer"
 fi
-
-case "$PER_SCRIPT_TIMEOUT_SECS" in
-  ''|*[!0-9]*) die "--per-script-timeout-secs requires a whole number of seconds (0 disables)" ;;
-esac
 
 case "${MODE:-}" in
   all)
@@ -1996,6 +2029,38 @@ if [ "$LIST_ONLY" -eq 1 ] || [ "$LIST_SCHEDULED" -eq 1 ]; then
   exit 0
 fi
 
+case "$SCRIPT_TIMEOUT" in
+  ''|*[!0-9]*) die "--script-timeout must be a positive integer number of seconds" ;;
+esac
+[ "$SCRIPT_TIMEOUT" -ge 1 ] || die "--script-timeout must be >= 1"
+
+# The automatic bound belongs to --changed itself, not to the automatic
+# scheduler below it: --changed --jobs 1 is still a changed run, and a hang in it
+# needs the same guard.
+if [ "$MODE" = changed ] && [ "$SCRIPT_TIMEOUT" -gt "$CHANGED_DEFAULT_TIMEOUT_SECS" ]; then
+  SCRIPT_TIMEOUT=$CHANGED_DEFAULT_TIMEOUT_SECS
+fi
+
+# Plain --changed uses the bounded representative-suite scheduler; numeric
+# --jobs retains the strict all-script admission rule below.
+AUTO_CONCURRENCY=0
+if [ "$MODE" = changed ] && [ "$JOBS_EXPLICIT" -eq 0 ] && [ "${#SCRIPTS[@]}" -gt 0 ]; then
+  auto_admissible=0
+  for s in "${SCRIPTS[@]}"; do
+    script_allows_concurrency "$s" && auto_admissible=$((auto_admissible + 1))
+  done
+  if [ "$auto_admissible" -gt 1 ]; then
+    JOBS=$(cpu_count)
+    [ "$JOBS" -le 4 ] || JOBS=4
+    [ "$JOBS" -ge 1 ] || JOBS=1
+    [ "$JOBS" -eq 1 ] || AUTO_CONCURRENCY=1
+  fi
+fi
+SELECTION_DESC="${SELECTION_DESC};timeout=$SCRIPT_TIMEOUT"
+if [ "$JOBS" -gt 1 ] || [ "$MODE" = changed ]; then
+  SELECTION_DESC="${SELECTION_DESC};jobs=$JOBS"
+fi
+
 # An empty selection is a clean result, not a no-op that falls through. Exiting
 # here also keeps every array expansion below off the empty-array path: under
 # `set -u`, bash 3.2 (the stock macOS shell) treats "${arr[@]}" on an empty
@@ -2038,28 +2103,6 @@ for s in "${SCRIPTS[@]}"; do
   [ -f "$s" ] || die "test script not found: $s"
   [ -x "$s" ] || [ -r "$s" ] || die "test script not readable: $s"
 done
-
-# Plain --changed uses the bounded representative-suite scheduler; numeric
-# --jobs retains the strict all-script admission rule below.
-AUTO_CONCURRENCY=0
-if [ "$MODE" = changed ] && [ "$JOBS_EXPLICIT" -eq 0 ]; then
-  if [ "${#SCRIPTS[@]}" -gt 0 ] && [ "$PER_SCRIPT_TIMEOUT_SECS" -eq 0 ]; then
-    PER_SCRIPT_TIMEOUT_SECS=$CHANGED_DEFAULT_TIMEOUT_SECS
-  fi
-  auto_admissible=0
-  for s in "${SCRIPTS[@]}"; do
-    script_allows_concurrency "$s" && auto_admissible=$((auto_admissible + 1))
-  done
-  if [ "$auto_admissible" -gt 1 ]; then
-    JOBS=$(cpu_count)
-    [ "$JOBS" -le 4 ] || JOBS=4
-    [ "$JOBS" -ge 1 ] || JOBS=1
-    [ "$JOBS" -eq 1 ] || AUTO_CONCURRENCY=1
-  fi
-fi
-if [ "$JOBS" -gt 1 ] || [ "$MODE" = changed ]; then
-  SELECTION_DESC="${SELECTION_DESC};jobs=$JOBS"
-fi
 
 # An explicit --jobs names a concurrency for exactly the selection given, so an
 # unproven script in it is a refusal rather than something to schedule around.
@@ -2105,12 +2148,6 @@ if [ "$JOBS" -gt 1 ]; then
     CONCURRENT_SCRIPTS+=("$s")
   done < <(LC_ALL=C sort -t"$(printf '\t')" -k1,1nr -k2,2 "$SCHEDULE_TMP")
   rm -f "$SCHEDULE_TMP"
-fi
-
-if [ "$PER_SCRIPT_TIMEOUT_SECS" -gt 0 ]; then
-  [ -r "$ROOT/bin/fm-timeout-lib.sh" ] || die "per-script timeout helper not found: bin/fm-timeout-lib.sh"
-  # shellcheck source=bin/fm-timeout-lib.sh
-  . "$ROOT/bin/fm-timeout-lib.sh"
 fi
 
 RUN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run.XXXXXX")
