@@ -13,8 +13,8 @@
 # - Never stashes, forces, resets, or discards unlanded work or dirty trees.
 # - Evaluates updates on a scratch worktree first; never mutates a real tree if
 #   conflicts occur.
-# - Reports dirty trees, unlanded work, fetch failures, and conflict states
-#   without changing them.
+# - Reports dirty trees, checkouts parked on a non-default branch, fetch
+#   failures, and conflict states without changing them.
 #
 # Usage: fm-sync-axi.sh [--help] [<project-dir-or-name>]
 set -eu
@@ -36,7 +36,7 @@ Arguments:
 
 Mechanics per repository:
   1. Discover target repositories and skip targets with no origin remote.
-  2. Refuse dirty working trees or unlanded local branches.
+  2. Refuse dirty working trees or a checkout parked on a non-default branch.
   3. Fetch origin without mutating working trees.
   4. Test scratch integration on a detached scratch worktree:
      - Replay ours on top (rebase our commits onto origin/<default>).
@@ -128,20 +128,6 @@ sync_repo() {
   local curr_branch
   curr_branch=$(git -C "$target_dir" branch --show-current 2>/dev/null || true)
   if [ "$curr_branch" != "$default_branch" ]; then
-    echo "$repo_name: unlanded work in progress - not applied"
-    return 0
-  fi
-
-  local local_branches b unlanded_found=0
-  local_branches=$(git -C "$target_dir" for-each-ref --format='%(refname:short)' refs/heads/ 2>/dev/null || true)
-  for b in $local_branches; do
-    [ "$b" = "$default_branch" ] && continue
-    if ! git -C "$target_dir" merge-base --is-ancestor "$b" "$default_branch" 2>/dev/null; then
-      unlanded_found=1
-      break
-    fi
-  done
-  if [ "$unlanded_found" -eq 1 ]; then
     echo "$repo_name: unlanded work in progress - not applied"
     return 0
   fi

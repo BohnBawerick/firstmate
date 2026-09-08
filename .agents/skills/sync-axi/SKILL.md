@@ -13,7 +13,7 @@ metadata:
 Update every repository cloned from an upstream author while keeping local patch stacks intact.
 Origin remotes are treated as read-only upstream sources - this skill never pushes to origin, never opens pull requests, and never creates forks.
 Updates are evaluated on a scratch copy before touching real working trees, so the captain is never surprised by unexpected merge or rebase conflicts.
-Repositories with unlanded work, dirty working trees, or no origin remote are left untouched and reported plainly.
+Repositories with dirty working trees, checkouts parked on a non-default branch, or no origin remote are left untouched and reported plainly.
 
 ## Operating model
 

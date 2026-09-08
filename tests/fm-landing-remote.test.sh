@@ -183,9 +183,11 @@ EOF
   assert_grep "repo set-default origin" "$log" \
     "apply did not point gh at origin, so gh pr create would still default elsewhere"
   # The stub logs its whole argument list, so an exact-line match pins the call
-  # to a bare `--yes init` and refutes every extra flag at once, not only --fork-url.
-  grep -qxF -- '--yes init' "$log" \
-    || fail "apply did not re-init no-mistakes with --yes init: $(cat "$log")"
+  # to a bare `init` and refutes every extra flag at once, not only --fork-url.
+  # `init` takes no --yes: that is a root-local wizard flag the CLI rejects
+  # before init runs, which made every apply restore the old remotes instead.
+  grep -qxF -- 'init' "$log" \
+    || fail "apply did not re-init no-mistakes with a bare init: $(cat "$log")"
   if grep -q 'fork-url' "$log"; then
     fail "no-mistakes init still passed --fork-url, so PRs would open on the parent"
   fi
