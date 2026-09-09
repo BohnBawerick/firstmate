@@ -1,0 +1,2 @@
+not ok - a registered Pi in idle state with unrelated-Pi=0 should be dead, got 'alive'
+ok - base commit reproduces the stale-Pi regression; target commit passes the same fixture

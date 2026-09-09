@@ -1,0 +1,6 @@
+ok - fm_backend_herdr_agent_state: idle and done Pi registrations become dead despite an unrelated live Pi
+ok - fm_backend_herdr_agent_state: live lowercase and source-backed Pi processes remain alive with a foreground shell
+ok - fm_backend_herdr_agent_state: a zombie Pi beside the returned shell is departed
+ok - fm_backend_herdr_agent_state: an unreadable Pi state preserves the registration
+ok - fm_backend_herdr_agent_state: incomplete or contradictory shell lineage preserves a Pi registration
+ok - fm_backend_herdr_agent_state: an unreadable process proof keeps an idle Pi registration alive
