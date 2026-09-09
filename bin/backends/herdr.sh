@@ -1255,32 +1255,51 @@ fm_backend_herdr_pane_idle_shell_sample() {  # <session> <pane-id>
   printf '%s\n' "$shell_pid"
 }
 
-# fm_backend_herdr_process_tree_has_named_descendant: true only when the process
-# rows on stdin contain a descendant of <root-pid> whose command basename is
-# <name>. The bounded closure handles the treehouse process chain between a
-# Herdr pane shell and its Pi process without depending on a fixed depth.
-fm_backend_herdr_process_tree_has_named_descendant() {  # <root-pid> <name>, rows on stdin
-  awk -v root="$1" -v expected="$2" '
+# fm_backend_herdr_process_tree_pi_state: classify process rows on stdin as
+# live when Pi is present below <root-pid>, absent only when both root and
+# <foreground-pid> exist with a complete connecting lineage, or unknown.
+fm_backend_herdr_process_tree_pi_state() {  # <root-pid> <foreground-pid>, rows on stdin
+  awk -v root="$1" -v foreground="$2" '
+    NF == 0 { next }
     {
+      if (NF < 3 || $1 !~ /^[0-9]+$/ || $2 !~ /^[0-9]+$/) {
+        invalid = 1
+        next
+      }
       pid = $1
+      if (seen[pid]++) {
+        invalid = 1
+        next
+      }
       parent[pid] = $2
       command[pid] = $3
       count++
     }
     END {
+      if (invalid || !seen[root] || !seen[foreground]) {
+        print "unknown"
+        exit
+      }
       descendant[root] = 1
       for (pass = 0; pass <= count; pass++) {
         for (pid in parent) {
           if (descendant[parent[pid]]) descendant[pid] = 1
         }
       }
+      if (!descendant[foreground]) {
+        print "unknown"
+        exit
+      }
       for (pid in descendant) {
         name = command[pid]
         sub(/^.*\//, "", name)
         sub(/^-/, "", name)
-        if (pid != root && name == expected) exit 0
+        if (pid != root && tolower(name) == "pi") {
+          print "live"
+          exit
+        }
       }
-      exit 1
+      print "absent"
     }
   '
 }
@@ -1292,7 +1311,7 @@ fm_backend_herdr_process_tree_has_named_descendant() {  # <root-pid> <name>, row
 # Herdr's top-level shell, so this proof deliberately allows different pids.
 fm_backend_herdr_departed_pi_sample() {  # <session> <pane-id>
   local session=$1 pane=$2 info shell_pid foreground_pgid count
-  local process_pid name argv0 shell_name rows stat comm ps_bin
+  local process_pid name argv0 shell_name rows stat comm ps_bin tree_state
   info=$(fm_backend_herdr_cli "$session" pane process-info --pane "$pane" 2>/dev/null) \
     || { printf 'unknown'; return 0; }
   printf '%s' "$info" | jq -e --arg pane "$pane" '
@@ -1307,22 +1326,24 @@ fm_backend_herdr_departed_pi_sample() {  # <session> <pane-id>
   command -v "$ps_bin" >/dev/null 2>&1 || { printf 'unknown'; return 0; }
   rows=$("$ps_bin" -axo pid=,ppid=,comm= 2>/dev/null) \
     || { printf 'unknown'; return 0; }
-  if printf '%s\n' "$rows" \
-    | fm_backend_herdr_process_tree_has_named_descendant "$shell_pid" pi; then
-    printf 'live'
-    return 0
-  fi
+  count=$(printf '%s' "$info" | jq -er \
+    '.result.process_info.foreground_processes | select(type == "array") | length' 2>/dev/null) \
+    || { printf 'unknown'; return 0; }
+  process_pid=$(printf '%s' "$info" | jq -er \
+    '.result.process_info.foreground_processes[0].pid | select(type == "number") | floor' 2>/dev/null) \
+    || { printf 'unknown'; return 0; }
+  tree_state=$(printf '%s\n' "$rows" \
+    | fm_backend_herdr_process_tree_pi_state "$shell_pid" "$process_pid")
+  case "$tree_state" in
+    live) printf 'live'; return 0 ;;
+    absent) ;;
+    *) printf 'unknown'; return 0 ;;
+  esac
 
   foreground_pgid=$(printf '%s' "$info" | jq -er \
     '.result.process_info.foreground_process_group_id | select(type == "number" and . > 1) | floor' 2>/dev/null) \
     || { printf 'unknown'; return 0; }
-  count=$(printf '%s' "$info" | jq -er \
-    '.result.process_info.foreground_processes | select(type == "array") | length' 2>/dev/null) \
-    || { printf 'unknown'; return 0; }
   [ "$count" -eq 1 ] || { printf 'unknown'; return 0; }
-  process_pid=$(printf '%s' "$info" | jq -er \
-    '.result.process_info.foreground_processes[0].pid | select(type == "number") | floor' 2>/dev/null) \
-    || { printf 'unknown'; return 0; }
   [ "$process_pid" = "$foreground_pgid" ] || { printf 'unknown'; return 0; }
   name=$(printf '%s' "$info" | jq -er \
     '.result.process_info.foreground_processes[0].name | select(type == "string" and length > 0)' 2>/dev/null) \

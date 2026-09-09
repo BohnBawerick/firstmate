@@ -791,13 +791,21 @@ make_pi_state_ps() {  # <dir>
 #!/usr/bin/env bash
 case "$*" in
   "-axo pid=,ppid=,comm=")
-    printf '100 1 zsh\n200 100 treehouse\n'
-    [ "${FM_FAKE_PI_PRESENT:-0}" = 1 ] && printf '250 200 pi\n'
-    if [ "${FM_FAKE_PI_PRESENT:-0}" = 1 ]; then
-      printf '300 250 bash\n'
-    else
-      printf '300 200 bash\n'
-    fi
+    case "${FM_FAKE_PI_LINEAGE:-valid}" in
+      valid)
+        printf '100 1 zsh\n200 100 treehouse\n'
+        [ "${FM_FAKE_PI_PRESENT:-0}" = 1 ] && printf '250 200 %s\n' "${FM_FAKE_PI_COMM:-pi}"
+        if [ "${FM_FAKE_PI_PRESENT:-0}" = 1 ]; then
+          printf '300 250 bash\n'
+        else
+          printf '300 200 bash\n'
+        fi
+        ;;
+      missing-root) printf '200 100 treehouse\n300 200 bash\n' ;;
+      missing-intermediary) printf '100 1 zsh\n300 200 bash\n' ;;
+      unrelated-foreground) printf '100 1 zsh\n200 100 treehouse\n300 1 bash\n' ;;
+      *) exit 1 ;;
+    esac
     ;;
   "-p 300 -o comm=") printf '/usr/bin/bash\n' ;;
   "-p 300 -o stat=") printf 'S+\n' ;;
@@ -832,19 +840,43 @@ test_agent_state_marks_departed_registered_pi_dead() {
 }
 
 test_agent_state_keeps_live_idle_pi_with_shell_tool_alive() {
-  local dir log resp fb out
-  dir="$TMP_ROOT/live-pi-shell-tool"; mkdir -p "$dir/responses"
-  log="$dir/log"; resp="$dir/responses"; : > "$log"
-  printf '%s\n' '{"result":{"pane":{"pane_id":"w1:p2"}}}' > "$resp/1.out"
-  printf '%s\n' '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}' > "$resp/2.out"
-  pi_foreground_shell_fixture w1:p2 > "$resp/3.out"
-  make_pi_state_ps "$dir"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
-    FM_FAKE_PI_PRESENT=1 FM_HERDR_PS_BIN="$dir/ps" FM_BACKEND_HERDR_DEPARTED_PI_POLLS=1 \
-    bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state herdr fmtest:w1:p2' "$ROOT")
-  [ "$out" = alive ] || fail "an idle registered Pi process that owns a foreground shell tool must stay alive, got '$out'"
-  pass "fm_backend_herdr_agent_state: a live idle Pi remains alive while its foreground tool is a shell"
+  local pi_comm dir log resp fb out
+  for pi_comm in pi Pi; do
+    dir="$TMP_ROOT/live-$pi_comm-shell-tool"; mkdir -p "$dir/responses"
+    log="$dir/log"; resp="$dir/responses"; : > "$log"
+    printf '%s\n' '{"result":{"pane":{"pane_id":"w1:p2"}}}' > "$resp/1.out"
+    printf '%s\n' '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}' > "$resp/2.out"
+    pi_foreground_shell_fixture w1:p2 > "$resp/3.out"
+    make_pi_state_ps "$dir"
+    fb=$(make_herdr_fakebin "$dir")
+    out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+      FM_FAKE_PI_PRESENT=1 FM_FAKE_PI_COMM="$pi_comm" FM_HERDR_PS_BIN="$dir/ps" \
+      FM_BACKEND_HERDR_DEPARTED_PI_POLLS=1 \
+      bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state herdr fmtest:w1:p2' "$ROOT")
+    [ "$out" = alive ] \
+      || fail "an idle registered $pi_comm process that owns a foreground shell tool must stay alive, got '$out'"
+  done
+  pass "fm_backend_herdr_agent_state: live lowercase and source-backed Pi processes remain alive with a foreground shell"
+}
+
+test_agent_state_keeps_pi_live_without_complete_shell_lineage() {
+  local lineage dir log resp fb out
+  for lineage in missing-root missing-intermediary unrelated-foreground; do
+    dir="$TMP_ROOT/pi-$lineage"; mkdir -p "$dir/responses"
+    log="$dir/log"; resp="$dir/responses"; : > "$log"
+    printf '%s\n' '{"result":{"pane":{"pane_id":"w1:p2"}}}' > "$resp/1.out"
+    printf '%s\n' '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}' > "$resp/2.out"
+    pi_foreground_shell_fixture w1:p2 > "$resp/3.out"
+    make_pi_state_ps "$dir"
+    fb=$(make_herdr_fakebin "$dir")
+    out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+      FM_FAKE_PI_LINEAGE="$lineage" FM_HERDR_PS_BIN="$dir/ps" \
+      FM_BACKEND_HERDR_DEPARTED_PI_POLLS=1 \
+      bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state herdr fmtest:w1:p2' "$ROOT")
+    [ "$out" = alive ] \
+      || fail "an unproved $lineage pane-shell lineage must keep the registered Pi alive, got '$out'"
+  done
+  pass "fm_backend_herdr_agent_state: incomplete or contradictory shell lineage preserves a Pi registration"
 }
 
 test_agent_state_keeps_pi_live_when_process_proof_is_unreadable() {
@@ -4697,6 +4729,7 @@ test_create_task_husk_replacement_creates_before_closing
 test_create_task_creates_and_parses_ids
 test_agent_state_marks_departed_registered_pi_dead
 test_agent_state_keeps_live_idle_pi_with_shell_tool_alive
+test_agent_state_keeps_pi_live_without_complete_shell_lineage
 test_agent_state_keeps_pi_live_when_process_proof_is_unreadable
 test_create_task_creates_with_no_focus_flag
 test_presentation_defaults_on_at_or_above_the_floor
