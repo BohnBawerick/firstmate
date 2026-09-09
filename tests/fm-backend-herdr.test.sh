@@ -909,7 +909,7 @@ test_agent_state_keeps_pi_live_when_process_state_is_unreadable() {
   make_pi_state_ps "$dir"
   fb=$(make_herdr_fakebin "$dir")
   out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
-    FM_FAKE_PI_PRESENT=1 FM_FAKE_PI_STAT=? FM_HERDR_PS_BIN="$dir/ps" \
+    FM_FAKE_PI_PRESENT=1 FM_FAKE_PI_STAT='?' FM_HERDR_PS_BIN="$dir/ps" \
     FM_BACKEND_HERDR_DEPARTED_PI_POLLS=1 \
     bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state herdr fmtest:w1:p2' "$ROOT")
   [ "$out" = alive ] || fail "an unreadable Pi process state must preserve the registered live verdict, got '$out'"
