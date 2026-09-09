@@ -302,6 +302,24 @@ The CLI matrix was checked directly:
 All destructive verification used `bin/fm-herdr-lab.sh` with a non-default `fm-lab-` name and a byte-identical default-session tripwire.
 No ambient `herdr server stop` command is a supported test operation.
 
+### Pi departure recovery
+
+The live Pi departure guard passed on 2026-09-09 with Herdr 0.8.2, protocol 20, and Pi 0.85.1 on Linux x86_64.
+
+```sh
+FM_HERDR_SMOKE_REAL_PI=1 tests/fm-backend-herdr-smoke.test.sh
+```
+
+Observed output:
+
+```text
+ok - real herdr: a live idle Pi stays alive, then Herdr clears its registration after /quit
+```
+
+This run proved that the classifier preserves a live idle Pi and reports the pane agent-free after Pi's own `/quit`.
+The guard accepts either Herdr clearing the registration or the process-backed fallback proving that no Pi process remains and an idle shell owns the foreground.
+`tests/fm-backend-herdr.test.sh` pins the stale-registration branch with canned Herdr process records and process-tree fixtures, including a live Pi that owns a foreground shell tool and an unreadable process proof.
+
 ### Composer capture source
 
 Measured 2026-08-22 against Herdr 0.8.0 and Claude Code 2.1.239 in an isolated `fm-lab-` session, after an overnight away run logged 1555 `composer=unknown` defers on a not-busy captain pane.

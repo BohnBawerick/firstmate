@@ -285,6 +285,63 @@ case "$p" in
 esac
 pass "real herdr: current_path reads the pane's live cwd"
 
+# --- recovery state after a real Pi exits -----------------------------------
+
+if [ "${FM_HERDR_SMOKE_REAL_PI:-0}" = 1 ]; then
+  command -v pi >/dev/null 2>&1 || fail "FM_HERDR_SMOKE_REAL_PI=1 requires an installed Pi"
+  pi_command=pi
+  if pi --help 2>&1 | grep -Fq -- '--tui-mode'; then
+    pi_command='pi --tui-mode regular'
+  fi
+  fm_backend_herdr_send_text_line "$TARGET" "$pi_command" \
+    || fail "could not launch Pi for the real departure guard"
+  pi_registered=0
+  for _ in $(seq 1 80); do
+    pi_agent=$(fm_backend_herdr_cli "$SESSION" agent get "$PANE_ID" 2>/dev/null || true)
+    if printf '%s' "$pi_agent" | jq -e '
+      .result.agent.agent == "pi"
+      and (.result.agent.agent_status == "idle" or .result.agent.agent_status == "done")
+    ' >/dev/null 2>&1; then
+      pi_registered=1
+      break
+    fi
+    sleep 0.25
+  done
+  [ "$pi_registered" -eq 1 ] \
+    || fail "real Pi did not publish an idle or done native registration within 20 seconds"
+  [ "$(fm_backend_herdr_agent_state "$TARGET")" = alive ] \
+    || fail "a genuinely live idle Pi must remain alive before /quit"
+
+  fm_backend_herdr_send_literal "$TARGET" /quit \
+    || fail "could not type /quit into the real Pi"
+  sleep 0.2
+  fm_backend_herdr_send_key "$TARGET" Enter \
+    || fail "could not submit /quit to the real Pi"
+  pi_departed=0
+  for _ in $(seq 1 80); do
+    if [ "$(fm_backend_herdr_agent_state "$TARGET")" = dead ]; then
+      pi_departed=1
+      break
+    fi
+    sleep 0.25
+  done
+  [ "$pi_departed" -eq 1 ] \
+    || fail "the pane did not become agent-free within 20 seconds after Pi's own /quit"
+  pi_agent=$(fm_backend_herdr_cli "$SESSION" agent get "$PANE_ID" 2>&1 || true)
+  if printf '%s' "$pi_agent" | jq -e '
+    .result.agent.agent == "pi"
+    and (.result.agent.agent_status == "idle" or .result.agent.agent_status == "done")
+  ' >/dev/null 2>&1; then
+    pass "real herdr: a live idle Pi stays alive, then its stale registration becomes dead after /quit returns to the shell"
+  elif [ "$(printf '%s' "$pi_agent" | jq -r '.error.code // empty' 2>/dev/null)" = agent_not_found ]; then
+    pass "real herdr: a live idle Pi stays alive, then Herdr clears its registration after /quit"
+  else
+    fail "Pi exited and classified dead, but its final native registration shape was unexpected: $pi_agent"
+  fi
+elif [ "${FM_HERDR_SMOKE_REAL_PI:-0}" != 1 ]; then
+  echo "note: FM_HERDR_SMOKE_REAL_PI=1 not set; skipping the real Pi departure guard" >&2
+fi
+
 # --- busy_state on a real claude harness (verified in herdr-verification-p2.md) ---
 
 if [ "${FM_HERDR_SMOKE_REAL_CLAUDE:-0}" = 1 ] && command -v claude >/dev/null 2>&1; then
