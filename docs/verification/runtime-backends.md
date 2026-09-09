@@ -318,7 +318,8 @@ ok - real herdr: a live idle Pi stays alive, then Herdr clears its registration 
 
 This run proved that the classifier preserves a live idle Pi and reports the pane agent-free after Pi's own `/quit`.
 The guard accepts either Herdr clearing the registration or the process-backed fallback proving that no Pi process remains and an idle shell owns the foreground.
-`tests/fm-backend-herdr.test.sh` pins the stale-registration branch with canned Herdr process records and process-tree fixtures, including a live Pi that owns a foreground shell tool and an unreadable process proof.
+`tests/fm-backend-herdr.test.sh` pins the stale-registration branch with canned Herdr process records and process-tree fixtures.
+The fixtures cover a live Pi that owns a foreground shell tool, a zombie Pi beside the returned shell, an unrelated live Pi subtree, and unreadable or contradictory lineages.
 
 ### Composer capture source
 

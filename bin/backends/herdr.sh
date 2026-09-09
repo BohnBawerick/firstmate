@@ -56,10 +56,11 @@
 # stored pane id blindly: fm_backend_herdr_list_live. The presentation journal
 # is deliberately excluded from that path.
 # Agent liveness trusts ordinary native registrations, except that an idle or
-# done Pi registration is agent-free when Herdr's exact pane process record and
-# the operating-system process tree prove Pi has departed and an idle shell is
-# the pane's sole foreground process. An unreadable or contradictory process
-# check keeps the registration live, so recovery still refuses on uncertainty.
+# done Pi registration is agent-free only when Herdr's exact pane process record
+# and one operating-system snapshot prove a complete, acyclic, non-terminated
+# lineage from the pane shell to the sole idle foreground shell, with no live Pi
+# below the pane shell. An unreadable or contradictory process check keeps the
+# registration live, so recovery still refuses on uncertainty.
 #
 # Requires: herdr (CLI + socket), jq (JSON parsing). Bootstrap detects these
 # through fm_backend_required_tools only when herdr is the resolved backend;
@@ -1256,8 +1257,9 @@ fm_backend_herdr_pane_idle_shell_sample() {  # <session> <pane-id>
 }
 
 # fm_backend_herdr_process_tree_pi_state: classify process rows on stdin as
-# live when a non-zombie Pi is present below <root-pid>, absent only when both
-# root and <foreground-pid> exist with a complete connecting lineage, or unknown.
+# live when a non-zombie Pi is present below <root-pid>, absent only when no live
+# Pi remains and a complete consistent root-to-foreground lineage exists, or
+# unknown.
 fm_backend_herdr_process_tree_pi_state() {  # <root-pid> <foreground-pid>, rows on stdin
   awk -v root="$1" -v foreground="$2" '
     NF == 0 { next }
@@ -1291,6 +1293,25 @@ fm_backend_herdr_process_tree_pi_state() {  # <root-pid> <foreground-pid>, rows 
       if (!descendant[foreground]) {
         print "unknown"
         exit
+      }
+      if (parent[root] in descendant) {
+        print "unknown"
+        exit
+      }
+      for (pid in descendant) {
+        process_state = toupper(substr(state[pid], 1, 1))
+        if ((pid == root || pid == foreground) \
+            && (process_state == "Z" || process_state == "X")) {
+          print "unknown"
+          exit
+        }
+        process_parent = parent[pid]
+        parent_state = toupper(substr(state[process_parent], 1, 1))
+        if (pid != root && (process_parent in descendant) \
+            && (parent_state == "Z" || parent_state == "X")) {
+          print "unknown"
+          exit
+        }
       }
       for (pid in descendant) {
         name = command[pid]

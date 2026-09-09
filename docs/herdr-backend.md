@@ -273,9 +273,9 @@ This prevents closing the workspace's last tab before a replacement exists.
 
 Pi can return to the pane's shell after `/quit` while Herdr still reports the old registration as idle or done.
 For those two Pi states, the liveness probe checks Herdr's exact pane process record and the operating-system process tree before trusting the registration.
-The pane is agent-free only when no non-zombie Pi process remains below the pane shell and one sleeping recognized shell is the sole foreground process.
+The pane is agent-free only when one operating-system snapshot shows no live Pi below the exact pane shell and a complete, acyclic, non-terminated lineage connects that pane shell to one sleeping recognized shell as the sole foreground process.
 This accepts the nested shell left by `treehouse get` without mistaking a live Pi that owns a foreground shell tool for a departed agent.
-An unreadable process record, process tree, shell identity, or shell state keeps the registered pane live and preserves the relaunch refusal.
+A missing or cyclic lineage, a terminated lineage member, or an unreadable process record, process tree, shell identity, or shell state keeps the registered pane live and preserves the relaunch refusal.
 
 The generic Herdr agent-liveness probe reuses the same classifier.
 A structurally gone pane becomes `missing`, a restored agent-less shell or process-proven departed Pi becomes `dead`, a live registered agent becomes `alive`, and an unexpected read becomes `unreadable`.

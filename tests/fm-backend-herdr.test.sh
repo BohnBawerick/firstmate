@@ -805,6 +805,9 @@ pi_process_rows() {
     missing-root) printf '200 100 S treehouse\n300 200 S+ bash\n' ;;
     missing-intermediary) printf '100 1 S zsh\n300 200 S+ bash\n' ;;
     unrelated-foreground) printf '100 1 S zsh\n200 100 S treehouse\n300 1 S+ bash\n' ;;
+    zombie-root) printf '100 1 Z zsh\n200 100 S treehouse\n300 200 S+ bash\n' ;;
+    zombie-intermediary) printf '100 1 S zsh\n200 100 Z treehouse\n300 200 S+ bash\n' ;;
+    cyclic-root) printf '100 200 S zsh\n200 100 S treehouse\n300 200 S+ bash\n' ;;
     *) exit 1 ;;
   esac
   if [ "${FM_FAKE_UNRELATED_PI_PRESENT:-0}" = 1 ]; then
@@ -915,7 +918,8 @@ test_agent_state_keeps_pi_live_when_process_state_is_unreadable() {
 
 test_agent_state_keeps_pi_live_without_complete_shell_lineage() {
   local lineage dir log resp fb out
-  for lineage in missing-root missing-intermediary unrelated-foreground; do
+  for lineage in missing-root missing-intermediary unrelated-foreground \
+      zombie-root zombie-intermediary cyclic-root; do
     dir="$TMP_ROOT/pi-$lineage"; mkdir -p "$dir/responses"
     log="$dir/log"; resp="$dir/responses"; : > "$log"
     printf '%s\n' '{"result":{"pane":{"pane_id":"w1:p2"}}}' > "$resp/1.out"
