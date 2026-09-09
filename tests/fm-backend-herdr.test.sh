@@ -806,6 +806,9 @@ case "$*" in
       unrelated-foreground) printf '100 1 zsh\n200 100 treehouse\n300 1 bash\n' ;;
       *) exit 1 ;;
     esac
+    if [ "${FM_FAKE_UNRELATED_PI_PRESENT:-0}" = 1 ]; then
+      printf '400 1 zsh\n450 400 Pi\n500 450 bash\n'
+    fi
     ;;
   "-p 300 -o comm=") printf '/usr/bin/bash\n' ;;
   "-p 300 -o stat=") printf 'S+\n' ;;
@@ -820,23 +823,32 @@ pi_foreground_shell_fixture() {  # <pane>
 }
 
 test_agent_state_marks_departed_registered_pi_dead() {
-  local raw_status dir log resp fb out
+  local raw_status unrelated_pi dir log resp fb out ps_rows
   for raw_status in idle "done"; do
-    dir="$TMP_ROOT/departed-pi-$raw_status"; mkdir -p "$dir/responses"
-    log="$dir/log"; resp="$dir/responses"; : > "$log"
-    printf '%s\n' '{"result":{"pane":{"pane_id":"w1:p2"}}}' > "$resp/1.out"
-    printf '{"result":{"agent":{"agent":"pi","agent_status":"%s"}}}\n' "$raw_status" > "$resp/2.out"
-    pi_foreground_shell_fixture w1:p2 > "$resp/3.out"
-    make_pi_state_ps "$dir"
-    fb=$(make_herdr_fakebin "$dir")
-    out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
-      FM_HERDR_PS_BIN="$dir/ps" FM_BACKEND_HERDR_DEPARTED_PI_POLLS=1 \
-      bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state herdr fmtest:w1:p2' "$ROOT")
-    [ "$out" = dead ] || fail "a registered Pi in $raw_status state with no Pi process and an idle foreground shell should be dead, got '$out'"
-    assert_contains "$(cat "$log")" $'pane\x1fprocess-info\x1f--pane\x1fw1:p2' \
-      "the departed Pi state check did not inspect the exact pane process"
+    for unrelated_pi in 0 1; do
+      dir="$TMP_ROOT/departed-pi-$raw_status-$unrelated_pi"; mkdir -p "$dir/responses"
+      log="$dir/log"; resp="$dir/responses"; : > "$log"
+      printf '%s\n' '{"result":{"pane":{"pane_id":"w1:p2"}}}' > "$resp/1.out"
+      printf '{"result":{"agent":{"agent":"pi","agent_status":"%s"}}}\n' "$raw_status" > "$resp/2.out"
+      pi_foreground_shell_fixture w1:p2 > "$resp/3.out"
+      make_pi_state_ps "$dir"
+      if [ "$unrelated_pi" = 1 ]; then
+        ps_rows=$(FM_FAKE_UNRELATED_PI_PRESENT=1 "$dir/ps" -axo pid=,ppid=,comm=)
+        assert_contains "$ps_rows" $'450 400 Pi\n500 450 bash' \
+          "the unrelated-Pi case did not contain a distinct live Pi subtree"
+      fi
+      fb=$(make_herdr_fakebin "$dir")
+      out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+        FM_FAKE_UNRELATED_PI_PRESENT="$unrelated_pi" FM_HERDR_PS_BIN="$dir/ps" \
+        FM_BACKEND_HERDR_DEPARTED_PI_POLLS=1 \
+        bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state herdr fmtest:w1:p2' "$ROOT")
+      [ "$out" = dead ] \
+        || fail "a registered Pi in $raw_status state with unrelated-Pi=$unrelated_pi should be dead, got '$out'"
+      assert_contains "$(cat "$log")" $'pane\x1fprocess-info\x1f--pane\x1fw1:p2' \
+        "the departed Pi state check did not inspect the exact pane process"
+    done
   done
-  pass "fm_backend_herdr_agent_state: idle and done Pi registrations become dead after Pi exits to an idle shell"
+  pass "fm_backend_herdr_agent_state: idle and done Pi registrations become dead despite an unrelated live Pi"
 }
 
 test_agent_state_keeps_live_idle_pi_with_shell_tool_alive() {

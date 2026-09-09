@@ -1283,7 +1283,7 @@ fm_backend_herdr_process_tree_pi_state() {  # <root-pid> <foreground-pid>, rows 
       descendant[root] = 1
       for (pass = 0; pass <= count; pass++) {
         for (pid in parent) {
-          if (descendant[parent[pid]]) descendant[pid] = 1
+          if (parent[pid] in descendant) descendant[pid] = 1
         }
       }
       if (!descendant[foreground]) {
@@ -1294,7 +1294,7 @@ fm_backend_herdr_process_tree_pi_state() {  # <root-pid> <foreground-pid>, rows 
         name = command[pid]
         sub(/^.*\//, "", name)
         sub(/^-/, "", name)
-        if (pid != root && tolower(name) == "pi") {
+        if (descendant[pid] && pid != root && tolower(name) == "pi") {
           print "live"
           exit
         }
