@@ -789,27 +789,32 @@ make_pi_state_ps() {  # <dir>
   local dir=$1
   cat > "$dir/ps" <<'SH'
 #!/usr/bin/env bash
+pi_process_rows() {
+  case "${FM_FAKE_PI_LINEAGE:-valid}" in
+    valid)
+      printf '100 1 S zsh\n200 100 S treehouse\n'
+      if [ "${FM_FAKE_PI_ZOMBIE_PRESENT:-0}" = 1 ]; then
+        printf '250 200 Z+ %s\n300 200 S+ bash\n' "${FM_FAKE_PI_COMM:-Pi}"
+      elif [ "${FM_FAKE_PI_PRESENT:-0}" = 1 ]; then
+        printf '250 200 %s %s\n300 250 S+ bash\n' \
+          "${FM_FAKE_PI_STAT:-S+}" "${FM_FAKE_PI_COMM:-pi}"
+      else
+        printf '300 200 S+ bash\n'
+      fi
+      ;;
+    missing-root) printf '200 100 S treehouse\n300 200 S+ bash\n' ;;
+    missing-intermediary) printf '100 1 S zsh\n300 200 S+ bash\n' ;;
+    unrelated-foreground) printf '100 1 S zsh\n200 100 S treehouse\n300 1 S+ bash\n' ;;
+    *) exit 1 ;;
+  esac
+  if [ "${FM_FAKE_UNRELATED_PI_PRESENT:-0}" = 1 ]; then
+    printf '400 1 S zsh\n450 400 S Pi\n500 450 S+ bash\n'
+  fi
+}
+
 case "$*" in
-  "-axo pid=,ppid=,comm=")
-    case "${FM_FAKE_PI_LINEAGE:-valid}" in
-      valid)
-        printf '100 1 zsh\n200 100 treehouse\n'
-        [ "${FM_FAKE_PI_PRESENT:-0}" = 1 ] && printf '250 200 %s\n' "${FM_FAKE_PI_COMM:-pi}"
-        if [ "${FM_FAKE_PI_PRESENT:-0}" = 1 ]; then
-          printf '300 250 bash\n'
-        else
-          printf '300 200 bash\n'
-        fi
-        ;;
-      missing-root) printf '200 100 treehouse\n300 200 bash\n' ;;
-      missing-intermediary) printf '100 1 zsh\n300 200 bash\n' ;;
-      unrelated-foreground) printf '100 1 zsh\n200 100 treehouse\n300 1 bash\n' ;;
-      *) exit 1 ;;
-    esac
-    if [ "${FM_FAKE_UNRELATED_PI_PRESENT:-0}" = 1 ]; then
-      printf '400 1 zsh\n450 400 Pi\n500 450 bash\n'
-    fi
-    ;;
+  "-axo pid=,ppid=,stat=,comm=") pi_process_rows ;;
+  "-axo pid=,ppid=,comm=") pi_process_rows | awk '{ print $1, $2, $4 }' ;;
   "-p 300 -o comm=") printf '/usr/bin/bash\n' ;;
   "-p 300 -o stat=") printf 'S+\n' ;;
   *) exit 1 ;;
@@ -833,8 +838,8 @@ test_agent_state_marks_departed_registered_pi_dead() {
       pi_foreground_shell_fixture w1:p2 > "$resp/3.out"
       make_pi_state_ps "$dir"
       if [ "$unrelated_pi" = 1 ]; then
-        ps_rows=$(FM_FAKE_UNRELATED_PI_PRESENT=1 "$dir/ps" -axo pid=,ppid=,comm=)
-        assert_contains "$ps_rows" $'450 400 Pi\n500 450 bash' \
+        ps_rows=$(FM_FAKE_UNRELATED_PI_PRESENT=1 "$dir/ps" -axo pid=,ppid=,stat=,comm=)
+        assert_contains "$ps_rows" $'450 400 S Pi\n500 450 S+ bash' \
           "the unrelated-Pi case did not contain a distinct live Pi subtree"
       fi
       fb=$(make_herdr_fakebin "$dir")
@@ -869,6 +874,43 @@ test_agent_state_keeps_live_idle_pi_with_shell_tool_alive() {
       || fail "an idle registered $pi_comm process that owns a foreground shell tool must stay alive, got '$out'"
   done
   pass "fm_backend_herdr_agent_state: live lowercase and source-backed Pi processes remain alive with a foreground shell"
+}
+
+test_agent_state_marks_zombie_pi_departed() {
+  local dir log resp fb out ps_rows
+  dir="$TMP_ROOT/zombie-pi"; mkdir -p "$dir/responses"
+  log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '%s\n' '{"result":{"pane":{"pane_id":"w1:p2"}}}' > "$resp/1.out"
+  printf '%s\n' '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}' > "$resp/2.out"
+  pi_foreground_shell_fixture w1:p2 > "$resp/3.out"
+  make_pi_state_ps "$dir"
+  ps_rows=$(FM_FAKE_PI_ZOMBIE_PRESENT=1 "$dir/ps" -axo pid=,ppid=,stat=,comm=)
+  assert_contains "$ps_rows" $'250 200 Z+ Pi\n300 200 S+ bash' \
+    "the zombie-Pi case did not place a terminated Pi beside the returned shell"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    FM_FAKE_PI_ZOMBIE_PRESENT=1 FM_HERDR_PS_BIN="$dir/ps" \
+    FM_BACKEND_HERDR_DEPARTED_PI_POLLS=1 \
+    bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state herdr fmtest:w1:p2' "$ROOT")
+  [ "$out" = dead ] || fail "a terminated zombie Pi beside the returned shell should be dead, got '$out'"
+  pass "fm_backend_herdr_agent_state: a zombie Pi beside the returned shell is departed"
+}
+
+test_agent_state_keeps_pi_live_when_process_state_is_unreadable() {
+  local dir log resp fb out
+  dir="$TMP_ROOT/pi-state-unreadable"; mkdir -p "$dir/responses"
+  log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '%s\n' '{"result":{"pane":{"pane_id":"w1:p2"}}}' > "$resp/1.out"
+  printf '%s\n' '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}' > "$resp/2.out"
+  pi_foreground_shell_fixture w1:p2 > "$resp/3.out"
+  make_pi_state_ps "$dir"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    FM_FAKE_PI_PRESENT=1 FM_FAKE_PI_STAT=? FM_HERDR_PS_BIN="$dir/ps" \
+    FM_BACKEND_HERDR_DEPARTED_PI_POLLS=1 \
+    bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state herdr fmtest:w1:p2' "$ROOT")
+  [ "$out" = alive ] || fail "an unreadable Pi process state must preserve the registered live verdict, got '$out'"
+  pass "fm_backend_herdr_agent_state: an unreadable Pi state preserves the registration"
 }
 
 test_agent_state_keeps_pi_live_without_complete_shell_lineage() {
@@ -4741,6 +4783,8 @@ test_create_task_husk_replacement_creates_before_closing
 test_create_task_creates_and_parses_ids
 test_agent_state_marks_departed_registered_pi_dead
 test_agent_state_keeps_live_idle_pi_with_shell_tool_alive
+test_agent_state_marks_zombie_pi_departed
+test_agent_state_keeps_pi_live_when_process_state_is_unreadable
 test_agent_state_keeps_pi_live_without_complete_shell_lineage
 test_agent_state_keeps_pi_live_when_process_proof_is_unreadable
 test_create_task_creates_with_no_focus_flag

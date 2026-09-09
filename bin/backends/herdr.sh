@@ -1256,13 +1256,14 @@ fm_backend_herdr_pane_idle_shell_sample() {  # <session> <pane-id>
 }
 
 # fm_backend_herdr_process_tree_pi_state: classify process rows on stdin as
-# live when Pi is present below <root-pid>, absent only when both root and
-# <foreground-pid> exist with a complete connecting lineage, or unknown.
+# live when a non-zombie Pi is present below <root-pid>, absent only when both
+# root and <foreground-pid> exist with a complete connecting lineage, or unknown.
 fm_backend_herdr_process_tree_pi_state() {  # <root-pid> <foreground-pid>, rows on stdin
   awk -v root="$1" -v foreground="$2" '
     NF == 0 { next }
     {
-      if (NF < 3 || $1 !~ /^[0-9]+$/ || $2 !~ /^[0-9]+$/) {
+      if (NF < 4 || $1 !~ /^[0-9]+$/ || $2 !~ /^[0-9]+$/ \
+          || $3 !~ /^[DIRSTtUWXZ]/) {
         invalid = 1
         next
       }
@@ -1272,7 +1273,8 @@ fm_backend_herdr_process_tree_pi_state() {  # <root-pid> <foreground-pid>, rows 
         next
       }
       parent[pid] = $2
-      command[pid] = $3
+      state[pid] = $3
+      command[pid] = $4
       count++
     }
     END {
@@ -1295,6 +1297,8 @@ fm_backend_herdr_process_tree_pi_state() {  # <root-pid> <foreground-pid>, rows 
         sub(/^.*\//, "", name)
         sub(/^-/, "", name)
         if (descendant[pid] && pid != root && tolower(name) == "pi") {
+          process_state = toupper(substr(state[pid], 1, 1))
+          if (process_state == "Z" || process_state == "X") continue
           print "live"
           exit
         }
@@ -1324,7 +1328,7 @@ fm_backend_herdr_departed_pi_sample() {  # <session> <pane-id>
 
   ps_bin=${FM_HERDR_PS_BIN:-ps}
   command -v "$ps_bin" >/dev/null 2>&1 || { printf 'unknown'; return 0; }
-  rows=$("$ps_bin" -axo pid=,ppid=,comm= 2>/dev/null) \
+  rows=$("$ps_bin" -axo pid=,ppid=,stat=,comm= 2>/dev/null) \
     || { printf 'unknown'; return 0; }
   count=$(printf '%s' "$info" | jq -er \
     '.result.process_info.foreground_processes | select(type == "array") | length' 2>/dev/null) \
