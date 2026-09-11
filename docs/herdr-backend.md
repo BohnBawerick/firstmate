@@ -271,8 +271,14 @@ A restored same-labeled tab with a missing pane or no registered agent is a husk
 Create replaces only a confidently dead or no-agent husk, creates the replacement before closing the old tab, and refuses live or unknown states.
 This prevents closing the workspace's last tab before a replacement exists.
 
+Pi can return to the pane's shell after `/quit` while Herdr still reports the old registration as idle or done.
+For those two Pi states, the liveness probe checks Herdr's exact pane process record and the operating-system process tree before trusting the registration.
+The pane is agent-free only when one operating-system snapshot shows no live Pi below the exact pane shell and a complete, acyclic, non-terminated lineage connects that pane shell to one sleeping recognized shell as the sole foreground process.
+This accepts the nested shell left by `treehouse get` without mistaking a live Pi that owns a foreground shell tool for a departed agent.
+A missing or cyclic lineage, a terminated lineage member, or an unreadable process record, process tree, shell identity, or shell state keeps the registered pane live and preserves the relaunch refusal.
+
 The generic Herdr agent-liveness probe reuses the same classifier.
-A structurally gone pane becomes `missing`, a restored agent-less shell becomes `dead`, a registered agent becomes `alive`, and an unexpected read becomes `unreadable`.
+A structurally gone pane becomes `missing`, a restored agent-less shell or process-proven departed Pi becomes `dead`, a live registered agent becomes `alive`, and an unexpected read becomes `unreadable`.
 Unlike tmux process-name inspection, native registration can classify Pi without guessing from a generic interpreter name.
 
 The session-start sweep uses this probe.
@@ -349,6 +355,8 @@ tests/fm-herdr-session-cleanup-e2e.test.sh
 tests/fm-afk-inject-herdr-e2e.test.sh
 tests/fm-afk-pi-herdr-return-e2e.test.sh
 ```
+
+Set `FM_HERDR_SMOKE_REAL_PI=1` on the smoke test to launch a real Pi, prove its idle registration stays live, submit Pi's own `/quit`, and prove the returned shell becomes agent-free.
 
 Real Herdr tests use the named lab helper and default-session tripwire.
 [`verification/runtime-backends.md`](verification/runtime-backends.md#herdr) records the active version, CLI, projection, event, and lifecycle evidence without task-specific chronology.
