@@ -27,12 +27,9 @@
 # output after any Claude Code upgrade.
 set -u
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-if [ "${FM_SESSION_IDENTITY_LIVE:-0}" != 1 ]; then
-  echo "skip: set FM_SESSION_IDENTITY_LIVE=1 to run the live session-identity guard"
-  exit 0
-fi
+# shellcheck source=tests/lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+fm_live_gate opt-in FM_SESSION_IDENTITY_LIVE claude
 
 CLAUDE_VERSION=unknown
 fail() { printf 'not ok - %s (harness claude %s)\n' "$1" "$CLAUDE_VERSION" >&2; exit 1; }
@@ -47,7 +44,7 @@ CLAUDE_VERSION=$(claude --version 2>/dev/null || echo unknown)
 note "claude: $CLAUDE_VERSION"
 
 LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-session-identity-live.XXXXXX") || exit 1
-cleanup() { rm -rf "$LAB"; }
+cleanup() { rm -rf "$LAB"; fm_test_cleanup; }
 trap cleanup EXIT
 
 PROJECT="$LAB/project"

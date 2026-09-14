@@ -475,7 +475,7 @@ test_a_spawned_worker_does_not_inherit_the_spawning_sessions_helm() {
   make_home "$dir"
   mkdir -p "$dir/projects" "$dir/data/w1"
   printf '# Firstmate\n' > "$dir/AGENTS.md"
-  printf 'brief for the worker\n' > "$dir/data/w1/brief.md"
+  printf '# Task\nVerify that the worker cannot inherit the spawning session identity.\n' > "$dir/data/w1/brief.md"
   touch "$dir/state/.last-watcher-beat"
 
   fake=$(fm_fakebin "$dir/fake")

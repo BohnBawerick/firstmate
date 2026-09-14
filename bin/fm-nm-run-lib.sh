@@ -3,10 +3,10 @@
 #
 # ONE owner for the no-mistakes run-attribution primitives used by
 # fm-crew-state.sh (read-only current-state reporting) and fm-teardown.sh
-# (pre-teardown run abort, see its "Fix 1" header comment). Teardown uses only
-# strict branch-and-head identity; crew-state additionally permits the active
-# pipeline-owned exemption defined below. Getting this wrong in either
-# direction is unsafe: a false negative hides a genuinely parked run, and a
+# (pre-teardown run abort, see its "Fix 1" header comment). Both bind a run
+# by strict branch-and-head identity first. An unfetched head needs an
+# explicit submitted-head match or active pipeline custody proof.
+# Coarse ledger rows never prove an unfetched continuation. A
 # false positive lets teardown act on a run it does not own. The rule is ternary
 # (fm_nm_head_identity) because "cannot tell" is a third answer that must not be
 # collapsed into either: a caller that acts on a run needs the strict predicate,
@@ -58,6 +58,13 @@ fm_nm_strip_quotes() {
 # Scalar value of a TOON key in captured `axi status` output $1.
 fm_nm_field() {  # <toon-output> <key>
   printf '%s\n' "$1" | sed -n "s/^[[:space:]]*$2:[[:space:]]*\(.*\)/\1/p" | head -1
+}
+
+# Full commit sha for sha-ish $2 as seen from worktree $1's own object store;
+# empty when the object is absent or ambiguous. Read-only: never fetches,
+# never moves refs or custody.
+fm_nm_resolve_commit() {  # <worktree> <sha-ish>
+  git -C "$1" rev-parse --verify --quiet "${2}^{commit}" 2>/dev/null || true
 }
 
 # Ternary code-identity verdict for run head $2 against worktree $1, printing
@@ -132,18 +139,19 @@ fm_nm_submitted_head() {  # <worktree> <timeout_secs>
 # fm_nm_head_identity directly instead.
 fm_nm_head_matches_worktree() {  # <worktree> <run_head>
   [ "$(fm_nm_head_identity "$1" "$2")" = match ]
-  [ "$(fm_nm_head_identity "$1" "$2")" = match ]
 }
 
-# 0 if head $2 resolves to a commit object in worktree $1 at all. This
-# distinguishes a PROVEN mismatch (resolvable but not current: a historical or
-# diverged head fm_nm_head_matches_worktree correctly rejects) from UNKNOWN
-# attribution (unresolvable: e.g. a pipeline-owned lane head that never
-# reached this worktree). A caller scanning run rows newest-first must stop on
-# unknown attribution rather than surface an older, superseded run.
-fm_nm_head_resolvable() {  # <worktree> <head>
-  [ -n "$2" ] || return 1
-  git -C "$1" rev-parse --verify --quiet "$2^{commit}" >/dev/null 2>&1
+# Liveness class of a recorded run's status word, echoed as "terminal", "live",
+# or "unknown", for the live-over-terminal selection rule above.
+# The coarse `no-mistakes runs` ledger emits exactly these four status words; an
+# `axi status` run object reports its terminal result through its own outcome
+# field as well, which fm_nm_run_is_active below checks directly.
+fm_nm_run_status_class() {  # <status_word>
+  case "${1:-}" in
+    completed|failed|cancelled) printf 'terminal' ;;
+    running)                    printf 'live' ;;
+    *)                          printf 'unknown' ;;
+  esac
 }
 
 # branch_sync.state from captured `axi status` TOON $1: the scalar directly
@@ -169,9 +177,9 @@ fm_nm_run_is_active() {  # <toon-output>
   case "$status" in completed|failed|cancelled) return 1 ;; esac
 }
 
-# The one exemption to the head rule above: while the pipeline OWNS the branch
-# (branch_sync.state=pipeline_owned), the daemon's own branch attribution IS
-# the attribution for an ACTIVE run, and
+# The custody exemption to the head rule above: while the pipeline OWNS the
+# branch (branch_sync.state=pipeline_owned), the daemon's own branch
+# attribution IS the attribution for an ACTIVE run, and
 # head equality must not be required - the pipeline's lane head is routinely
 # not a git object in the task worktree (rebase and fix commits that were
 # never pushed back), so the head rule rejects exactly the run that is most
@@ -181,4 +189,85 @@ fm_nm_run_is_active() {  # <toon-output>
 fm_nm_run_is_pipeline_owned_active() {  # <toon-output>
   [ "$(fm_nm_branch_sync_state "$1")" = pipeline_owned ] || return 1
   fm_nm_run_is_active "$1"
+}
+
+# Read-only attribution from the newest-first `no-mistakes runs` ledger.
+# The newest row for this branch must resolve to this worktree's code identity.
+# An unknown or mismatched head ends attribution; older rows cannot anchor it.
+# Once a terminal row binds, a separately verified live row may supersede it.
+# Optional expected-head binds the first row to the detailed status response.
+fm_nm_runs_status_for_worktree() {  # <worktree> <branch> <runs-list-output> [expected-head]
+  local wt=$1 branch=$2 list=$3 expected_head=${4:-}
+  local row_full row st br sha day clock pr extra year_num month_num day_num max_day
+  # Set only by the newest binding row when its status classifies terminal, and
+  # printed when the scan ends without finding a live row for this worktree. It
+  # is the sole reason the scan continues past the newest row, and every exit
+  # below leaves the loop rather than returning, so a malformed older row can
+  # never swallow an answer the newest row had already decided.
+  local decided=''
+  [ -n "$list" ] || return 0
+  while IFS= read -r row; do
+    row=$(fm_nm_trim "$row")
+    [ -n "$row" ] || continue
+    IFS=$' \t' read -r st br sha day clock pr extra <<< "$row"
+    [ -n "$st" ] && [ -n "$br" ] && [ -n "$sha" ] && [ -n "$day" ] && [ -n "$clock" ] || break
+    [ -z "$extra" ] || break
+    case "$st" in *[!a-z_-]*|'') break ;; esac
+    case "$br" in *[!A-Za-z0-9._/-]*|'') break ;; esac
+    case "$sha" in *[!A-Fa-f0-9]*|'') break ;; esac
+    case "$day" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) break ;; esac
+    case "$clock" in [01][0-9]:[0-5][0-9]|2[0-3]:[0-5][0-9]) ;; *) break ;; esac
+    case "$pr" in ''|https://*) ;; *) break ;; esac
+    [ "${#sha}" -ge 7 ] && [ "${#sha}" -le 40 ] || break
+    year_num=$((10#${day%%-*}))
+    month_num=${day#*-}; month_num=${month_num%%-*}; month_num=$((10#$month_num))
+    day_num=$((10#${day##*-}))
+    [ "$year_num" -gt 0 ] && [ "$month_num" -ge 1 ] && [ "$month_num" -le 12 ] || break
+    case "$month_num" in
+      1|3|5|7|8|10|12) max_day=31 ;;
+      4|6|9|11) max_day=30 ;;
+      2)
+        if (( year_num % 400 == 0 || (year_num % 4 == 0 && year_num % 100 != 0) )); then
+          max_day=29
+        else
+          max_day=28
+        fi
+        ;;
+    esac
+    [ "$day_num" -ge 1 ] && [ "$day_num" -le "$max_day" ] || break
+    [ "$br" = "$branch" ] || continue
+    if [ -n "$decided" ]; then
+      # Live-over-terminal: the newest row bound to this worktree but is a
+      # terminal record, so the older rows are searched for a live run that
+      # binds to the same worktree by the same head rule. Only such a row
+      # displaces the held terminal word; anything else leaves it standing.
+      [ "$(fm_nm_run_status_class "$st")" = live ] || continue
+      fm_nm_head_matches_worktree "$wt" "$sha" || continue
+      decided=$st
+      break
+    fi
+    if [ -n "$expected_head" ]; then
+      case "$expected_head" in *[!A-Fa-f0-9]*|'') break ;; esac
+      [ "${#expected_head}" -ge 7 ] && [ "${#expected_head}" -le 40 ] || break
+      case "$expected_head" in
+        "$sha"*) ;;
+        *) case "$sha" in "$expected_head"*) ;; *) break ;; esac ;;
+      esac
+    fi
+    row_full=$(fm_nm_resolve_commit "$wt" "$sha")
+    if [ -n "$row_full" ]; then
+      if fm_nm_head_matches_worktree "$wt" "$sha"; then
+        decided=$st
+        # A live or unclassifiable word is this worktree's current answer and
+        # ends the scan; only a terminal one keeps looking for a live sibling.
+        if [ "$(fm_nm_run_status_class "$st")" = terminal ]; then
+          continue
+        fi
+      fi
+      break
+    fi
+    break
+  done <<< "$list"
+  printf '%s' "$decided"
+  return 0
 }
