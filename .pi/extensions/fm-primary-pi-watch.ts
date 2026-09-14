@@ -1092,6 +1092,17 @@ export default function (pi: ExtensionAPI) {
 
   pi.on?.("before_agent_start", (event) => {
     consumeWake(generation, event.prompt);
+    try {
+      if (readFileSync(`${state}/.quiet`, "utf8").trim() === "quiet") {
+        return {
+          message: {
+            customType: "fm-quiet",
+            content: "Quiet presentation is active. Batch routine supervision updates and surface decisions, failures, credentials, and review-ready work. Answer ordinary captain chat and preserve quiet mode until explicit /quiet off. Native supervision continues. Quiet grants no away-mode or approval authority. Follow the quiet skill for entry and exit.",
+            display: false,
+          },
+        };
+      }
+    } catch {}
   });
   pi.on?.("message_start", (event) => {
     if (event.message.role !== "user") return;

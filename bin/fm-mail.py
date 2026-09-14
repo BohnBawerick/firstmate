@@ -316,7 +316,8 @@ def cmd_poll_list():
         # durable cursor past itself, never stalling the march over the whole
         # retry set.
         retry_window = retry_scan_window(retry_order, retry_pos, window)
-        retry_candidates = [u for u in retry_window if u in seen]
+        unseen_set = set(unseen)
+        retry_candidates = [u for u in retry_window if u in seen and u in unseen_set]
         turn_path = os.environ.get('FM_MAIL_TURN', '')
         next_turn = None
         if cap == 1 and new_candidates and retry_candidates:
@@ -346,7 +347,7 @@ def cmd_poll_list():
         for u in new_candidates + retry_candidates:
             is_retry = u in retry and u in seen
             if is_retry:
-                retry_idx += 1
+                retry_idx = retry_window.index(u)
             if is_retry:
                 if retry_emitted >= retry_budget:
                     # Past the retry budget: leave this candidate in the scan
@@ -357,7 +358,7 @@ def cmd_poll_list():
                     # recovered uids (a scan is a cursor over the whole retry
                     # set, and every uid must be reachable).
                     continue
-                retry_examined += 1
+                retry_examined = retry_idx + 1
             elif new_emitted >= new_budget:
                 continue
             # A raised or empty FETCH is treated as a failure for THIS uid only,

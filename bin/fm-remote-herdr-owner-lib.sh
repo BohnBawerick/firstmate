@@ -47,8 +47,7 @@
 #                does not prove an Aqua birth
 #   fm_remote_herdr_birth_is_aqua <birth>
 #     Succeeds only for launchd and worker. `unknown` is deliberately not
-#     Aqua: a server that cannot prove its birth is treated like a foreign one,
-#     because leaving it in place silently reproduces the keychain failure.
+#     Aqua; it also does not prove a foreign origin.
 
 fm_remote_herdr_socket_owner() { # <socket-path>
   local socket=$1 real pid='' line candidates='' candidate cmd

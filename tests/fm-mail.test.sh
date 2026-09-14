@@ -1485,9 +1485,7 @@ class FakeConn:
         return ('OK', [])
     def uid(self, cmd, *args):
         if cmd == 'search':
-            # Nothing is unseen (all server-seen); only uid 320 is in our
-            # cursor and retry-eligible, beyond the first 16-uid window.
-            return ('OK', [b''])
+            return ('OK', [b'320'])
         if cmd == 'fetch':
             return ('OK', [(b'', b'Subject: rec\r\nFrom: z@x.c\r\n\r\n')])
     def logout(self):
@@ -1554,7 +1552,7 @@ class FakeConn:
         return ('OK', [])
     def uid(self, cmd, *args):
         if cmd == 'search':
-            return ('OK', [b'400'])
+            return ('OK', [b'400 ' + b' '.join(str(u).encode() for u in range(301, 321))])
         if cmd == 'fetch':
             if args[0] in FAILING:
                 return ('NO', None)
@@ -1624,7 +1622,7 @@ class FakeConn:
         return ('OK', [])
     def uid(self, cmd, *args):
         if cmd == 'search':
-            return ('OK', [b'400'])
+            return ('OK', [b'400 320'])
         if cmd == 'fetch':
             return ('OK', [(b'', b'Subject: rec\r\nFrom: z@x.c\r\n\r\n')])
     def logout(self):
@@ -2144,7 +2142,7 @@ class FakeConn:
         return ('OK', [])
     def uid(self, cmd, *args):
         if cmd == 'search':
-            return ('OK', [b'41'])
+            return ('OK', [b'' if os.environ.get('FM_MAIL_TEST_SEEN') else b'41'])
         if cmd == 'fetch':
             n = int(open(os.environ['FM_MAIL_TEST_FETCH_COUNT']).read() or '0')
             if n < 3:
@@ -2200,6 +2198,16 @@ EOF
     "the uid stays in the retry set while the fetch keeps failing"
   wakeq=$(grep -c "check: mail" "$retry_home/state/.wake-queue" 2>/dev/null || true)
   expect_code 1 "$wakeq" "still-failing retry must not append a second wake"
+
+  rc=0
+  out=$(FM_MAIL_USER=test FM_MAIL_PASS=pass FM_IMAP_HOST=imap.test FM_SMTP_HOST=smtp.test \
+    FM_HOME="$retry_home" PATH="$fakebin:$PATH" FM_MAIL_TEST_SEEN=1 \
+    FM_MAIL_TEST_FETCH_COUNT="$control" \
+    "$MAIL" poll 2>&1) || rc=$?
+  expect_code 0 "$rc" "mail read elsewhere must not fail the poll"
+  assert_not_contains "$out" "woke for 41" "server-seen retry emitted a recovered wake"
+  wakeq=$(grep -c "check: mail" "$retry_home/state/.wake-queue" 2>/dev/null || true)
+  expect_code 1 "$wakeq" "server-seen retry appended a second wake"
 
   rc=0
   out=$(FM_MAIL_USER=test FM_MAIL_PASS=pass FM_IMAP_HOST=imap.test FM_SMTP_HOST=smtp.test \

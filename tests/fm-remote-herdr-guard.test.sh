@@ -6,7 +6,7 @@
 # process as the session-socket owner, and real holder processes whose
 # environment and ancestry carry the birth markers the guard reads. It pins
 # the decision table: no server -> start; an Aqua-born owner -> leave it; an
-# SSH-born or unprovable owner -> stop it, wait for the socket, start. Nothing
+# SSH-born owner -> stop it, wait for the socket, start. Nothing
 # here touches the runner's own herdr servers, launch agents, or login
 # session, and no live harness guard applies: the verdict comes from process
 # environment and ancestry, which are kernel facts rather than vendor output.
@@ -251,44 +251,28 @@ pass "launchd and worker markers require gui-domain launchctl proof"
 
 # --- a foreign owner is stopped, then the guard becomes the server -----------
 
-new_case running
-printf '%s\n' "$BACKGROUND_PID" > "$CASE_OWNER"
-load_job gui dev.firstmate.herdr.fm-remote
-load_job user dev.firstmate.herdr.fm-remote
-guard
-expect_code 0 "$GUARD_RC" "the guard failed to take over a label also loaded in the user domain"
-assert_stop_before_start
-assert_contains "$GUARD_OUT" "pid $BACKGROUND_PID born outside the Aqua login session (unknown)" \
-  "a user-domain label was trusted as Aqua"
+for owner in "$BACKGROUND_PID" "$XPC_ZERO_PID" "$UNMARKED_PID" ""; do
+  new_case running
+  printf '%s\n' "$owner" > "$CASE_OWNER"
+  load_job gui dev.firstmate.herdr.fm-remote
+  load_job user dev.firstmate.herdr.fm-remote
+  guard
+  expect_code 0 "$GUARD_RC" "unknown origin must preserve the server"
+  assert_not_contains "$(herdr_calls)" 'server ' "unknown origin triggered a lifecycle command"
+  assert_contains "$GUARD_OUT" 'unknown origin' "unknown origin was not reported"
+  assert_equals true "$(cat "$CASE_RUNNING")" "unknown-origin server stopped"
+done
+pass "unknown process evidence preserves running sessions"
 
-new_case running
-printf '%s\n' "$XPC_ZERO_PID" > "$CASE_OWNER"
-guard
-expect_code 0 "$GUARD_RC" "the guard failed to take over an XPC_SERVICE_NAME=0 owner"
-assert_stop_before_start
-assert_contains "$GUARD_OUT" "pid $XPC_ZERO_PID born outside the Aqua login session (unknown)" \
-  "XPC_SERVICE_NAME=0 was trusted as Aqua"
-
-for foreign in "ssh $SSH_PID" "ssh $BRIDGE_CHILD_PID" "ssh $SSHD_CHILD_PID" "unknown $UNMARKED_PID"; do
+for foreign in "ssh $SSH_PID" "ssh $BRIDGE_CHILD_PID" "ssh $SSHD_CHILD_PID"; do
   new_case running
   printf '%s\n' "${foreign#* }" > "$CASE_OWNER"
   guard
-  expect_code 0 "$GUARD_RC" "the guard failed to take over from a ${foreign%% *} owner (pid ${foreign#* })"
+  expect_code 0 "$GUARD_RC" "proven SSH origin must permit takeover"
   assert_stop_before_start
-  assert_started "the guard did not start its own server after the ${foreign%% *} owner released the socket"
-  assert_contains "$GUARD_OUT" "pid ${foreign#* } born outside the Aqua login session (${foreign%% *})" \
-    "the guard did not name the foreign owner and its birth"
+  assert_started "proven SSH owner was not replaced"
 done
-pass "background, inherited-XPC, SSH-born, SSH-descended, and unprovable owners are taken over"
-
-# --- an owner nobody can prove is treated as foreign -------------------------
-
-new_case running
-guard
-expect_code 0 "$GUARD_RC" "the guard failed when lsof listed no owner"
-assert_contains "$GUARD_OUT" 'no herdr process could be proven to own' "the guard did not report the unprovable owner"
-assert_stop_before_start
-pass "a running session with no provable owner is taken over rather than trusted"
+pass "positive SSH evidence permits takeover"
 
 new_case running
 printf '%s\n' "$SSH_PID" > "$CASE_OWNER"
@@ -296,10 +280,11 @@ rm -f "$FAKE/lsof"
 guard
 cp "$TMP_ROOT/lsof.fake" "$FAKE/lsof"
 chmod +x "$FAKE/lsof"
-expect_code 0 "$GUARD_RC" "the guard failed when lsof was absent"
-assert_contains "$GUARD_OUT" 'lsof does not resolve' "the guard did not report the missing lsof"
-assert_stop_before_start
-pass "a host without lsof cannot prove an Aqua birth, so the session is taken over"
+expect_code 0 "$GUARD_RC" "missing lsof must preserve the server"
+assert_contains "$GUARD_OUT" 'lsof does not resolve' "missing lsof was not reported"
+assert_not_contains "$(herdr_calls)" 'server ' "missing lsof triggered takeover"
+assert_equals true "$(cat "$CASE_RUNNING")" "missing lsof stopped the server"
+pass "missing lsof preserves running sessions"
 
 # --- a foreign owner that keeps the socket makes the guard fail for a retry --
 

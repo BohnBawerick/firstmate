@@ -116,6 +116,40 @@ unit_pi_never_launches_the_daemon() {
   done
 }
 
+unit_pi_quiet_presentation_is_separate() {
+  local st harness out rc
+  for harness in pi pi-signed; do
+    st=$(mktemp -d "${TMPDIR:-/tmp}/fm-native-quiet.XXXXXX")
+    mkdir -p "$st/state"
+    rc=0
+    out=$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" FM_TEST_HARNESS="$harness" \
+      bash -c '
+        . "$1"
+        fm_afk_launch_primary_harness() { printf "%s" "$FM_TEST_HARNESS"; }
+        fm_afk_launch_main quiet on || exit 1
+        fm_afk_launch_main quiet on || exit 1
+        [ "$(fm_afk_launch_main quiet status)" = quiet ] || exit 1
+        [ ! -e "$FM_HOME/state/.afk" ] || exit 1
+        [ ! -e "$FM_HOME/state/.afk-contract" ] || exit 1
+        [ ! -e "$FM_HOME/state/.afk-daemon-terminal" ] || exit 1
+        "$FM_AFK_LAUNCH_DIR/fm-afk-return.sh" guard || exit 1
+        "$FM_AFK_CONTRACT_CMD" propose --words "Hold for my return" >/dev/null || exit 1
+        "$FM_AFK_CONTRACT_CMD" confirm >/dev/null || exit 1
+        cp "$FM_HOME/state/.afk-contract" "$FM_HOME/contract-before"
+        fm_afk_launch_main quiet off || exit 1
+        [ "$(fm_afk_launch_main quiet status)" = off ] || exit 1
+        cmp "$FM_HOME/contract-before" "$FM_HOME/state/.afk-contract" || exit 1
+        [ ! -e "$FM_HOME/state/.quiet" ] || exit 1
+      ' _ "$LAUNCH" 2>&1) || rc=$?
+    if [ "$rc" -eq 0 ]; then
+      pass "$harness quiet entry is daemon-free and separate from away authority"
+    else
+      fail "$harness native quiet lifecycle failed: $out"
+    fi
+    rm -rf "$st"
+  done
+}
+
 unit_daemon_entry_requires_confirmation() {
   local st out rc
   st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-entry-record.XXXXXX")
@@ -1188,6 +1222,7 @@ e2e_tmux() {
 unit_clear_stale
 unit_propose_confirm_records_the_posture_without_a_daemon
 unit_pi_never_launches_the_daemon
+unit_pi_quiet_presentation_is_separate
 unit_daemon_entry_requires_confirmation
 unit_failed_daemon_launch_preserves_confirmed_record
 unit_stop_archives_the_record_last

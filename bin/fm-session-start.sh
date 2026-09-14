@@ -933,6 +933,10 @@ else
   printf 'absent\n'
 fi
 
+if [ "$(cat "$STATE/.quiet" 2>/dev/null)" = quiet ]; then
+  printf 'Quiet presentation is active; load /quiet. Native supervision continues with unchanged approval authority.\n'
+fi
+
 # Public commitments made through the myfirstmate relay. A promise to reply in a
 # public thread must survive compaction and restart, so it is surfaced from disk
 # here rather than from conversation memory. fm-public-followup-lib.sh owns both
@@ -1019,6 +1023,13 @@ if [ "$READ_ONLY" -eq 1 ]; then
 This session did not acquire the fleet lock. Stay read-only: do not arm,
 drain, spawn, steer, merge, or repair fleet state from here. Only a session
 with verified fleet-lock ownership may perform mutable follow-up.
+
+EOF
+elif [ "$(cat "$STATE/.quiet" 2>/dev/null)" = quiet ]; then
+  cat <<'EOF'
+Quiet presentation is active; load /quiet and follow the native supervision instructions above.
+Ordinary captain chat preserves it; explicit /quiet off clears it.
+Quiet grants no away-mode authority.
 
 EOF
 elif [ "$AFK_PRESENT" -eq 1 ] && [ "$AFK_MODE" = quiet ]; then

@@ -485,7 +485,7 @@ SH
 
 interrupt_kimi_readiness() {  # <case-dir>
   local case_dir=$1 home
-  home=$(home_of "$case_dir")
+  home="$case_dir/user-home"
   mkdir -p "$home/.kimi-code"
   printf '# test config\n' > "$home/.kimi-code/config.toml"
   fm_fake_exit0 "$case_dir/fakebin" kimi
@@ -497,8 +497,11 @@ case "\$*" in
 esac
 case "\${1:-}" in
   display-message) printf 'firstmate\\n'; exit 0 ;;
+  send-keys)
+    case "\$*" in *"$case_dir/fakebin/kimi"*) : > "$case_dir/kimi-launched" ;; esac
+    ;;
   capture-pane)
-    if [ ! -f "$case_dir/kimi-interrupted" ]; then
+    if [ -f "$case_dir/kimi-launched" ] && [ ! -f "$case_dir/kimi-interrupted" ]; then
       : > "$case_dir/kimi-interrupted"
       spawn_pid=\$(ps -o ppid= -p "\$PPID" | tr -d ' ')
       case "\$spawn_pid" in ''|*[!0-9]*) exit 1 ;; esac
@@ -1325,7 +1328,7 @@ test_dispatch_refuses_to_commit_without_a_published_record() {
   pass "dispatch cannot commit without a verified task-record publication"
 }
 
-test_dispatch_leaves_no_record_when_the_transition_fails() {
+test_dispatch_preserves_worker_when_the_transition_fails() {
   local case_dir id out rc=0
   id=atomic-dispatch-b4
   case_dir=$(make_home dispatch-transition-fails "$id")
@@ -1336,16 +1339,16 @@ test_dispatch_leaves_no_record_when_the_transition_fails() {
   [ "$rc" -ne 0 ] || fail "spawn reported success though the backlog transition failed"
   assert_contains "$out" "could not be moved to In flight" \
     "spawn failed without explaining the backlog transition failure"
-  assert_absent "$(home_of "$case_dir")/state/$id.meta" \
-    "a failed backlog transition left an orphaned record behind"
-  assert_absent "$(home_of "$case_dir")/state/$id.busy-state" \
-    "a failed backlog transition left the task's armed busy generation behind"
+  assert_present "$(home_of "$case_dir")/state/$id.meta" \
+    "backlog failure removed the live worker record"
+  assert_present "$(home_of "$case_dir")/state/$id.busy-state" \
+    "backlog failure removed the live worker busy generation"
   [ "$(row_state "$case_dir" "$id")" = queued ] \
     || fail "a failed dispatch left the backlog item in $(row_state "$case_dir" "$id")"
-  pass "a failed backlog transition fails the dispatch loudly and leaves no record"
+  pass "backlog failure preserves worker ownership and reports failure"
 }
 
-test_dispatch_reports_an_incomplete_record_rollback() {
+test_dispatch_preserves_worker_despite_record_removal_failure() {
   local case_dir id meta out rc=0
   id=atomic-dispatch-remove-failure-b5
   case_dir=$(make_home dispatch-remove-failure "$id")
@@ -1356,17 +1359,17 @@ test_dispatch_reports_an_incomplete_record_rollback() {
 
   out=$(run_ship_spawn "$case_dir" "$id") || rc=$?
   [ "$rc" -ne 0 ] || fail "spawn reported success though transition and rollback failed"
-  assert_contains "$out" "failed-dispatch cleanup is incomplete" \
-    "spawn did not report that its provisional record remained"
+  assert_contains "$out" "records are preserved" \
+    "spawn did not report preserved ownership"
   assert_present "$meta" "failed record removal was reported as successful"
-  assert_absent "$(home_of "$case_dir")/state/$id.busy-state" \
-    "record-removal failure prevented busy-state rollback"
+  assert_present "$(home_of "$case_dir")/state/$id.busy-state" \
+    "busy state was removed after launch"
   [ "$(row_state "$case_dir" "$id")" = queued ] \
     || fail "failed rollback changed the backlog row"
-  pass "dispatch reports when failed-transition rollback cannot remove its record"
+  pass "dispatch retains ownership without attempting record removal"
 }
 
-test_dispatch_reports_an_incomplete_busy_rollback() {
+test_dispatch_preserves_worker_despite_busy_removal_failure() {
   local case_dir id out rc=0
   id=atomic-dispatch-busy-remove-failure-b5
   case_dir=$(make_home dispatch-busy-remove-failure "$id")
@@ -1376,15 +1379,15 @@ test_dispatch_reports_an_incomplete_busy_rollback() {
 
   out=$(run_ship_spawn "$case_dir" "$id") || rc=$?
   [ "$rc" -ne 0 ] || fail "spawn succeeded though busy rollback failed"
-  assert_contains "$out" "did not remove both task and busy records" \
-    "spawn did not report incomplete busy rollback"
-  assert_absent "$(home_of "$case_dir")/state/$id.meta" \
-    "busy rollback failure retained the provisional task record"
+  assert_contains "$out" "records are preserved" \
+    "spawn did not report preserved ownership"
+  assert_present "$(home_of "$case_dir")/state/$id.meta" \
+    "task record was removed after launch"
   assert_present "$(home_of "$case_dir")/state/$id.busy-state" \
     "busy removal failure was reported as successful"
   [ "$(row_state "$case_dir" "$id")" = queued ] \
     || fail "failed busy rollback changed the backlog row"
-  pass "dispatch verifies both task and busy records during rollback"
+  pass "dispatch retains ownership without attempting busy removal"
 }
 
 test_dispatch_rolls_back_before_a_failed_launch_delivery() {
@@ -1397,12 +1400,12 @@ test_dispatch_rolls_back_before_a_failed_launch_delivery() {
   out=$(run_ship_spawn "$case_dir" "$id") || rc=$?
   [ "$rc" -ne 0 ] || fail "spawn reported success though launch delivery failed"
   assert_absent "$(home_of "$case_dir")/state/$id.meta" \
-    "a failed launch delivery left its provisional record behind"
+    "pre-launch failure left a provisional task record"
   assert_absent "$(home_of "$case_dir")/state/$id.busy-state" \
-    "a failed launch delivery left its provisional busy generation behind"
+    "pre-launch failure left busy ownership"
   [ "$(row_state "$case_dir" "$id")" = queued ] \
     || fail "launch delivery failed after committing backlog state $(row_state "$case_dir" "$id")"
-  pass "dispatch commits neither record nor backlog state before launch delivery succeeds"
+  pass "pre-launch failure rolls back task and busy ownership"
 }
 
 test_dispatch_defers_interruption_across_backlog_commit() {
@@ -1499,7 +1502,7 @@ test_deferred_signal_verification_outlives_an_unresponsive_tasks_axi() {
   pass "a signal-deferred spawn bounds its verification so an unresponsive tasks-axi cannot hold the meta lock forever"
 }
 
-test_dispatch_interruption_during_kimi_readiness_fails_before_commit() {
+test_dispatch_interruption_during_kimi_readiness_preserves_worker() {
   local case_dir home id out rc=0
   id=atomic-dispatch-kimi-readiness-signal-b5
   case_dir=$(make_home dispatch-kimi-readiness-signal "$id")
@@ -1511,11 +1514,12 @@ test_dispatch_interruption_during_kimi_readiness_fails_before_commit() {
     run_spawn "$case_dir" "$id" "$case_dir/project" --harness kimi \
       --mode no-mistakes --yolo off) || rc=$?
   [ "$rc" -ne 0 ] || fail "Kimi readiness interruption was reported as success"
-  assert_absent "$home/state/$id.meta" \
-    "Kimi readiness interruption retained an unconfirmed task record"
+  assert_present "$home/state/$id.meta" \
+    "Kimi interruption removed the launched worker record: $out"
+  assert_present "$case_dir/kimi-interrupted" "Kimi readiness interruption never occurred"
   [ "$(row_state "$case_dir" "$id")" = queued ] \
     || fail "Kimi readiness interruption committed unconfirmed work In flight: $out"
-  pass "Kimi readiness interruptions fail before backlog commit"
+  pass "Kimi readiness interruption preserves ownership before backlog commit"
 }
 
 test_dispatch_does_not_resurrect_a_row_closed_after_preflight() {
@@ -1530,8 +1534,8 @@ test_dispatch_does_not_resurrect_a_row_closed_after_preflight() {
   assert_contains "$out" "state done" "spawn did not report the row's ineligible state"
   [ "$(row_state "$case_dir" "$id")" = "done" ] \
     || fail "spawn resurrected a row closed after preflight"
-  assert_absent "$(home_of "$case_dir")/state/$id.meta" \
-    "spawn retained a record after its row was closed"
+  assert_present "$(home_of "$case_dir")/state/$id.meta" \
+    "spawn discarded a launched worker after its row was closed"
   pass "dispatch does not resurrect a row closed after preflight"
 }
 
@@ -1546,8 +1550,8 @@ test_dispatch_fails_when_its_row_vanishes_after_preflight() {
   [ "$rc" -ne 0 ] || fail "spawn succeeded after its backlog row vanished"
   assert_contains "$out" "vanished before dispatch commit" \
     "spawn did not report that its backlog row vanished"
-  assert_absent "$(home_of "$case_dir")/state/$id.meta" \
-    "spawn retained a record after its backlog row vanished"
+  assert_present "$(home_of "$case_dir")/state/$id.meta" \
+    "spawn discarded a launched worker after its row vanished"
   [ -z "$(row_state "$case_dir" "$id")" ] || fail "spawn recreated a removed backlog row"
   pass "dispatch fails when its backlog row vanishes after preflight"
 }
@@ -3018,9 +3022,9 @@ test_dispatch_refuses_an_id_this_home_has_no_item_for
 test_dispatch_reports_a_backlog_read_failure
 test_dispatch_refuses_a_closed_item
 test_dispatch_refuses_to_commit_without_a_published_record
-test_dispatch_leaves_no_record_when_the_transition_fails
-test_dispatch_reports_an_incomplete_record_rollback
-test_dispatch_reports_an_incomplete_busy_rollback
+test_dispatch_preserves_worker_when_the_transition_fails
+test_dispatch_preserves_worker_despite_record_removal_failure
+test_dispatch_preserves_worker_despite_busy_removal_failure
 test_dispatch_rolls_back_before_a_failed_launch_delivery
 test_dispatch_defers_interruption_across_backlog_commit
 test_deferred_signal_reads_back_preserved_state
@@ -3030,7 +3034,7 @@ test_fm_tasks_axi_fallback_bounds_the_call_without_a_timeout_binary
 test_fm_tasks_axi_fallback_passes_the_child_status_and_output_through
 test_fm_tasks_axi_fails_closed_when_nothing_can_bound_the_call
 test_fm_tasks_axi_gnu_timeout_forces_termination_of_a_sigterm_ignoring_child
-test_dispatch_interruption_during_kimi_readiness_fails_before_commit
+test_dispatch_interruption_during_kimi_readiness_preserves_worker
 test_dispatch_does_not_resurrect_a_row_closed_after_preflight
 test_dispatch_fails_when_its_row_vanishes_after_preflight
 test_completion_closes_a_local_only_ship_before_reporting_success

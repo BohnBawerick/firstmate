@@ -23,7 +23,7 @@
 #   the owner was born in the Aqua session (launchd or the Aqua remote-job
 #   worker)                            -> exit 0, leave it alone
 #   the owner was born anywhere else (an SSH remote attach, a shell over
-#   ssh/mosh, or a birth it cannot prove) -> `herdr server stop`, wait until the
+#   ssh/mosh) -> `herdr server stop`, wait until the
 #                                          socket is released, then exec
 #                                          `herdr server --session <s>` at once
 #                                          so the socket is rebound before a
@@ -89,6 +89,11 @@ fi
 
 if fm_remote_herdr_birth_is_aqua "$BIRTH"; then
   log "session $SESSION is served by pid $OWNER born in the Aqua login session ($BIRTH); nothing to do"
+  exit 0
+fi
+
+if [ "$BIRTH" != ssh ]; then
+  log "session $SESSION has unknown origin ($BIRTH); preserving the running session without takeover"
   exit 0
 fi
 

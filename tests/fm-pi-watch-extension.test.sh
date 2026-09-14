@@ -74,6 +74,43 @@ export const Type = {
 JS
 }
 
+test_pi_quiet_survives_chat_and_restart() {
+  local repo home out status=0
+  repo="$TMP_ROOT/pi-quiet-root"
+  home="$TMP_ROOT/pi-quiet-home"
+  mkdir -p "$home/state" "$home/config"
+  install_pi_watch_extension_fixture "$repo"
+  out=$(PLUGIN="$repo/.pi/extensions/fm-primary-pi-watch.ts" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" node --input-type=module 2>&1 <<'EOF'
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+function bind() {
+  const handlers = {};
+  mod.default({ on(name, handler) { handlers[name] = handler; }, registerCommand() {}, registerTool() {} });
+  return handlers;
+}
+const state = `${process.env.FM_HOME}/state`;
+let handlers = bind();
+if (await handlers.before_agent_start({ prompt: "hello" })) throw new Error("quiet enabled by default");
+writeFileSync(`${state}/.quiet`, "quiet\n");
+for (const prompt of ["hello", "show me the task", "continue"]) {
+  const result = await handlers.before_agent_start({ prompt });
+  if (result?.message?.customType !== "fm-quiet" || result.message.display !== false) throw new Error("quiet prompt missing");
+  if (readFileSync(`${state}/.quiet`, "utf8") !== "quiet\n") throw new Error("chat changed quiet state");
+}
+handlers = bind();
+if (!(await handlers.before_agent_start({ prompt: "hello again" }))?.message) throw new Error("restart lost quiet state");
+for (const name of [".afk", ".afk-contract", ".afk-daemon-terminal"]) {
+  if (existsSync(`${state}/${name}`)) throw new Error(`quiet created ${name}`);
+}
+unlinkSync(`${state}/.quiet`);
+if (await handlers.before_agent_start({ prompt: "continue normally" })) throw new Error("quiet off still injects presentation prompt");
+EOF
+  ) || status=$?
+  expect_code 0 "$status" "native quiet must survive chat and restart without away artifacts: $out"
+  pass "Pi native supervision reads quiet state until explicit exit"
+}
+
 test_pi_extension_reports_external_healthy_watcher() {
   local repo home plugin out status
   repo="$TMP_ROOT/pi-external-healthy-root"
@@ -4021,4 +4058,6 @@ test_opencode_empty_close_retries_instead_of_disappearing
 test_opencode_established_empty_close_honors_retry_limit
 test_opencode_actionable_close_rechecks_session_lock
 test_opencode_watch_arm_coordinates_with_turnend_guard
+test_pi_quiet_survives_chat_and_restart
+
 test_opencode_healthy_arm_output_does_not_suppress_guard

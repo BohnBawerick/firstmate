@@ -56,6 +56,7 @@
 #                              record it. Idempotent: an already-running daemon
 #                              just refreshes state/.afk; a recorded-but-dead
 #                              terminal is reconciled (closed by id) first.
+#   fm-afk-launch.sh quiet [on|off|status]  Pi presentation only, persisted in state/.quiet.
 #   fm-afk-launch.sh start-native
 #                              Prepare lifecycle state for a harness-native
 #                              background job and record that no terminal exists.
@@ -741,6 +742,37 @@ fm_afk_launch_stop() {
   return "$result"
 }
 
+fm_afk_launch_quiet() {
+  local pending
+  case "$(fm_afk_launch_primary_harness)" in
+    pi|pi-signed) ;;
+    *) fm_afk_launch_log "native quiet entry requires pi or pi-signed"; return 1 ;;
+  esac
+  case "${1:-on}" in
+    on)
+      [ ! -d "$FM_AFK_LAUNCH_STATE/.quiet" ] || return 1
+      pending=$(mktemp "$FM_AFK_LAUNCH_STATE/.quiet.pending.XXXXXX") || return 1
+      if ! printf 'quiet\n' > "$pending" || ! mv "$pending" "$FM_AFK_LAUNCH_STATE/.quiet"; then
+        rm -f "$pending"
+        return 1
+      fi
+      fm_afk_launch_log "quiet presentation is active; native supervision continues with unchanged approval authority"
+      ;;
+    off)
+      rm -f "$FM_AFK_LAUNCH_STATE/.quiet" || return 1
+      fm_afk_launch_log "quiet presentation is off; native supervision continues"
+      ;;
+    status)
+      if [ "$(cat "$FM_AFK_LAUNCH_STATE/.quiet" 2>/dev/null)" = quiet ]; then
+        printf 'quiet\n'
+      else
+        printf 'off\n'
+      fi
+      ;;
+    *) fm_afk_launch_usage >&2; return 2 ;;
+  esac
+}
+
 fm_afk_launch_main() {
   local result
   # Traps first, lock second. Acquiring before the handlers exist leaves a
@@ -755,6 +787,7 @@ fm_afk_launch_main() {
   case "${1:-start}" in
     propose) shift; fm_afk_launch_propose "$@" ;;
     confirm) fm_afk_launch_confirm ;;
+    quiet) shift; fm_afk_launch_quiet "$@" ;;
     start) fm_afk_launch_start ;;
     start-native)
       # Claude's Herdr background job would make its own supervisor target busy forever.
