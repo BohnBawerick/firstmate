@@ -1,0 +1,2 @@
+error: task liveness's endpoint reads 'unreadable' rather than a positively classified state; refusing to send a lifecycle command into an unattributed endpoint
+error: relaunch of liveness failed while stopping the old agent and its state is 'unreadable'; the durable record and progress note were retained for recovery

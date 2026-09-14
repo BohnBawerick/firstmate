@@ -1,0 +1,15 @@
+window=fm-lab-nm-live-liveness-95063-22192:w1:p1
+endpoint_task_id=liveness
+worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-herdr/runtime/wt
+project=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-herdr/runtime/project
+harness=agy
+kind=scout
+tasktmp=/tmp/fm-liveness
+model=gemini-3.8-flash-low
+effort=default
+spawn_gen=s1789398354.95497.11380
+backend=herdr
+herdr_session=fm-lab-nm-live-liveness-95063-22192
+herdr_workspace_id=w1
+herdr_tab_id=w1:t1
+herdr_pane_id=w1:p1

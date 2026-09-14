@@ -1,0 +1,6 @@
+{
+  "name": "default",
+  "default": true,
+  "running": true,
+  "socket_path": "/home/bohn/.config/herdr/herdr.sock"
+}

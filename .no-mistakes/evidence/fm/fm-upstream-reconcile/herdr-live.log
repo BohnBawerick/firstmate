@@ -1,0 +1,17 @@
+session=fm-lab-nm-live-liveness-95063-22192 pane=w1:p1 workspace=w1 tab=w1:t1
+error: agy startup unconfirmed: agy did not start processing its brief in the pre-trusted worktree in window fm-lab-nm-live-liveness-95063-22192:w1:p1; endpoint and ownership records retained; inspect window fm-lab-nm-live-liveness-95063-22192:w1:p1
+spawn exit=1
+PASS: startup unconfirmed while real agent and shell tool remain live
+fault-injected agent state=unreadable
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: task liveness's endpoint reads 'unreadable' rather than a positively classified state; refusing to send a lifecycle command into an unattributed endpoint
+error: relaunch of liveness failed while stopping the old agent and its state is 'unreadable'; the durable record and progress note were retained for recovery
+PASS: uncertain recovery refused without killing the tool or changing ownership
+PASS: live shell tool completed and worker acted on durable steering
+guarded cleanup exit=0

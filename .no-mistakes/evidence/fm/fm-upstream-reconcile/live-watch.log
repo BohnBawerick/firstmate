@@ -1,0 +1,50 @@
+
+$ bin/fm-procevent-when.sh arm updated-action --interval 0.1 --stable 2 --condition test -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/watch-manual/ready --action /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/watch-manual/bin/action /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/watch-manual/action.log
+armed: when-updated-action
+starts on the watcher's next cycle; or run: bin/fm-procevent.sh reconcile
+reminder: deterministic, safe, reversible actions only; judgment and destructive actions stay on the wake-and-decide path
+
+$ bin/fm-procevent-when.sh rebind-all
+rebound: when-updated-action
+rebind-all: 1 rebound, 0 unchanged or out of scope, 0 failed
+
+$ bin/fm-procevent.sh reconcile
+reconciled: published=0 started=1 stopped=0 uncertain=0 failed=0
+
+$ bin/fm-procevent.sh list
+SOURCE                       ADAPTER      OWNER      PENDING
+when-updated-action          when         live       0
+Action has not fired before the condition.
+
+$ cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/watch-manual/home/state/procevent-inbox/when-updated-action.1.result
+when: when-updated-action
+status: fired
+detail: the condition held and the action exited 0
+condition_polls: 3
+action_exit: 0
+output:
+action completed
+updated action version
+
+$ bin/fm-procevent.sh reconcile
+reconciled: published=1 started=0 stopped=0 uncertain=0 failed=0
+Exactly one action invocation after reconcile.
+
+$ cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/watch-manual/home/state/.wake-queue
+1789396084	1	check	procevent:when-updated-action:1	check: procevent when when-updated-action 1
+
+$ bin/fm-procevent-when.sh arm tampered-action --interval 0.1 --stable 1 --condition true --action /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/watch-manual/bin/action /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/watch-manual/tampered.log
+armed: when-tampered-action
+starts on the watcher's next cycle; or run: bin/fm-procevent.sh reconcile
+reminder: deterministic, safe, reversible actions only; judgment and destructive actions stay on the wake-and-decide path
+
+$ bin/fm-procevent.sh reconcile
+reconciled: published=1 started=1 stopped=0 uncertain=0 failed=0
+
+$ cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/watch-manual/home/state/procevent-inbox/when-tampered-action.1.result
+when: when-tampered-action
+status: rejected
+detail: refused without executing the action: its bytes do not match the registered trust binding
+condition_polls: 1
+output:
+Unbound action mutation rejected without execution.

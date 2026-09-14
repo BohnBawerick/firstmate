@@ -1,0 +1,35 @@
+
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/landing-manual/project init -q --initial-branch=main
+
+$ bin/fm-merge-local.sh landing
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+merged fm/landing into local main (7b32e0c -> 19e6fbc) in /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/landing-manual/project
+
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/landing-manual/project log -2 --oneline
+19e6fbc Add isolated change
+7b32e0c Seed isolated landing lab
+
+$ cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/landing-manual/project/content
+base
+accepted change
+
+$ bin/fm-merge-local.sh landing
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/landing-manual/project has a dirty working tree; refusing to merge into it
+Dirty checkout refused with exit 1; HEAD and user work preserved.
+
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/landing-manual/project diff
+diff --git a/content b/content
+index 2ae8b6a..334f7a8 100644
+--- a/content
++++ b/content
+@@ -1,2 +1,3 @@
+ base
+ accepted change
++uncommitted user work

@@ -1,0 +1,27 @@
+Configured cadence=10 seconds; deadline=1789396553
+signal: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/cadence-manual/home/state/until.status
+1789396540	2	signal	until.status	signal: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/cadence-manual/home/state/until.status
+wake annotation: latest wake-EVENT observed at drain, not current state: until.status: paused: waiting for reset, until 2026-09-14T14:35:53Z, then resuming
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 2 --recovery-generation 3633284.1789396539.mrUOej
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 5s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  After draining queued wakes, repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else.
+stale: lab-c:fm-until (paused 11s, awaiting external - the declared time is beyond the recheck cadence; confirm the wait still holds)
+First reminder observed=1789396549
+1789396548	3	stale	lab-c:fm-until	stale: lab-c:fm-until (paused 11s, awaiting external - the declared time is beyond the recheck cadence; confirm the wait still holds)
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 3 --recovery-generation 3644510.1789396549.xl0G3Y
+WARNING: watcher still down (same stale episode; last beat: 3s ago, grace 300s) - full banner already printed this episode.
+WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else.
+Deadline crossed at 1789396554 without a second reminder.
+stale: lab-c:fm-until (paused 23s, awaiting external - the declared clearing time has passed, rechecked on a long cadence not a wedge; confirm the wait cleared)
+Second reminder observed=1789396561; interval=12 seconds
+[2026-09-14T22:35:44+0800] absorbed stale (paused until 9s from now, declared time not reached): lab-c:fm-until
+[2026-09-14T22:35:52+0800] absorbed stale (paused, declared time beyond recheck cadence, age 15s): lab-c:fm-until
+[2026-09-14T22:35:54+0800] absorbed stale (paused, declared time reached, age 17s): lab-c:fm-until
+[2026-09-14T22:35:56+0800] absorbed stale (paused, declared time reached, age 19s): lab-c:fm-until
+[2026-09-14T22:35:58+0800] absorbed stale (paused, declared time reached, age 21s): lab-c:fm-until

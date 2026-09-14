@@ -1,0 +1,125 @@
+
+$ bin/fm-memory-migrate.sh --dry-run
+created notes/api-cache-eviction.md
+created notes/glacier-store-retention.md
+migrate: 2 note(s) created, 0 already present
+migrate: --dry-run, nothing was written and data/learnings.md was not touched
+
+$ bin/fm-memory-migrate.sh
+created notes/api-cache-eviction.md
+created notes/glacier-store-retention.md
+migrate: 2 note(s) created, 0 already present
+catalog: published data/memory/catalog.md (2 note(s))
+migrate: froze the original at data/memory/raw/learnings-2026-09-14.md
+migrate: appended the original to data/memory-archive.md
+migrate: removed data/learnings.md (frozen at data/memory/raw/learnings-2026-09-14.md and archived in data/memory-archive.md)
+
+$ bin/fm-memory-compile.sh compile
+COMPILED WORKING MEMORY (data/memory)
+--------------------------------------------------------------------------------
+Compiled by bin/fm-memory-compile.sh against a 7500-estimated-token cap.
+This is the whole startup memory surface: it is selected and capped, not dumped.
+The catalog lists every note that exists, so when a title below matches what
+this turn needs and its body was not injected, read that file by its path.
+
+core: data/captain.md (standing constitution; data/memory/core.md is ABSENT)
+--------------------------------------------------------------------------------
+Keep claims backed by evidence.
+
+catalog (compiled from data/memory/notes/)
+--------------------------------------------------------------------------------
+<!-- compiled by bin/fm-memory-compile.sh from data/memory/notes/ -->
+
+- api-cache eviction (api-cache-eviction.md | api-cache | ?)
+- glacier-store retention (glacier-store-retention.md | glacier-store | ?)
+
+hot note: notes/api-cache-eviction.md
+--------------------------------------------------------------------------------
+---
+title: api-cache eviction
+triggers: api-cache
+updated: 
+source: data/learnings.md
+---
+
+# api-cache eviction
+Preserve the cache key when retrying.
+
+
+MEMORY_ACCOUNTING: budget=7500 core=11 catalog=69 hot_notes=1 hot_notes_tokens=51 notes_total=2 hot_dropped=0 injected_total=131 status=within-budget
+
+$ bin/fm-memory-migrate.sh
+migrate: data/learnings.md is absent - the data/memory/ layout is in place and there is nothing to split.
+
+Memory archives:
+/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/manual3/home/data/memory/catalog.md
+/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/manual3/home/data/memory/drop/README.md
+/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/manual3/home/data/memory/notes/api-cache-eviction.md
+/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/manual3/home/data/memory/notes/glacier-store-retention.md
+/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/manual3/home/data/memory/raw/learnings-2026-09-14.md
+
+$ bin/fm-afk-launch.sh quiet on
+fm-afk-launch: quiet presentation is active; native supervision continues with unchanged approval authority
+
+$ bin/fm-afk-launch.sh quiet status
+quiet
+No away authority record exists after quiet entry.
+
+$ bin/fm-afk-launch.sh propose --words Away\ for\ lunch.\ Merge\ only\ task\ api-cache\ when\ green. --grant api-cache --action merge --object api-cache --when all\ checks\ green
+Away posture read-back (proposed, not yet confirmed):
+  entered: 2026-09-14T14:26:45Z
+  expected return: not given
+  spend cap: 4 concurrent workers
+  merge when green (task ids): api-cache
+  reach: hold-for-return only. No phone channel is configured; anything that needs you waits for your return.
+  your words (verbatim):
+    Away for lunch. Merge only task api-cache when green.
+  accepted clauses:
+    1. merge api-cache when all checks green
+  refused clauses:
+    (none)
+  everything else waits for your return: no red merge without its named check, no discard without a named object and condition, never credentials, legal, financial, or attended prompts, nothing by analogy, and every clause expires at return.
+  hard rule: forbidden, destructive, irreversible, and security-sensitive actions are never pre-authorizable regardless of clause text; no recorded clause is authority by itself.
+  recorded clauses are held for the return brief and are not executed by this release.
+Say go to confirm; restate any refused clause first if you want it recorded.
+
+$ bin/fm-afk-launch.sh confirm
+Away posture confirmed at 2026-09-14T14:26:46Z: hold-for-return only. No phone channel is configured; anything that needs you waits for your return. 1 mandate clause(s) recorded, 0 refused, and 0 flagged as naming a never-set concept; recorded clauses are held for the return brief and are not executed by this release; forbidden, destructive, irreversible, and security-sensitive actions are never pre-authorizable regardless of clause text, and no recorded clause is authority by itself. Expected return: not given. Spend cap: 4 concurrent workers.
+
+$ bin/fm-afk-contract.sh grants
+api-cache
+
+$ bin/fm-afk-launch.sh quiet off
+fm-afk-launch: quiet presentation is off; native supervision continues
+
+$ bin/fm-afk-contract.sh validate
+Quiet exit preserved the separate away contract.
+
+$ bin/fm-afk-launch.sh start
+fm-afk-launch: the away daemon is no longer launched on pi; the away-posture record is the posture there (run bin/fm-afk-launch.sh confirm and stop)
+Pi daemon launch refused with exit 1.
+
+$ bin/fm-afk-launch.sh stop
+fm-afk-launch: away-posture record archived at /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/manual3/home/state/afk-contracts/1789396006.afk-contract
+fm-afk-launch: away mode stopped; daemon terminal torn down, .afk cleared, and the posture record archived
+
+Archived posture records:
+/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/manual3/home/state/afk-contracts/1789396006.afk-contract
+
+$ bin/fm-afk-contract.sh propose --action merge --object api-cache
+Away posture read-back (proposed, not yet confirmed):
+  entered: 2026-09-14T14:26:47Z
+  expected return: not given
+  spend cap: 4 concurrent workers
+  merge when green (task ids): (none)
+  reach: hold-for-return only. No phone channel is configured; anything that needs you waits for your return.
+  your words: (none)
+  accepted clauses:
+    (none)
+  refused clauses:
+    1. "action=merge object=api-cache when=(none)" - refused: missing when - the clause states no precondition
+  everything else waits for your return: no red merge without its named check, no discard without a named object and condition, never credentials, legal, financial, or attended prompts, nothing by analogy, and every clause expires at return.
+  hard rule: forbidden, destructive, irreversible, and security-sensitive actions are never pre-authorizable regardless of clause text; no recorded clause is authority by itself.
+  recorded clauses are held for the return brief and are not executed by this release.
+Say go to confirm; restate any refused clause first if you want it recorded.
+Incomplete clause refused with exit 3.

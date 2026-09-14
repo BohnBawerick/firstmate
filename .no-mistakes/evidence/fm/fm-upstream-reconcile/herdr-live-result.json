@@ -1,0 +1,31 @@
+{
+  "finding": "test-2",
+  "verdict": "pass within the accepted partial-validation scope",
+  "command": "bash .test-phase-herdr/live-herdr.sh",
+  "exit_code": 0,
+  "harness": "agy 1.2.2",
+  "session": "fm-lab-nm-live-liveness-95063-22192",
+  "checks": [
+    "Production fm-spawn --relaunch returned nonzero and persisted unreadable startup status with the readiness polling budget deliberately set to zero.",
+    "The real agy worker started a shell tool with sleep 90; its shell PID remained alive during uncertain recovery.",
+    "A transport wrapper injected agent_not_found and failed process-info reads; all other Herdr calls reached the real named session through fm-herdr-lab.sh.",
+    "The shared recovery classifier reported unreadable.",
+    "fm-send durably recorded steering while liveness was unreadable.",
+    "fm-control relaunch refused because the endpoint was unreadable; task metadata remained byte-identical and the real tool process survived.",
+    "The real shell tool finished and the worker executed the steering, writing 80235 and acknowledging its inbox record.",
+    "Guarded teardown returned zero and the default-session tripwire snapshot remained byte-identical."
+  ],
+  "limits": [
+    "Rovo is not installed; the selected unreadable-worker alternative used real agy with fault-injected read failures.",
+    "The startup deadline was induced using the production readiness polling knob; no natural readiness timeout is claimed.",
+    "The rendered agy pane remained on an onboarding screen while the launch prompt executed in the background; no onboarding choice was submitted.",
+    "Default-session invariance is measured by the guarded helper contract: name, default flag, running state, and socket path."
+  ],
+  "accepted_live_gaps": [
+    "Native Pi supervision continuity through AFK and return with a real captain.",
+    "Parent and child teardown retry after real endpoint failure.",
+    "Remote home update across SSH; no disposable remote home exists.",
+    "No-mistakes cleanup on a disposable pipeline; no disposable target exists."
+  ],
+  "outer_executor_action": "Carry the accepted gaps into the PR description under Live coverage not exercised. This test phase did not edit the PR or control any pipeline."
+}

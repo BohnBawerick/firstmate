@@ -1,0 +1,27 @@
+
+$ tmux -f /dev/null new-session -d -s lab-a -n fm-fix-api -c /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/slot-manual/home sleep\ 180
+
+$ tmux new-session -d -s lab-b -n fm-fix-api -c /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/slot-manual/worktree sleep\ 180
+
+$ bin/fm-teardown.sh fix-api --force
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: task fix-api's recorded worktree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/slot-manual/pool/1/project was reassigned to task fix-api (home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/slot-manual/foreign-home), which claimed that pool slot after this record was written; that slot is no longer fix-api's, so its processes, copy, and claim are left untouched and only fix-api's own cleanup runs.
+teardown fix-api complete (window lab-a:fm-fix-api; pool slot /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/slot-manual/worktree left to task fix-api (home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/slot-manual/foreign-home), which it was reassigned to)
+Backlog: fix-api just finished (config/backlog-backend selects manual editing). Update /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/slot-manual/home/data/backlog.md - move fix-api to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+
+$ tmux list-panes -a -F \#\{session_name\}:#\{window_name\}\ pid=#\{pane_pid\}\ command=#\{pane_current_command\}
+lab-b:fm-fix-api pid=3319823 command=sleep
+
+$ cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/slot-manual/worktree/sentinel
+foreign work must survive
+
+$ cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/slot-manual/pool/1/.fm-slot-owner
+task=fix-api
+home=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M2FSAP36PE8TM5G7KKWCZCFM/.test-phase-tmp/slot-manual/foreign-home
+Stale home record retired; the foreign worker, worktree, and ownership claim survived.
