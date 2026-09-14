@@ -241,18 +241,6 @@ herdr pane report-agent "$PANE_ID" --source fm-control-smoke --agent fm-control-
 STATE=$(fm_backend_agent_state herdr "$SESSION:$PANE_ID")
 [ "$STATE" = alive ] || fail "herdr should classify a registered agent with a live process as alive, got '$STATE'"
 
-OUT=$(run_control hsmoke interrupt) || fail "interrupt against a registered agent should succeed: $OUT"
-case "$OUT" in
-  *"interrupt-delivered hsmoke harness=claude backend=herdr verified=agent-alive cancel=unconfirmed"*) : ;;
-  *) fail "interrupt should report the agent-alive proof on herdr, got: $OUT" ;;
-esac
-pass "real herdr: interrupt delivers the harness's key and proves the agent survived it"
-
-herdr pane get "$PANE_ID" --session "$SESSION" >/dev/null 2>&1 \
-  || fail "the control plane must never remove the endpoint it was operating on"
-[ -d "$WT" ] || fail "the control plane must never remove the task's local copy"
-pass "real herdr: no control verb removed the endpoint or the task's local copy"
-
 # --- the stale registration (issue #4115): the agent process is gone, the ---
 # --- record is not, and recovery must proceed anyway ------------------------
 #
@@ -260,9 +248,8 @@ pass "real herdr: no control verb removed the endpoint or the task's local copy"
 # keeps the registration, which is exactly the shape a Pi crew leaves behind
 # when it exits under a nested shell. Before the fix this read `alive` forever:
 # exit waited out its timeout and refused, and relaunch was refused for good.
-# This runs BEFORE the fail-closed exit case below, whose typed exit command
-# stays buffered in the pane's tty while the stand-in ignores it and would be
-# replayed into the shell the moment the stand-in died.
+# Run this before the input-delivery checks below: sleep never reads stdin,
+# so their Escape and exit command would remain buffered for the shell.
 AGENT_PID=$(herdr pane process-info --pane "$PANE_ID" --session "$SESSION" 2>/dev/null \
   | jq -r '.result.process_info.foreground_processes[0].pid // empty')
 [ -n "$AGENT_PID" ] || fail "could not read the agent-named process pid from pane process-info"
@@ -310,14 +297,25 @@ awk -F= '$1 == "harness" {$0="harness=claude"} {print}' "$HOME_DIR/state/hsmoke.
 mv "$HOME_DIR/state/hsmoke.meta.tmp" "$HOME_DIR/state/hsmoke.meta"
 pass "real herdr: a stale registration no longer blocks relaunch, and the endpoint and local copy survive"
 
-# Last, because it deliberately types a harness command into a foreground
-# process that ignores it: the registered agent cannot actually be stopped
-# that way, and the control plane must say so rather than report a stop it
-# did not achieve.
+# Deliver input only after the relaunch checks, so the stand-in never hands
+# unread keys back to a shell needed by a later case.
+# It survives the interrupt and ignores the exit command; exit must fail closed.
 start_agent_process
 herdr pane report-agent "$PANE_ID" --source fm-control-smoke --agent fm-control-smoke-agent \
   --state idle --session "$SESSION" >/dev/null 2>&1 \
   || fail "could not re-register the live agent on the task pane"
+OUT=$(run_control hsmoke interrupt) || fail "interrupt against a registered agent should succeed: $OUT"
+case "$OUT" in
+  *"interrupt-delivered hsmoke harness=claude backend=herdr verified=agent-alive cancel=unconfirmed"*) : ;;
+  *) fail "interrupt should report the agent-alive proof on herdr, got: $OUT" ;;
+esac
+pass "real herdr: interrupt delivers the harness's key and proves the agent survived it"
+
+herdr pane get "$PANE_ID" --session "$SESSION" >/dev/null 2>&1 \
+  || fail "the control plane must never remove the endpoint it was operating on"
+[ -d "$WT" ] || fail "the control plane must never remove the task's local copy"
+pass "real herdr: no control verb removed the endpoint or the task's local copy"
+
 if OUT=$(run_control hsmoke exit 2>&1); then
   fail "exit should fail closed when the agent does not stop: $OUT"
 fi
