@@ -86,8 +86,8 @@
 # machine does not register - which is how a released-then-reassigned slot was
 # returned out from under a live worker (observed 2026-09-07). So teardown also
 # reads the slot's own owner claim, written by bin/fm-spawn.sh at the moment the
-# slot is taken and dropped here once it is genuinely returned; bin/fm-wake-lib.sh
-# owns the claim, its location, and its states. A claim naming another task is
+# slot is taken; bin/fm-wake-lib.sh owns the claim's identity comparison,
+# location, states, and release ordering. A claim naming another home or task is
 # proof of reassignment: the slot is no longer this task's, so teardown warns,
 # names the claimant, and then finishes only this task's own cleanup - endpoint,
 # status, records, checks, backlog - while every step that would read or touch
@@ -98,6 +98,8 @@
 # the pool handed the slot on. Refusing instead would strand the record, because
 # bin/fm-backend.sh's endpoint validation refuses an empty or missing worktree=
 # unconditionally, so there is no line an operator could clear to get past it.
+# An absent or unsafe claim refuses even with --force; restore proven ownership
+# evidence at the reported claim path before retrying, never infer a home move.
 # Why Treehouse's own state cannot answer this for crewmate slots, and why the
 # claim file sits on top of it, is owned by bin/fm-wake-lib.sh's slot-owner
 # claim comment.

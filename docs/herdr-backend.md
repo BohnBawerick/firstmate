@@ -286,11 +286,13 @@ No Herdr-specific copy of that protocol exists.
 ## Restart and liveness behavior
 
 Stopping and restarting a named Herdr server preserves workspace, tab, pane, and label ids, but the underlying harness processes and live agent registrations do not survive.
-A restored same-labeled tab with a missing pane or no registered agent is a husk.
+A restored same-labeled tab is a husk only when its pane is structurally gone or its unregistered pane has a process-proven shell-only state.
 Create replaces only a confidently dead or no-agent husk, creates the replacement before closing the old tab, and refuses live or unknown states.
 This prevents closing the workspace's last tab before a replacement exists.
 
 A registration alone never proves an agent.
+Missing registration alone never proves departure either; the classifier checks the pane's processes even when `agent get` returns `agent_not_found`.
+A recognized live harness remains `live` without registration, while an unregistered pane with inconclusive process evidence stays `unknown`.
 Herdr keeps a Pi registration (`agent get` still reports `agent=pi` with its last status) after the Pi process has exited to a plain shell whenever a nested interactive shell sits under the pane's top shell, which is the crew shape `treehouse get` leaves behind (measured on Herdr 0.9.0 - [verification](verification/runtime-backends.md) "Stale agent registration"; upstream issue #4115).
 The pane classifier checks `pane process-info` and the real process table through `bin/fm-agent-process-lib.sh`.
 A harness in the foreground or below the exact pane shell keeps the registration live, including when the harness owns a foreground shell tool.
@@ -304,9 +306,9 @@ An unreadable or unparseable process view reads internal `unknown` and recovery-
 This refuses recovery and pane closure without treating the registration as proof of health.
 
 The generic Herdr agent-liveness probe reuses that pane classifier, then applies one recovery-only exception.
-A structurally gone pane or a pane read from a session positively reported as having no running server becomes `missing`, a restored agent-less shell and a stale registration over a shell-only pane both become `dead`, a registered agent with a live process becomes `alive`, and every other unexpected read becomes `unreadable`.
+A structurally gone pane or a pane read from a session positively reported as having no running server becomes `missing`, a process-proven shell-only pane becomes `dead`, a pane classified `live` becomes `alive`, and every other unexpected read becomes `unreadable`.
 Neither the stopped-server exception nor the stale-registration verdict widens husk detection or any close authority; those paths still refuse an unreadable pane, and a `stale-agent` pane is reused by recovery, never closed as a husk, because the shell it holds may be a nested worktree shell.
-Native registration still identifies Pi by name where tmux would see a generic interpreter; the process-level proof only decides whether that registration is backed by a running process.
+The shared process classifier identifies live harnesses independently of native registration; [tmux liveness](tmux-backend.md#agent-liveness-probe) documents its other backend consumer.
 `tests/fm-backend-herdr-agent-exit-shell-e2e.test.sh` pins the live-Pi versus leftover-shell distinction; [`verification/runtime-backends.md`](verification/runtime-backends.md#agent-lifecycle-control) owns the versioned evidence.
 
 The session-start sweep uses this probe.
@@ -332,9 +334,8 @@ It refuses Zellij, Orca, and cmux as supervisor backends rather than applying th
 For Herdr, target existence, native state, capture, composer state, and verified submit all route through the shared backend dispatcher and the explicit named-session CLI owner.
 The pane-independent max-defer alert is configured in [`wedge-alarm.md`](wedge-alarm.md).
 
-Harnesses with native tracked background execution can run the daemon in their terminal.
-Pi and pi-signed no longer launch the away daemon; their ordinary supervision session continues under the posture record.
-For another harness without native tracked background execution, `bin/fm-afk-launch.sh` creates a dedicated unfocused Herdr workspace, runs the daemon there with an explicit supervisor target and backend, records the exact daemon pane, and closes only that pane on stop.
+The [afk skill](../.agents/skills/afk/SKILL.md#entering-afk-words) owns per-harness launch selection, including native Pi supervision and the Claude + Herdr exception.
+When a separate daemon terminal is required, `bin/fm-afk-launch.sh` creates a dedicated unfocused Herdr workspace, runs the daemon there with an explicit supervisor target and backend, records the exact daemon pane, and closes only that pane on stop.
 It never splits the captain's active tab and never uses shell `&`.
 Recovery reconciles only the recorded exact id.
 

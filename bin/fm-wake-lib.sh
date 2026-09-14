@@ -1406,7 +1406,10 @@ fm_treehouse_pool_slot() {  # <project-dir> <worktree>
 # this task's or has since been handed to another one. Firstmate therefore keeps
 # its own claim on top: one file naming the task that took the slot, written by
 # bin/fm-spawn.sh under the same project lock that allocates the slot and
-# released by bin/fm-teardown.sh when the slot goes back to the pool. Moving
+# released by bin/fm-teardown.sh only after the slot return and task metadata
+# retirement succeed under that lock, including descendant cleanup. Retaining
+# the claim through retryable cleanup failures lets the next teardown prove
+# ownership again. Moving
 # crewmate spawns onto the durable lease is separate follow-up work.
 #
 # The claim lives at <pool>/<slot>/.fm-slot-owner - a sibling of the repo
@@ -1440,7 +1443,13 @@ fm_treehouse_slot_owner_claim() {  # <worktree> <task-id> <home>
   mv -f "$tmp" "$marker" 2>/dev/null || { rm -f "$tmp"; return 1; }
 }
 
-fm_treehouse_slot_owner_state() {
+# Compare both task id and canonical home; moving a home grants no inferred
+# migration authority. FM_TREEHOUSE_SLOT_OWNER is mine for an exact match,
+# other for a proven mismatch, absent for no claim, and unsafe for an unreadable
+# claim or unresolvable home. Neither absent nor unsafe proves ownership.
+# FM_TREEHOUSE_SLOT_OWNER_ID and FM_TREEHOUSE_SLOT_OWNER_HOME retain the recorded
+# claimant for diagnostics.
+fm_treehouse_slot_owner_state() {  # <worktree> <task-id> <home>
   local worktree=$1 id=$2 home=${3:-} marker line owner_id='' owner_home=''
   FM_TREEHOUSE_SLOT_OWNER=unsafe
   FM_TREEHOUSE_SLOT_OWNER_ID=
@@ -1472,10 +1481,9 @@ fm_treehouse_slot_owner_state() {
   fi
 }
 
-# Drop a task's own claim once its slot is back in the pool. Never removes
-# another task's claim, so a misdirected release cannot strip the evidence that
-# protects the slot's real owner.
-fm_treehouse_slot_owner_release() {
+# Release only the matching home/task claim; callers own the lifecycle ordering
+# described above, so a misdirected release cannot strip another owner's proof.
+fm_treehouse_slot_owner_release() {  # <worktree> <task-id> <home>
   local worktree=$1 id=$2 home=${3:-} marker
   fm_treehouse_slot_owner_state "$worktree" "$id" "$home"
   [ "$FM_TREEHOUSE_SLOT_OWNER" = mine ] || return 0

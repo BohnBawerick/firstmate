@@ -42,7 +42,9 @@ Hold-for-return is the default and the only reach profile this release records: 
    - **Pi and pi-signed**: stop here.
      The away daemon is no longer launched on Pi; the ordinary supervision session (`docs/pi-supervision-branch.md`) keeps running with the record present, and `bin/fm-afk-launch.sh start` refuses on these harnesses.
    - **Harness WITH a native in-pane tracked-background tool** (claude's background bash, grok's background tool): run `bin/fm-afk-launch.sh start-native`, then run `FM_AFK_STATE_PREPARED=1 bin/fm-afk-start.sh` through that native tool.
-     This is a deliberate no-separate-terminal exception because the harness-hosted job creates no terminal or layout mutation, and a shell launcher cannot invoke a harness-native background tool.
+     For Claude on Herdr, `start-native` follows its documented redirect and already launches the separate daemon terminal.
+     Do not launch another native job after that redirect.
+     Other native launches need no separate terminal because the harness-hosted job creates no terminal or layout mutation, and a shell launcher cannot invoke a harness-native background tool.
      If the native launch fails, run `bin/fm-afk-launch.sh stop` to roll back the prepared lifecycle.
      Do not wrap it in `nohup ... &` (Codex/herdr can reap fire-and-forget shell children after a tool call returns).
    - **Every other harness** (codex, opencode, omp, kimi, cursor): run `bin/fm-afk-launch.sh start`.
@@ -168,8 +170,7 @@ Classify each wake this way:
 - `signal` or `stale` whose latest status declares a wait, either a `paused:` external wait or a verified `captain-held` transfer, tracks the pause rather than a wedge whether its pane reads idle or busy.
   An unreported captain-relevant event in the newly classified span still escalates immediately while the current declaration independently keeps the pause cadence.
   With no unreported actionable event, the wake self-handles, and the current declaration outranks an enriched possible-wedge reason so it never escalates on the `FM_STALE_ESCALATE_SECS` cadence.
-  If a declared external wait is still declared past `FM_PAUSE_RESURFACE_SECS` (default four hours), housekeeping sends one recheck and resets the pause window; a captain-held transfer is never rechecked while the posture record exists.
-  The window ages against the crew's own latest status line, so only a status append that stops declaring the wait ends this routing and restores wedge detection.
+  [Event-driven supervision](../../../docs/architecture.md#event-driven-supervision) owns declaration-bound reminder timing and the away-posture exclusion for captain-held transfers.
 - `check` -> always escalate. Check scripts print only when firstmate should wake.
 - `stale` with a terminal status or bare legacy captain-relevant line -> escalate.
   Nonterminal progress remains transient even when its prose contains a legacy free-text token or its seen-status marker already matches, so record a marker and self-handle.

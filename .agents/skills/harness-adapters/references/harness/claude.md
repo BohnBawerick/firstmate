@@ -12,7 +12,7 @@ Busy hooks verified 2026-07-28 on Claude Code 2.1.220.
 | Skill | `/<skill>`, for example `/no-mistakes`. |
 | Model | `--model <model>`; discover through the interactive `/model` picker, with alias or full-name shape documented by `claude --help`. |
 | Effort | `--effort <low\|medium\|high\|xhigh\|max>`, verified on 2.1.196. |
-| Permissions | `--dangerously-skip-permissions` by default, or `--permission-mode auto` when `config/claude-permission-mode` is `auto`; the `auto` shape verified on 2.1.269, and `../../../../../docs/configuration.md` "Claude permission mode" owns the file. |
+| Permissions | `--dangerously-skip-permissions` by default, or `--permission-mode auto` when `config/claude-permission-mode` is `auto`; the `auto` shape verified on 2.1.269, and `../../../docs/configuration.md` "Claude permission mode" owns the file. |
 
 ## Workspace trust
 
@@ -53,7 +53,7 @@ Styled capture stays internal to the boolean detector; `fm-peek` and model-facin
 ## Feedback drafts
 
 The spawn disables Claude's `/bug` and `/feedback` model-drafted feedback flow for every Claude worker and secondmate, preventing a fleet-launched agent from queuing or submitting a bug report on the captain's behalf.
-The controls are scoped to the launched process and never modify the captain's global Claude settings; `launch_template()` in `../../../../../bin/fm-spawn.sh` owns their exact mechanics and defense-in-depth rationale.
+The controls are scoped to the launched process and never modify the captain's global Claude settings; `launch_template()` in `../../../bin/fm-spawn.sh` owns their exact mechanics and defense-in-depth rationale.
 
 ## Primary integration
 

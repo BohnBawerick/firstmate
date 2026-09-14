@@ -109,12 +109,10 @@
 #                                   (default 2; total attempts = retries + 1)
 #          FM_STALE_CAPTURE_RETRY_SLEEP seconds between those extra capture
 #                                   attempts (default 0.4)
-#          FM_PAUSE_RESURFACE_SECS  seconds a declared wait stays declared,
-#                                   idle or busy, before it re-surfaces as a
-#                                   recheck (default 14400, four hours); an
-#                                   `until` time cannot extend this bound, and a
-#                                   captain-held transfer is never rechecked
-#                                   while the away-posture record exists
+#          FM_PAUSE_RESURFACE_SECS  seconds between declared-wait rechecks
+#                                   (default 14400, four hours); uses the shared
+#                                   declaration-bound cadence documented in
+#                                   docs/architecture.md "Event-driven supervision"
 #          FM_ESCALATE_BATCH_SECS   buffer window for batched escalation
 #                                   digests; 0 = flush immediately (default 90)
 #          FM_HEARTBEAT_SCAN_SECS   cadence for the catch-all status scan
@@ -1168,7 +1166,7 @@ housekeeping() {  # <state>
   # rechecked on a much longer cadence than a wedge (PAUSE_RESURFACE_SECS) and never
   # escalated as one - but it MUST re-surface, so neither a forgotten pause nor a
   # forgotten captain hold can rot invisibly. Past the window: gone -> drop; still
-  # declaring the wait -> escalate a recheck digest and reset the marker so the window
+  # declaring the wait -> escalate a recheck digest and advance the shared throttle so the window
   # repeats. The digest names WHICH human the wait is on, because the captain is the
   # one reading it: an external dependency for a paused: declaration, and the captain
   # themself for a verified hold transfer.

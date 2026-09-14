@@ -34,8 +34,7 @@ The brief is then typed in after the TUI comes up, the same launch-then-send sha
 2. The pointer `Read the brief at <absolute-path> and follow it exactly.` is submitted via `fm_backend_send_text_submit`.
 3. `rovo_wait_for_delivery` confirms composer-empty AND either the echoed `Read the brief at` text or a nonzero `Context:` percentage (`context:[^%]*[1-9][^%]*%`, tolerant of the footer's bar glyph but anchored before the `%` so the `.../922K` denominator cannot false-positive).
 
-An unresolved gate returns nonzero and retains the endpoint and ownership records for supervision and ordinary teardown.
-The status reports `unreadable: rovo startup unconfirmed` unless the backend positively confirms agent exit, which produces a `failed:` report.
+The [Rovo operating guide](../../.agents/skills/harness-adapters/references/harness/rovo.md#launch-and-readiness) owns startup failure handling.
 `tests/fm-rovo-harness.test.sh` covers inconclusive delivery with a live shell tool and confirmed endpoint absence.
 
 ### Why not a positional brief
@@ -188,7 +187,7 @@ $ ls "$LAB/outside/inbox/handled"
 `tests/fm-rovo-signals-live-e2e.test.sh` extends the launch-then-send live guard with exactly this shape end to end: a real rovo process launched with the production `--config-override` grant reads an external brief and appends to an external status file (preserving its prior content), and the same brief and status file, launched WITHOUT the grant, are left untouched while the transcript shows rovo's own refusal - proving the fix closes the gap rather than merely adding an untested flag.
 `tests/fm-rovo-harness.test.sh` pins the portable half against the fake-binary suite: the grant's three paths appear in every rovo launch (including when the requested effort is unsupported and omitted), and exactly one `--config-override` occurrence ever appears.
 
-## Backend liveness: tmux verified live, herdr placement verified live with a herdr-side agent-detection gap
+## Backend liveness
 
 tmux 3.6a is now installed and was exercised live in an isolated `tmux -L <private-socket>` session, so tmux pane liveness is fully verified rather than pending.
 `bin/fm-agent-process-lib.sh`'s `fm_agent_process_classify_name` (then still inside `bin/backends/tmux.sh`) matches `*rovo*` alongside the other globbed harness names, so a rovo pane classifies `agent` (not `other`).
@@ -212,9 +211,7 @@ The typed pointer (`Read the brief at <path> and follow it exactly.`) was echoed
 
 The recorded run exposed a liveness defect: `fm_backend_agent_state` reported `dead` at the ready banner, during the tool call, and at the idle prompt while Rovo was responding.
 Herdr returned `agent_not_found` because that build had no Rovo integration, and Firstmate incorrectly treated missing registration as proof of departure.
-The shared classifier now checks the pane's process evidence for unregistered workers too.
-A verified harness process remains live; an unregistered tool process or inconclusive process evidence remains unreadable.
-Only the existing strict shell-only proof permits an agent-free verdict.
+The [Herdr liveness contract](../herdr-backend.md#restart-and-liveness-behavior) now requires process evidence for unregistered workers too.
 `tests/fm-backend-herdr.test.sh` exercises this boundary with real process fixtures, including steering and recovery classification.
 This correction has portable behavioral coverage; the earlier live run does not constitute live verification of the corrected classifier.
 
@@ -243,4 +240,5 @@ bin/fm-test-run.sh tests/fm-rovo-harness.test.sh
 FM_ROVO_SIGNALS_LIVE=1 bin/fm-test-run.sh tests/fm-rovo-signals-live-e2e.test.sh
 ```
 
-The live guard requires a real, authenticated `rovo` binary but drives it through a raw PTY rather than tmux, so it runs on hosts without tmux installed; tmux and herdr pane placement and liveness were both verified separately in live isolated sessions (see the backend-liveness section above), where the herdr agent-state classifier's rovo blind spot is recorded as a Herdr-side integration gap to track, not a live-guard coverage gap this refresh command needs to close.
+The live guard requires a real, authenticated `rovo` binary and drives it through a raw PTY, so it runs on hosts without tmux installed.
+It does not verify the corrected Herdr classifier; the backend-liveness section above records that separate coverage limit.

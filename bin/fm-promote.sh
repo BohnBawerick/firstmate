@@ -11,8 +11,11 @@
 # delivery contract as a briefed one, including the no-mistakes mode's ask-user
 # escalation rule and --yes ban. The instructions also carry `# Task` with
 # `## Captain's intent` preserved from the scout brief and promotion's ship-time
-# instructions under `## Firstmate spec`; the scout-time spec remains context but
-# is not relabeled as the ship spec. Promotion refuses leftover `{TASK}` /
+# instructions under `## Firstmate spec`, including inherited task requirements
+# and accepted steering with their original provenance. Only explicitly replaced
+# scout investigation and delivery instructions are superseded; inherited
+# Firstmate requirements are never relabeled as captain words.
+# Promotion refuses leftover `{TASK}` /
 # `{FIRSTMATE_SPEC}` placeholders (bin/fm-dod-lib.sh). A pre-subsection scout
 # brief contributes only Task lines explicitly marked as captain words to intent.
 # A scout records no delivery posture, so promotion is where this task's delivery

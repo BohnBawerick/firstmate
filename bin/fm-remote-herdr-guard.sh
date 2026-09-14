@@ -22,8 +22,8 @@
 #                                          (foreground, launchd-supervised)
 #   the owner was born in the Aqua session (launchd or the Aqua remote-job
 #   worker)                            -> exit 0, leave it alone
-#   the owner was born anywhere else (an SSH remote attach, a shell over
-#   ssh/mosh) -> `herdr server stop`, wait until the
+#   the owner's birth is unknown      -> exit 0, preserve the running session
+#   the owner is proven SSH-born      -> `herdr server stop`, wait until the
 #                                          socket is released, then exec
 #                                          `herdr server --session <s>` at once
 #                                          so the socket is rebound before a
