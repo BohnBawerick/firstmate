@@ -35,10 +35,11 @@ A concurrent replacement remains armed, every non-merged or invalid observation 
 No-verb wakes, such as `working:` notes and bare turn-ended signals, are benign only when `bin/fm-crew-state.sh` reports positive evidence that the crew is still working: a currently attributed active no-mistakes step, or an exact busy verdict from the semantic busy-state contract.
 A `kind=secondmate` task's status signal is the parent-directed reply stream and is never absorbed as provably working; only its bare turn-ended signal retains the ordinary absorb rule.
 A crew that declares `paused:` for a known external wait, or carries a verified `captain-held` transfer, is separately absorbed while idle and re-surfaced only on the longer pause cadence, rather than being treated as a possible wedge.
-For an ordinary crew that has stopped, the normal-mode watcher first surfaces one stale wake, then applies that same cadence for as long as the declaration stands and `bin/fm-crew-state.sh` keeps naming the wait, whatever the backend reports about the agent.
-A confident dead-agent report is required only to recover the classification when that reader cannot name the wait, as with a durable `captain-held` transfer it has no current state for.
-That initial surface is spent once per declaration, never once per pane hash, so a harness footer redrawing a ticking idle counter cannot re-spend it on every poll.
-Live or inconclusive liveness still takes that initial surface, and a secondmate's endpoint liveness is still never read at all; a mate is admitted to that same cadence only to serve a declared wait's bounded re-surface, so a forgotten pause or captain hold on a mate cannot rot invisibly.
+For an idle ordinary crew with live or inconclusive agent liveness, the normal-mode watcher first surfaces one stale wake before establishing that cadence.
+Once established, the cadence persists while the declaration stands and `bin/fm-crew-state.sh` reports `paused`, regardless of agent liveness or pane-hash changes from a ticking footer.
+Rechecks use the status file's mtime and the last re-surface time, so footer updates neither restart the wait nor trigger extra wakes.
+When the current-state reader cannot name the wait, recovery of the pause classification requires a confidently dead ordinary agent, as with a durable `captain-held` transfer the reader has no current state for.
+A secondmate's endpoint liveness is never read; a mate is admitted to the stale path only for a declared wait's bounded re-surface, so a forgotten pause or captain hold cannot remain invisible.
 Its initial normal-mode status signal still surfaces through the no-verb path, while away mode self-handles that routine signal and owns the later recheck.
 Fresh stale panes use the same current-state read before trusting the status log, so an active run or a proven busy worker outranks an old captain-relevant status-log line left behind before validation.
 No-change heartbeats are also benign.

@@ -216,10 +216,7 @@ BUSY_TURN_MAX_SECS=${FM_BUSY_TURN_MAX_SECS:-3600}
 SECONDMATE_WAKE_STALL_SECS=${FM_SECONDMATE_WAKE_STALL_SECS:-60}
 # A crew that declared a pause is idling on a known external wait, so its stale
 # pane is absorbed rather than wedge-escalated.
-# A captain-held or paused crew whose agent has confidently exited uses the same
-# bounded cadence, while a live or ambiguously read agent still surfaces once; a
-# secondmate earns the cadence on its declaration alone, because its endpoint
-# liveness is deliberately never read (pause_state_class owns that split).
+# pause_state_class owns admission and liveness checks for idle declared waits.
 # These cases re-surface once for a recheck every PAUSE_RESURFACE_SECS - far
 # longer than the wedge threshold, but finite so a forgotten hold cannot rot invisibly.
 PAUSE_RESURFACE_SECS=${FM_PAUSE_RESURFACE_SECS:-$FM_PAUSE_RESURFACE_SECS_DEFAULT}
@@ -719,22 +716,14 @@ clear_pause_tracking() {  # <window-key>
 # recovered only for a confidently dead ordinary crew, or for a secondmate, whose
 # endpoint liveness this function deliberately never reads.
 #
-# The dead-agent proof gates that RECOVERY, and nothing else. An ordinary crew that
-# is still alive gets one prompt surface the first time its declared wait goes
-# stale, so a live decision gate hiding behind a leftover declaration is not
-# silenced; .paused-<key> is the record that the surface has been spent and the
-# bounded cadence is established for THIS declaration. Once it exists, a crew whose
-# authoritative state affirmatively reads `paused` keeps the cadence whether its
-# agent is alive or dead - crew_absorb_class has named the wait, so there is nothing
-# left to recover and no liveness read to make. That distinction is what keeps the
-# one-shot keyed on the declaration rather than on the pane hash: a harness footer
-# that renders a ticking idle counter yields a fresh hash every time it advances,
-# each one a first sighting for the stale path, and a hash-keyed one-shot re-fires
-# on every one of them for the whole declared wait (the away-mode handoff in
-# busy_turn_bound_check states the same rule for its own one-shot). The cadence is
-# still bounded: handle_paused_stale re-surfaces on the status file's own mtime, and
-# the STALE_ESCALATE_SECS recheck window below keeps re-reading authoritative state,
-# so a crew that resumes a run is reclassified `working` within that window.
+# An ordinary crew with live or inconclusive liveness gets an initial stale wake
+# before admission, so a leftover declaration cannot hide a live decision gate.
+# Once .paused-<key> records admission, an affirmative `paused` class needs no
+# liveness proof: crew_absorb_class can name a live wait through status-log fallback.
+# Retain that admission across pane-hash changes, since a ticking footer must not
+# repeatedly trigger the initial wake. handle_paused_stale owns mtime-based timing.
+# The cached conclusion expires after STALE_ESCALATE_SECS; the next classification
+# re-reads current state so positive working evidence can supersede the declaration.
 pause_state_class() {  # <window> <task>
   local win=$1 task=$2 key last recheck_file class agent_alive kind
   key=$(window_key "$win")
@@ -763,10 +752,8 @@ pause_state_class() {  # <window> <task>
     printf 'working'
     return
   fi
-  # Liveness gate. It guards the two verdicts that are NOT an affirmative pause: a
-  # `none` class, which only reaches the cadence through the recovery below, and an
-  # affirmative `paused` whose cadence is not established yet, which owes a live
-  # crew its single first-sight surface.
+  # Require dead-agent proof for recovery from `none` and for initial admission.
+  # An established affirmative pause needs neither check.
   if [ "$kind" != secondmate ] && { [ "$class" != paused ] || [ ! -e "$STATE/.paused-$key" ]; }; then
     agent_alive=$(fm_backend_agent_alive "$(window_backend "$win")" "$win" 2>/dev/null) || agent_alive=unknown
     if [ "$agent_alive" != dead ]; then
