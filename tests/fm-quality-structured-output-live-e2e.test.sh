@@ -17,12 +17,9 @@
 # per-harness evidence in docs/verification/runtime-backends.md.
 set -u
 
-if [ "${FM_QUALITY_STRUCTURED_OUTPUT_DRIFT:-0}" != 1 ]; then
-  echo "skip: set FM_QUALITY_STRUCTURED_OUTPUT_DRIFT=1 to run the installed-harness structured-output drift guard"
-  exit 0
-fi
-
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=tests/lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+fm_live_gate opt-in FM_QUALITY_STRUCTURED_OUTPUT_DRIFT
 
 fail() { printf 'not ok - %s\n' "$1" >&2; exit 1; }
 pass() { printf 'ok - %s\n' "$1"; }

@@ -33,6 +33,12 @@ fm_git_identity fmtest fmtest@example.invalid
 MERGE_LOCAL="$ROOT/bin/fm-merge-local.sh"
 TMP_ROOT=$(fm_test_tmproot fm-merge-local-tests)
 
+run_merge_local() {
+  # A bootstrapped home has a resolvable data directory for captain holds.
+  mkdir -p "$FM_HOME/data"
+  "$MERGE_LOCAL" "$@"
+}
+
 make_repo() {
   local dir=$1 default=${2:-main}
   mkdir -p "$dir"
@@ -110,11 +116,11 @@ test_fast_forward_local_only_project() {
   FM_ROOT_OVERRIDE="$case_dir/fmroot" \
   FM_HOME="$case_dir/fmroot" \
   FM_STATE_OVERRIDE="$state_dir" \
-    "$MERGE_LOCAL" task-loc1 > "$case_dir/stdout" 2> "$case_dir/stderr"
+    run_merge_local task-loc1 > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
 
-  expect_code 0 "$rc" "local-only: fm-merge-local should succeed"
+  expect_code 0 "$rc" "local-only: fm-merge-local should succeed: $(cat "$case_dir/stderr")"
   after=$(git -C "$proj_dir" rev-parse HEAD)
   [ "$before" != "$after" ] || fail "local-only: default branch was not advanced"
   assert_grep "merged fm/task-loc1 into local main" "$case_dir/stdout" \
@@ -148,7 +154,7 @@ test_fast_forward_no_mistakes_firstmate_repo() {
   FM_ROOT_OVERRIDE="$fm_root" \
   FM_HOME="$fm_root" \
   FM_STATE_OVERRIDE="$state_dir" \
-    "$MERGE_LOCAL" task-fm1 > "$case_dir/stdout" 2> "$case_dir/stderr"
+    run_merge_local task-fm1 > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
 
@@ -186,7 +192,7 @@ test_fast_forward_direct_pr_firstmate_repo() {
   FM_ROOT_OVERRIDE="$fm_root" \
   FM_HOME="$fm_root" \
   FM_STATE_OVERRIDE="$state_dir" \
-    "$MERGE_LOCAL" task-fm2 > "$case_dir/stdout" 2> "$case_dir/stderr"
+    run_merge_local task-fm2 > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
 
@@ -230,7 +236,7 @@ test_fast_forward_symlinked_firstmate_repo() {
   FM_ROOT_OVERRIDE="$fm_root" \
   FM_HOME="$fm_root" \
   FM_STATE_OVERRIDE="$state_dir" \
-    "$MERGE_LOCAL" task-fm-link > "$case_dir/stdout" 2> "$case_dir/stderr"
+    run_merge_local task-fm-link > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
 
@@ -264,7 +270,7 @@ test_refuses_no_mistakes_ordinary_project() {
   FM_ROOT_OVERRIDE="$case_dir/fmroot" \
   FM_HOME="$case_dir/fmroot" \
   FM_STATE_OVERRIDE="$state_dir" \
-    "$MERGE_LOCAL" task-ord1 > "$case_dir/stdout" 2> "$case_dir/stderr"
+    run_merge_local task-ord1 > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
 
@@ -298,7 +304,7 @@ test_refuses_direct_pr_ordinary_project() {
   FM_ROOT_OVERRIDE="$case_dir/fmroot" \
   FM_HOME="$case_dir/fmroot" \
   FM_STATE_OVERRIDE="$state_dir" \
-    "$MERGE_LOCAL" task-ord2 > "$case_dir/stdout" 2> "$case_dir/stderr"
+    run_merge_local task-ord2 > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
 
@@ -318,7 +324,7 @@ test_refuses_missing_meta() {
   FM_ROOT_OVERRIDE="$case_dir/fmroot" \
   FM_HOME="$case_dir/fmroot" \
   FM_STATE_OVERRIDE="$state_dir" \
-    "$MERGE_LOCAL" missing-task > "$case_dir/stdout" 2> "$case_dir/stderr"
+    run_merge_local missing-task > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
 
@@ -345,7 +351,7 @@ test_refuses_missing_project() {
   FM_ROOT_OVERRIDE="$case_dir/fmroot" \
   FM_HOME="$case_dir/fmroot" \
   FM_STATE_OVERRIDE="$state_dir" \
-    "$MERGE_LOCAL" task-missproj > "$case_dir/stdout" 2> "$case_dir/stderr"
+    run_merge_local task-missproj > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
 
@@ -374,7 +380,7 @@ test_refuses_missing_branch() {
   FM_ROOT_OVERRIDE="$case_dir/fmroot" \
   FM_HOME="$case_dir/fmroot" \
   FM_STATE_OVERRIDE="$state_dir" \
-    "$MERGE_LOCAL" task-nobranch > "$case_dir/stdout" 2> "$case_dir/stderr"
+    run_merge_local task-nobranch > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
 
@@ -409,7 +415,7 @@ test_refuses_dirty_project() {
   FM_ROOT_OVERRIDE="$case_dir/fmroot" \
   FM_HOME="$case_dir/fmroot" \
   FM_STATE_OVERRIDE="$state_dir" \
-    "$MERGE_LOCAL" task-dirty > "$case_dir/stdout" 2> "$case_dir/stderr"
+    run_merge_local task-dirty > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
 
@@ -444,7 +450,7 @@ test_refuses_off_default_project() {
   FM_ROOT_OVERRIDE="$case_dir/fmroot" \
   FM_HOME="$case_dir/fmroot" \
   FM_STATE_OVERRIDE="$state_dir" \
-    "$MERGE_LOCAL" task-offdef > "$case_dir/stdout" 2> "$case_dir/stderr"
+    run_merge_local task-offdef > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
 
@@ -481,7 +487,7 @@ test_refuses_diverged_branch() {
   FM_ROOT_OVERRIDE="$case_dir/fmroot" \
   FM_HOME="$case_dir/fmroot" \
   FM_STATE_OVERRIDE="$state_dir" \
-    "$MERGE_LOCAL" task-div > "$case_dir/stdout" 2> "$case_dir/stderr"
+    run_merge_local task-div > "$case_dir/stdout" 2> "$case_dir/stderr"
   rc=$?
   set -e
 
