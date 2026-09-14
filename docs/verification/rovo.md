@@ -34,7 +34,9 @@ The brief is then typed in after the TUI comes up, the same launch-then-send sha
 2. The pointer `Read the brief at <absolute-path> and follow it exactly.` is submitted via `fm_backend_send_text_submit`.
 3. `rovo_wait_for_delivery` confirms composer-empty AND either the echoed `Read the brief at` text or a nonzero `Context:` percentage (`context:[^%]*[1-9][^%]*%`, tolerant of the footer's bar glyph but anchored before the `%` so the `.../922K` denominator cannot false-positive).
 
-Each gate fails the spawn loudly (a `failed:` line in the task status file) if it never resolves, so a never-ready or silently-dropped delivery is a visible spawn failure rather than a half-wired pane.
+An unresolved gate returns nonzero and retains the endpoint and ownership records for supervision and ordinary teardown.
+The status reports `unreadable: rovo startup unconfirmed` unless the backend positively confirms agent exit, which produces a `failed:` report.
+`tests/fm-rovo-harness.test.sh` covers inconclusive delivery with a live shell tool and confirmed endpoint absence.
 
 ### Why not a positional brief
 
@@ -81,7 +83,11 @@ Both values sit above `bin/fm-composer-lib.sh`'s default `FM_COMPOSER_GHOST_LUMA
 Raising the shared default was considered and rejected: muse's own real, must-not-be-stripped prompt glyph measures luminance ~149.9 (`muse.md`), below rovo's ghost luminance of ~163, so no single global threshold can keep muse's glyph real while dropping rovo's ghost chip.
 This is recorded as a known gap rather than patched, because the safe fix needs a harness-scoped signal the shared composer classifier does not carry today, and a threshold change risks regressing muse's already-credentialed behavior for a rovo-scoped fix.
 The blast radius is bounded to composer-emptiness consumers such as steering delivery, which already retries through the doorbell ladder on a non-`empty` read.
-It does not block readiness: readiness leads with the `Welcome to Rovo!` banner, so the ghost chip is never the deciding signal there. Delivery, however, requires composer-empty as one conjunct (alongside the echoed pointer or a nonzero `Context:` percentage), and on the herdr backend this conjunct may fail to settle within its poll window (the composer read non-empty even mid-turn in the live herdr run below), so `rovo_wait_for_delivery` can fail the gate and tear the pane down there. tmux delivery is separately verified working (see the tmux backend-liveness section below). This is a known limitation whose fix is tracked as a separate follow-up, not fixed in this change.
+Readiness leads with the `Welcome to Rovo!` banner, so the ghost chip is not the deciding signal there.
+Delivery requires composer-empty alongside the echoed pointer or a nonzero `Context:` percentage.
+On Herdr, the composer read non-empty even mid-turn in the live run below, so this gate can time out while the worker is running.
+The startup failure boundary preserves that endpoint and reports uncertainty.
+The tmux backend-liveness section records successful delivery; the composer limitation remains open.
 
 ## Interrupt: confirmed under real tmux
 

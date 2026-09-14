@@ -3369,26 +3369,17 @@ rovo_wait_for_delivery() {
 }
 
 rovo_spawn_fail() {  # <detail>
-  printf 'failed: %s\n' "$1" >> "$STATE/$ID.status"
-  echo "error: $1; inspect window $T" >&2
-  rovo_endpoint_cleanup
-}
-
-# The launch-then-confirm gates run after the task record is published, when
-# ORCA_ABORT_CLEANUP is already cleared and neither the abort trap nor a
-# teardown owns this endpoint yet, so a gate failure must close the launched
-# process here or it keeps running as an orphaned autonomous agent outside
-# task control. Mirrors fm-teardown.sh's own generic kill call. On orca only
-# the exact terminal is closed: that stops the CLI while its worktree stays
-# for the record's own teardown, which owns worktree deletion.
-rovo_endpoint_cleanup() {
-  if [ "$BACKEND" = orca ]; then
-    fm_backend_kill orca "$T" 2>/dev/null || true
-    return 0
-  fi
-  local tab_id=
-  [ "$BACKEND" = zellij ] && tab_id=$ZELLIJ_TAB_ID
-  fm_backend_kill "$BACKEND" "$T" "$tab_id" "fm-$ID" 2>/dev/null || true
+  local agent_state
+  agent_state=$(fm_backend_agent_state "$BACKEND" "$T" 2>/dev/null) || agent_state=unreadable
+  case "$agent_state" in
+    dead|missing)
+      spawn_harness_fail "$1; agent exit confirmed ($agent_state); ownership records retained for teardown"
+      ;;
+    *)
+      printf 'unreadable: rovo startup unconfirmed: %s\n' "$1" >> "$STATE/$ID.status"
+      echo "error: rovo startup unconfirmed: $1; endpoint and ownership records retained; inspect window $T" >&2
+      ;;
+  esac
 }
 
 # agy carries its brief on the launch command, so it needs no delivery gate,

@@ -58,11 +58,24 @@ fake_cursor_y() {
 case "$*" in
   *"#{pane_current_path}"*) printf '%s\n' "$FM_FAKE_PANE_PATH"; exit 0 ;;
   *"#{cursor_y}"*) fake_cursor_y; exit 0 ;;
+  *"#{pane_current_command}"*) printf '%s\n' "${FM_FAKE_ROVO_PROCESS:-rovo}"; exit 0 ;;
+  *"#{pane_tty}"*) exit 1 ;;
 esac
 case "${1:-}" in
   display-message) printf 'firstmate\n'; exit 0 ;;
-  list-windows) exit 0 ;;
-  has-session|new-session|new-window|kill-window) exit 0 ;;
+  list-windows)
+    [ "${FM_FAKE_ROVO_PROCESS:-rovo}" != unreadable ] || exit 1
+    case "$state" in
+      ''|exited) ;;
+      *) printf 'fm-%s\n' "$FM_FAKE_TASK_ID" ;;
+    esac
+    exit 0
+    ;;
+  kill-window)
+    [ -z "${FM_FAKE_ROVO_TOOL_PID:-}" ] || kill "$FM_FAKE_ROVO_TOOL_PID"
+    exit 0
+    ;;
+  has-session|new-session|new-window) exit 0 ;;
   send-keys)
     prev=
     literal=
@@ -94,6 +107,8 @@ case "${1:-}" in
           pointer-typed)
             if [ "${FM_FAKE_ROVO_DELIVERY:-yes}" = yes ]; then
               printf 'delivered\n' > "$FM_FAKE_ROVO_STATE"
+            elif [ "${FM_FAKE_ROVO_DELIVERY:-yes}" = exited ]; then
+              printf 'exited\n' > "$FM_FAKE_ROVO_STATE"
             else
               printf 'ready\n' > "$FM_FAKE_ROVO_STATE"
             fi
@@ -171,7 +186,7 @@ run_spawn() {
     FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" TMUX="fake,1,0" \
     FM_FAKE_LAUNCH_LOG="$case_dir/launch.log" \
     FM_FAKE_POINTER_LOG="$case_dir/pointer.log" \
-    FM_FAKE_ROVO_STATE="$case_dir/rovo.state" \
+    FM_FAKE_ROVO_STATE="$case_dir/rovo.state" FM_FAKE_TASK_ID="$id" \
     FM_FAKE_TMUX_CALL_LOG="$case_dir/tmux-calls.log" \
     FM_FAKE_BRIEF_REAL="$(cd "$home/data/$id" && pwd -P)/launch-brief.md" \
     FM_FAKE_ROVO_READY="${FM_FAKE_ROVO_READY:-yes}" \
@@ -286,33 +301,64 @@ test_rovo_readiness_gate_precedes_pointer() {
   [ "$rc" -ne 0 ] || fail "rovo spawn without a ready signal should fail"
   assert_contains "$out" "rovo did not show a verified ready signal" \
     "rovo readiness failure lacked a loud diagnostic"
-  assert_grep 'failed: rovo did not show a verified ready signal' "$HOME_DIR/state/$id.status" \
+  assert_grep 'unreadable: rovo startup unconfirmed: rovo did not show a verified ready signal' "$HOME_DIR/state/$id.status" \
     "rovo readiness failure did not leave a supervisor-visible failure"
   [ ! -s "$CASE_DIR/pointer.log" ] || fail "rovo pointer was sent before an observable ready signal"
-  grep -q "kill-window.*fm-$id" "$CASE_DIR/tmux-calls.log" \
-    || fail "a failed rovo readiness gate must tear down the exact endpoint it created instead of leaking an orphaned --yolo process"
-  pass "fm-spawn: rovo never sends the brief pointer before an observable ready signal, and tears down the created endpoint on failure"
+  assert_not_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
+    "an unconfirmed ready signal caused endpoint cleanup"
+  assert_present "$HOME_DIR/state/$id.meta" "unconfirmed readiness removed ownership metadata"
+  pass "fm-spawn: unconfirmed Rovo readiness retains its endpoint and ownership"
+
 }
 
 test_rovo_unconfirmed_delivery_fails_loudly() {
-  local id rec out rc pointer
-  id="rovo-drop-z7-$$"
-  rec=$(make_spawn_case drop "$id")
+  local id rec out rc pointer process worker
+  for process in rovo external-tool unreadable; do
+    id="rovo-drop-$process-$$"
+    rec=$(make_spawn_case "drop-$process" "$id")
+    read_spawn_record "$rec"
+    ( cd "$WT_DIR" && exec sleep 30 ) &
+    worker=$!
+    rc=0
+    out=$(FM_FAKE_ROVO_PROCESS="$process" FM_FAKE_ROVO_TOOL_PID="$worker" \
+      FM_FAKE_ROVO_DELIVERY=no run_spawn \
+      "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+    [ "$rc" -ne 0 ] || fail "an unconfirmed rovo delivery should fail"
+    pointer=$(cat "$CASE_DIR/pointer.log")
+    [ -n "$pointer" ] || fail "rovo never typed the pointer before the delivery gate"
+    assert_contains "$out" "rovo brief pointer delivery was not confirmed" \
+      "unconfirmed rovo delivery lacked a diagnostic"
+    assert_grep 'unreadable: rovo startup unconfirmed:' "$HOME_DIR/state/$id.status" \
+      "unconfirmed rovo delivery did not report uncertainty"
+    assert_present "$HOME_DIR/state/$id.meta" "unconfirmed delivery removed ownership metadata"
+    assert_present "$HOME_DIR/data/$id/launch-brief.md" "unconfirmed delivery removed the launch brief"
+    assert_not_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
+      "unconfirmed delivery killed its endpoint"
+    kill -0 "$worker" 2>/dev/null || fail "unconfirmed delivery killed a live shell tool"
+    kill "$worker" 2>/dev/null || true
+    wait "$worker" 2>/dev/null || true
+  done
+  pass "fm-spawn: inconclusive Rovo delivery preserves endpoints, tools, and ownership"
+}
+
+test_rovo_confirmed_exit_preserves_teardown_identity() {
+  local id rec out rc=0
+  id="rovo-exited-$$"
+  rec=$(make_spawn_case exited "$id")
   read_spawn_record "$rec"
-  rc=0
-  out=$(FM_FAKE_ROVO_DELIVERY=no run_spawn \
+  out=$(FM_FAKE_ROVO_DELIVERY=exited run_spawn \
     "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
-  [ "$rc" -ne 0 ] || fail "an unconfirmed rovo delivery should fail"
-  # The pointer was typed (readiness passed) but its delivery never confirmed.
-  pointer=$(cat "$CASE_DIR/pointer.log")
-  [ -n "$pointer" ] || fail "rovo never typed the pointer before the delivery gate"
-  assert_contains "$out" "rovo brief pointer delivery was not confirmed" \
-    "unconfirmed rovo delivery lacked a loud diagnostic"
-  assert_grep 'failed: rovo brief pointer delivery was not confirmed' "$HOME_DIR/state/$id.status" \
-    "unconfirmed rovo delivery did not leave a supervisor-visible failure"
-  grep -q "kill-window.*fm-$id" "$CASE_DIR/tmux-calls.log" \
-    || fail "an unconfirmed rovo delivery must tear down the exact endpoint it created instead of leaking an orphaned --yolo process"
-  pass "fm-spawn: rovo treats a silent pointer drop as a failed spawn, and tears down the created endpoint"
+  [ "$rc" -ne 0 ] || fail "an exited Rovo endpoint reported a successful spawn"
+  [ "$(cat "$CASE_DIR/rovo.state")" = exited ] || fail "fixture did not exit after brief submission"
+  assert_contains "$out" "agent exit confirmed (missing)" "confirmed exit was reported as uncertainty"
+  assert_grep 'agent exit confirmed (missing)' "$HOME_DIR/state/$id.status" \
+    "confirmed exit was not recorded"
+  assert_grep 'failed: rovo' "$HOME_DIR/state/$id.status" "confirmed exit did not mark startup failed"
+  assert_present "$HOME_DIR/state/$id.meta" "confirmed exit removed teardown identity"
+  assert_present "$WT_DIR/.git" "confirmed exit discarded the worktree"
+  assert_not_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
+    "spawn tried to kill an already absent endpoint"
+  pass "fm-spawn: confirmed Rovo exit retains records for ordinary teardown"
 }
 
 test_rovo_missing_binary_refuses_before_pane_creation() {
@@ -471,3 +517,5 @@ test_rovo_detection_precedence_and_ancestry
 test_rovo_control_lib_table
 test_rovo_busy_regex_isolated
 test_rovo_busy_marker_scrolled_out_of_tail_is_unknown
+
+test_rovo_confirmed_exit_preserves_teardown_identity
