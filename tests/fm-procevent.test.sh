@@ -164,6 +164,59 @@ hold_source_lock_then_handle() {  # <home> <source-id> <sequence> <ready-file> <
   HOLDER_PID=$!
 }
 
+test_interrupted_warning_retries_publication() (
+  local home="$TMP_ROOT/interrupted-warning" source fakebin real_cat out rc=0
+  local holder_pid= reconcile_pid=
+  trap 'for pid in "$holder_pid" "$reconcile_pid"; do [ -z "$pid" ] || kill "$pid" 2>/dev/null || true; done; wait 2>/dev/null || true' EXIT
+  new_home "$home"
+  pe_register "$home" lavish interrupted-src -- /bin/true >/dev/null
+  source="$home/state/procevent/interrupted-src.source"
+  awk '/^argv:$/ { print; exit } { print }' "$source" > "$home/broken.source"
+  cat "$home/broken.source" > "$source"
+  FM_HOME="$home" bash -c '
+    . "$1/bin/fm-wake-lib.sh"
+    fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK" || exit 1
+    trap "fm_lock_release \"$FM_WAKE_QUEUE_LOCK\"" EXIT
+    trap "exit 143" TERM INT
+    printf "ready\n" > "$2/held"
+    while [ ! -e "$2/release" ]; do sleep 0.02; done
+  ' _ "$ROOT" "$home" &
+  holder_pid=$!
+  wait_for "$home/held" || fail "queue holder never acquired its lock"
+  fakebin="$home/fakebin"
+  mkdir -p "$fakebin"
+  real_cat=$(command -v cat)
+  cat > "$fakebin/cat" <<SH
+#!/usr/bin/env bash
+if [ "\${!#}" = "$home/state/.wake-queue.lock/pid" ]; then
+  printf "waiting\n" > "$home/waiting"
+fi
+exec "$real_cat" "\$@"
+SH
+  chmod +x "$fakebin/cat"
+  FM_HOME="$home" FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=1 PATH="$fakebin:$PATH" \
+    "$ROOT/bin/fm-procevent.sh" reconcile > "$home/interrupted.log" 2>&1 &
+  reconcile_pid=$!
+  wait_for "$home/waiting" || fail "reconcile never reached the held queue lock"
+  kill -TERM "$reconcile_pid"
+  wait "$reconcile_pid" 2>/dev/null || true
+  reconcile_pid=
+  assert_absent "$home/state/procevent/.interrupted-src.launch-failed" "interruption suppressed an unpublished warning"
+  [ "$(launch_failed_wake_count "$home" interrupted-src)" = 0 ] || fail "warning bypassed the queue lock"
+  touch "$home/release"
+  wait "$holder_pid" || fail "queue holder failed to release its lock"
+  holder_pid=
+  out=$(FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=1 pe "$home" reconcile) || rc=$?
+  [ "$rc" -ne 0 ] || fail "broken source unexpectedly launched: $out"
+  [ "$(launch_failed_wake_count "$home" interrupted-src)" = 1 ] || fail "retry lost the warning: $out"
+  assert_present "$home/state/procevent/.interrupted-src.launch-failed" "successful publication did not record suppression"
+  out=$(FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=1 pe "$home" reconcile) || true
+  [ "$(launch_failed_wake_count "$home" interrupted-src)" = 1 ] || fail "published warning repeated: $out"
+  pass "an interrupted warning publishes on retry and then suppresses repeats"
+)
+
+test_interrupted_warning_retries_publication
+
 # --- inert with nothing configured ------------------------------------------
 IDLE="$TMP_ROOT/idle"; mkdir -p "$IDLE"
 out=$(pe "$IDLE" list)

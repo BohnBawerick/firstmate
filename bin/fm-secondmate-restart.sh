@@ -28,8 +28,8 @@
 #      every instruction update cost far more than the reload it is paying for.
 #      All requests go out before any restart, so a slow mate delays only its own
 #      restart instead of serializing the fleet behind it.
-#   B. RESTART. Only after that mate's own correlated answer lands on the parent
-#      channel. The gate is that answer, never a wall clock, so a mate that is
+#   B. RESTART. Only after that mate's correlated persistence-complete answer
+#      lands on the parent channel. The gate is that answer, never a wall clock, so a mate that is
 #      mid-turn queues the request behind that turn; the bound below exists to
 #      end the wait, not to authorize a restart without the answer. A timeout
 #      deliberately leaves that unanswered expectation open: it is a genuine
@@ -188,8 +188,27 @@ restart_mate() {  # <array-index>
   report_unreached "$id" "the restart outcome is unknown: $restart_reason"
 }
 
+persist_reply_complete() {
+  local corr=$1 record status line latest=
+  record=$(fm_pending_reply_path "$STATE" "$corr")
+  [ "$(fm_pending_reply_get "$record" phase)" = resolved ] || return 1
+  status=$(fm_pending_reply_get "$record" parent_status)
+  [ -f "$status" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    if fm_pending_reply_line_resolves "$line" "$corr"; then
+      latest=$line
+    fi
+  done < "$status"
+  [ "${latest% (via-helper)}" = "done [corr=$corr]: restart-persisted" ]
+}
+
 launch_restart() {  # <array-index>
   local i=$1 result tmp
+  if ! persist_reply_complete "${CORR[i]}"; then
+    fall_back_to_nudge "${IDS[$i]}" "its reply did not confirm completed persistence; its conversation remains running"
+    PLAN[i]=done
+    return
+  fi
   result="$RESULT_DIR/$i.result"
   tmp="$result.tmp"
   ( trap - EXIT; restart_mate "$i" > "$tmp"; mv -f "$tmp" "$result" ) &

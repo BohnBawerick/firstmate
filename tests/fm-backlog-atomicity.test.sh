@@ -1830,13 +1830,15 @@ test_interrupted_destructive_cleanup_leaves_a_recoverable_close() {
     || fail "interrupted cleanup changed the backlog before recovery"
 
   out=$(run_bootstrap "$case_dir")
-  [ "$(row_state "$case_dir" "$id")" = "done" ] \
-    || fail "restart left interrupted cleanup In flight: $out"
-  assert_absent "$marker" "restart retained the recovered close marker"
-  assert_absent "$home/state/$id.meta" "restart retained the interrupted task record"
-  assert_contains "$out" "endpoint or local copy may remain" \
-    "restart silently hid potentially incomplete physical cleanup"
-  pass "restart recovers closes recorded before destructive cleanup"
+  [ "$(row_state "$case_dir" "$id")" = in_flight ] || fail "bootstrap closed unconfirmed cleanup: $out"
+  assert_present "$marker" "bootstrap discarded the pending close"
+  assert_present "$home/state/$id.meta" "bootstrap removed ownership before cleanup"
+  assert_contains "$out" "lifecycle cleanup is unconfirmed" "bootstrap did not explain the preserved records"
+  out=$(run_teardown "$case_dir" "$id") || fail "teardown could not finish cleanup: $out"
+  [ "$(row_state "$case_dir" "$id")" = done ] || fail "completed teardown left the backlog open"
+  assert_absent "$marker" "completed teardown retained its close marker"
+  assert_absent "$home/state/$id.meta" "completed teardown retained metadata"
+  pass "bootstrap preserves interrupted cleanup until teardown finishes"
 }
 
 test_completion_refuses_a_close_target_symlinked_to_a_directory() {
@@ -2079,7 +2081,7 @@ test_recovery_preserves_a_close_when_the_backlog_cannot_be_read() {
   pass "session start preserves a pending close across a transient backlog read failure"
 }
 
-test_recovery_retry_preserves_incomplete_cleanup_warning() {
+test_recovery_retry_preserves_unconfirmed_cleanup() {
   local case_dir home id marker out
   id=atomic-heal-retry-warning-b10
   case_dir=$(make_home heal-retry-warning)
@@ -2093,21 +2095,18 @@ test_recovery_retry_preserves_incomplete_cleanup_warning() {
   break_verb "$case_dir" show
 
   out=$(run_bootstrap "$case_dir")
-  assert_absent "$home/state/$id.meta" \
-    "failed replay did not cross the task-record removal boundary"
+  assert_present "$home/state/$id.meta" "failed replay discarded task ownership"
   assert_present "$marker" "failed replay discarded its pending close"
   rm -f "$case_dir/fakebin/tasks-axi"
-
   out=$(run_bootstrap "$case_dir")
-  [ "$(row_state "$case_dir" "$id")" = "done" ] \
-    || fail "retried recovery left the item In flight: $out"
-  assert_contains "$out" "endpoint or local copy may remain" \
-    "retry lost the incomplete-cleanup evidence after removing metadata"
-  assert_absent "$marker" "retried recovery retained its applied marker"
-  pass "recovery preserves incomplete-cleanup evidence across a failed replay"
+  [ "$(row_state "$case_dir" "$id")" = in_flight ] || fail "retry closed unconfirmed cleanup: $out"
+  assert_present "$home/state/$id.meta" "retry removed task ownership"
+  assert_present "$marker" "retry removed the cleanup obligation"
+  assert_contains "$out" "lifecycle cleanup is unconfirmed" "retry lost the cleanup refusal"
+  pass "recovery retries preserve metadata and pending cleanup"
 }
 
-test_recovery_finishes_a_close_for_the_same_meta_incarnation() {
+test_recovery_preserves_a_close_for_the_same_meta_incarnation() {
   local case_dir id out
   id=atomic-heal-same-incarnation-b11
   case_dir=$(make_home heal-same-incarnation)
@@ -2119,13 +2118,12 @@ test_recovery_finishes_a_close_for_the_same_meta_incarnation() {
     > "$(home_of "$case_dir")/state/$id.backlog-close"
 
   out=$(run_bootstrap "$case_dir")
-  [ "$(row_state "$case_dir" "$id")" = "done" ] \
-    || fail "session start did not close the interrupted incarnation: $out"
-  assert_absent "$(home_of "$case_dir")/state/$id.meta" \
-    "session start retained the interrupted incarnation's meta"
-  assert_absent "$(home_of "$case_dir")/state/$id.backlog-close" \
-    "session start retained the completed incarnation's close marker"
-  pass "session start finishes a close for the matching meta incarnation"
+  [ "$(row_state "$case_dir" "$id")" = in_flight ] || fail "bootstrap closed the live incarnation: $out"
+  assert_present "$(home_of "$case_dir")/state/$id.meta" "bootstrap removed matching metadata"
+  assert_present "$(home_of "$case_dir")/state/$id.backlog-close" "bootstrap lost the pending close"
+  out=$(run_teardown "$case_dir" "$id") || fail "teardown failed: $out"
+  [ "$(row_state "$case_dir" "$id")" = done ] || fail "teardown did not close the row"
+  pass "only teardown completes cleanup for matching metadata"
 }
 
 test_recovery_preserves_a_close_for_ambiguous_incarnation_metadata() {
@@ -2166,8 +2164,8 @@ test_recovery_preserves_both_records_when_meta_removal_fails() {
   break_meta_removal "$case_dir" "$meta"
 
   out=$(run_bootstrap "$case_dir")
-  assert_contains "$out" "the interrupted task record could not be removed" \
-    "session start did not surface the record-removal failure"
+  assert_contains "$out" "lifecycle cleanup is unconfirmed" \
+    "session start did not refuse unconfirmed cleanup"
   assert_present "$meta" "failed recovery removed the task record"
   assert_present "$(home_of "$case_dir")/state/$id.backlog-close" \
     "failed recovery discarded the pending close"
@@ -2175,13 +2173,11 @@ test_recovery_preserves_both_records_when_meta_removal_fails() {
     || fail "failed recovery closed the backlog before removing meta"
 
   rm -f "$case_dir/fakebin/rm"
-  out=$(run_bootstrap "$case_dir")
-  [ "$(row_state "$case_dir" "$id")" = "done" ] \
-    || fail "recovery did not retry after meta removal recovered: $out"
-  assert_absent "$meta" "successful retry retained the task record"
-  assert_absent "$(home_of "$case_dir")/state/$id.backlog-close" \
-    "successful retry retained the pending close"
-  pass "recovery preserves both records when meta removal fails"
+  out=$(run_teardown "$case_dir" "$id") || fail "teardown failed after removal recovered: $out"
+  [ "$(row_state "$case_dir" "$id")" = done ] || fail "teardown did not close the row"
+  assert_absent "$meta" "completed teardown retained metadata"
+  assert_absent "$(home_of "$case_dir")/state/$id.backlog-close" "completed teardown retained its close marker"
+  pass "recovery preserves both records without attempting removal"
 }
 
 test_recovery_preserves_a_close_beside_symlinked_metadata() {
@@ -3059,8 +3055,8 @@ test_recovery_ignores_a_symlinked_worker_record
 test_recovery_replays_a_close_an_interrupted_cleanup_left_open
 test_recovery_backfills_a_recorded_link_on_an_already_done_item
 test_recovery_preserves_a_close_when_the_backlog_cannot_be_read
-test_recovery_retry_preserves_incomplete_cleanup_warning
-test_recovery_finishes_a_close_for_the_same_meta_incarnation
+test_recovery_retry_preserves_unconfirmed_cleanup
+test_recovery_preserves_a_close_for_the_same_meta_incarnation
 test_recovery_preserves_a_close_for_ambiguous_incarnation_metadata
 test_recovery_preserves_both_records_when_meta_removal_fails
 test_recovery_preserves_a_close_beside_symlinked_metadata

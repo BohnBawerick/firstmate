@@ -1277,22 +1277,12 @@ report_launch_failure() {  # <source-id> <registration-identity>
     "$episode $nonce"
 }
 
-# Shared marker discipline for the announcements above: <marker> holds the
-# generation last reported as its first field, written before the wake and
-# removed again if the wake does not land, so a failed announcement retries
-# instead of being marked delivered, and the same generation never announces
-# twice. A caller may store more after that field (the launch-failure nonce);
-# only the first field decides.
 announce_source_once() {  # <marker> <generation> <key> <payload> [marker-record]
   local marker=$1 generation=$2 key=$3 payload=$4 record=${5:-$2} previous
   previous=$(cat -- "$marker" 2>/dev/null || true)
   [ "${previous%%[[:space:]]*}" != "$generation" ] || return 1
-  (umask 077; printf '%s\n' "$record" > "$marker") || return 1
-  if ! fm_wake_append check "$key" "$payload"; then
-    rm -f -- "$marker"
-    return 1
-  fi
-  return 0
+  fm_wake_append check "$key" "$payload" || return 1
+  (umask 077; printf '%s\n' "$record" > "$marker")
 }
 
 # The reused-pid strand: the recorded pid is alive under a different identity

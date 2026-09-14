@@ -84,7 +84,7 @@ case "${1:-}" in
             corr=$(cat "$inbox"/*.msg 2>/dev/null \
               | grep -oE 'corr=[0-9a-f]{16}' | head -1)
             if [ -n "$corr" ]; then
-              printf 'done [%s]: open records written down\n' "$corr" \
+              printf '%s [%s]: %s\n' "${FM_FAKE_PERSIST_VERB:-done}" "$corr" "${FM_FAKE_PERSIST_NOTE:-restart-persisted (via-helper)}" \
                 >> "$(cat "$D/answer-status")"
             fi
           fi
@@ -277,6 +277,39 @@ test_persist_gates_and_asks_only_for_open_records() {
 }
 
 # --- T2: persist THEN restart, in that order --------------------------------
+test_incomplete_persistence_preserves_local_and_remote_agents() {
+  local dir placement verb note out rc
+  for placement in local remote; do
+    while IFS='|' read -r verb note; do
+      dir=$(new_case "persist-$placement")
+      if [ "$placement" = local ]; then
+        add_local_mate "$dir" sm1
+        arm_answer "$dir" sm1
+      else
+        setup_remote_case "$dir" sm1 ok
+        export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm1.status"
+      fi
+      rc=0
+      out=$(FM_FAKE_PERSIST_VERB="$verb" FM_FAKE_PERSIST_NOTE="$note" FM_TEST_PERSIST_WAIT=0 \
+        run_restart "$dir" sm1) || rc=$?
+      unset FM_FAKE_ANSWER_STATUS
+      expect_code 3 "$rc" "$placement incomplete persistence must refuse restart: $out"
+      assert_contains "$out" "did not confirm completed persistence" "refusal lost its reason"
+      assert_no_grep '^/exit$' "$dir/fake/literal" "unpersisted local agent was stopped"
+      if [ "$placement" = remote ]; then
+        assert_no_grep 'fm-remote-secondmate-control.sh relaunch' "$dir/ssh.log" "unpersisted remote agent was restarted"
+      fi
+    done <<'ROWS'
+blocked|backlog is unwritable; work is not persisted
+working|still recording open tasks
+done|some records remain only in conversation
+blocked|restart-persisted
+done|restart-persisted but the backlog write failed
+ROWS
+  done
+  pass "local and remote restart require explicit persistence completion"
+}
+
 test_persist_precedes_restart() {
   local dir out rc doorbell_line exit_line
   dir=$(new_case order)
@@ -338,7 +371,7 @@ case "$target" in
       : > "$FM_FAKE_DIR/answer-after-scan"
       corr=${target##*/}
       status=$(sed -n 's/^parent_status=//p' "$target")
-      printf 'done [corr=%s]: open records written down\n' "$corr" >> "$status"
+      printf 'done [corr=%s]: restart-persisted\n' "$corr" >> "$status"
     fi
     ;;
 esac
@@ -466,7 +499,7 @@ case "${rargs[1]:-}" in
     # parent channel, carrying the correlation token the request embedded.
     if [ -n "${FM_FAKE_ANSWER_STATUS:-}" ]; then
       corr=$(printf '%s' "${rargs[3]:-}" | grep -oE 'corr=[0-9a-f]{16}' | head -1)
-      [ -z "$corr" ] || printf 'done [%s]: open records written down\n' "$corr" \
+      [ -z "$corr" ] || printf '%s [%s]: %s\n' "${FM_FAKE_PERSIST_VERB:-done}" "$corr" "${FM_FAKE_PERSIST_NOTE:-restart-persisted (via-helper)}" \
         >> "$FM_FAKE_ANSWER_STATUS"
     fi
     ;;
@@ -834,6 +867,7 @@ test_already_current_unprovable_mate_stays_on_the_nudge_path() {
 
 test_persist_gates_and_asks_only_for_open_records
 test_persist_precedes_restart
+test_incomplete_persistence_preserves_local_and_remote_agents
 test_arrived_answer_precedes_deadline_check
 test_answer_between_resolution_and_timeout_wins
 test_unprovable_runtime_falls_back

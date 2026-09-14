@@ -1124,6 +1124,9 @@ test_crew_dispatch_validation() {
         printf '%s\n' "$out" | grep -Fx "$expect" >/dev/null || fail "$label: missing '$expect' (got: $out)" ;;
     esac
   done <<'ROWS'
+gemini default profile is accepted^{"default":{"harness":"gemini"}}^empty^
+gemini rule profile is accepted^{"rules":[{"when":"scout","use":{"harness":"gemini","model":"gemini-2.5-pro"}}]}^empty^
+gemini effort is refused^{"default":{"harness":"gemini","effort":"high"}}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - invalid effort: gemini:high
 malformed dispatch config is flagged^{"rules":[^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - malformed JSON
 unverified dispatch harness is flagged^{"rules":[{"when":"anything","use":{"harness":"spaceship"}}],"default":{"harness":"codex"}}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - unverified harness: spaceship
 unsupported codex max effort is flagged^{"rules":[{"when":"big feature","use":{"harness":"codex","model":"gpt-5","effort":"max"}}]}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - invalid effort: codex:max

@@ -1123,15 +1123,6 @@ fm_backlog_close_marker_write() {  # <state-dir> <id> <data-dir> <spawn-gen> [fl
     || { rm -f "$tmp"; return 1; }
 }
 
-fm_backlog_close_marker_mark_cleanup_incomplete() {  # <state-dir> <marker-path> <id> <data-dir> <spawn-gen> [flag...]
-  local state=$1 marker=$2 id=$3 data=$4 spawn_gen=$5 tmp
-  shift 5
-  tmp="$state/.$id.backlog-close.${BASHPID:-$$}"
-  fm_backlog_close_marker_stage "$tmp" "$id" "$data" "$spawn_gen" "$state" 1 "$@" || return 1
-  fm_backlog_atomic_transition publish "$tmp" "$marker" "pending-close record" "$state" \
-    || { rm -f "$tmp"; return 1; }
-}
-
 fm_backlog_close_marker_remove() {  # <marker-path> <state-dir>
   fm_backlog_atomic_transition remove "$1" "pending-close record" "$2"
 }
@@ -1149,7 +1140,7 @@ fm_backlog_close_marker_clear() {  # <state-dir> <id>
 fm_backlog_close_marker_replay() {  # <state-dir> <marker-path> <authorized-data-dir>
   local state=$1 marker=$2 marker_name expected_id
   local id data marker_spawn_gen meta meta_spawn_gen row_state cleanup_incomplete mode
-  local args=() mode_flags=()
+  local args=()
   FM_BACKLOG_CLOSE_REPLAY_RESULT=noop
   fm_backlog_directory_present "$state" "state directory" || return 1
   [ -e "$marker" ] || [ -L "$marker" ] || return 0
@@ -1164,7 +1155,6 @@ fm_backlog_close_marker_replay() {  # <state-dir> <marker-path> <authorized-data
   marker_spawn_gen=$FM_BACKLOG_CLOSE_VALIDATED_SPAWN_GEN
   cleanup_incomplete=$FM_BACKLOG_CLOSE_VALIDATED_CLEANUP_INCOMPLETE
   mode=$FM_BACKLOG_CLOSE_VALIDATED_MODE
-  [ "$mode" = close ] || mode_flags=(--retain)
   args=("${FM_BACKLOG_CLOSE_VALIDATED_ARGS[@]+"${FM_BACKLOG_CLOSE_VALIDATED_ARGS[@]}"}")
   if [ "${args[0]-}" = --note ]; then
     args[1]="local main"
@@ -1182,12 +1172,8 @@ fm_backlog_close_marker_replay() {  # <state-dir> <marker-path> <authorized-data
       FM_BACKLOG_CLOSE_REPLAY_RESULT=stale
       return 0
     fi
-    fm_backlog_close_marker_mark_cleanup_incomplete "$state" "$marker" "$id" "$data" \
-      "$marker_spawn_gen" "${mode_flags[@]+"${mode_flags[@]}"}" "${args[@]+"${args[@]}"}" \
-      || return 1
-    cleanup_incomplete=1
-    fm_backlog_atomic_transition remove "$meta" "the interrupted task record" "$state" \
-      || return 1
+    FM_BACKLOG_TRANSITION_ERROR="task $id still has matching metadata; lifecycle cleanup is unconfirmed, so retry teardown before replaying its pending close"
+    return 1
   fi
   if fm_backlog_row_probe "$data" "$id"; then
     row_state=$FM_BACKLOG_ROW_STATE
