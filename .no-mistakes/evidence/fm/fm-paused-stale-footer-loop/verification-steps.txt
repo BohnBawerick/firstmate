@@ -1,0 +1,21 @@
+Validation used the checked-out target 406d850293a555a70fb7f3b1f491f073fbab36a9.
+
+Automated command:
+bin/fm-test-run.sh --family watcher-wake-lock --jobs 4
+This includes the whole tests/fm-watch-triage.test.sh and the watcher, wake, lock and daemon controls. Exit 0, no gate skips.
+
+Regression reproduction:
+Generated a temporary selector from the existing triage test definitions and invoked test_live_declared_pause_ticking_footer_keeps_the_bounded_cadence. Added output capture before fixture cleanup, without changing its assertions.
+Extracted the base watcher using git show 0a9d04c489f342e6262324b66349786a12f9e156:bin/fm-watch.sh into bin/.fm-watch-base-test.sh, preserving its sibling dependencies.
+FM_EVIDENCE_WATCH="$PWD/bin/.fm-watch-base-test.sh" bash tests/.paused-footer-evidence.test.sh
+Exit 1 as expected. Footer tick 2 repeated the bare stale wake.
+bash tests/.paused-footer-evidence.test.sh
+Exit 0 on the fixed watcher. Five changed hashes were absorbed; aging the status and resurface throttle produced the declared-pause wake through fm-wake-drain.sh.
+
+Additional integration:
+bash tests/.paused-footer-real-state.test.sh
+Used the real fm-crew-state.sh instead of the canned verdict, added a readable synthetic pane identity and a fixture worktree path, and expired .paused-rechecked before tick 4 to force authoritative reclassification. Exit 0. The reader reported paused from status-log; the cache refresh preserved absorption and the scheduled recheck remained correctly labeled.
+The first integration attempt omitted the worktree path, so the reader correctly returned unknown and the test failed. Added the missing fixture field and retried successfully. Its initial output is retained in real-state-fixture-setup-failure.txt.
+
+These checks execute the real watcher, drain and durable queue against controlled terminal inputs. They do not launch a real Claude Code session or Herdr endpoint. This change affects wake cadence, not rendered UI, so the reviewer evidence is CLI output and queue records.
+All temporary test drivers and the extracted base watcher were removed. No tracked files changed. No linters, formatters, full repository suite, or other pipeline phases ran.

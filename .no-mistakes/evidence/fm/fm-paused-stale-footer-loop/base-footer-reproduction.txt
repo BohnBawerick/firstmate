@@ -1,0 +1,9 @@
+Interface check: real watcher, drain and queue; simulated tmux pane and crew-state verdict.
+First declaration wake: stale: test:fm-paused-ticking
+not ok - footer tick 2 re-surfaced a standing declared pause: stale: test:fm-paused-ticking
+
+live-paused-ticking-footer/watch.out
+stale: test:fm-paused-ticking
+
+live-paused-ticking-footer/state/.wake-queue
+1789352531	2	stale	test:fm-paused-ticking	stale: test:fm-paused-ticking

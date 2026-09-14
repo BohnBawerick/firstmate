@@ -1,0 +1,29 @@
+Interface check: real watcher, drain and queue; simulated tmux pane; real crew-state status-log fallback.
+state: unknown · source: none · worktree gone (torn down?)
+First declaration wake: stale: test:fm-paused-ticking
+Footer tick 2: pane hash 8d3db858bfaa6b73875103bcdedc3518 -> 6e1c9d523b9cfec1f9d6f022d28e59e8; captures=8; stale count=6; queued stale wakes=0; bare wakes=0
+Footer tick 3: pane hash 6e1c9d523b9cfec1f9d6f022d28e59e8 -> 503476f2d559c62b9792d49b67a2cfe2; captures=17; stale count=8; queued stale wakes=0; bare wakes=0
+Expired the 240s classification cache before footer tick 4.
+not ok - footer tick 4 re-surfaced a standing declared pause: stale: test:fm-paused-ticking
+
+live-paused-ticking-footer/watch.out
+stale: test:fm-paused-ticking
+
+live-paused-ticking-footer/state/.wake-queue
+1789352600	2	stale	test:fm-paused-ticking	stale: test:fm-paused-ticking
+
+live-paused-ticking-footer/state/.watch-triage.log
+[2026-09-14T10:23:05+0800] absorbed stale (paused, awaiting external, age 3s): test:fm-paused-ticking
+[2026-09-14T10:23:07+0800] absorbed stale (paused, awaiting external, age 5s): test:fm-paused-ticking
+[2026-09-14T10:23:07+0800] absorbed stale (paused, awaiting external, age 5s): test:fm-paused-ticking
+[2026-09-14T10:23:08+0800] absorbed stale (paused, awaiting external, age 6s): test:fm-paused-ticking
+[2026-09-14T10:23:09+0800] absorbed stale (paused, awaiting external, age 7s): test:fm-paused-ticking
+[2026-09-14T10:23:09+0800] absorbed stale (paused, awaiting external, age 7s): test:fm-paused-ticking
+[2026-09-14T10:23:11+0800] absorbed stale (paused, awaiting external, age 9s): test:fm-paused-ticking
+[2026-09-14T10:23:13+0800] absorbed stale (paused, awaiting external, age 11s): test:fm-paused-ticking
+[2026-09-14T10:23:14+0800] absorbed stale (paused, awaiting external, age 12s): test:fm-paused-ticking
+[2026-09-14T10:23:14+0800] absorbed stale (paused, awaiting external, age 12s): test:fm-paused-ticking
+[2026-09-14T10:23:15+0800] absorbed stale (paused, awaiting external, age 13s): test:fm-paused-ticking
+[2026-09-14T10:23:15+0800] absorbed stale (paused, awaiting external, age 13s): test:fm-paused-ticking
+[2026-09-14T10:23:16+0800] absorbed stale (paused, awaiting external, age 14s): test:fm-paused-ticking
+[2026-09-14T10:23:17+0800] absorbed stale (paused, awaiting external, age 15s): test:fm-paused-ticking

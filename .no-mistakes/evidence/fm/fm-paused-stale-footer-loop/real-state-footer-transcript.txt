@@ -1,0 +1,54 @@
+Interface check: real watcher, drain and queue; simulated tmux pane; real crew-state status-log fallback.
+state: paused · source: status-log · holding for the upstream tool release
+First declaration wake: stale: test:fm-paused-ticking
+Footer tick 2: pane hash 8d3db858bfaa6b73875103bcdedc3518 -> 6e1c9d523b9cfec1f9d6f022d28e59e8; captures=11; stale count=6; queued stale wakes=0; bare wakes=0
+Footer tick 3: pane hash 6e1c9d523b9cfec1f9d6f022d28e59e8 -> 503476f2d559c62b9792d49b67a2cfe2; captures=18; stale count=6; queued stale wakes=0; bare wakes=0
+Expired the 240s classification cache before footer tick 4.
+Footer tick 4: pane hash 503476f2d559c62b9792d49b67a2cfe2 -> 9f6b8ebf352edb45781413e9715de467; captures=27; stale count=7; queued stale wakes=0; bare wakes=0
+Footer tick 5: pane hash 9f6b8ebf352edb45781413e9715de467 -> aae0aae4438d0cc6fc678d38d0bb295c; captures=36; stale count=8; queued stale wakes=0; bare wakes=0
+Footer tick 6: pane hash aae0aae4438d0cc6fc678d38d0bb295c -> a6db023d363db0a48545545231251196; captures=43; stale count=6; queued stale wakes=0; bare wakes=0
+ok - a live declared pause keeps its bounded cadence while its harness footer ticks, and still rechecks on schedule
+
+live-paused-ticking-footer/watch.out
+stale: test:fm-paused-ticking (paused 501s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+
+live-paused-ticking-footer/drain.out
+1789352671	2	stale	test:fm-paused-ticking	stale: test:fm-paused-ticking (paused 501s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+
+live-paused-ticking-footer/state/.wake-queue
+1789352671	2	stale	test:fm-paused-ticking	stale: test:fm-paused-ticking (paused 501s, awaiting external - declared pause, rechecked on a long cadence not a wedge; confirm the wait still holds)
+
+live-paused-ticking-footer/state/.watch-triage.log
+[2026-09-14T10:24:08+0800] absorbed stale (paused, awaiting external, age 3s): test:fm-paused-ticking
+[2026-09-14T10:24:09+0800] absorbed stale (paused, awaiting external, age 4s): test:fm-paused-ticking
+[2026-09-14T10:24:09+0800] absorbed stale (paused, awaiting external, age 4s): test:fm-paused-ticking
+[2026-09-14T10:24:10+0800] absorbed stale (paused, awaiting external, age 5s): test:fm-paused-ticking
+[2026-09-14T10:24:10+0800] absorbed stale (paused, awaiting external, age 5s): test:fm-paused-ticking
+[2026-09-14T10:24:10+0800] absorbed stale (paused, awaiting external, age 5s): test:fm-paused-ticking
+[2026-09-14T10:24:12+0800] absorbed stale (paused, awaiting external, age 7s): test:fm-paused-ticking
+[2026-09-14T10:24:13+0800] absorbed stale (paused, awaiting external, age 8s): test:fm-paused-ticking
+[2026-09-14T10:24:13+0800] absorbed stale (paused, awaiting external, age 8s): test:fm-paused-ticking
+[2026-09-14T10:24:14+0800] absorbed stale (paused, awaiting external, age 9s): test:fm-paused-ticking
+[2026-09-14T10:24:14+0800] absorbed stale (paused, awaiting external, age 9s): test:fm-paused-ticking
+[2026-09-14T10:24:15+0800] absorbed stale (paused, awaiting external, age 10s): test:fm-paused-ticking
+[2026-09-14T10:24:16+0800] absorbed stale (paused, awaiting external, age 11s): test:fm-paused-ticking
+[2026-09-14T10:24:17+0800] absorbed stale (paused, awaiting external, age 12s): test:fm-paused-ticking
+[2026-09-14T10:24:18+0800] absorbed stale (paused, awaiting external, age 13s): test:fm-paused-ticking
+[2026-09-14T10:24:18+0800] absorbed stale (paused, awaiting external, age 13s): test:fm-paused-ticking
+[2026-09-14T10:24:19+0800] absorbed stale (paused, awaiting external, age 14s): test:fm-paused-ticking
+[2026-09-14T10:24:19+0800] absorbed stale (paused, awaiting external, age 14s): test:fm-paused-ticking
+[2026-09-14T10:24:20+0800] absorbed stale (paused, awaiting external, age 15s): test:fm-paused-ticking
+[2026-09-14T10:24:21+0800] absorbed stale (paused, awaiting external, age 16s): test:fm-paused-ticking
+[2026-09-14T10:24:22+0800] absorbed stale (paused, awaiting external, age 17s): test:fm-paused-ticking
+[2026-09-14T10:24:23+0800] absorbed stale (paused, awaiting external, age 18s): test:fm-paused-ticking
+[2026-09-14T10:24:23+0800] absorbed stale (paused, awaiting external, age 18s): test:fm-paused-ticking
+[2026-09-14T10:24:24+0800] absorbed stale (paused, awaiting external, age 19s): test:fm-paused-ticking
+[2026-09-14T10:24:24+0800] absorbed stale (paused, awaiting external, age 19s): test:fm-paused-ticking
+[2026-09-14T10:24:25+0800] absorbed stale (paused, awaiting external, age 20s): test:fm-paused-ticking
+[2026-09-14T10:24:25+0800] absorbed stale (paused, awaiting external, age 20s): test:fm-paused-ticking
+[2026-09-14T10:24:27+0800] absorbed stale (paused, awaiting external, age 22s): test:fm-paused-ticking
+[2026-09-14T10:24:28+0800] absorbed stale (paused, awaiting external, age 23s): test:fm-paused-ticking
+[2026-09-14T10:24:28+0800] absorbed stale (paused, awaiting external, age 23s): test:fm-paused-ticking
+[2026-09-14T10:24:29+0800] absorbed stale (paused, awaiting external, age 24s): test:fm-paused-ticking
+[2026-09-14T10:24:29+0800] absorbed stale (paused, awaiting external, age 24s): test:fm-paused-ticking
+[2026-09-14T10:24:30+0800] absorbed stale (paused, awaiting external, age 25s): test:fm-paused-ticking
