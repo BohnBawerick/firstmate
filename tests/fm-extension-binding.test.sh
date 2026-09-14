@@ -1751,7 +1751,8 @@ signal_owner=$(wait_for_invocation_owner "$H_INVOCATION_CLEANUP") \
   || fail "signal cleanup fixture published no invocation owner"
 signal_cleanup_group_pid=$(owner_group_pid "$signal_owner") \
   || fail "signal cleanup fixture published no exact process group"
-kill -TERM "$signal_cleanup_host_pid" 2>/dev/null || fail "cannot interrupt the active extension host"
+signal_invocation_host_pid=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).host_pid)' "$signal_owner")
+kill -TERM "$signal_invocation_host_pid" 2>/dev/null || fail "cannot interrupt the active extension host"
 signal_cleanup_rc=0
 wait "$signal_cleanup_host_pid" || signal_cleanup_rc=$?
 signal_cleanup_host_pid=
@@ -1783,11 +1784,34 @@ crash_owner=$(wait_for_invocation_owner "$H_INVOCATION_CLEANUP") \
 crash_cleanup_group_pid=$(owner_group_pid "$crash_owner") \
   || fail "crash cleanup fixture published no exact process group"
 crash_entry_pid=$(cat "$crash_marker")
-kill -KILL "$crash_cleanup_host_pid" 2>/dev/null || fail "cannot stop the extension host at the crash cut"
+crash_invocation_host_pid=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).host_pid)' "$crash_owner")
+kill -KILL "$crash_invocation_host_pid" 2>/dev/null || fail "cannot stop the extension host at the crash cut"
 wait "$crash_cleanup_host_pid" 2>/dev/null || true
 crash_cleanup_host_pid=
 kill -0 -"$crash_cleanup_group_pid" 2>/dev/null \
   || fail "host crash did not leave the tracked invocation group for recovery"
+python3 - "$TMP_ROOT/leaderless-pids" <<'PYTHON'
+import os, sys, time
+os.setsid()
+leader = os.getpid()
+member = os.fork()
+if member:
+    with open(sys.argv[1], 'w') as f:
+        f.write(f'{leader} {member}\n')
+    os._exit(0)
+time.sleep(120)
+PYTHON
+read -r leaderless_group unrelated_daemon_pid < "$TMP_ROOT/leaderless-pids"
+cp "$crash_owner" "$TMP_ROOT/saved-crash-owner"
+node -e 'const fs=require("fs");const file=process.argv[1];const owner=JSON.parse(fs.readFileSync(file,"utf8"));owner.group_pid=Number(process.argv[2]);fs.writeFileSync(file,JSON.stringify(owner));' "$crash_owner" "$leaderless_group"
+expect_failure "process group identity cannot be proved" env FM_HOME="$H_INVOCATION_CLEANUP" "$HOST" retire-binding org.example.invocation-cleanup \
+  --if-binding-digest "$cleanup_binding_digest"
+kill -0 "$unrelated_daemon_pid" 2>/dev/null || fail "durable recovery killed an unrelated leaderless group"
+assert_present "$crash_owner" "uncertain recovery discarded ownership evidence"
+cp "$TMP_ROOT/saved-crash-owner" "$crash_owner"
+kill -TERM "$unrelated_daemon_pid" 2>/dev/null || true
+unrelated_daemon_pid=
+pass "durable recovery refuses a leaderless group without ownership continuity"
 FM_HOME="$H_INVOCATION_CLEANUP" "$HOST" retire-binding org.example.invocation-cleanup \
   --if-binding-digest "$cleanup_binding_digest" >/dev/null
 if kill -0 -"$crash_cleanup_group_pid" 2>/dev/null; then

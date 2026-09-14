@@ -1034,7 +1034,7 @@ async function cleanupExactProcessGroup(invocation) {
   if (!invocation?.pid) return;
   let state = await processGroupState(invocation.pid, invocation.groupIdentity, invocation.trustedChild === true);
   if (state === 1) return;
-  if (state === 2) fail("process-cleanup-failed", "extension process group identity cannot be proved");
+  if (state === 2 || (state === 3 && !invocation.child)) fail("process-cleanup-failed", "extension process group identity cannot be proved");
   signalProcessGroup(invocation, "SIGTERM");
   const termUntil = Date.now() + TERMINATE_GRACE_MS;
   while (Date.now() < termUntil && groupAlive(invocation.pid)) await sleep(INVOCATION_POLL_MS);

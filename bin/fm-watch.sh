@@ -1033,7 +1033,6 @@ handle_paused_stale() {  # <window> <task> <hash>
       # hold the cadence.
       detail="paused, declared time reached"
       reason="paused ${age}s, awaiting external - the declared clearing time has passed, rechecked on a long cadence not a wedge; confirm the wait cleared"
-      declaration="$declaration:due"
       min_age=0
     fi
   else
@@ -1325,7 +1324,6 @@ surface_nonterminal_stale() {  # <window> <hash>
       if [ "$now" -lt "$until" ]; then
         throttled=0
       else
-        STALE_WAIT_DECLARATION="$STALE_WAIT_DECLARATION:due"
         stale_wait_throttled "$key" "$STALE_WAIT_DECLARATION" && throttled=0
       fi
     else

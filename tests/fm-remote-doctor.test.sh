@@ -105,6 +105,7 @@ SH
 set -u
 printf '%s\n' "$*" >> "$FM_FAKE_LAUNCHCTL_LOG"
 domain=${2:-}
+if [ "${1:-}" = kickstart ]; then domain=${*: -1}; fi
 label=${domain##*/}
 loaded="$FM_FAKE_STATE/loaded-$label"
 case "${1:-}" in
@@ -412,6 +413,36 @@ test_checkout_path_xml_escaping() {
 
 test_checkout_path_xml_escaping
 
+test_unknown_origin_blocks_all_reload_paths() {
+  local evidence drift
+  for evidence in unknown unproven; do
+    for drift in config loaded server; do
+      new_case Darwin with-herdr gui
+      doctor --fix
+      expect_code 0 "$DOCTOR_RC" "could not initialize the running launch agent: $DOCTOR_OUT"
+      if [ "$evidence" = unknown ]; then
+        printf '%s\n' "$XPC_ZERO_HOLDER_PID" > "$CASE_STATE/socket-owner"
+      else
+        printf '#!/usr/bin/env bash\nexit 0\n' > "$CASE_BIN/lsof"
+      fi
+      case "$drift" in
+        config) printf 'stale plist\n' > "$CASE_PLIST" ;;
+        loaded) printf 'stale loaded job\n' > "$CASE_STATE/loaded-$LABEL" ;;
+      esac
+      : > "$CASE_LAUNCHCTL_LOG"
+      doctor --fix
+      expect_code 1 "$DOCTOR_RC" "unproven origin was reported repaired"
+      assert_contains "$DOCTOR_OUT" 'preserving' "doctor omitted the preservation reason"
+      assert_no_grep "bootout gui/1000/$LABEL" "$CASE_LAUNCHCTL_LOG" "doctor stopped an unproven server"
+      assert_no_grep "kickstart -k gui/1000/$LABEL" "$CASE_LAUNCHCTL_LOG" "doctor restarted an unproven server"
+      [ "$(cat "$CASE_HERDR_RUNNING")" = true ] || fail "doctor lost the running session"
+    done
+  done
+  pass "every doctor reload path preserves servers with unproven origin"
+}
+
+test_unknown_origin_blocks_all_reload_paths
+
 # --- a host with no herdr is never ready, and --fix cannot install one -------
 
 new_case Darwin no-herdr gui
@@ -640,14 +671,14 @@ printf '%s\n' "$BACKGROUND_HOLDER_PID" > "$CASE_STATE/socket-owner"
 printf 'background job\n' > "$CASE_STATE/user-loaded-$LABEL"
 doctor
 expect_code 1 "$DOCTOR_RC" "a label loaded in the user domain was reported Aqua-born"
-assert_contains "$DOCTOR_OUT" "check herdr-server=fixable: session fm-remote is served by pid $BACKGROUND_HOLDER_PID born outside the Aqua login session (unknown)" \
+assert_contains "$DOCTOR_OUT" "check herdr-server=human: session fm-remote is running but its origin is unproven (unknown $BACKGROUND_HOLDER_PID); preserving its panes" \
   "the user-domain owner was not tagged fixable"
 rm -f "$CASE_STATE/user-loaded-$LABEL"
 
 printf '%s\n' "$XPC_ZERO_HOLDER_PID" > "$CASE_STATE/socket-owner"
 doctor
 expect_code 1 "$DOCTOR_RC" "an XPC_SERVICE_NAME=0 owner was reported Aqua-born"
-assert_contains "$DOCTOR_OUT" "check herdr-server=fixable: session fm-remote is served by pid $XPC_ZERO_HOLDER_PID born outside the Aqua login session (unknown)" \
+assert_contains "$DOCTOR_OUT" "check herdr-server=human: session fm-remote is running but its origin is unproven (unknown $XPC_ZERO_HOLDER_PID); preserving its panes" \
   "the inherited XPC marker was not tagged fixable"
 
 printf '%s\n' "$WORKER_HOLDER_PID" > "$CASE_STATE/socket-owner"

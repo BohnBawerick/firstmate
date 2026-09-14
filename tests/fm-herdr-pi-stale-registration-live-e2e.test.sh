@@ -54,9 +54,10 @@ SESSION="fm-lab-pi-stale-$$"
 export HERDR_SESSION="$SESSION"
 SCRATCH=
 cleanup_all() {
-  local status=$?
+  local status=$? cleanup_status=0
   [ -n "$SCRATCH" ] && rm -rf "$SCRATCH"
-  herdr_safe_stop_and_delete "$SESSION"
+  herdr_safe_stop_and_delete "$SESSION" || cleanup_status=$?
+  [ "$status" -ne 0 ] || status=$cleanup_status
   exit "$status"
 }
 trap cleanup_all EXIT

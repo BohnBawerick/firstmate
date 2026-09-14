@@ -156,15 +156,6 @@ claim_settled_secondmate() {  # <id>
 # bin/fm-ff-lib.sh calls this for each local home it left AT the base with a live
 # endpoint - status "updated" or "current" alike. A skipped home never gets here.
 fm_ff_after_secondmate_settled() {  # <id> <home> <window> <status> <instr>
-  # Same bin/-changed-out-from-under-a-watch problem as the primary home
-  # above, for a local secondmate's own worktree; "current" means bin/ did
-  # not move there this pass, so there is nothing to rebind. Run the
-  # secondmate's OWN copy of the script, explicitly overriding FM_ROOT to its
-  # own worktree rather than letting an outer FM_ROOT_OVERRIDE (this process's
-  # own, if the caller set one) leak into the child and misscope it.
-  if [ "${4:-}" = "updated" ] && [ -x "$2/bin/fm-procevent-when.sh" ]; then
-    FM_HOME="$2" FM_ROOT_OVERRIDE="$2" "$2/bin/fm-procevent-when.sh" rebind-all || true
-  fi
   claim_settled_secondmate "$1"
 }
 

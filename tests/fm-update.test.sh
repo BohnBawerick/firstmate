@@ -507,6 +507,51 @@ test_primary_update_rebinds_local_watch() {
   pass "T12 a self-update rebinds a locally armed watch on the primary"
 }
 
+test_secondmate_sync_rebinds_target_home_watch() {
+  local w route commit out
+  for route in local remote; do
+    w=$(new_world "watch-sync-$route")
+    cp -R "$ROOT/bin/." "$w/seed/bin/"
+    printf 'state/\n.fm-secondmate-home\n' > "$w/seed/.gitignore"
+    printf '#!/usr/bin/env bash\nprintf v1 >> "$1"\n' > "$w/seed/bin/watched-action.sh"
+    chmod +x "$w/seed/bin/watched-action.sh"
+    git -C "$w/seed" add -A
+    git -C "$w/seed" commit -qm watch-fixture
+    git -C "$w/seed" push -q origin main
+    git -C "$w/main" pull -q origin main
+    add_sm "$w" sm1
+    fm_test_track_procevent_home "$w/sm1"
+    FM_HOME="$w/sm1" FM_ROOT_OVERRIDE="$w/sm1" FM_PROCEVENT_CLAIM_ROOT="$w/claims" \
+      "$w/sm1/bin/fm-procevent-when.sh" arm sync-watch --stable 1 \
+      --condition true --action "$w/sm1/bin/watched-action.sh" "$w/action.log" >/dev/null || fail "watch arm failed"
+    printf '#!/usr/bin/env bash\nprintf v2 >> "$1"\n' > "$w/seed/bin/watched-action.sh"
+    git -C "$w/seed" add -A
+    git -C "$w/seed" commit -qm updated-action
+    git -C "$w/seed" push -q origin main
+    git -C "$w/main" fetch -q origin
+    commit=$(git -C "$w/seed" rev-parse HEAD)
+    if [ "$route" = remote ]; then
+      out=$(FM_HOME="$w/sm1" FM_ROOT_OVERRIDE="$w/main" FM_STATE_OVERRIDE="$w/home/state" \
+        FM_PROCEVENT_CLAIM_ROOT="$w/claims" "$ROOT/bin/fm-remote-secondmate-control.sh" sync sm1 "$commit") \
+        || fail "remote sync failed: $out"
+    else
+      out=$(FM_HOME="$w/home" FM_ROOT_OVERRIDE="$w/main" FM_ROOT="$w/main" FM_STATE_OVERRIDE="$w/home/state" \
+        FM_PROCEVENT_CLAIM_ROOT="$w/claims" bash -c '
+          . "$1/bin/fm-ff-lib.sh"
+          process_secondmate sm1 "$2" "" "$3" no
+          [ "$FF_STATUS" = updated ]
+        ' _ "$ROOT" "$w/sm1" "$commit") || fail "local sync failed: $out"
+    fi
+    out=$(FM_HOME="$w/sm1" FM_ROOT_OVERRIDE="$w/sm1" FM_STATE_OVERRIDE="$w/sm1/state" \
+      FM_PROCEVENT_CLAIM_ROOT="$w/claims" "$w/sm1/bin/fm-procevent-when.sh" run when-sync-watch)
+    assert_contains "$out" 'status: fired' "$route sync retired the armed watch"
+    [ "$(cat "$w/action.log")" = v2 ] || fail "$route sync did not run the updated action"
+  done
+  pass "local and remote secondmate sync rebind the target home's watch"
+}
+
+test_secondmate_sync_rebinds_target_home_watch
+
 test_updates_main_and_secondmate
 test_reread_gate_is_instruction_only
 test_bin_only_advance_restarts

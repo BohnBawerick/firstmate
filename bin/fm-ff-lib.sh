@@ -293,7 +293,7 @@ live_secondmate_meta_records() {
 FF_STATUS=""
 FF_INSTR=""
 ff_target() {
-  local dir=$1 label=$2 base_mode=$3 allow_detached=${4:-no} ignore_seed_marker=${5:-no}
+  local dir=$1 label=$2 base_mode=$3 allow_detached=${4:-no} ignore_seed_marker=${5:-no} watch_home=${6:-}
   FF_STATUS="skipped"
   FF_INSTR=""
 
@@ -371,6 +371,10 @@ ff_target() {
     echo "$label: skipped: fast-forward failed: $(first_line "$out")"
     return 0
   fi
+  if [ -n "$watch_home" ] && [ -x "$dir/bin/fm-procevent-when.sh" ]; then
+    FM_HOME="$watch_home" FM_ROOT_OVERRIDE="$dir" FM_STATE_OVERRIDE="$watch_home/state" \
+      "$dir/bin/fm-procevent-when.sh" rebind-all || true
+  fi
   after=$(git -C "$dir" rev-parse --short HEAD)
   FF_STATUS="updated"
   FF_INSTR="$instr"
@@ -428,7 +432,7 @@ process_secondmate() {
   esac
   FF_SEEN_HOMES="$FF_SEEN_HOMES $home_real"
 
-  ff_target "$home_real" "secondmate $id" "$base_mode" yes yes
+  ff_target "$home_real" "secondmate $id" "$base_mode" yes yes "$home_real"
   if [ -n "$window" ] && { [ "$FF_STATUS" = "updated" ] || [ "$FF_STATUS" = "current" ]; } \
     && type fm_ff_after_secondmate_settled >/dev/null 2>&1; then
     fm_ff_after_secondmate_settled "$id" "$home_real" "$window" "$FF_STATUS" "$FF_INSTR"

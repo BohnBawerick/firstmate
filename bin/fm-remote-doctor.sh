@@ -678,13 +678,17 @@ check_herdr_server() {
         record herdr-server "human: session $HERDR_SESSION_NAME is running but lsof does not resolve, so its server's birth cannot be proven" \
           "install lsof on that account so the launch agent and this check can tell an Aqua-born server from one started over SSH"
         ;;
-      unproven)
-        record herdr-server "fixable: session $HERDR_SESSION_NAME is running but no herdr process can be shown to own its socket, so its birth cannot be proven" \
+      unproven|unknown\ *)
+        record herdr-server "human: session $HERDR_SESSION_NAME is running but its origin is unproven ($birth); preserving its panes" \
+          "restore readable process and socket evidence before retrying a reload"
+        ;;
+      ssh\ *)
+        record herdr-server "fixable: session $HERDR_SESSION_NAME is served by pid ${birth#* } born outside the Aqua login session (${birth%% *}), so its panes cannot reach the login keychain" \
           "rerun this command with --fix so the launch agent takes the session over (its current panes close and the parent firstmate relaunches its mates)"
         ;;
       *)
-        record herdr-server "fixable: session $HERDR_SESSION_NAME is served by pid ${birth#* } born outside the Aqua login session (${birth%% *}), so its panes cannot reach the login keychain" \
-          "rerun this command with --fix so the launch agent takes the session over (its current panes close and the parent firstmate relaunches its mates)"
+        record herdr-server "human: session $HERDR_SESSION_NAME has unreadable origin evidence; preserving its panes" \
+          "restore readable process and socket evidence before retrying a reload"
         ;;
     esac
     return 0
@@ -769,7 +773,7 @@ write_launch_agent() { # <resolved-login-shell>
 # in-memory copy, and kickstart so the server is running now rather than at the
 # next login. Both are safe to repeat.
 reload_launch_agent() { # <check-to-report-under>
-  local report=$1 out
+  local report=$1 out running birth
   [ -f "$LAUNCH_AGENT_PLIST" ] || {
     fix_report "$report" failed "there is no launch agent to load at $LAUNCH_AGENT_PLIST"
     return 1
@@ -778,6 +782,18 @@ reload_launch_agent() { # <check-to-report-under>
     fix_report "$report" failed "launchctl or the account uid is unavailable"
     return 1
   fi
+  running=$(herdr_server_status_json | jq -r '.server.running' 2>/dev/null) || running=unknown
+  case "$running" in
+    false) ;;
+    true)
+      birth=$(herdr_server_birth)
+      case "$birth" in
+        launchd\ *|worker\ *|ssh\ *) ;;
+        *) fix_report "$report" failed "session $HERDR_SESSION_NAME has unproven origin ($birth); preserving its running server"; return 1 ;;
+      esac
+      ;;
+    *) fix_report "$report" failed "session $HERDR_SESSION_NAME status is unreadable; preserving any running server"; return 1 ;;
+  esac
   launchctl bootout "gui/$UID_NUM/$LAUNCH_AGENT_LABEL" >/dev/null 2>&1 || true
   if ! out=$(launchctl bootstrap "gui/$UID_NUM" "$LAUNCH_AGENT_PLIST" 2>&1); then
     fix_report "$report" failed "launchctl bootstrap gui/$UID_NUM refused: ${out:-no diagnostic}"

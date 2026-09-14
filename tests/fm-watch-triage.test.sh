@@ -5005,6 +5005,30 @@ test_paused_until_wrong_year_is_bounded_by_the_cadence() {
   pass "a wrong-year declared time cannot silence the watcher beyond the recheck cadence"
 }
 
+test_deadline_keeps_a_fresh_pause_throttle() {
+  local dir state now real_date
+  now=$(date +%s)
+  real_date=$(command -v date)
+  dir=$(paused_until_fixture deadline-fresh-throttle "$((now + 10))" 240)
+  state="$dir/state"
+  printf '%s\n' "$now" > "$dir/clock"
+  cat > "$dir/fakebin/date" <<'SH'
+#!/usr/bin/env bash
+if [ "$*" = +%s ]; then cat "$FM_TEST_CLOCK"; else exec "$FM_TEST_REAL_DATE" "$@"; fi
+SH
+  chmod +x "$dir/fakebin/date"
+  FM_TEST_CLOCK="$dir/clock" FM_TEST_REAL_DATE="$real_date" until_watch "$dir" 240
+  wait_for_exit "$UNTIL_PID" 100 || { reap "$UNTIL_PID"; fail "first pause reminder did not fire"; }
+  ack_stopped_cycle "$state" || fail "could not acknowledge the first reminder"
+  printf '%s\n' "$((now + 10))" > "$dir/clock"
+  FM_TEST_CLOCK="$dir/clock" FM_TEST_REAL_DATE="$real_date" until_watch "$dir" 240
+  if ! wait_poll_cycle "$state" "$UNTIL_PID" || ! wait_poll_cycle "$state" "$UNTIL_PID"; then
+    reap "$UNTIL_PID"; fail "deadline bypassed the fresh reminder throttle"
+  fi
+  reap "$UNTIL_PID"
+  pass "crossing a pause deadline preserves the fresh reminder throttle"
+}
+
 test_paused_until_that_passed_is_rechecked_before_the_cadence() {
   local dir state
   dir=$(paused_until_fixture until-passed "$(( $(date +%s) - 30 ))" 60); state="$dir/state"
@@ -5142,3 +5166,4 @@ test_afk_one_shot_never_hands_off_captain_held_under_away_record
 test_paused_until_near_future_is_quiet_before_the_cadence
 test_paused_until_wrong_year_is_bounded_by_the_cadence
 test_paused_until_that_passed_is_rechecked_before_the_cadence
+test_deadline_keeps_a_fresh_pause_throttle
