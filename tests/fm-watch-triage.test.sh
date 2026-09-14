@@ -1198,6 +1198,145 @@ test_exited_declared_pause_is_bounded_but_live_gate_surfaces() {
   pass "exited declared-pause and captain-held panes use bounded pause cadence while a live decision gate still surfaces once"
 }
 
+# --- declared pause + LIVE agent + a TICKING harness footer, in NORMAL mode ----
+# The live 2026-09-14 case: a crew declared `paused:` and idled, and for hours its
+# stale polls were absorbed on the bounded cadence. Then the harness footer began
+# rendering an "idle 33m" counter that advances once a minute - far slower than the
+# poll, so each tick is a fresh hash that has ALREADY been stably stale. Every one
+# of those ticks re-entered the first-sight branch, pause_state_class read the agent
+# as alive and returned `none`, and the bare `stale: <window>` wake was appended
+# again roughly once a minute for the whole declared wait.
+# The one-shot that surfaces a live declared wait belongs to the DECLARATION, not to
+# the pane hash (bin/fm-watch.sh's away-mode handoff already says so): once the
+# bounded cadence is established, a live crew whose authoritative state reads paused
+# keeps that cadence however much its footer churns, and re-surfaces only on the
+# PAUSE_RESURFACE_SECS cadence anchored on its own status-file age.
+# The fake tmux renders a footer the TEST advances between rounds, so each round
+# proves the pane really moved (a fresh hash, fresh captures) before it asserts
+# silence - the case cannot pass vacuously on a pane that happened to sit still.
+test_live_declared_pause_ticking_footer_keeps_the_bounded_cadence() {
+  local dir state fakebin out drain_out window key sig pid statusf gen ticks
+  local round prev_hash cur_hash prev_ticks cycles wakes bare back
+  dir=$(make_case live-paused-ticking-footer); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; drain_out="$dir/drain.out"; window="test:fm-paused-ticking"
+  statusf="$state/paused-ticking.status"; gen="$dir/footer-gen"; ticks="$dir/ticks"
+  cat > "$fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+set -u
+case "${1:-}" in
+  list-windows)
+    [ -n "${FM_FAKE_TMUX_WINDOW:-}" ] && printf '%s\n' "${FM_FAKE_TMUX_WINDOW#*:}"
+    exit 0 ;;
+  capture-pane)
+    n=$(( $(cat "$FM_FAKE_TMUX_TICKS" 2>/dev/null || echo 0) + 1 ))
+    echo "$n" > "$FM_FAKE_TMUX_TICKS"
+    printf 'holding for the upstream tool release\nidle %sm\n' \
+      "$(cat "$FM_FAKE_TMUX_GEN" 2>/dev/null || echo 0)"
+    exit 0 ;;
+  display-message)
+    case "$*" in
+      *pane_current_command*) printf '%s\n' "${FM_FAKE_TMUX_CURRENT_COMMAND:-}"; exit 0 ;;
+    esac ;;
+esac
+exit 1
+SH
+  chmod +x "$fakebin/tmux"
+  printf 'window=%s\nkind=ship\nharness=grok\nbackend=tmux\n' "$window" > "$state/paused-ticking.meta"
+  printf 'paused: holding for the upstream tool release\n' > "$statusf"
+  sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-paused-ticking_status"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  echo 0 > "$gen"
+  printf '%s' "$(hash_text "$(printf 'holding for the upstream tool release\nidle 0m\n')")" > "$state/.hash-$key"
+  printf '1\n' > "$state/.count-$key"
+
+  # Round 1: first sight of the declaration. A live agent behind a declared wait
+  # still gets its single prompt surface - the control this test must not weaken.
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_TICKS="$ticks" \
+    FM_FAKE_TMUX_GEN="$gen" FM_FAKE_TMUX_CURRENT_COMMAND=grok \
+    FM_FAKE_CREW_STATE='state: paused · source: status-log · holding for the upstream tool release' \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
+    FM_STALE_ESCALATE_SECS=240 FM_PAUSE_RESURFACE_SECS=999 FM_POLL=0.2 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  wait_for_exit "$pid" 150 || { reap "$pid"; fail "a live declared pause did not surface once on first sight"; }
+  [ -e "$state/.paused-$key" ] || fail "the first-sight surface did not establish the bounded pause cadence"
+  ack_stopped_cycle "$state" || fail "could not acknowledge the first-sight declared-pause surface"
+
+  # Rounds 2-6: one footer tick each, on the same standing declaration. Every tick
+  # is a hash the stale path has never classified, which is exactly the shape a
+  # hash-keyed one-shot re-fires on. Each round must absorb it.
+  round=2
+  while [ "$round" -le 6 ]; do
+    prev_hash=$(cat "$state/.hash-$key" 2>/dev/null || true)
+    prev_ticks=$(cat "$ticks" 2>/dev/null || echo 0)
+    echo "$round" > "$gen"
+    : > "$out"
+    PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_TICKS="$ticks" \
+      FM_FAKE_TMUX_GEN="$gen" FM_FAKE_TMUX_CURRENT_COMMAND=grok \
+      FM_FAKE_CREW_STATE='state: paused · source: status-log · holding for the upstream tool release' \
+      FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
+      FM_STALE_ESCALATE_SECS=240 FM_PAUSE_RESURFACE_SECS=999 FM_POLL=0.2 FM_SIGNAL_GRACE=1 \
+      FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+    pid=$!
+    # Four whole cycles: enough for the tick's fresh hash to become stably stale
+    # (.count-<key> back to 2) and be classified again, so silence here is the
+    # absorber's doing and not a round that ended before the stale path ran.
+    cycles=0
+    while [ "$cycles" -lt 4 ]; do
+      wait_poll_cycle "$state" "$pid" \
+        || { reap "$pid"; fail "footer tick $round re-surfaced a standing declared pause: $(cat "$out")"; }
+      cycles=$((cycles + 1))
+    done
+    reap "$pid"
+    cur_hash=$(cat "$state/.hash-$key" 2>/dev/null || true)
+    [ "$(cat "$ticks" 2>/dev/null || echo 0)" -gt "$prev_ticks" ] \
+      || fail "footer tick $round never captured the pane, so its silence proves nothing"
+    [ -n "$cur_hash" ] && [ "$cur_hash" != "$prev_hash" ] \
+      || fail "footer tick $round saw the same pane hash as the round before, so it cannot tell a hash-keyed one-shot from a declaration-keyed one"
+    [ "$(cat "$state/.count-$key" 2>/dev/null || echo missing)" -ge 2 ] \
+      || fail "footer tick $round never became stably stale, so the stale path it targets never ran"
+    [ ! -s "$out" ] || fail "footer tick $round printed a wake reason for a standing declared pause: $(cat "$out")"
+    [ -e "$state/.paused-$key" ] || fail "footer tick $round dropped the bounded pause cadence"
+    [ ! -e "$state/.stale-since-$key" ] || fail "footer tick $round started the wedge timer on a standing declared pause"
+    [ ! -e "$state/.wedge-escalations-$key" ] || fail "footer tick $round climbed the wedge ladder on a standing declared pause"
+    wakes=$(awk -F '\t' -v w="$window" '$3 == "stale" && $4 == w { n++ } END { print n + 0 }' "$state/.wake-queue" 2>/dev/null || echo 0)
+    bare=$(awk -F '\t' -v w="$window" '$3 == "stale" && $4 == w && $5 == "stale: " w { n++ } END { print n + 0 }' "$state/.wake-queue" 2>/dev/null || echo 0)
+    [ "$wakes" -eq 0 ] || fail "footer tick $round queued $wakes stale wakes for a standing declared pause"
+    [ "$bare" -eq 0 ] || fail "footer tick $round queued $bare bare stale wakes for a standing declared pause"
+    # Reaping a live watcher leaves downtime-recovery state, exactly as every
+    # re-armed fixture in this file does; acknowledge it so the NEXT round tests
+    # the declared pause rather than that recovery.
+    ack_stopped_cycle "$state" || fail "could not acknowledge the intentional footer tick $round stop"
+    round=$((round + 1))
+  done
+
+  # The cadence is bounded, not silent: age the pause and its re-surface throttle
+  # past PAUSE_RESURFACE_SECS and the next tick must wake as a declared-pause
+  # recheck, never as a wedge.
+  back=$(( $(date +%s) - 500 ))
+  set_mtime "$back" "$statusf"
+  set_mtime "$back" "$state/.paused-resurfaced-$key"
+  sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-paused-ticking_status"
+  echo 99 > "$gen"
+  : > "$out"
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_TICKS="$ticks" \
+    FM_FAKE_TMUX_GEN="$gen" FM_FAKE_TMUX_CURRENT_COMMAND=grok \
+    FM_FAKE_CREW_STATE='state: paused · source: status-log · holding for the upstream tool release' \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
+    FM_STALE_ESCALATE_SECS=240 FM_PAUSE_RESURFACE_SECS=240 FM_POLL=0.2 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  wait_for_exit "$pid" 150 || { reap "$pid"; fail "an aged declared pause on a ticking footer never re-surfaced for its recheck"; }
+  grep -F "awaiting external" "$out" >/dev/null \
+    || fail "the ticking-footer recheck was not labeled a declared-pause recheck: $(cat "$out")"
+  grep -F "possible wedge" "$out" >/dev/null \
+    && fail "the ticking-footer recheck was mislabeled a possible wedge: $(cat "$out")"
+  FM_STATE_OVERRIDE="$state" "$DRAIN" > "$drain_out" 2>/dev/null || fail "drain after the ticking-footer recheck failed"
+  grep "$(printf '\tstale\t')" "$drain_out" | grep -F "awaiting external" >/dev/null \
+    || fail "the ticking-footer recheck was not queued as a declared-pause recheck: $(cat "$drain_out")"
+  pass "a live declared pause keeps its bounded cadence while its harness footer ticks, and still rechecks on schedule"
+}
+
 test_secondmate_paused_resurfaces_in_normal_mode() {
   local dir state fakebin out capture_file statusf window key pane_hash sig pid back
   dir=$(make_case secondmate-paused-resurface); state="$dir/state"; fakebin="$dir/fakebin"
@@ -2950,6 +3089,7 @@ test_afk_busy_declared_pause_ticking_pane_hands_off_once
 test_nonterminal_stale_not_working_surfaced
 test_nonterminal_stale_paused_absorbed_then_resurfaced
 test_exited_declared_pause_is_bounded_but_live_gate_surfaces
+test_live_declared_pause_ticking_footer_keeps_the_bounded_cadence
 test_secondmate_paused_resurfaces_in_normal_mode
 test_secondmate_captain_held_resurfaces_in_normal_mode
 test_secondmate_nonpaused_stale_remains_suppressed
