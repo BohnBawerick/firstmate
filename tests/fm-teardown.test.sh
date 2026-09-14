@@ -2405,6 +2405,53 @@ configure_secondmate_with_tmux_children() {  # <case-dir>
   done
 }
 
+test_child_slot_claim_survives_busy_retirement_failure() {
+  local case_dir home child_wt claim gen rc=0
+  case_dir=$(make_case child-slot-retirement-retry)
+  write_meta "$case_dir" local-only secondmate
+  configure_secondmate_with_tmux_children "$case_dir"
+  home="$case_dir/secondmate-home"
+  child_wt="$case_dir/pool/1/project"
+  claim="$case_dir/pool/1/.fm-slot-owner"
+  mkdir -p "$case_dir/pool/1"
+  git -C "$case_dir/project" worktree move "$case_dir/child-a-wt" "$child_wt"
+  printf '{"worktrees":[{"name":"1","path":"%s"}]}\n' "$child_wt" \
+    > "$case_dir/pool/treehouse-state.json"
+  printf 'task=child-a\nhome=%s\n' "$home" > "$claim"
+  gen=$("$ROOT/bin/fm-busy-event.sh" arm "$home/state" child-a) \
+    || fail "could not arm child busy state"
+  fm_write_meta "$home/state/child-a.meta" \
+    "window=firstmate:fm-child-a" "endpoint_task_id=child-a" \
+    "worktree=$child_wt" "project=$case_dir/project" \
+    "kind=ship" "mode=local-only" "busy_gen=$gen"
+  mkdir "$home/state/child-a.busy-state.lock"
+  cat > "$case_dir/fakebin/treehouse" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$case_dir/treehouse.log"
+exit 0
+SH
+  chmod +x "$case_dir/fakebin/treehouse"
+
+  FM_BUSY_LOCK_STALE_SECS=3600 \
+    run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+  expect_code 1 "$rc" "child busy lock should stop forced teardown"
+  assert_grep 'busy-state lock timeout for child-a' "$case_dir/stderr" \
+    "cleanup failed before busy retirement: $(cat "$case_dir/stderr")"
+  assert_grep "return --force $child_wt" "$case_dir/treehouse.log" \
+    "child slot was not returned before busy retirement failed"
+  assert_present "$home/state/child-a.meta" "busy retirement failure removed child metadata"
+  assert_present "$claim" "busy retirement failure removed child ownership"
+
+  rmdir "$home/state/child-a.busy-state.lock"
+  run_teardown "$case_dir" --force \
+    > "$case_dir/retry.stdout" 2> "$case_dir/retry.stderr" \
+    || fail "child cleanup retry failed: $(cat "$case_dir/retry.stderr")"
+  assert_absent "$home/state/child-a.meta" "retry retained child metadata"
+  assert_absent "$claim" "retry retained the child's spent slot claim"
+  assert_absent "$case_dir/state/task-x1.meta" "retry retained secondmate metadata"
+  pass "forced secondmate teardown retains child ownership through busy retirement failure"
+}
+
 test_forced_secondmate_teardown_holds_descendant_lifecycle_locks() {
   local case_dir home lock ready release holder_pid rc waited=0 child
   case_dir=$(make_case descendant-locks)
@@ -3793,6 +3840,7 @@ test_herdr_flat_teardown_refuses_orphaning_records_then_retry_completes
 test_herdr_flat_teardown_refuses_records_on_unparseable_presence
 test_herdr_flat_teardown_preflight_refuses_before_changes
 test_forced_secondmate_herdr_child_preflight_refuses_before_changes
+test_child_slot_claim_survives_busy_retirement_failure
 test_forced_secondmate_teardown_holds_descendant_lifecycle_locks
 test_forced_secondmate_herdr_child_retains_records_when_close_unconfirmed
 test_forced_teardown_retains_nested_secondmate_home_when_grandchild_close_unconfirmed
