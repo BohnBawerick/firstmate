@@ -2384,7 +2384,7 @@ EOF
 
 # fm_backend_herdr_pane_agent_state: classify <pane_id> in <session> as one of
 # dead|no-agent|stale-agent|live|unknown, from the JSON body of two read-only
-# calls plus, for a registered agent, the pane's process-level view - never
+# calls plus the pane's process-level view - never
 # from process exit status, since a business-logic "not found" response is a
 # normal, expected outcome here, not a call failure (real herdr 0.7.1 exits 1
 # for it; the canned-response test fakes exit 0; parsing only the JSON keeps
@@ -2395,15 +2395,7 @@ EOF
 #                 reaped it - verified empirically: killing a pane's shell pid
 #                 on a live server makes herdr immediately drop both the pane
 #                 and its tab from `pane get`/`tab list`).
-#   no-agent    - `pane get` succeeds (the pane structurally exists) but `agent
-#                 get` responds with error code agent_not_found: nothing is
-#                 registered in it - exactly what a herdr session-layout restore
-#                 produces (verified empirically: `session stop` + fresh `herdr
-#                 server` restart leaves the pane alive, agent_status "unknown",
-#                 agent get -> agent_not_found - docs/herdr-backend.md "ID
-#                 stability across a server restart"), and what a future
-#                 `resume_agents_on_restore = false` restore would produce too
-#                 (a plain shell, never an agent).
+#   no-agent    - no registered agent and a proven shell-only process view.
 #   stale-agent - `agent get` reports a registered agent_status (working, idle,
 #                 done, or blocked) but fm_backend_herdr_pane_process_state
 #                 proves the pane is shell-only: the registered agent's process
@@ -2415,8 +2407,8 @@ EOF
 #                 running agent. No registered status outranks the process
 #                 view, because a killed mid-turn agent leaves `working`
 #                 behind just as a quit one leaves `idle`.
-#   live        - `agent get` succeeds with a registered agent_status and the
-#                 process-level view is `agent` or `other`: a harness process
+#   live        - the process-level view is `agent`, or `agent get` succeeds
+#                 with a registered agent_status and the view is `other`: a harness process
 #                 is running, or something that is not a bare shell is, so the
 #                 registration keeps its authority. An idle or blocked agent
 #                 is still a genuine, still-registered agent, not a restored
@@ -2431,7 +2423,7 @@ EOF
 #                 here, never toward closing - this is the conservative
 #                 backstop the husk check depends on.
 fm_backend_herdr_pane_agent_state() {  # <session> <pane_id>
-  local session=$1 pane_id=$2 out code presence status agent
+  local session=$1 pane_id=$2 out code presence status shell_state=stale-agent
   presence=$(fm_backend_herdr_pane_presence_state "$session" "$pane_id")
   if [ "$presence" != present ]; then
     case "$presence" in
@@ -2443,18 +2435,21 @@ fm_backend_herdr_pane_agent_state() {  # <session> <pane_id>
   out=$(fm_backend_herdr_cli "$session" agent get "$pane_id" 2>&1)
   code=$(printf '%s' "$out" | jq -r '.error.code // empty' 2>/dev/null)
   if [ -n "$code" ]; then
-    [ "$code" = "agent_not_found" ] && printf 'no-agent' || printf 'unknown'
-    return 0
+    [ "$code" = "agent_not_found" ] || { printf 'unknown'; return 0; }
+    shell_state=no-agent
+  else
+    status=$(printf '%s' "$out" | jq -r '.result.agent.agent_status // empty' 2>/dev/null)
+    case "$status" in
+      working|idle|done|blocked) ;;
+      *) printf 'unknown'; return 0 ;;
+    esac
   fi
-  status=$(printf '%s' "$out" | jq -r '.result.agent.agent_status // empty' 2>/dev/null)
-  agent=$(printf '%s' "$out" | jq -r '.result.agent.agent // empty' 2>/dev/null)
-  case "$status" in
-    working|idle|done|blocked) ;;
-    *) printf 'unknown'; return 0 ;;
-  esac
   case "$(fm_backend_herdr_pane_process_state "$session" "$pane_id")" in
-    agent|other) printf 'live' ;;
-    shell) printf 'stale-agent' ;;
+    agent) printf 'live' ;;
+    other)
+      [ "$shell_state" = stale-agent ] && printf 'live' || printf 'unknown'
+      ;;
+    shell) printf '%s' "$shell_state" ;;
     *) printf 'unknown' ;;
   esac
 }

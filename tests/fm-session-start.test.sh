@@ -1417,7 +1417,7 @@ EOF
   pass "session start: the proven bare-shell recovery path remains intact"
 }
 
-test_session_start_relaunches_herdr_husk_secondmate() {
+test_session_start_preserves_unproven_herdr_secondmate() {
   local rec root home fakebin mate log state out
   rec=$(prepare_session_start_herdr_secondmate secondmate-herdr-husk)
   IFS='|' read -r root home fakebin mate log state <<EOF
@@ -1428,12 +1428,13 @@ EOF
   wait_for_network_stage "$home" "$root" || fail "the deferred network stage never published"
 
   out=$(network_stage_report "$home" "$root")
-  assert_not_contains "$out" "SECONDMATE_LIVENESS:" "successful Herdr husk recovery should stay non-actionable"
-  assert_contains "$(cat "$log")" "pane close p-old" "session start did not close the confirmed Herdr husk"
-  assert_contains "$(cat "$log")" "tab create" "session start did not relaunch the Herdr secondmate"
-  assert_grep 'herdr_pane_id=p-new' "$home/state/$SESSION_START_HERDR_SECOND_MATE_ID.meta" \
-    "the real respawn path did not record the replacement Herdr pane"
-  pass "session start: a confirmed Herdr husk is closed and relaunched"
+  assert_contains "$out" "SECONDMATE_LIVENESS:" "unproven Herdr startup was not reported"
+  assert_not_contains "$(cat "$log")" "pane close p-old" "missing registration authorized endpoint cleanup"
+  assert_not_contains "$(cat "$log")" "tab create" "missing registration authorized duplicate recovery"
+  assert_grep 'herdr_pane_id=p-old' "$home/state/$SESSION_START_HERDR_SECOND_MATE_ID.meta" \
+    "unproven Herdr startup changed endpoint ownership"
+  pass "session start: unregistered Herdr secondmates need departure proof before recovery"
+
 }
 
 # --- endpoint liveness: tmux and herdr, live and dead ------------------------
@@ -2837,7 +2838,7 @@ test_tasks_axi_compatibility_is_probed_once
 test_session_start_preserves_ambiguous_pi_process
 test_session_start_preserves_transiently_unreadable_tmux
 test_session_start_preserves_proven_bare_shell_recovery
-test_session_start_relaunches_herdr_husk_secondmate
+test_session_start_preserves_unproven_herdr_secondmate
 test_status_tail_bounding
 test_status_tail_line_cap
 test_orphan_status_logs_are_printed
