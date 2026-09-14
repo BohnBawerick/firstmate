@@ -513,7 +513,7 @@ test_secondmate_sync_rebinds_target_home_watch() {
     w=$(new_world "watch-sync-$route")
     cp -R "$ROOT/bin/." "$w/seed/bin/"
     printf 'state/\n.fm-secondmate-home\n' > "$w/seed/.gitignore"
-    printf '#!/usr/bin/env bash\nprintf v1 >> "$1"\n' > "$w/seed/bin/watched-action.sh"
+    printf "#!/usr/bin/env bash\nprintf v1 >> \"\$1\"\n" > "$w/seed/bin/watched-action.sh"
     chmod +x "$w/seed/bin/watched-action.sh"
     git -C "$w/seed" add -A
     git -C "$w/seed" commit -qm watch-fixture
@@ -524,7 +524,7 @@ test_secondmate_sync_rebinds_target_home_watch() {
     FM_HOME="$w/sm1" FM_ROOT_OVERRIDE="$w/sm1" FM_PROCEVENT_CLAIM_ROOT="$w/claims" \
       "$w/sm1/bin/fm-procevent-when.sh" arm sync-watch --stable 1 \
       --condition true --action "$w/sm1/bin/watched-action.sh" "$w/action.log" >/dev/null || fail "watch arm failed"
-    printf '#!/usr/bin/env bash\nprintf v2 >> "$1"\n' > "$w/seed/bin/watched-action.sh"
+    printf "#!/usr/bin/env bash\nprintf v2 >> \"\$1\"\n" > "$w/seed/bin/watched-action.sh"
     git -C "$w/seed" add -A
     git -C "$w/seed" commit -qm updated-action
     git -C "$w/seed" push -q origin main

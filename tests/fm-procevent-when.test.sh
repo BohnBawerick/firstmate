@@ -83,7 +83,7 @@ count_lines() { [ -e "$1" ] && grep -c . "$1" || echo 0; }
 
 test_startup_waits_for_rebind() (
   local home="$TMP_ROOT/startup-rebind" repo="$TMP_ROOT/startup-repo" fakebin real_mv real_cat
-  local rebind_pid= run_pid=
+  local rebind_pid='' run_pid='' pid=''
   trap ': > "$home/release"; for pid in "$rebind_pid" "$run_pid"; do [ -z "$pid" ] || kill "$pid" 2>/dev/null || true; done; wait 2>/dev/null || true' EXIT
   new_home "$home"
   mkdir -p "$repo/bin" "$home/fakebin"

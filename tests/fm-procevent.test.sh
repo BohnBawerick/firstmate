@@ -166,7 +166,7 @@ hold_source_lock_then_handle() {  # <home> <source-id> <sequence> <ready-file> <
 
 test_interrupted_warning_retries_publication() (
   local home="$TMP_ROOT/interrupted-warning" source fakebin real_cat out rc=0
-  local holder_pid= reconcile_pid=
+  local holder_pid='' reconcile_pid='' pid=''
   trap 'for pid in "$holder_pid" "$reconcile_pid"; do [ -z "$pid" ] || kill "$pid" 2>/dev/null || true; done; wait 2>/dev/null || true' EXIT
   new_home "$home"
   pe_register "$home" lavish interrupted-src -- /bin/true >/dev/null

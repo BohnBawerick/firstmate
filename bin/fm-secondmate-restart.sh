@@ -206,7 +206,7 @@ launch_restart() {  # <array-index>
   local i=$1 result tmp
   if ! persist_reply_complete "${CORR[i]}"; then
     fall_back_to_nudge "${IDS[$i]}" "its reply did not confirm completed persistence; its conversation remains running"
-    PLAN[i]=done
+    PLAN[i]='done'
     return
   fi
   result="$RESULT_DIR/$i.result"

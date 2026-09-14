@@ -1835,7 +1835,7 @@ test_interrupted_destructive_cleanup_leaves_a_recoverable_close() {
   assert_present "$home/state/$id.meta" "bootstrap removed ownership before cleanup"
   assert_contains "$out" "lifecycle cleanup is unconfirmed" "bootstrap did not explain the preserved records"
   out=$(run_teardown "$case_dir" "$id") || fail "teardown could not finish cleanup: $out"
-  [ "$(row_state "$case_dir" "$id")" = done ] || fail "completed teardown left the backlog open"
+  [ "$(row_state "$case_dir" "$id")" = 'done' ] || fail "completed teardown left the backlog open"
   assert_absent "$marker" "completed teardown retained its close marker"
   assert_absent "$home/state/$id.meta" "completed teardown retained metadata"
   pass "bootstrap preserves interrupted cleanup until teardown finishes"
@@ -2122,7 +2122,7 @@ test_recovery_preserves_a_close_for_the_same_meta_incarnation() {
   assert_present "$(home_of "$case_dir")/state/$id.meta" "bootstrap removed matching metadata"
   assert_present "$(home_of "$case_dir")/state/$id.backlog-close" "bootstrap lost the pending close"
   out=$(run_teardown "$case_dir" "$id") || fail "teardown failed: $out"
-  [ "$(row_state "$case_dir" "$id")" = done ] || fail "teardown did not close the row"
+  [ "$(row_state "$case_dir" "$id")" = 'done' ] || fail "teardown did not close the row"
   pass "only teardown completes cleanup for matching metadata"
 }
 
@@ -2174,7 +2174,7 @@ test_recovery_preserves_both_records_when_meta_removal_fails() {
 
   rm -f "$case_dir/fakebin/rm"
   out=$(run_teardown "$case_dir" "$id") || fail "teardown failed after removal recovered: $out"
-  [ "$(row_state "$case_dir" "$id")" = done ] || fail "teardown did not close the row"
+  [ "$(row_state "$case_dir" "$id")" = 'done' ] || fail "teardown did not close the row"
   assert_absent "$meta" "completed teardown retained metadata"
   assert_absent "$(home_of "$case_dir")/state/$id.backlog-close" "completed teardown retained its close marker"
   pass "recovery preserves both records without attempting removal"

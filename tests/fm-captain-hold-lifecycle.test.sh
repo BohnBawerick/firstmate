@@ -1430,7 +1430,7 @@ EOF
     fi
   done
   run_captain "$mate" hold repeated-call --reason "same choice" >/dev/null || fail "fourth hold failed"
-  tasks_in "$mate" done repeated-call >/dev/null || fail "external close failed"
+  tasks_in "$mate" 'done' repeated-call >/dev/null || fail "external close failed"
   run_captain "$mate" answer repeated-call --decision-file "$decision" >/dev/null || fail "external close answer failed"
   assert_grep 'resolved [key=captain-hold-repeated-call-4]: captain hold repeated-call: answered (repaired)' \
     "$channel" "external close replay resolved the previous hold"
