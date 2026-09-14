@@ -223,8 +223,9 @@ test_agy_tmux_names_the_native_binary_an_agent() {
 # is the same identity surface the tmux liveness probe and the ancestry
 # detector use - no real agy process is needed because the foreground branch
 # answers before the descendant walk touches the process table.
-agy_herdr_process_info_body() {  # <shell-pid> <foreground-name> -> JSON
-  printf '%s\n' "{\"result\":{\"type\":\"pane_process_info\",\"process_info\":{\"pane_id\":\"w9:p1\",\"shell_pid\":$1,\"foreground_processes\":[{\"pid\":$(( $1 + 1 )),\"name\":\"$2\",\"argv\":[\"$2\",\"--prompt-interactive\"],\"argv0\":\"$2\",\"cmdline\":\"$2 --prompt-interactive\"}]}}}"
+agy_herdr_process_info_body() {  # <shell-pid> <foreground-name> [foreground-pid] -> JSON
+  local foreground_pid=${3:-$(( $1 + 1 ))}
+  printf '%s\n' "{\"result\":{\"type\":\"pane_process_info\",\"process_info\":{\"pane_id\":\"w9:p1\",\"shell_pid\":$1,\"foreground_process_group_id\":$foreground_pid,\"foreground_processes\":[{\"pid\":$foreground_pid,\"name\":\"$2\",\"argv\":[\"$2\",\"--prompt-interactive\"],\"argv0\":\"$2\",\"cmdline\":\"$2 --prompt-interactive\"}]}}}"
 }
 
 agy_herdr_agent_state() {  # <fixture-dir> -> verdict; logs every CLI call
@@ -272,13 +273,19 @@ test_herdr_done_with_live_registry_stays_live() {
 test_herdr_registered_status_over_a_shell_only_pane_is_stale_not_live() {
   local dir out shell_pid
   dir="$TMP_ROOT/herdr-stale"; mkdir -p "$dir"
-  # The descendant walk reads the REAL process table, so the canned pane shell
-  # must be a process this test owns and can prove alive: a short-lived sleep.
-  sleep 30 & shell_pid=$!
+  # Departure proof requires a real childless shell matching the pane record.
+  mkfifo "$dir/input"
+  bash -c 'printf ready > "$2"; read -r -t 30 _ <> "$1"' _ "$dir/input" "$dir/ready" &
+  shell_pid=$!
+  fm_test_track_pid "$shell_pid"
+  for _ in $(seq 1 100); do
+    [ ! -e "$dir/ready" ] || break
+    sleep 0.01
+  done
+  [ -e "$dir/ready" ] || fail "the shell-only pane did not become ready"
   printf '%s\n' '{"result":{"agent":{"agent":"agy","agent_status":"done","pane_id":"w9:p1"}}}' > "$dir/agent-get.json"
-  agy_herdr_process_info_body "$shell_pid" bash > "$dir/process-info.json"
+  agy_herdr_process_info_body "$shell_pid" bash "$shell_pid" > "$dir/process-info.json"
   out=$(agy_herdr_agent_state "$dir")
-  kill "$shell_pid" 2>/dev/null || true
   [ "$out" = stale-agent ] || fail "a registered status over a proven shell-only pane must read stale-agent, got '$out'"
   out=$(AGY_FIX_RESP="$dir/agent-get.json" AGY_FIX_PROC="$dir/process-info.json" AGY_FIX_LOG="$dir/calls.log" bash -c '
     . "$0/bin/backends/herdr.sh"
@@ -292,6 +299,8 @@ test_herdr_registered_status_over_a_shell_only_pane_is_stale_not_live() {
     }
     fm_backend_herdr_tab_is_husk testsession w9:p1 && printf husk || printf refused' "$ROOT" 2>&1)
   [ "$out" = refused ] || fail "a stale registration must still refuse husk replacement, got '$out'"
+  kill "$shell_pid" 2>/dev/null || true
+  wait "$shell_pid" 2>/dev/null || true
   pass "herdr exit detection: a registered status over a shell-only pane is stale-agent and still refuses closing"
 }
 
