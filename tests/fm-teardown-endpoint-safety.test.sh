@@ -995,6 +995,39 @@ test_slot_claim_requires_proven_home_and_task() {
 
 }
 
+test_slot_claim_survives_parent_report_failure() {
+  local dir id=report-retry rc=0
+  dir=$(make_case slot-claim-report-retry)
+  mark_case_as_treehouse_pool "$dir"
+  fm_write_meta "$dir/home/state/$id.meta" \
+    "window=firstmate:fm-$id" "endpoint_task_id=$id" \
+    "worktree=$dir/worktree" "project=$dir/project" "kind=scout"
+  printf 'done: investigation complete\n' > "$dir/home/state/$id.status"
+  printf 'mate\n' > "$dir/home/.fm-secondmate-home"
+  mkdir -p "$dir/parent/state/mate.status"
+  printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$dir/parent" \
+    > "$dir/home/.fm-secondmate-parent"
+
+  run_case "$dir" "$id" > "$dir/stdout" 2> "$dir/stderr" || rc=$?
+  [ "$rc" -ne 0 ] || fail "teardown discarded an undelivered parent report"
+  assert_contains "$(cat "$dir/stderr")" "final outcome has not reached the parent channel" \
+    "teardown failed before the parent report boundary"
+  assert_contains "$(cat "$dir/runtime.log")" "treehouse <return>" \
+    "teardown did not return the slot before delivery failed"
+  assert_present "$dir/home/state/$id.meta" "delivery failure removed task metadata"
+  assert_present "$dir/pool/1/.fm-slot-owner" "delivery failure removed retry ownership"
+
+  rmdir "$dir/parent/state/mate.status"
+  run_case "$dir" "$id" > "$dir/retry.stdout" 2> "$dir/retry.stderr" \
+    || fail "teardown retry failed: $(cat "$dir/retry.stderr")"
+  assert_contains "$(cat "$dir/parent/state/mate.status")" "child $id done: investigation complete" \
+    "retry did not deliver the retained outcome"
+  assert_absent "$dir/home/state/$id.meta" "successful retry retained task metadata"
+  assert_absent "$dir/pool/1/.fm-slot-owner" "successful retry retained the spent claim"
+  pass "fm-teardown: ownership survives parent delivery failure until retry retires the task"
+}
+
+test_slot_claim_survives_parent_report_failure
 test_invalid_endpoint_records_refuse_before_mutation
 test_control_lock_contention_refuses_before_mutation
 test_non_pool_teardown_ignores_task_set_lock
