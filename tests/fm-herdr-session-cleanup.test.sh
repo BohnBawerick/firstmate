@@ -33,11 +33,14 @@ cat > "$FAKE_PS" <<'SH'
 #!/usr/bin/env bash
 case "$*" in
   "-axo pid=,ppid=") printf '1 0\n67 1\n' ;;
+  "-axo pid=,ppid=,stat=,comm=") printf '1 0 Ss init\n67 1 Ss sh\n' ;;
+  "-p 67 -o comm=") printf 'sh\n' ;;
   "-p 67 -o stat=") printf 'Ss\n' ;;
   *) exit 1 ;;
 esac
 SH
 chmod +x "$FAKE_PS"
+export FM_HERDR_PS_BIN="$FAKE_PS"
 LINUX_PROCESS_INFO='{"result":{"type":"pane_process_info","process_info":{"pane_id":"w2:p1","shell_pid":67,"foreground_process_group_id":67,"foreground_processes":[{"argv":["/bin/sh"],"name":"sh","pid":67}]}}}'
 argv_pid=$(
   # shellcheck disable=SC2329 # invoked indirectly by the idle-shell proof.
@@ -74,7 +77,6 @@ fm_lock_try_acquire() {
   mkdir "$1" 2>/dev/null
 }
 fm_lock_release() { rm -rf -- "$1"; }
-fm_backend_herdr_pane_idle_shell_pid() { [ ! -e "$FIXTURE_DIR/process-unsafe" ] && printf '67\n'; }
 fm_backend_herdr_projection_focus_snapshot() {
   [ ! -e "$FIXTURE_DIR/focus-unreadable" ] || return 1
   printf 'w1\t%s' "$(cat "$FIXTURE_DIR/active-tab")"
@@ -160,6 +162,10 @@ fm_backend_herdr_cli() {
       ;;
     "pane get")
       printf '{"result":{"pane":{"pane_id":"%s","tab_id":"%s","workspace_id":"%s"}}}\n' "$PANE" "$TAB" "$WS"
+      ;;
+    "pane process-info")
+      [ ! -e "$FIXTURE_DIR/process-unsafe" ] || return 1
+      printf '%s\n' "$LINUX_PROCESS_INFO"
       ;;
     "agent get")
       case "$(cat "$FIXTURE_DIR/agent")" in

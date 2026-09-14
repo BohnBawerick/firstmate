@@ -2173,9 +2173,19 @@ test_legacy_identities_keep_working() {
   printf 'Resolution recorded by fm-decision-hold.\nDecision digest: %s\nRouted identities: sample-old-routed-work\nResolution mode: routed\n\nCaptain decision:\n%s\n\nRouted work:\n- sample-old-routed-work\n' \
     "$legacy_digest" "$legacy_text" > "$home/old-route-body.txt"
   tasks_in "$home" update "$old_hold" --body-file "$home/old-route-body.txt" --archive-body >/dev/null
+  if run_shim "$home" resolve "$id" old-route --decision-file "$home/old-route.txt" \
+    --routed-to sample-old-routed-work > "$home/old-route.out" 2>&1; then
+    fail "the shim replayed an unbound pre-collapse routed record"
+  fi
+  show=$(tasks_in "$home" show "$old_hold" --full)
+  assert_contains "$show" "held: yes" "the unbound legacy replay released its hold"
+  show=$(tasks_in "$home" show sample-old-routed-work --full)
+  assert_contains "$show" "blocked_by: $old_hold" "the unbound legacy replay cleared its routed edge"
+  run_shim "$home" hold "$id" old-route --reason "captain old route reaffirmed" >/dev/null \
+    || fail "the shim could not reaffirm the legacy routed hold"
   run_shim "$home" resolve "$id" old-route --decision-file "$home/old-route.txt" \
     --routed-to sample-old-routed-work >/dev/null \
-    || fail "the shim did not replay a matching pre-collapse routed record"
+    || fail "the shim did not resolve a reaffirmed pre-collapse routed hold"
   show=$(tasks_in "$home" show "$old_hold" --full)
   assert_contains "$show" "state: done" "the replayed legacy resolve did not close its hold"
   show=$(tasks_in "$home" show sample-old-routed-work --full)
@@ -2897,8 +2907,8 @@ test_retained_row_artifacts_survive_captain_answers() {
 
 # Retention happens after destructive cleanup, through the same pending record
 # an ordinary close stages first. A cleanup that fails part-way therefore leaves
-# the row exactly as it was, and the next session start finishes the retention
-# instead of closing the captain's question.
+# the row exactly as it was until an explicit teardown retry finishes cleanup.
+# Session start preserves matching metadata and asks for that retry.
 test_interrupted_cleanup_keeps_the_captain_call_recoverable() {
   local home id wt show rc bootstrap
   home=$(make_home teardown-held-interrupted)
@@ -2946,17 +2956,23 @@ SH
     FM_CONFIG_OVERRIDE="$home/config" FM_BOOTSTRAP_NETWORK=skip \
     "$ROOT/bin/fm-bootstrap.sh" 2>&1) \
     || fail "session start could not replay the interrupted retention: $bootstrap"
-  assert_contains "$bootstrap" "kept the captain call for $id open" \
-    "session start did not report the retained captain call"
-  assert_absent "$home/state/$id.meta" "session start left the interrupted task record behind"
-  assert_absent "$home/state/$id.backlog-close" "session start left the pending record behind"
-  show=$(tasks_in "$home" show "$id" --full) || fail "session start erased the captain call"
-  assert_not_contains "$show" "state: done" "session start closed the captain call with no recorded answer"
-  assert_contains "$show" "state: queued" "session start did not return the captain call to the queue"
-  assert_contains "$show" "hold_kind: captain" "session start dropped the captain hold"
+  assert_contains "$bootstrap" "retry teardown before replaying its pending close" \
+    "session start did not require confirmed lifecycle cleanup"
+  assert_present "$home/state/$id.meta" "session start erased unconfirmed task metadata"
+  assert_present "$home/state/$id.backlog-close" "session start erased the retry record"
+  PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_CONFIG_OVERRIDE="$home/config" "$TEARDOWN" "$id" --force > "$home/retry.out" 2>&1 \
+    || fail "teardown could not finish the interrupted retention: $(cat "$home/retry.out")"
+  assert_absent "$home/state/$id.meta" "teardown retry left the interrupted task record behind"
+  assert_absent "$home/state/$id.backlog-close" "teardown retry left the pending record behind"
+  show=$(tasks_in "$home" show "$id" --full) || fail "teardown retry erased the captain call"
+  assert_not_contains "$show" "state: done" "teardown retry closed the captain call with no recorded answer"
+  assert_contains "$show" "state: queued" "teardown retry did not return the captain call to the queue"
+  assert_contains "$show" "hold_kind: captain" "teardown retry dropped the captain hold"
   assert_contains "$show" "Deliverable of the finished work: report data/$id/report.md" \
-    "session start did not record the finished work's deliverable"
-  pass "an interrupted cleanup keeps the captain call recoverable and session start retains it"
+    "teardown retry did not record the finished work's deliverable"
+  pass "session start preserves interrupted cleanup until teardown retries the captain call retention"
 }
 
 test_answer_before_cleanup_replay_preserves_the_retained_report() {
@@ -3002,8 +3018,16 @@ SH
     FM_CONFIG_OVERRIDE="$home/config" FM_BOOTSTRAP_NETWORK=skip \
     "$ROOT/bin/fm-bootstrap.sh" 2>&1) \
     || fail "session start could not replay cleanup after the answer: $bootstrap"
-  assert_absent "$home/state/$id.meta" "session start left the interrupted task record behind"
-  assert_absent "$home/state/$id.backlog-close" "session start left the pending record behind"
+  assert_contains "$bootstrap" "retry teardown before replaying its pending close" \
+    "session start did not require confirmed lifecycle cleanup"
+  assert_present "$home/state/$id.meta" "session start erased unconfirmed task metadata"
+  assert_present "$home/state/$id.backlog-close" "session start erased the retry record"
+  PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_CONFIG_OVERRIDE="$home/config" "$TEARDOWN" "$id" --force > "$home/retry.out" 2>&1 \
+    || fail "teardown could not finish cleanup after the answer: $(cat "$home/retry.out")"
+  assert_absent "$home/state/$id.meta" "teardown retry left the interrupted task record behind"
+  assert_absent "$home/state/$id.backlog-close" "teardown retry left the pending record behind"
   json=$(run_bearings "$home") || fail "Bearings failed after the answer-before-replay lifecycle"
   printf '%s' "$json" | jq -e \
     --arg id "$id" --arg report "data/$id/report.md" \
@@ -3127,8 +3151,20 @@ SH
     FM_CONFIG_OVERRIDE="$home/config" FM_BOOTSTRAP_NETWORK=skip \
     "$ROOT/bin/fm-bootstrap.sh" 2>&1) \
     || fail "session start could not replay relocated cleanup after the answer: $bootstrap"
-  assert_absent "$home/state/$id.meta" "session start left the relocated task record behind"
-  assert_absent "$home/state/$id.backlog-close" "session start left the relocated pending record behind"
+  assert_contains "$bootstrap" "retry teardown before replaying its pending close" \
+    "session start did not require confirmed lifecycle cleanup"
+  assert_present "$home/state/$id.meta" "session start erased unconfirmed task metadata"
+  assert_present "$home/state/$id.backlog-close" "session start erased the retry record"
+  PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$data" \
+    FM_CONFIG_OVERRIDE="$home/config" "$TEARDOWN" "$id" --force > "$home/retry.out" 2>&1 \
+    || fail "teardown could not finish relocated cleanup after the answer: $(cat "$home/retry.out")"
+  assert_contains "$(cat "$home/retry.out")" "is closed" "teardown did not report the answered call as closed"
+  assert_not_contains "$(cat "$home/retry.out")" "stays open" "teardown reported the answered call as held"
+  assert_absent "$home/state/$id.meta" "teardown retry left the relocated task record behind"
+  assert_absent "$home/state/$id.backlog-close" "teardown retry left the relocated pending record behind"
+  show=$(cd "$home" && tasks-axi show "$id" --full --file "$data/backlog.md")
+  assert_contains "$show" "state: done" "teardown retry reopened the answered captain call"
   json=$(PATH="$home/fakebin:$PATH" FM_HOME="$home" FM_DATA_OVERRIDE="$data" \
     FM_BEARINGS_NOW=2026-07-14T12:00:00Z "$BEARINGS" --json) \
     || fail "Bearings failed after the relocated answer-before-replay lifecycle"

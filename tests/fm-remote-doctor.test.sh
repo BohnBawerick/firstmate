@@ -721,9 +721,9 @@ rm -f "$CASE_STATE/socket-owner"
 : > "$CASE_STATE/socket-owner"
 doctor
 expect_code 1 "$DOCTOR_RC" "a session with no provable owner was reported ready"
-assert_contains "$DOCTOR_OUT" 'check herdr-server=fixable: session fm-remote is running but no herdr process can be shown to own its socket' \
-  "an unprovable owner was not tagged fixable"
-pass "a session served outside the Aqua login session is fixable and --fix retakes it through launchd"
+assert_contains "$DOCTOR_OUT" 'check herdr-server=human: session fm-remote is running but its origin is unproven (unproven); preserving its panes' \
+  "an unprovable owner was not preserved for human review"
+pass "a proven SSH-born session is repaired through launchd and an unproven owner needs human review"
 
 # --- no GUI login session: every dependent gap stays human -------------------
 

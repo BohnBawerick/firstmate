@@ -2001,6 +2001,7 @@ test_secondmate_force_teardown_preserves_child_on_unproven_lock() {
   fm_git_worktree "$childproj" "$childwt" force-child-lock
   printf '{"worktrees":[{"name":"1","path":"%s"}]}\n' "$childwt" \
     > "$TMP_ROOT/force-lock-child-pool/treehouse-state.json"
+  printf 'task=child\nhome=%s\n' "$subhome" > "$(dirname "$childwt")/.fm-slot-owner"
   printf 'domain\n' > "$subhome/.fm-secondmate-home"
   cat > "$home/state/domain.meta" <<EOF
 window=firstmate:fm-domain
@@ -2073,7 +2074,8 @@ SH
   [ -e "$lock" ] || fail "force teardown removed unproven child index.lock"
   [ -d "$subhome" ] || fail "force teardown removed subhome after child lock refusal"
   [ -e "$subhome/state/child.meta" ] || fail "force teardown cleared child meta after child lock refusal"
-  grep -F 'not provably stale' "$err" >/dev/null || fail "force teardown did not explain unproven child lock refusal"
+  grep -F 'treehouse return --force ' "$log" >/dev/null || fail "force teardown did not attempt child slot return"
+  grep -F 'not provably stale' "$err" >/dev/null || fail "force teardown did not explain unproven child lock refusal: $(cat "$err")"
   pass "secondmate force teardown preserves child worktree after unproven lock refusal"
 }
 

@@ -625,9 +625,7 @@ case "\$cmd \$sub" in
     printf '{"client":{"version":"0.7.1","protocol":14},"server":{"running":true}}\n'
     ;;
   "pane get")
-    if [ "\$arg" = "${stale#*:}" ]; then
-      printf '{"result":{"pane":{"pane_id":"${stale#*:}"}}}\n'
-    elif [ "\$arg" = "${fresh#*:}" ]; then
+    if [ "\$arg" = "${fresh#*:}" ]; then
       printf '{"result":{"pane":{"pane_id":"${fresh#*:}"}}}\n'
     else
       printf '{"error":{"code":"pane_not_found","message":"missing"}}\n' >&2
@@ -635,9 +633,7 @@ case "\$cmd \$sub" in
     fi
     ;;
   "agent get")
-    if [ "\$arg" = "${stale#*:}" ]; then
-      printf '{"error":{"code":"agent_not_found","message":"gone"}}\n' >&2
-    elif [ "\$arg" = "${fresh#*:}" ]; then
+    if [ "\$arg" = "${fresh#*:}" ]; then
       printf '{"result":{"agent":{"agent_status":"idle"}}}\n'
     else
       printf '{"error":{"code":"agent_not_found","message":"gone"}}\n' >&2

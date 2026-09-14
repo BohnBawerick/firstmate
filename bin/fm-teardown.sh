@@ -3216,6 +3216,7 @@ if [ "$BACKEND" = herdr ]; then
 fi
 
 BACKLOG_CLOSED=0
+BACKLOG_RESUME_RETAIN=0
 BACKLOG_TRANSITION=$TEARDOWN_BACKLOG_TRANSITION
 BACKLOG_TRANSITION_FLAGS=()
 [ "$BACKLOG_TRANSITION" = close ] || BACKLOG_TRANSITION_FLAGS=(--retain)
@@ -3271,7 +3272,15 @@ teardown_legacy_stamp_rollback() {
   fi
   BACKLOG_CLOSED=1
   META_SPAWN_GEN=$TEARDOWN_META_SPAWN_GEN
-  if ! fm_backlog_close_marker_write "$STATE" "$ID" "$DATA" "$META_SPAWN_GEN" \
+  BACKLOG_CLOSE_MARKER=$(fm_backlog_close_marker_path "$STATE" "$ID") || exit 1
+  if { [ -e "$BACKLOG_CLOSE_MARKER" ] || [ -L "$BACKLOG_CLOSE_MARKER" ]; } \
+      && fm_backlog_close_marker_validate "$BACKLOG_CLOSE_MARKER" "$DATA" "$ID" "$STATE" \
+      && [ "$FM_BACKLOG_CLOSE_VALIDATED_SPAWN_GEN" = "$META_SPAWN_GEN" ] \
+      && [ "$FM_BACKLOG_CLOSE_VALIDATED_MODE" = retain ]; then
+    BACKLOG_RESUME_RETAIN=1
+  fi
+  if [ "$BACKLOG_RESUME_RETAIN" = 0 ] \
+    && ! fm_backlog_close_marker_write "$STATE" "$ID" "$DATA" "$META_SPAWN_GEN" \
       "${BACKLOG_TRANSITION_FLAGS[@]+"${BACKLOG_TRANSITION_FLAGS[@]}"}" \
       "${BACKLOG_DONE_ARGS[@]+"${BACKLOG_DONE_ARGS[@]}"}"; then
     if [ "$TEARDOWN_LEGACY_ACCEPTED" = 1 ] && [ -z "$TEARDOWN_LEGACY_RETAINED_STAMP" ] \
@@ -3481,8 +3490,8 @@ rm -rf "$STATE/$ID.inbox"
 # ordering, the row returns to Queued with its deliverable recorded.
 if [ "$BACKLOG_CLOSED" = 1 ]; then
   BACKLOG_CLOSE_MARKER=$(fm_backlog_close_marker_path "$STATE" "$ID") || exit 1
-  if ! fm_backlog_atomic_transition "$BACKLOG_TRANSITION" "$STATE/$ID.meta" "$BACKLOG_CLOSE_MARKER" \
-      "$DATA" "$ID" "$STATE" "${BACKLOG_DONE_ARGS[@]+"${BACKLOG_DONE_ARGS[@]}"}"; then
+  if ! { fm_backlog_atomic_transition remove "$STATE/$ID.meta" "task record" "$STATE" \
+      && fm_backlog_close_marker_replay "$STATE" "$BACKLOG_CLOSE_MARKER" "$DATA"; }; then
     fm_lock_release "$META_LOCK"
     META_LOCK_HELD=0
     if [ "$BACKLOG_TRANSITION" = retain ]; then

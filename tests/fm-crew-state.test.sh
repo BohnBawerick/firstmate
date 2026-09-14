@@ -162,14 +162,13 @@ case "${1:-}" in
         exit 0 ;;
       process-info)
         # The process-level view a registration is verified against (#4115):
-        # `agent` puts a live claude in the foreground, `shell` a bare zsh whose
-        # pid is the test script itself (a real, long-lived process with no
-        # harness descendant, so the adapter's real process-table walk finds
-        # it), and anything else answers nothing (unreadable).
+        # `agent` puts a live claude in the foreground, `shell` names the real
+        # childless bash started by start_idle_shell, and anything else answers
+        # nothing (unreadable).
         pane=""; args=("$@"); for ((i=0; i<${#args[@]}; i++)); do [ "${args[$i]}" = --pane ] && pane=${args[$((i+1))]:-}; done
         case "${FM_FAKE_HERDR_PROCESS:-agent}" in
           agent) printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"%s","shell_pid":%s,"foreground_process_group_id":424242,"foreground_processes":[{"pid":424242,"name":"claude","argv0":"claude"}]}}}\n' "$pane" "${FM_FAKE_HERDR_SHELL_PID:-$PPID}" ;;
-          shell) printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"%s","shell_pid":%s,"foreground_process_group_id":%s,"foreground_processes":[{"pid":%s,"name":"zsh","argv0":"zsh","argv":["-zsh"]}]}}}\n' "$pane" "${FM_FAKE_HERDR_SHELL_PID:-$PPID}" "${FM_FAKE_HERDR_SHELL_PID:-$PPID}" "${FM_FAKE_HERDR_SHELL_PID:-$PPID}" ;;
+          shell) printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"%s","shell_pid":%s,"foreground_process_group_id":%s,"foreground_processes":[{"pid":%s,"name":"bash","argv0":"bash","argv":["bash"]}]}}}\n' "$pane" "$FM_FAKE_HERDR_SHELL_PID" "$FM_FAKE_HERDR_SHELL_PID" "$FM_FAKE_HERDR_SHELL_PID" ;;
         esac
         exit 0 ;;
     esac ;;
@@ -212,6 +211,20 @@ new_case() {  # <name> -> echoes case dir with an empty state/
   local d="$TMP_ROOT/$1"
   mkdir -p "$d/state"
   printf '%s\n' "$d"
+}
+
+start_idle_shell() {  # <case-dir>
+  local attempt stat
+  mkfifo "$1/idle-shell-input"
+  bash --noprofile --norc -c 'IFS= read -r input' <> "$1/idle-shell-input" &
+  FM_FAKE_HERDR_SHELL_PID=$!
+  fm_test_track_pid "$FM_FAKE_HERDR_SHELL_PID"
+  for ((attempt=0; attempt<100; attempt++)); do
+    stat=$(ps -p "$FM_FAKE_HERDR_SHELL_PID" -o stat=)
+    case "$stat" in *S*|*I*) return 0 ;; esac
+    sleep 0.02
+  done
+  fail "idle shell did not block on its input"
 }
 
 arm_idle_record() {  # <state-dir> <id>
@@ -1546,7 +1559,9 @@ test_no_run_herdr_stale_registration_over_shell_reads_agent_gone() {
   FM_FAKE_HERDR_READ_FAIL=1
   FM_FAKE_HERDR_AGENT_STATUS=idle
   FM_FAKE_HERDR_PROCESS=shell
+  start_idle_shell "$d"
   local out; out=$(run_crew_state "$d" feat-herdr-stale)
+  fm_test_reap_pid "$FM_FAKE_HERDR_SHELL_PID"
   assert_contains "$out" "state: unknown" "a stale registration over a shell-only pane is not a live state"
   assert_contains "$out" "backend target gone" "a stale registration over a shell-only pane must read as positive agent-gone evidence"
   assert_contains "$out" "agent gone, pane shell remains" "the agent-gone reason must name the remaining shell"
@@ -1567,7 +1582,9 @@ test_no_run_herdr_stale_working_record_is_never_busy() {
   FM_FAKE_TMUX_MISSING=1
   FM_FAKE_HERDR_AGENT_STATUS=working
   FM_FAKE_HERDR_PROCESS=shell
+  start_idle_shell "$d"
   local out; out=$(run_crew_state "$d" feat-herdr-stale-working)
+  fm_test_reap_pid "$FM_FAKE_HERDR_SHELL_PID"
   assert_not_contains "$out" "state: working" "a stale working record over a shell-only pane must never read busy"
   assert_not_contains "$out" "herdr-native" "the native busy verdict must not be trusted for a shell-only pane"
   # The control: the same record with a live harness in the foreground is busy.

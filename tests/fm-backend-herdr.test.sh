@@ -5590,6 +5590,7 @@ test_wait_transition_clean_timeout_returns_1() {
 . "$ROOT/bin/fm-backend.sh"
 
 "$(idle_shell_fixture_binary)" 300 &
+# shellcheck disable=SC2031 # This shell's preceding background launch sets $!.
 FM_TEST_IDLE_SHELL_PID=$!
 export FM_TEST_IDLE_SHELL_PID
 fm_test_track_pid "$FM_TEST_IDLE_SHELL_PID"

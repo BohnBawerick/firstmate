@@ -236,6 +236,7 @@ stop_away() {
 start_fixture native
 wait_for_file "$STATE_DIR/.supervise-daemon.pid" \
   || fail "native daemon never started"
+AWAY_STARTED=1
 DAEMON_LOG="$STATE_DIR/.supervise-daemon.log"
 wait_for_log "target=$TARGET; target_source=HERDR_ENV(HERDR_PANE_ID); backend=herdr; backend_source=HERDR_ENV" \
   "$DAEMON_LOG" || fail "native daemon did not auto-discover its own pane"
