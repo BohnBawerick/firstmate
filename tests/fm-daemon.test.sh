@@ -26,6 +26,15 @@ TMP_ROOT=$(fm_test_tmproot fm-daemon-tests)
 FM_DAEMON_PRIMARY_HARNESS=claude
 export FM_DAEMON_PRIMARY_HARNESS
 
+age_daemon_pause() {
+  local state=$1 key=$2 epoch=$3
+  printf '%s\n' "$epoch" > "$state/.subsuper-paused-$key"
+  python3 - "$state/$key.status" "$epoch" <<'PYTIME'
+import os, sys
+os.utime(sys.argv[1], (int(sys.argv[2]), int(sys.argv[2])))
+PYTIME
+}
+
 test_afk_start_refuses_when_flag_cannot_be_written() {
   local dir state out status
   dir=$(make_supercase afk-start-flag-unwritable)
@@ -642,7 +651,7 @@ test_stale_diagnostic_wedge_survives_busy_housekeeping() {
     [ "$case_name" = prior-terminal ] \
       && seen_through "$state" "$task"
     [ "$case_name" = paused ] \
-      && echo $(( $(date +%s) - 500 )) > "$state/.subsuper-paused-$key"
+      && age_daemon_pause "$state" "$key" "$(( $(date +%s) - 500 ))"
 
     (
       kill() { printf 'kill %s\n' "$*" >> "$action_log"; }
@@ -730,7 +739,7 @@ test_enriched_wedge_under_declared_wait_uses_pause_cadence() {
 
   # Past PAUSE_RESURFACE_SECS the wait must re-surface exactly once as an
   # awaiting-external recheck (never a wedge) and reset its window.
-  echo $(( $(date +%s) - 5000 )) > "$state/.subsuper-paused-$key"
+  age_daemon_pause "$state" "$key" "$(( $(date +%s) - 5000 ))"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
     FM_STATE_OVERRIDE="$state" FM_ESCALATE_BATCH_SECS=999999 FM_PAUSE_RESURFACE_SECS=3600 \
     housekeeping "$state"
@@ -954,7 +963,7 @@ test_housekeeping_paused_resurfaces_and_resets() {
   printf 'paused: holding for the upstream tool release\n' > "$state/held-w11.status"
   printf 'idle prompt $\n' > "$pane"
   key=$(printf '%s' "held-w11" | tr ':/.' '___')
-  echo $(( $(date +%s) - 5000 )) > "$state/.subsuper-paused-$key"
+  age_daemon_pause "$state" "$key" "$(( $(date +%s) - 5000 ))"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
     FM_STATE_OVERRIDE="$state" FM_PAUSE_RESURFACE_SECS=240 housekeeping "$state"
   grep -F "awaiting external" "$state/.subsuper-escalations" >/dev/null 2>&1 || fail "declared pause was not re-surfaced as an awaiting-external recheck"
@@ -981,7 +990,7 @@ test_housekeeping_captain_held_resurfaces_and_resets() {
   printf 'captain-held [key=route]: tracked by task-decision-route\n' > "$state/held-w11h.status"
   printf 'idle prompt $\n' > "$pane"
   key=$(printf '%s' "held-w11h" | tr ':/.' '___')
-  echo $(( $(date +%s) - 5000 )) > "$state/.subsuper-paused-$key"
+  age_daemon_pause "$state" "$key" "$(( $(date +%s) - 5000 ))"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
     FM_STATE_OVERRIDE="$state" FM_PAUSE_RESURFACE_SECS=240 housekeeping "$state"
   grep -F "awaiting the captain" "$state/.subsuper-escalations" >/dev/null 2>&1 || fail "a captain hold was silenced entirely instead of re-surfacing as a captain-owned recheck: $(cat "$state/.subsuper-escalations" 2>/dev/null || true)"
@@ -1015,7 +1024,7 @@ test_housekeeping_paused_resumed_cleared() {
   "$ROOT/bin/fm-busy-event.sh" apply "$state" held-w12 busy --gen "$gen" \
     --source pi-ext --event agent-start
   key=$(printf '%s' "held-w12" | tr ':/.' '___')
-  echo $(( $(date +%s) - 5000 )) > "$state/.subsuper-paused-$key"
+  age_daemon_pause "$state" "$key" "$(( $(date +%s) - 5000 ))"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
     FM_STATE_OVERRIDE="$state" stale_window_is_busy "$win" "$state" \
     || fail "the resumed-pause fixture does not actually read busy, so it pins nothing about busy state"
@@ -1060,7 +1069,7 @@ test_housekeeping_busy_declared_wait_matures_its_window() {
 
     # Immature window: ticks inside PAUSE_RESURFACE_SECS neither escalate nor let the
     # marker the window ages against be recreated with a fresh timestamp.
-    echo $(( $(date +%s) - 100 )) > "$state/.subsuper-paused-$key"
+    age_daemon_pause "$state" "$key" "$(( $(date +%s) - 100 ))"
     for tick in 1 2 3; do
       PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
         FM_STATE_OVERRIDE="$state" FM_ESCALATE_BATCH_SECS=999999 FM_PAUSE_RESURFACE_SECS=3600 \
@@ -1076,7 +1085,7 @@ test_housekeeping_busy_declared_wait_matures_its_window() {
 
     # Matured window: exactly one recheck, named for the right human, never a wedge,
     # and the window reset so the next one repeats rather than firing once.
-    echo $(( $(date +%s) - 5000 )) > "$state/.subsuper-paused-$key"
+    age_daemon_pause "$state" "$key" "$(( $(date +%s) - 5000 ))"
     PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
       FM_STATE_OVERRIDE="$state" FM_ESCALATE_BATCH_SECS=999999 FM_PAUSE_RESURFACE_SECS=3600 \
       housekeeping "$state"
@@ -1107,6 +1116,53 @@ test_housekeeping_busy_declared_wait_matures_its_window() {
   pass "housekeeping matures a busy pane's declared-wait window into exactly one recheck per window"
 }
 
+test_housekeeping_deadline_preserves_shared_throttle() (
+  local dir state fakebin task win pane now clock until throttle declaration
+  dir=$(make_supercase shared-pause-deadline)
+  state="$dir/state"; fakebin="$dir/fakebin"
+  task=shared-deadline; win="sess:fm-$task"; pane="$dir/pane.txt"
+  printf 'idle prompt $\n' > "$pane"
+  fm_write_meta "$state/$task.meta" "window=$win" "worktree=$dir/wt" "kind=ship" "harness=pi"
+  now=$(date +%s); clock=$now
+  until=$(python3 - "$now" <<'PYTIME'
+import datetime, sys
+print(datetime.datetime.fromtimestamp(int(sys.argv[1]) + 10, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))
+PYTIME
+)
+  printf 'paused: waiting for release until %s\n' "$until" > "$state/$task.status"
+  age_daemon_pause "$state" "$task" "$((now - 240))"
+  throttle="$state/.paused-resurfaced-$(_stale_key "$win")"
+  declaration=$(status_observed_signature "$state/$task.status") || fail "could not read declaration identity"
+  declaration="declared:$declaration"
+  _now() { printf '%s\n' "$clock"; }
+  tick() {
+    PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
+      FM_STATE_OVERRIDE="$state" FM_ESCALATE_BATCH_SECS=999999 FM_PAUSE_RESURFACE_SECS=240 \
+      housekeeping "$state"
+  }
+  tick
+  [ "$(wc -l < "$state/.subsuper-escalations")" -eq 1 ] || fail "cadence did not surface the wait"
+  [ "$(cat "$throttle")" = "$declaration" ] || fail "daemon did not publish the shared declaration throttle"
+  clock=$((now + 11))
+  tick
+  [ "$(wc -l < "$state/.subsuper-escalations")" -eq 1 ] || fail "deadline bypassed a fresh reminder"
+  clock=$((now + 241))
+  tick
+  [ "$(wc -l < "$state/.subsuper-escalations")" -eq 2 ] || fail "expired reminder did not resurface"
+
+  clock=$now
+  printf 'paused: replacement external wait\n' >> "$state/$task.status"
+  tick
+  [ "$(wc -l < "$state/.subsuper-escalations")" -eq 2 ] || fail "replacement declaration inherited an old timer"
+  age_daemon_pause "$state" "$task" "$((now - 500))"
+  declaration=$(status_observed_signature "$state/$task.status") || fail "could not read declaration identity"
+  declaration="declared:$declaration"
+  printf '%s' "$declaration" > "$throttle"
+  tick
+  [ "$(wc -l < "$state/.subsuper-escalations")" -eq 2 ] || fail "daemon bypassed a fresh watcher throttle"
+  pass "housekeeping shares the declaration throttle across deadlines and watcher handoff"
+)
+
 test_housekeeping_declared_time_controls_pause_recheck() {
   local dir state fakebin task win pane key now future distant past escalations
   dir=$(make_supercase pause-until-cadence)
@@ -1126,14 +1182,14 @@ test_housekeeping_declared_time_controls_pause_recheck() {
     past=$(date -u -d "@$((now - 120))" +%Y-%m-%dT%H:%M:%SZ)
   fi
   printf 'paused: waiting for release until %s\n' "$future" > "$state/$task.status"
-  echo $((now - 60)) > "$state/.subsuper-paused-$key"
+  age_daemon_pause "$state" "$key" "$((now - 60))"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
     FM_STATE_OVERRIDE="$state" FM_PAUSE_RESURFACE_SECS=240 housekeeping "$state"
   [ ! -s "$state/.subsuper-escalations" ] \
     || fail "a near-future declared time was rechecked before that time"
 
-  printf 'paused: waiting for release until %s\n' "$distant" > "$state/$task.status"
-  echo $((now - 300)) > "$state/.subsuper-paused-$key"
+  printf 'paused: waiting for release until %s\n' "$distant" >> "$state/$task.status"
+  age_daemon_pause "$state" "$key" "$((now - 300))"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
     FM_STATE_OVERRIDE="$state" FM_PAUSE_RESURFACE_SECS=240 housekeeping "$state"
   escalations=$(wc -l < "$state/.subsuper-escalations" | tr -d ' ')
@@ -1143,7 +1199,7 @@ test_housekeeping_declared_time_controls_pause_recheck() {
   grep -F 'declared clearing time has passed' "$state/.subsuper-escalations" >/dev/null \
     && fail "the bounded daemon recheck falsely claimed the future declared time passed"
 
-  printf 'paused: waiting for release until %s\n' "$past" > "$state/$task.status"
+  printf 'paused: waiting for release until %s\n' "$past" >> "$state/$task.status"
   date +%s > "$state/.subsuper-paused-$key"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
     FM_STATE_OVERRIDE="$state" FM_PAUSE_RESURFACE_SECS=240 housekeeping "$state"
@@ -1167,7 +1223,7 @@ test_housekeeping_paused_unpaused_cleared() {
   printf 'paused: holding for the upstream release\nworking: resumed, upstream landed\n' > "$state/held-w13.status"
   printf 'idle prompt $\n' > "$pane"
   key=$(printf '%s' "held-w13" | tr ':/.' '___')
-  echo $(( $(date +%s) - 5000 )) > "$state/.subsuper-paused-$key"
+  age_daemon_pause "$state" "$key" "$(( $(date +%s) - 5000 ))"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
     FM_STATE_OVERRIDE="$state" FM_PAUSE_RESURFACE_SECS=240 housekeeping "$state"
   [ -e "$state/.subsuper-paused-$key" ] && fail "no-longer-paused marker was not cleared"
@@ -1186,7 +1242,7 @@ test_housekeeping_captain_held_resolved_cleared() {
   printf 'captain-held [key=route]: tracked by task-decision-route\nresolved [key=route]: captain chose the direct path\n' > "$state/held-w13h.status"
   printf 'idle prompt $\n' > "$pane"
   key=$(printf '%s' "held-w13h" | tr ':/.' '___')
-  echo $(( $(date +%s) - 5000 )) > "$state/.subsuper-paused-$key"
+  age_daemon_pause "$state" "$key" "$(( $(date +%s) - 5000 ))"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
     FM_STATE_OVERRIDE="$state" FM_PAUSE_RESURFACE_SECS=240 housekeeping "$state"
   [ -e "$state/.subsuper-paused-$key" ] && fail "an answered captain hold kept its pause marker"
@@ -1421,7 +1477,7 @@ _recheck_fixture() {  # <dir-name> <kind:stale|pause>
   case "$kind" in
     pause)
       printf 'paused: holding for the upstream release\n' > "$state/$task.status"
-      echo $(( $(date +%s) - 5000 )) > "$state/.subsuper-paused-$key"
+      age_daemon_pause "$state" "$key" "$(( $(date +%s) - 5000 ))"
       ;;
     *)
       printf 'working: still running\n' > "$state/$task.status"
@@ -3109,3 +3165,5 @@ test_inject_msg_defers_on_dead_shell_unknown
 test_inject_msg_herdr_unknown_native_idle_delivers
 test_max_defer_herdr_unknown_native_idle_flushes
 test_inject_msg_defers_on_unrecognized_composer_state
+
+test_housekeeping_deadline_preserves_shared_throttle

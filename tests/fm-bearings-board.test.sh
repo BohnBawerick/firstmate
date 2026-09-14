@@ -627,7 +627,7 @@ test_build_starts_a_listener_for_an_already_armed_board() {
 
 # --- part 2: a landed subject is not a live call ----------------------------
 
-test_build_drops_decision_cards_whose_subject_already_landed() {
+test_build_keeps_decision_cards_without_proven_ownership() {
   local home data board out
   home=$(make_home landed-cards)
   data="$home/payload.json"
@@ -656,15 +656,11 @@ test_build_drops_decision_cards_whose_subject_already_landed() {
       ]' "$data" > "$data.tmp" && mv "$data.tmp" "$data"
 
   out=$(run_board "$home" build "$data" 2>&1) || fail "the hygiene build failed: $out"
-  assert_contains "$out" "dropped-landed-card: landed-by-task" \
-    "the build did not report dropping the landed work item card: $out"
-  assert_contains "$out" "dropped-landed-card: timeout-reattach" \
-    "the build did not report dropping the merged timeout/reattach card: $out"
-  assert_contains "$out" "dropped-landed-card: quota-version" \
-    "the build did not report dropping the superseded quota-axi version card: $out"
-  extract_payload "$board" | jq -e '[.captains_call[].key] == ["still-open"]' >/dev/null \
-    || fail "the board dropped an open card or kept one whose subject already landed"
-  pass "build drops decision cards whose subject already landed and keeps open ones"
+  extract_payload "$board" | jq -e '
+    [.captains_call[].key] == ["landed-by-task", "timeout-reattach", "quota-version", "still-open"]
+  ' >/dev/null || fail "the board suppressed a decision without proving its owner and task"
+  pass "build retains decisions without proven ownership despite matching landed subjects"
+
 }
 
 test_build_keeps_a_decision_absent_from_the_main_backlog() {
@@ -679,6 +675,8 @@ test_build_keeps_a_decision_absent_from_the_main_backlog() {
 ## Queued
 
 ## Done
+
+- [x] **remote-mate-call**: Main-home task is complete.
 EOF
   write_valid_payload "$data"
   jq '.captains_call = [{
@@ -789,7 +787,7 @@ test_build_reopens_a_session_the_captain_ended
 test_build_reopens_when_an_opened_session_ends_before_listing
 test_build_refuses_to_arm_when_the_session_stays_ended
 test_build_starts_a_listener_for_an_already_armed_board
-test_build_drops_decision_cards_whose_subject_already_landed
+test_build_keeps_decision_cards_without_proven_ownership
 test_build_keeps_a_decision_absent_from_the_main_backlog
 test_build_fails_when_reconcile_cannot_establish_a_listener
 test_every_decision_card_carries_the_reconcile_choice

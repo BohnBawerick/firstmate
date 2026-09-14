@@ -510,13 +510,6 @@ stale_marker_remove() {  # <window> <state>
   rm -f "$state/.subsuper-stale-$key"
 }
 
-# Pause marker: state/.subsuper-paused-<key> holds the epoch a declared wait (a
-# paused: external wait or a verified captain-held transfer) was first observed
-# declared, whether its pane read idle or busy. Housekeeping ages it against
-# PAUSE_RESURFACE_SECS (much longer than a wedge) and re-surfaces the wait once
-# per window. Recording is create-if-absent so the timestamp is stable across a
-# churny pane (many distinct stale hashes map to one marker), keeping the cadence
-# hash-immune.
 pause_marker_record() {  # <window> <state> - create if absent
   local win=$1 state=$2 key marker
   key=$(_stale_key "$(window_to_task "$win" "$state")")
@@ -1095,7 +1088,7 @@ _oldest_line_age() {  # <buf> -> seconds since the oldest buffered item first ar
 #  3) heartbeat scan: every HEARTBEAT_SCAN_SECS, grep state/*.status for a
 #     captain-relevant line the per-wake classifier missed and escalate it.
 housekeeping() {  # <state>
-  local state=$1 now due f key task win marker age last max_defer oldest pause_secs marker_epoch until bounded_until pause_reason verdict
+  local state=$1 now due f key task win marker age last max_defer oldest pause_secs throttle declaration until bounded_until pause_reason verdict
   now=$(_now)
   migrate_watcher_pause_markers "$state"
 
@@ -1201,25 +1194,26 @@ housekeeping() {  # <state>
       reconcile_pause_tracking "$win" "$state" "$last"
       continue
     fi
-    marker_epoch=$(cat "$marker" 2>/dev/null || echo "$now")
-    case "$marker_epoch" in ''|*[!0-9]*) marker_epoch=$now ;; esac
-    age=$(( now - marker_epoch ))
-    due="$state/.subsuper-pause-until-due-$key"
+    declaration=$(status_observed_signature "$state/$task.status") || continue
+    declaration="declared:$declaration"
+    throttle="$state/.paused-resurfaced-$(_stale_key "$win")"
     until=
     bounded_until=0
     if status_is_captain_held "$last" && fm_afk_contract_present "$state"; then
       continue
     fi
-    if until=$(status_paused_until "$last"); then
-      if [ "$now" -lt "$until" ] && [ "$age" -lt "$pause_secs" ]; then
-        continue
-      elif [ "$now" -lt "$until" ]; then
-        bounded_until=1
-      elif [ "$(cat "$due" 2>/dev/null || true)" = "$until" ]; then
+    until=$(status_paused_until "$last") || until=
+    if [ "$(cat "$throttle" 2>/dev/null || true)" = "$declaration" ]; then
+      age=$(_file_age "$throttle")
+      [ "$age" -ge "$pause_secs" ] || continue
+    else
+      age=$(_file_age "$state/$task.status")
+      if [ -z "$until" ] || [ "$now" -lt "$until" ]; then
         [ "$age" -ge "$pause_secs" ] || continue
       fi
-    else
-      [ "$age" -ge "$pause_secs" ] || continue
+    fi
+    if [ -n "$until" ] && [ "$now" -lt "$until" ]; then
+      bounded_until=1
     fi
     # Only an authoritatively gone endpoint retires the window. Busy does NOT end
     # a declared wait: a worker parked on a long foreground call keeps its pane
@@ -1237,6 +1231,7 @@ housekeeping() {  # <state>
         if [ -n "$last" ] && status_is_captain_held "$last"; then
           if escalate_add "$state" "captain-held ${age}s (awaiting the captain, answer the held decision or release the hold): $win"; then
             _now > "$marker"
+            printf '%s' "$declaration" > "$throttle"
           fi
         elif [ -n "$last" ] && status_is_paused "$last"; then
           if [ "$verdict" = unreadable ]; then
@@ -1248,9 +1243,7 @@ housekeeping() {  # <state>
           fi
           if escalate_add "$state" "$pause_reason"; then
             _now > "$marker"
-            if [ -n "$until" ] && [ "$now" -ge "$until" ]; then
-              printf '%s\n' "$until" > "$due"
-            fi
+            printf '%s' "$declaration" > "$throttle"
           fi
         else
           rm -f "$marker"

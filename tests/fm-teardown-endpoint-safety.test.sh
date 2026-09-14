@@ -46,10 +46,12 @@ mark_case_as_treehouse_pool() {  # <case>
   printf '{"worktrees":[{"name":"1","path":"%s"}]}\n' \
     "$dir/pool/1/project" > "$dir/pool/treehouse-state.json"
   : > "$dir/worktree/sentinel"
+  claim_pool_slot "$dir" "$id"
 }
 
 claim_pool_slot() {  # <case> <task-id> [home]
   local dir=$1 id=$2 home=${3:-$1/home}
+  mkdir -p "$home"
   printf 'task=%s\nhome=%s\n' "$id" "$home" > "$dir/pool/1/.fm-slot-owner"
 }
 
@@ -938,9 +940,27 @@ test_reassigned_pool_slot_finishes_own_cleanup_without_touching_the_slot() {
   pass "fm-teardown: a pool slot claimed by another task is left alone while the task's own cleanup finishes"
 }
 
-# The two states that must never become a false refusal: the task's own claim,
-# and no claim at all (a slot taken before claims existed, or already returned).
-test_own_and_absent_slot_claims_still_tear_down() {
+test_same_task_in_another_home_keeps_its_slot() {
+  local dir id=fix-api worker rc=0
+  dir=$(make_case same-task-foreign-home)
+  mark_case_as_treehouse_pool "$dir"
+  fm_write_meta "$dir/home/state/$id.meta" \
+    "window=firstmate:fm-$id" "endpoint_task_id=$id" \
+    "worktree=$dir/worktree" "project=$dir/project" "kind=scout"
+  claim_pool_slot "$dir" "$id" "$dir/unregistered-home"
+  ( cd "$dir/worktree" && exec sleep 30 ) &
+  worker=$!
+  run_case "$dir" "$id" > "$dir/stdout" 2> "$dir/stderr" || rc=$?
+  [ "$rc" -eq 0 ] || fail "foreign-slot record cleanup failed: $(cat "$dir/stderr")"
+  kill -0 "$worker" 2>/dev/null || fail "same task id let teardown kill another home's worker"
+  assert_present "$dir/worktree/sentinel" "same task id let teardown reset another home's work"
+  assert_reassigned_slot_left_alone "$dir" "$id" "$id" "same task in another home"
+  kill "$worker" 2>/dev/null || true
+  wait "$worker" 2>/dev/null || true
+  pass "fm-teardown: a matching task id cannot claim another home's slot"
+}
+
+test_slot_claim_requires_proven_home_and_task() {
   local dir id=owned-task
 
   dir=$(make_case slot-claim-own)
@@ -948,7 +968,8 @@ test_own_and_absent_slot_claims_still_tear_down() {
   fm_write_meta "$dir/home/state/$id.meta" \
     "window=firstmate:fm-$id" "endpoint_task_id=$id" \
     "worktree=$dir/worktree" "project=$dir/project" "kind=scout"
-  claim_pool_slot "$dir" "$id"
+  ln -s home "$dir/home-alias"
+  claim_pool_slot "$dir" "$id" "$dir/home-alias"
 
   run_case "$dir" "$id" > "$dir/stdout" 2> "$dir/stderr" \
     || fail "teardown of a task holding its own slot claim failed: $(cat "$dir/stderr")"
@@ -963,13 +984,15 @@ test_own_and_absent_slot_claims_still_tear_down() {
     "window=firstmate:fm-$id" "endpoint_task_id=$id" \
     "worktree=$dir/worktree" "project=$dir/project" "kind=scout"
 
-  run_case "$dir" "$id" > "$dir/stdout" 2> "$dir/stderr" \
-    || fail "teardown of an unclaimed slot failed: $(cat "$dir/stderr")"
-  assert_absent "$dir/home/state/$id.meta" "unclaimed-slot teardown left the task record"
-  grep -Fq "treehouse <return>" "$dir/runtime.log" \
-    || fail "unclaimed-slot teardown did not return its pool slot: $(cat "$dir/runtime.log")"
+  rm "$dir/pool/1/.fm-slot-owner"
+  assert_refused_without_mutation "$dir" "$id" "absent slot ownership"
 
-  pass "fm-teardown: a task's own slot claim, and an unclaimed slot, both still tear down"
+  claim_pool_slot "$dir" "$id"
+  printf 'task=%s\nhome=%s\n' "$id" "$dir/missing-home" > "$dir/pool/1/.fm-slot-owner"
+  assert_refused_without_mutation "$dir" "$id" "unprovable owner home"
+
+  pass "fm-teardown: only a matching canonical home and task authorize slot cleanup"
+
 }
 
 test_invalid_endpoint_records_refuse_before_mutation
@@ -985,9 +1008,11 @@ test_reused_pool_slot_refuses_before_touching_the_other_task
 test_cross_home_pool_slot_collision_refuses
 test_sole_slot_record_still_tears_down
 test_reassigned_pool_slot_finishes_own_cleanup_without_touching_the_slot
-test_own_and_absent_slot_claims_still_tear_down
+test_slot_claim_requires_proven_home_and_task
 test_recorded_endpoint_that_changed_directory_still_tears_down
 test_project_lock_anchors_at_the_local_root_across_home_layouts
 test_remote_seeded_home_returns_its_uncontested_slot
 test_remote_seeded_home_still_refuses_a_slot_its_child_holds
 test_remote_layout_homes_serialize_on_one_project_lock
+
+test_same_task_in_another_home_keeps_its_slot

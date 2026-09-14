@@ -96,27 +96,18 @@ A successful normal answer also retires any pending request, because an answered
 Every retirement is checked: if request removal fails after an answer, close, or note is already durable, the durable outcome stands but the command fails and leaves the pending request visible for retry.
 No path here closes a captain call without either the captain's words through `answer` or the evidence through `reconcile close`.
 
-## Card hygiene: a landed subject is not a live call
+## Card ownership and reconciliation
 
-`bin/fm-bearings-board.sh build` cross-checks every `decision` card before it publishes and drops stale subjects rather than trusting the composed inventory alone.
+`bin/fm-bearings-board.sh build` retains decision cards and supplies their reconciliation option.
+Suppressing a card requires completion evidence for that card's own owner and task.
+The current card contract does not establish its owning home, so matching a main-home task, landed row, PR, or artifact version cannot authorize automatic suppression.
+The composer must keep a card when ownership or completion is uncertain.
+Structured `pr_url` and `subject` fields remain available as evidence for reconciliation.
 
-Three checks run, all on exact identity and none on prose:
-
-- The card's key is the captain-held task id, so `bin/fm-captain-hold.sh open --distinguish-absent` is asked whether that task is still an open captain call.
-  Exit 1 - present but closed, or no longer held for the captain - drops the card.
-  Exit 2 means the answer could not be established and exit 3 means the task is absent from the main backlog, which includes a home carrying no backlog file at all; both keep the card, because a card wrongly shown is recoverable and a call wrongly hidden is not.
-- The payload's own `landed` rows are the recently-landed artifacts.
-  A decision card whose task id or `pr_url` appears among them has already shipped its subject, so it drops.
-- A version decision can carry a structured `subject` with an artifact and numeric three-part version.
-  A landed row carrying the same artifact at that version or a newer one supersedes the card without parsing prose.
-
-Dropped cards are named on stderr as `dropped-landed-card:` lines so a rebuild states what it removed rather than quietly shrinking Captain's Call.
-The landing procedure requires one immediate board rebuild to remove already-stale merged-PR and superseded-version cards without a committed migration or change-worktree state mutation.
-A subject whose state cannot be established is kept, because a wrongly shown card is safer than a wrongly hidden call.
 The validator's reservation scope must equal the adapter's reconcile-classification scope, which is all card types because the captured payload carries no card type.
-Owner-aware routing for remote-secondmate decision cards is tracked separately: that follow-up must query landedness and route reconciliation in the authoritative secondmate home while honoring the remote and local consistency principle.
-Until then, an absent main-home task passes through this hygiene check unchanged, and its Reconcile selection remains announced but cannot create a main-home request because the main intake refuses an absent task.
-For a main-home call, the reconcile option is the recovery path for whatever still slips through.
+Owner-aware routing for remote-secondmate decision cards is tracked separately.
+Until that routing exists, a remote card's Reconcile selection is announced but cannot create a main-home request for an absent task.
+Main-home reconciliation is the recovery path for a stale main-home call.
 
 ## Structured read surfaces
 

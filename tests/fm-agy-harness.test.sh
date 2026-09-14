@@ -20,8 +20,7 @@
 #      of the project) and the post-launch gate is the backstop: it answers a
 #      dialog that renders anyway exactly once, never counts a busy turn as
 #      ready on an unregistered path until the dialog has been answered (the
-#      Herdr native-busy-before-dialog race), and fails the spawn with endpoint
-#      cleanup when the brief cannot be confirmed to run in the worktree.
+#      Herdr native-busy-before-dialog race).
 #   5. agy is a crewmate/scout adapter only: a secondmate launch is refused,
 #      and nothing is armed as busy wiring because no writer could clear it.
 #   6. The busy signature is the pinned `esc to cancel` status row alone; the
@@ -811,11 +810,14 @@ test_agy_unregistered_path_without_a_dialog_fails_the_spawn() {
   assert_not_contains "$out" "spawned $id" "an unconfirmed workspace still reported a successful spawn"
   [ "$(count_enter_sends "$CASE_DIR/tmux-calls.log")" -eq 1 ] \
     || fail "the gate must not send Enter into a pane that shows no dialog"
-  assert_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
-    "a failed agy readiness gate left its launched endpoint running"
-  assert_grep 'failed: agy never showed its folder-trust dialog' "$HOME_DIR/state/$id.status" \
+  assert_not_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
+    "an inconclusive agy readiness gate killed its endpoint"
+  assert_present "$HOME_DIR/state/$id.meta" "startup uncertainty removed ownership metadata"
+  assert_grep 'unreadable: agy startup unconfirmed:' "$HOME_DIR/state/$id.status" \
+    "startup uncertainty was not recorded"
+  assert_grep 'unreadable: agy startup unconfirmed: agy never showed its folder-trust dialog' "$HOME_DIR/state/$id.status" \
     "a failed agy readiness gate did not record the failure in the task status"
-  pass "fm-spawn: a busy verdict on an unregistered path without a dialog fails and closes the endpoint"
+  pass "fm-spawn: a busy verdict on an unregistered path without a dialog reports uncertainty and preserves the endpoint"
 }
 
 test_agy_pre_trusted_path_that_never_turns_busy_fails_the_spawn() {
@@ -831,9 +833,12 @@ test_agy_pre_trusted_path_that_never_turns_busy_fails_the_spawn() {
     "a stuck trust dialog failed without its concrete reason"
   [ "$(count_enter_sends "$CASE_DIR/tmux-calls.log")" -eq 2 ] \
     || fail "the gate must answer the dialog exactly once and never hammer Enter"
-  assert_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
-    "a failed agy readiness gate left its launched endpoint running"
-  pass "fm-spawn: an agy dialog that never turns busy fails the spawn and closes the endpoint"
+  assert_not_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
+    "an inconclusive agy readiness gate killed its endpoint"
+  assert_present "$HOME_DIR/state/$id.meta" "startup uncertainty removed ownership metadata"
+  assert_grep 'unreadable: agy startup unconfirmed:' "$HOME_DIR/state/$id.status" \
+    "startup uncertainty was not recorded"
+  pass "fm-spawn: an agy dialog that never turns busy reports uncertainty and preserves the endpoint"
 }
 
 test_agy_missing_binary_refuses_before_pane_creation() {

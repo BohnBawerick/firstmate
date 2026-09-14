@@ -157,9 +157,11 @@ if ! fm_brief_task_content_valid "$SCOUT_BRIEF"; then
 fi
 if fm_brief_task_heading_present "$SCOUT_BRIEF" "## Captain's intent"; then
   INTENT_BODY=$(fm_brief_task_heading_body "$SCOUT_BRIEF" "## Captain's intent")
+  INHERITED_SPEC=$(fm_brief_task_heading_body "$SCOUT_BRIEF" "## Firstmate spec")
 else
   TASK_BODY=$(fm_brief_heading_body "$SCOUT_BRIEF" "# Task")
   INTENT_BODY=$(fm_brief_marked_captain_words "$TASK_BODY")
+  INHERITED_SPEC=$TASK_BODY
 fi
 if [ -z "$(printf '%s' "$INTENT_BODY" | tr -d '[:space:]')" ]; then
   echo "error: $SCOUT_BRIEF has no provenance-marked Captain's intent; add the captain's actual words before promotion" >&2
@@ -197,7 +199,12 @@ EOF
 5. If you reproduced a bug, turn that reproduction into a regression test.
 6. These ship instructions supersede the scout delivery rules and report-based Definition of done. Everything else in your original instructions carries over unchanged: the status protocol; the instruction inbox and its acknowledgement; the escalation rules, including ask-user; and every safety rule.
 $PROMOTION_ASK_USER_BLOCK
-7. Treat the scout-time Firstmate spec and any unmarked legacy \`# Task\` text as investigation context, not captain intent or ship-time instructions.
+7. Preserve every applicable task-specific requirement and accepted steering from the original brief and subsequent instructions, with its original provenance.
+Only scout investigation and delivery instructions that this promotion explicitly replaces are superseded.
+The inherited text below remains Firstmate-supplied specification unless it explicitly attributes words to the captain.
+
+### Inherited task requirements and steering
+$INHERITED_SPEC
 EOF
   printf '\n'
   fm_dod_block "$MODE" "$ID"

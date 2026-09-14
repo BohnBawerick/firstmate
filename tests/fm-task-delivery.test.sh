@@ -1115,8 +1115,8 @@ EOF
   brief="$home/data/$id/ship-instructions.md"
   assert_grep "Investigate why the identity check is failing." "$brief" \
     "promotion did not preserve the original Captain's intent"
-  assert_no_grep "Ship the identity-check fix without adding a classifier." "$brief" \
-    "promotion reused the scout-time Firstmate spec as ship instructions"
+  assert_grep "Ship the identity-check fix without adding a classifier." "$brief" \
+    "promotion discarded an applicable Firstmate requirement"
   spec_body=$(awk '$0 == "## Firstmate spec" { emit=1; next } emit && /^# / { exit } emit { print }' "$brief")
   assert_contains "$spec_body" "Verify isolation before anything else" \
     "promotion did not place its ship-time instructions in Firstmate spec"
@@ -1146,6 +1146,9 @@ Keep this nested requirement too.
 
 Keep this closing requirement.
 
+### Accepted steering from Firstmate
+Do not add a classifier; preserve the existing adapter.
+
 # Setup
 This scout-only setup must not become the spec.
 EOF
@@ -1155,12 +1158,16 @@ EOF
   brief="$home/data/$id/ship-instructions.md"
   assert_grep "Ship the parser without losing detailed requirements." "$brief" \
     "promotion discarded Captain's intent while replacing the scout spec"
-  assert_no_grep "### Acceptance criteria" "$brief" \
-    "promotion reused nested scout acceptance criteria as ship instructions"
-  assert_no_grep "# This example heading is fenced content." "$brief" \
-    "promotion reused a fenced scout-spec example as ship instructions"
-  assert_no_grep "Keep this closing requirement." "$brief" \
-    "promotion reused trailing scout spec as ship instructions"
+  assert_grep "### Acceptance criteria" "$brief" \
+    "promotion discarded nested acceptance criteria"
+  assert_grep "# This example heading is fenced content." "$brief" \
+    "promotion discarded a fenced specification example"
+  assert_grep "Keep this closing requirement." "$brief" \
+    "promotion discarded trailing specification requirements"
+  assert_grep "Do not add a classifier; preserve the existing adapter." "$brief" \
+    "promotion discarded accepted steering"
+  assert_grep "### Accepted steering from Firstmate" "$brief" \
+    "promotion discarded steering provenance"
   assert_no_grep "This scout-only setup must not become the spec." "$brief" \
     "promotion copied the following top-level section into Firstmate spec"
 
@@ -1193,10 +1200,10 @@ EOF
     "legacy promotion truncated multiline provenance-marked captain words"
   assert_not_contains "$intent_body" "Reproduce the refusal" \
     "legacy promotion classified unmarked mixed Task text as captain intent"
-  assert_not_contains "$spec_body" "Reproduce the refusal before changing code." \
-    "legacy promotion reused the scout-time mixed Task as ship instructions"
-  assert_not_contains "$spec_body" "Ship the narrow session-floor fix with a regression test." \
-    "legacy promotion reused old build instructions as the ship spec"
+  assert_contains "$spec_body" "Reproduce the refusal before changing code." \
+    "legacy promotion discarded inherited task requirements"
+  assert_contains "$spec_body" "Ship the narrow session-floor fix with a regression test." \
+    "legacy promotion discarded applicable delivery constraints"
   assert_contains "$spec_body" "Verify isolation before anything else" \
     "legacy promotion did not place promotion ship instructions in Firstmate spec"
   assert_not_contains "$spec_body" "This is a SCOUT task" \

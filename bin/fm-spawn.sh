@@ -1132,7 +1132,7 @@ spawn_abort_cleanup() {
      && fm_treehouse_pool_slot "$PROJ_ABS" "$WT"; then
     SPAWN_SLOT_CLAIMED=0
     if [ "$SPAWN_TREEHOUSE_PROJECT_LOCK_HELD" = 1 ]; then
-      fm_treehouse_slot_owner_release "$WT" "$ID" || true
+      fm_treehouse_slot_owner_release "$WT" "$ID" "$FM_HOME" || true
     else
       echo "warning: leaving task $ID's slot claim on $WT in place; the Treehouse project lock is no longer held, so the next spawn's claim replaces it" >&2
     fi
@@ -3451,9 +3451,8 @@ agy_wait_for_working() {
 }
 
 agy_spawn_fail() {  # <detail>
-  printf 'failed: %s\n' "$1" >> "$STATE/$ID.status"
-  echo "error: $1; inspect window $T" >&2
-  rovo_endpoint_cleanup
+  printf 'unreadable: agy startup unconfirmed: %s\n' "$1" >> "$STATE/$ID.status"
+  echo "error: agy startup unconfirmed: $1; endpoint and ownership records retained; inspect window $T" >&2
 }
 
 if [ "$RELAUNCH" -eq 1 ]; then

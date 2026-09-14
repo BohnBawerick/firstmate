@@ -11,8 +11,7 @@
 #   fm-bearings-board.sh build <data.json>
 #   fm-bearings-board.sh path
 #
-# build      Validate the payload, drop the Captain's Call cards whose subject
-#            already landed, give every surviving decision card the standard
+# build      Validate the payload, give every decision card the standard
 #            reconcile choice, and inject the result into a fresh copy of the
 #            shipped template at the stable board path. Establish the Lavish
 #            session on that board and PROVE it is live BEFORE binding and
@@ -30,9 +29,6 @@
 #              armed: <source-id>            (first registration)
 #              already-armed: <source-id>    (registration already present)
 #              listening: <owner>            (only when a replacement was needed)
-#            Every dropped card is named on stderr as a `dropped-landed-card:`
-#            line, so a rebuild states what it removed instead of quietly
-#            shrinking Captain's Call.
 # path       Print the stable board path for this home.
 #
 # A LIVE SESSION IS PROVED, NEVER ASSUMED. `lavish-axi <file>` exits 0 even
@@ -267,66 +263,11 @@ establish_board_session() {  # <board>
   fail "the board Lavish session is not live after reopening it (lavish-axi ${version:-version-unknown} reported status ${status:-none}); refusing to arm a poll on an ended session"
 }
 
-# --- Captain's Call hygiene ---------------------------------------------------
-# A held decision whose subject already shipped is not a live call, so it is
-# dropped here instead of being carded again. All checks use exact structured
-# identities; unknown subject state keeps the card.
-
-decision_card_is_stale() {  # <task-id> <landed-0-or-1>
-  local task=$1 landed=$2 rc=0
-  if [ "$landed" = 1 ]; then
-    printf 'structured subject already landed\n'
-    return 0
-  fi
-  "$SCRIPT_DIR/fm-captain-hold.sh" open "$task" --distinguish-absent >/dev/null 2>&1 || rc=$?
-  # 1 is a definite "no longer an open captain call". 2 is "cannot tell", 3 is
-  # absent from this backlog, and a call wrongly hidden is worse than a card
-  # wrongly shown, so both uncertain and absent cards stay.
-  if [ "$rc" -eq 1 ]; then
-    printf 'no longer an open captain call\n'
-    return 0
-  fi
-  return 1
-}
-
-# Drop every stale decision card, then give every surviving decision card the
-# standard reconcile choice. Injecting it here is what makes "every decision
-# card offers reconcile" a property of the board rather than of the composer's
-# memory; the validator prevents duplicate decision options.
-effective_payload() {  # <data.json> <dest.json>
-  local data=$1 dest=$2 landed_keys key reason drop='' tmp landed=0
-  landed_keys=$(jq -c '
-    def version_parts: split(".") | map(tonumber);
-    . as $payload
-    | [$payload.captains_call[]
-      | select(.type == "decision")
-      | . as $card
-      | select(
-          ($payload.landed | any(.id == $card.key))
-          or (($card.pr_url? != null) and ($payload.landed | any(.pr_url? == $card.pr_url)))
-          or (($card.subject? != null) and ($payload.landed | any(
-            (.subject? != null)
-            and (.subject.artifact == $card.subject.artifact)
-            and ((.subject.version | version_parts) >= ($card.subject.version | version_parts)))))
-        )
-      | .key]
-  ' "$data") || return 1
-  while IFS= read -r key; do
-    [ -n "$key" ] || continue
-    landed=0
-    if jq -e --arg key "$key" 'index($key) != null' <<< "$landed_keys" >/dev/null; then
-      landed=1
-    fi
-    reason=$(decision_card_is_stale "$key" "$landed") || continue
-    printf 'dropped-landed-card: %s (%s)\n' "$key" "$reason" >&2
-    drop=$drop$key$'\n'
-  done < <(jq -r '.captains_call[]? | select(.type == "decision") | .key' "$data")
-  tmp=$(printf '%s' "$drop" | jq -R -s 'split("\n") | map(select(length > 0))') || return 1
-  jq --argjson dropped "$tmp" '
+effective_payload() {
+  local data=$1 dest=$2
+  jq '
     .captains_call = [
       .captains_call[]
-      | . as $card
-      | select($card.type != "decision" or (($dropped | index($card.key)) == null))
       | if .type == "decision"
         then .options += [{
           value: "reconcile",
