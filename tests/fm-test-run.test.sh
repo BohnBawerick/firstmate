@@ -1078,6 +1078,10 @@ test_portable_shard_union_and_coverage_guard() {
     && fail "portable lanes must not include real-herdr-gated smoke"
   printf '%s\n' "$herdr" | grep -Fq 'tests/fm-backend-herdr-smoke.test.sh' \
     || fail "herdr family must include smoke"
+  printf '%s\n' "$s1" "$s2" "$serial" | grep -Fxq 'tests/fm-herdr-pi-stale-registration-live-e2e.test.sh' \
+    && fail "portable lanes include the live Herdr stale-registration test"
+  printf '%s\n' "$herdr" | grep -Fxq 'tests/fm-herdr-pi-stale-registration-live-e2e.test.sh' \
+    || fail "the Herdr family lost the live stale-registration test"
   out=$("$RUNNER" --check-coverage)
   assert_contains "$out" "FM_TEST_COVERAGE ok" "coverage guard success marker"
   all_count=$("$RUNNER" --list --all | wc -l | tr -d ' ')

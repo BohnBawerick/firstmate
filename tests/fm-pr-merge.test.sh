@@ -156,6 +156,9 @@ case "${1:-} ${2:-}" in
     esac
     ;;
   "pr merge")
+    for arg in "$@"; do
+      case "$arg" in --method|--method=*) echo 'unknown flag: --method' >&2; exit 2 ;; esac
+    done
     if [ -n "${FM_TEST_META_AT_MERGE:-}" ] && [ -f "${FM_STATE_OVERRIDE:-}/task-x1.meta" ]; then
       cat "$FM_STATE_OVERRIDE/task-x1.meta" > "$FM_TEST_META_AT_MERGE"
     fi
@@ -1428,17 +1431,20 @@ test_explicit_merge_method_not_overridden() {
 }
 
 test_method_equals_merge_method_not_overridden() {
-  local case_dir
-  case_dir=$(make_case method-equals-merge-method)
-  mkdir -p "$case_dir/wt"
-  add_gh_mocks "$case_dir" 7777777777777777777777777777777777777777
-  : > "$case_dir/gh-axi.log"
-
-  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/23 -- --method=merge \
-    > "$case_dir/stdout" 2> "$case_dir/stderr" || fail "method-equals-merge-method: fm-pr-merge failed"
-
-  assert_logged_gh_merge "$case_dir" 23 example/repo --method=merge
-  pass "fm-pr-merge respects --method=<value> as an explicit merge method"
+  local case_dir method spelling
+  for method in merge squash rebase; do
+    for spelling in equals separate; do
+      case_dir=$(make_case "method-$method-$spelling")
+      mkdir -p "$case_dir/wt"
+      add_gh_mocks "$case_dir" 7777777777777777777777777777777777777777
+      : > "$case_dir/gh-axi.log"
+      if [ "$spelling" = equals ]; then set -- "--method=$method"; else set -- --method "$method"; fi
+      run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/23 -- "$@" \
+        > "$case_dir/stdout" 2> "$case_dir/stderr" || fail "method normalization failed: $method $spelling"
+      assert_logged_gh_merge "$case_dir" 23 example/repo "--$method"
+    done
+  done
+  pass "fm-pr-merge translates both method spellings to GitHub flags"
 }
 
 test_parses_pr_url_for_gh_axi() {

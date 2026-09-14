@@ -364,10 +364,17 @@ cmd_run() {
     exit 0
   fi
 
+  if ! fm_procevent_source_lock_acquire "$sid"; then
+    emit_doc "$sid" rejected "refused without executing anything: cannot lock the watch source" 0 '' ''
+    exit 0
+  fi
+  trap 'fm_procevent_source_lock_release "$sid"' EXIT
   if ! spec_load "$sid"; then
     emit_doc "$sid" rejected "refused without executing anything: $SPEC_ERROR" 0 '' ''
     exit 0
   fi
+  fm_procevent_source_lock_release "$sid"
+  trap - EXIT
 
   # A fired marker with this runner not mid-action means an earlier run claimed
   # the fire and died before its outcome was durably captured. Never run the

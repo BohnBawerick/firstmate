@@ -500,6 +500,46 @@ recorded_resolution_mode() {  # <task-body>
   printf '%s' "$rest"
 }
 
+recorded_resolution_occurrence() {
+  decode_shown_value "$1" | awk '
+    /^Resolution recorded by fm-(captain|decision)-hold\.$/ { record++; next }
+    record == 1 && /^Hold occurrence: [1-9][0-9]*$/ { print $3; exit }
+    record > 1 { exit }
+  '
+}
+
+body_hold_occurrence() {
+  printf '%s\n' "$1" | sed -n '2s/^Captain hold occurrence: \([1-9][0-9]*\)$/\1/p'
+}
+
+active_hold_occurrence() {
+  local occurrence
+  occurrence=$(body_hold_occurrence "$(decode_shown_value "$1")")
+  if [ -n "$occurrence" ]; then
+    printf '%s' "$occurrence"
+  else
+    printf '%s' "$(( $(resolution_record_count "$1") + 1 ))"
+  fi
+}
+
+resolution_matches_hold() {
+  local body=$1 decoded occurrence
+  decoded=$(decode_shown_value "$body")
+  [ -n "$(body_hold_set_timestamp "$decoded")" ] || return 0
+  occurrence=$(body_hold_occurrence "$decoded")
+  [ -n "$occurrence" ] && [ "$(recorded_resolution_occurrence "$body")" = "$occurrence" ]
+}
+
+require_bound_legacy_retry() {
+  local body=$1
+  if body_has_resolution_record "$body" \
+    && [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ] \
+    && [ -z "$(recorded_resolution_occurrence "$body")" ] \
+    && [ -z "$(body_hold_occurrence "$(decode_shown_value "$body")")" ]; then
+    fail "the matching legacy resolution has no hold occurrence; reaffirm the current hold before answering"
+  fi
+}
+
 closed_answer_replay_mode_compatible() {  # <mode> <task-body>
   case "$1" in
     answered|repaired|routed) return 0 ;;
@@ -513,8 +553,8 @@ closed_answer_replay_mode_compatible() {  # <mode> <task-body>
 resolution_block() {  # <mode>
   local label='Captain decision:'
   [ "$1" != reconciled ] || label='Reconciliation evidence:'
-  printf 'Resolution recorded by fm-captain-hold.\nDecision digest: %s\nResolution mode: %s\n\n%s\n%s\n' \
-    "$DECISION_DIGEST" "$1" "$label" "$DECISION_TEXT"
+  printf 'Resolution recorded by fm-captain-hold.\nDecision digest: %s\nResolution mode: %s\nHold occurrence: %s\n\n%s\n%s\n' \
+    "$DECISION_DIGEST" "$1" "$2" "$label" "$DECISION_TEXT"
 }
 
 # Durable state of one captain call: an active captain hold (annotations
@@ -767,22 +807,32 @@ body_hold_set_timestamp() {  # <decoded-task-body>
     | head -1
 }
 
+body_without_hold_stamp() {
+  local body=$1 stamp
+  stamp=$(body_hold_set_timestamp "$body")
+  if [ -n "$stamp" ]; then
+    body=${body#"Captain hold set: $stamp"}
+    body=${body#$'\n'}
+    case "$body" in
+      'Captain hold occurrence: '*) body=${body#*$'\n'} ;;
+    esac
+    body=${body#$'\n'}
+  fi
+  printf '%s' "$body"
+}
+
 write_hold_set_stamp() {  # <task-id> <shown-body> <timestamp> <preserve-existing-0-or-1>
-  local id=$1 body=$2 hold_set=$3 preserve=$4 existing new_body tmp
+  local id=$1 body=$2 hold_set=$3 preserve=$4 existing new_body tmp occurrence
+  occurrence=$(( $(resolution_record_count "$body") + 1 ))
   body=$(decode_shown_value "$body") \
     || fail "could not decode the existing body for $id"
   existing=$(body_hold_set_timestamp "$body")
   if [ "$preserve" = 1 ] && [ -n "$existing" ]; then
-    return 0
+    [ -z "$(body_hold_occurrence "$body")" ] || return 0
+    hold_set=$existing
   fi
-  if [ -n "$existing" ]; then
-    body=${body#"Captain hold set: $existing"}
-    case "$body" in
-      $'\n\n'*) body=${body#$'\n\n'} ;;
-      $'\n'*) body=${body#$'\n'} ;;
-    esac
-  fi
-  new_body=$(printf 'Captain hold set: %s' "$hold_set")
+  body=$(body_without_hold_stamp "$body")
+  new_body=$(printf 'Captain hold set: %s\nCaptain hold occurrence: %s' "$hold_set" "$occurrence")
   if [ -n "$body" ]; then
     new_body=$(printf '%s\n\n%s' "$new_body" "$body")
   fi
@@ -904,7 +954,7 @@ command_hold() {
   show=$TASK_SHOW_OUTPUT
   hold_kind=$(show_field_value "$show" hold_kind)
   [ "$hold_kind" = captain ] || fail "task $id did not retain its captain hold"
-  occurrence=$(( $(resolution_record_count "$(show_field "$show" body)") + 1 ))
+  occurrence=$(active_hold_occurrence "$(show_field "$show" body)")
   [ -n "$(body_hold_set_timestamp "$(show_field_value "$show" body)")" ] \
     || fail "task $id lost its hold-set stamp while being held"
   publish_parent_hold "$id" "$occurrence" needs-decision "$reason"
@@ -915,18 +965,17 @@ command_hold() {
 # preserving the previous body below it and archiving the pristine original.
 # Successful closure removes the stamp to restore resolution-first ordering.
 write_resolution_record() {  # <task-id> <mode> <shown-body>
-  local id=$1 mode=$2 body=$3 new_body tmp hold_set
-  new_body=$(resolution_block "$mode")
+  local id=$1 mode=$2 body=$3 occurrence=$4 new_body tmp hold_set
+  new_body=$(resolution_block "$mode" "$occurrence")
   body=$(decode_shown_value "$body") \
     || fail "could not decode the existing body for $id"
   hold_set=$(body_hold_set_timestamp "$body")
+  if [ -z "$hold_set" ] && [ "$mode" != repaired ]; then
+    hold_set=${FM_CAPTAIN_HOLD_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
+  fi
+  body=$(body_without_hold_stamp "$body")
   if [ -n "$hold_set" ]; then
-    body=${body#"Captain hold set: $hold_set"}
-    case "$body" in
-      $'\n\n'*) body=${body#$'\n\n'} ;;
-      $'\n'*) body=${body#$'\n'} ;;
-    esac
-    new_body=$(printf 'Captain hold set: %s\n\n%s' "$hold_set" "$new_body")
+    new_body=$(printf 'Captain hold set: %s\nCaptain hold occurrence: %s\n\n%s' "$hold_set" "$occurrence" "$new_body")
   fi
   if [ -n "$body" ]; then
     new_body=$(printf '%s\n\n%s' "$new_body" "$body")
@@ -983,11 +1032,7 @@ remove_interrupted_answer_stamp() {  # <task-id>
     || fail "could not decode the closed body for $id"
   existing=$(body_hold_set_timestamp "$body")
   [ -n "$existing" ] || return 0
-  body=${body#"Captain hold set: $existing"}
-  case "$body" in
-    $'\n\n'*) body=${body#$'\n\n'} ;;
-    $'\n'*) body=${body#$'\n'} ;;
-  esac
+  body=$(body_without_hold_stamp "$body")
   tmp=$(umask 077; mktemp "${TMPDIR:-/tmp}/fm-captain-hold-normalize.XXXXXX") \
     || fail "cannot stage the closed body for $id"
   if ! printf '%s\n' "$body" > "$tmp" \
@@ -999,7 +1044,7 @@ remove_interrupted_answer_stamp() {  # <task-id>
 }
 
 command_answer() {
-  local id=${1:-} decision_file='' release=0 show state hold_kind body outcome recorded_mode occurrence
+  local id=${1:-} decision_file='' release=0 show state hold_kind body outcome recorded_mode occurrence recorded_occurrence
   [ "$#" -ge 1 ] || { usage >&2; exit 2; }
   shift
   while [ "$#" -gt 0 ]; do
@@ -1019,13 +1064,15 @@ command_answer() {
   state=$(show_field "$show" state)
   hold_kind=$(show_field_value "$show" hold_kind)
   body=$(show_field "$show" body)
+  recorded_occurrence=$(recorded_resolution_occurrence "$body")
   if [ "$release" = 1 ]; then outcome=released; else outcome=answered; fi
-  # The occurrence the parent line names: the record about to be written is
-  # one past those already in the body, and a retry names the newest one.
-  occurrence=$(( $(resolution_record_count "$body") + 1 ))
+  occurrence=$(active_hold_occurrence "$body")
 
   if [ "$state" = "done" ]; then
-    if body_has_resolution_record "$body"; then
+    if [ -n "$(body_hold_set_timestamp "$(decode_shown_value "$body")")" ]; then
+      require_bound_legacy_retry "$body"
+    fi
+    if body_has_resolution_record "$body" && resolution_matches_hold "$body"; then
       # An exact compatible retry is an idempotent no-op; drift is rejected.
       [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ] \
         || fail "captain-held task $id records a different captain decision"
@@ -1036,9 +1083,9 @@ command_answer() {
         || fail "task $id records this answer with mode ${recorded_mode:-unknown}; --release cannot reopen a closed task"
       remove_interrupted_answer_stamp "$id"
       if [ "$recorded_mode" = repaired ]; then
-        publish_parent_resolution_then_retire "$id" $((occurrence - 1)) "answered (repaired)"
+        publish_parent_resolution_then_retire "$id" "${recorded_occurrence:-$((occurrence - 1))}" "answered (repaired)"
       else
-        publish_parent_resolution_then_retire "$id" $((occurrence - 1)) answered
+        publish_parent_resolution_then_retire "$id" "${recorded_occurrence:-$((occurrence - 1))}" answered
       fi
       printf 'answered: %s\n' "$id"
       return 0
@@ -1049,7 +1096,7 @@ command_answer() {
     # this really was the captain's item rather than ordinary finished work.
     [ "$hold_kind" = captain ] \
       || fail "task $id was never held for the captain; nothing to record an answer on"
-    write_resolution_record "$id" repaired "$body"
+    write_resolution_record "$id" repaired "$body" "$occurrence"
     remove_interrupted_answer_stamp "$id"
     task_show "$id" || fail "task $id disappeared while recording the answer"
     show=$TASK_SHOW_OUTPUT
@@ -1062,13 +1109,9 @@ command_answer() {
   fi
 
   if [ "$hold_kind" = captain ]; then
-    # Actively the captain's item (a date-expired hold keeps its annotations
-    # and stays answerable). A matching record means an interrupted close to
-    # finish; a different digest is a NEW answer on a re-held task and gets
-    # its own record on top. Either way the close mode is the caller's flag,
-    # checked against an interrupted close's recorded mode so a retry cannot
-    # silently flip a release into a close.
+    require_bound_legacy_retry "$body"
     if body_has_resolution_record "$body" \
+      && [ "$(recorded_resolution_occurrence "$body")" = "$occurrence" ] \
       && [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ]; then
       recorded_mode=$(recorded_resolution_mode "$body" || true)
       case "$recorded_mode" in
@@ -1080,11 +1123,11 @@ command_answer() {
         fail "could not close answered captain-held task $id"
       fi
       remove_interrupted_answer_stamp "$id"
-      publish_parent_resolution_then_retire "$id" $((occurrence - 1)) "$outcome"
+      publish_parent_resolution_then_retire "$id" "$occurrence" "$outcome"
       printf '%s: %s\n' "$outcome" "$id"
       return 0
     fi
-    write_resolution_record "$id" "$outcome" "$body"
+    write_resolution_record "$id" "$outcome" "$body" "$occurrence"
     if ! close_answered "$id" "$release"; then
       fail "could not close answered captain-held task $id"
     fi
@@ -1100,13 +1143,14 @@ command_answer() {
 
   # Not held and not closed: only an already-recorded release replays cleanly.
   if body_has_resolution_record "$body"; then
+    resolution_matches_hold "$body" || fail "task $id records a resolution for an earlier hold"
     recorded_mode=$(recorded_resolution_mode "$body" || true)
     [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ] \
       || fail "task $id records a different captain decision with mode ${recorded_mode:-unknown}"
     [ "$recorded_mode" = released ] && [ "$release" = 1 ] \
       || fail "task $id records this answer with mode ${recorded_mode:-unknown}; replay requires matching --release"
     remove_interrupted_answer_stamp "$id"
-    publish_parent_resolution_then_retire "$id" $((occurrence - 1)) released
+    publish_parent_resolution_then_retire "$id" "${recorded_occurrence:-$((occurrence - 1))}" released
     printf 'released: %s\n' "$id"
     return 0
   fi
@@ -1305,6 +1349,7 @@ command_answers() {
     recorded_digest=$(recorded_decision_digest "$body" || true)
     recorded_mode=$(recorded_resolution_mode "$body" || true)
     if body_has_resolution_record "$body" \
+      && resolution_matches_hold "$body" \
       && { [ "$recorded_digest" = "$digest" ] \
         || { case "$body" in *"Resolution recorded by fm-decision-hold."*) true ;; *) false ;; esac \
           && [ -n "$legacy_digest" ] && [ "$recorded_digest" = "$legacy_digest" ]; }; }; then
@@ -1312,7 +1357,8 @@ command_answers() {
           && closed_answer_replay_mode_compatible "$recorded_mode" "$body"; } \
         || { [ "$release_flag" = --release ] && [ "$state" != "done" ] \
           && [ "$hold_kind" != captain ] && [ "$recorded_mode" = released ]; }; then
-        occurrence=$(resolution_record_count "$body")
+        occurrence=$(recorded_resolution_occurrence "$body")
+        [ -n "$occurrence" ] || occurrence=$(resolution_record_count "$body")
         case "$recorded_mode" in
           repaired) publish_parent_resolution_then_retire "$id" "$occurrence" "answered (repaired)" ;;
           released) publish_parent_resolution_then_retire "$id" "$occurrence" released ;;
@@ -1524,17 +1570,19 @@ reconcile_close() {
   state=$(show_field "$show" state)
   hold_kind=$(show_field_value "$show" hold_kind)
   body=$(show_field "$show" body)
-  occurrence=$(( $(resolution_record_count "$body") + 1 ))
+  occurrence=$(active_hold_occurrence "$body")
   if [ "$state" = "done" ]; then
     # An exact retry finishes an interrupted close and stays idempotent; a
     # different evidence text on an already closed call is refused.
+    resolution_matches_hold "$body" || fail "task $id records a resolution for an earlier hold"
     body_has_resolution_record "$body" \
       || fail "task $id is already closed with no resolution record; use answer to record what closed it"
     [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ] \
       || fail "task $id records a different resolution; it cannot be reconciled again"
     [ "$(recorded_resolution_mode "$body" || true)" = reconciled ] \
       || fail "task $id was not closed by reconciliation"
-    occurrence=$(resolution_record_count "$body")
+    occurrence=$(recorded_resolution_occurrence "$body")
+    [ -n "$occurrence" ] || occurrence=$(resolution_record_count "$body")
     remove_interrupted_answer_stamp "$id"
     publish_parent_hold "$id" "$occurrence" resolved reconciled
     [ "$PARENT_HOLD_PUBLISHED" = 1 ] \
@@ -1545,14 +1593,15 @@ reconcile_close() {
   fi
   [ "$hold_kind" = captain ] \
     || fail "task $id is not held for the captain; there is no captain call to reconcile"
+  require_bound_legacy_retry "$body"
   if body_has_resolution_record "$body" \
+    && [ "$(recorded_resolution_occurrence "$body")" = "$occurrence" ] \
     && [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ]; then
     recorded_mode=$(recorded_resolution_mode "$body" || true)
     [ "$recorded_mode" = reconciled ] \
       || fail "task $id records this resolution with mode ${recorded_mode:-unknown}; it is not a reconciliation retry"
-    occurrence=$(resolution_record_count "$body")
   else
-    write_resolution_record "$id" reconciled "$body"
+    write_resolution_record "$id" reconciled "$body" "$occurrence"
   fi
   close_answered "$id" 0 || fail "could not close reconciled captain-held task $id"
   remove_interrupted_answer_stamp "$id"

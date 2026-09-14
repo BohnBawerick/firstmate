@@ -312,7 +312,7 @@ doctor() {
     FM_FAKE_AQUA_PID="$AQUA_HOLDER_PID" \
     FM_FAKE_PLIST="$CASE_PLIST" \
     FM_FAKE_JOB_PLIST="$CASE_JOB_PLIST" \
-    FM_FAKE_JOB_WORKER="$ROOT/bin/fm-remote-job-worker.sh" \
+    FM_FAKE_JOB_WORKER="${FM_ROOT_OVERRIDE:-$ROOT}/bin/fm-remote-job-worker.sh" \
     FM_FAKE_LAUNCH_AGENT_LOG="$CASE_HOME/Library/Logs/$LABEL.log" \
     FM_FAKE_LOGIN_SHELL="${CASE_LOGIN_SHELL:-/bin/sh}" \
     FM_FAKE_SECOND_LOGIN_SHELL="${CASE_SECOND_LOGIN_SHELL:-}" \
@@ -392,6 +392,25 @@ assert_no_dangerous_calls() { # <msg>
     "the doctor wrote a loginwindow preference"
   assert_absent "$CASE_HOME/kcpassword" "the doctor wrote an auto-login password"
 }
+
+test_checkout_path_xml_escaping() {
+  local checkout saved_guard=$GUARD
+  new_case Darwin with-herdr gui
+  mkdir -p "$CASE_DIR/R&D"
+  checkout="$CASE_DIR/R&D/firstmate"
+  mkdir -p "$checkout"
+  cp -R "$ROOT/bin" "$checkout/bin"
+  GUARD="$checkout/bin/fm-remote-herdr-guard.sh"
+  FM_ROOT_OVERRIDE="$checkout" doctor --fix
+  expect_code 1 "$DOCTOR_RC" "the separate remote-job path restriction was lost"
+  assert_contains "$DOCTOR_OUT" "remote job paths cannot be embedded safely in a property list" "unexpected doctor refusal"
+  assert_contains "$DOCTOR_OUT" "check launchagent=ok:" "the Herdr launch-agent contract was rejected"
+  assert_herdr_launch_agent_contract "$CASE_PLIST" "$CASE_BIN/herdr"
+  GUARD=$saved_guard
+  pass "launch-agent commands preserve XML-sensitive checkout paths"
+}
+
+test_checkout_path_xml_escaping
 
 # --- a host with no herdr is never ready, and --fix cannot install one -------
 

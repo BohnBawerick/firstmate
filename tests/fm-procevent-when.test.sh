@@ -81,6 +81,56 @@ chmod +x "$ACT"
 
 count_lines() { [ -e "$1" ] && grep -c . "$1" || echo 0; }
 
+test_startup_waits_for_rebind() (
+  local home="$TMP_ROOT/startup-rebind" repo="$TMP_ROOT/startup-repo" fakebin real_mv real_cat
+  local rebind_pid= run_pid=
+  trap ': > "$home/release"; for pid in "$rebind_pid" "$run_pid"; do [ -z "$pid" ] || kill "$pid" 2>/dev/null || true; done; wait 2>/dev/null || true' EXIT
+  new_home "$home"
+  mkdir -p "$repo/bin" "$home/fakebin"
+  cp "$ACT" "$repo/bin/action"
+  FM_ROOT_OVERRIDE="$repo" when "$home" arm startup --interval 0.05 --stable 1 \
+    --condition true --action "$repo/bin/action" "$home/action.log" >/dev/null || fail "arm failed"
+  printf '\nprintf "updated\\n"\n' >> "$repo/bin/action"
+  fakebin="$home/fakebin"
+  real_mv=$(command -v mv)
+  real_cat=$(command -v cat)
+  cat > "$fakebin/mv" <<'SH'
+#!/usr/bin/env bash
+if [ "${!#}" = "$FM_TEST_REBIND_HOME/state/when/when-startup.trust" ]; then
+  printf 'ready\n' > "$FM_TEST_REBIND_HOME/ready"
+  while [ ! -e "$FM_TEST_REBIND_HOME/release" ]; do sleep 0.02; done
+fi
+exec "$FM_TEST_REAL_MV" "$@"
+SH
+  cat > "$fakebin/cat" <<'SH'
+#!/usr/bin/env bash
+if [ "${!#}" = "$FM_PROCEVENT_CLAIM_ROOT/when-startup.lock/pid" ]; then
+  printf 'waiting\n' > "$FM_TEST_REBIND_HOME/waiting"
+fi
+exec "$FM_TEST_REAL_CAT" "$@"
+SH
+  chmod +x "$fakebin/mv" "$fakebin/cat"
+  FM_TEST_REBIND_HOME="$home" FM_TEST_REAL_MV="$real_mv" FM_TEST_REAL_CAT="$real_cat" \
+    FM_ROOT_OVERRIDE="$repo" PATH="$fakebin:$PATH" when "$home" rebind-all > "$home/rebind.out" 2>&1 &
+  rebind_pid=$!
+  wait_for_file "$home/ready" || fail "rebind did not reach the trust publication boundary"
+  FM_TEST_REBIND_HOME="$home" FM_TEST_REAL_CAT="$real_cat" FM_ROOT_OVERRIDE="$repo" \
+    PATH="$fakebin:$PATH" when "$home" run when-startup > "$home/run.out" 2>&1 &
+  run_pid=$!
+  wait_for_file "$home/waiting" || fail "startup did not wait for the writer's source lock"
+  [ ! -e "$home/action.log" ] || fail "action ran during trust publication"
+  : > "$home/release"
+  wait "$rebind_pid" || fail "rebind failed"
+  rebind_pid=
+  wait "$run_pid" || fail "watch run failed"
+  run_pid=
+  assert_grep 'status: fired' "$home/run.out" "startup rejected a valid rebind"
+  [ "$(count_lines "$home/action.log")" = 1 ] || fail "action did not fire exactly once"
+  pass "watch startup waits for the complete spec and trust publication"
+)
+
+test_startup_waits_for_rebind
+
 # --- arm binds the pair and refuses a duplicate ------------------------------
 H="$TMP_ROOT/h-arm"; new_home "$H"
 out=$(when "$H" arm arm-test --interval 0.1 \

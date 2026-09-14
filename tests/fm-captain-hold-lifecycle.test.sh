@@ -970,6 +970,31 @@ EOF
   pass "captain holds become visible only after their hold-set timestamp is durable"
 }
 
+test_legacy_resolution_requires_a_bound_hold() {
+  local home digest show
+  home=$(make_home legacy-unbound-resolution)
+  printf 'same legacy answer' > "$home/answer"
+  if command -v shasum >/dev/null 2>&1; then
+    digest=$(shasum -a 256 "$home/answer" | awk '{print $1}')
+  else
+    digest=$(sha256sum "$home/answer" | awk '{print $1}')
+  fi
+  printf 'Resolution recorded by fm-captain-hold.\nDecision digest: %s\nResolution mode: released\n\nCaptain decision:\nsame legacy answer\n' \
+    "$digest" > "$home/body"
+  tasks_in "$home" add legacy-call "Legacy call" --kind ship --repo sample --body-file "$home/body" >/dev/null
+  tasks_in "$home" hold legacy-call --kind captain --reason "choice pending" >/dev/null
+  if run_captain "$home" answer legacy-call --release --decision-file "$home/answer" > "$home/out" 2>&1; then
+    fail "unbound legacy resolution was accepted as a retry"
+  fi
+  show=$(tasks_in "$home" show legacy-call --full)
+  assert_contains "$show" "held: yes" "ambiguous legacy answer released the hold"
+  run_captain "$home" hold legacy-call --reason "choice reaffirmed" >/dev/null || fail "hold reaffirmation failed"
+  run_captain "$home" answer legacy-call --release --decision-file "$home/answer" >/dev/null || fail "bound legacy hold refused its answer"
+  show=$(tasks_in "$home" show legacy-call --full)
+  assert_contains "$show" "Hold occurrence: 2" "legacy record was reused for the new hold"
+  pass "legacy resolution retries require a bound hold occurrence"
+}
+
 test_interrupted_answer_preserves_hold_age() {
   local home snap show
   home=$(make_home interrupted-answer-age)
@@ -1329,7 +1354,7 @@ EOF
 # closes a distinct parent decision and a retry never duplicates a line. A main
 # home publishes nothing anywhere.
 test_secondmate_home_publishes_holds_and_answers() {
-  local parent mate fakebin channel decision out
+  local parent mate fakebin channel decision out occurrence
   parent=$(make_home parent-channel)
   mate="$TMP_ROOT/channel-mate-home"
   mkdir -p "$mate/data" "$mate/state" "$mate/config" "$mate/projects"
@@ -1389,6 +1414,30 @@ EOF
     || fail "an answer retry duplicated a parent line: $(cat "$channel")"
   [ "$(grep -c 'captain-hold-mate-call' "$channel")" = 4 ] \
     || fail "unexpected parent channel contents: $(cat "$channel")"
+
+  run_captain "$mate" hold repeated-call --title "Repeat the same choice" \
+    --reason "same choice" --repo sample >/dev/null || fail "initial identical hold failed"
+  printf 'same decision\n' > "$decision"
+  for occurrence in 1 2 3; do
+    run_captain "$mate" answer repeated-call --decision-file "$decision" --release >/dev/null \
+      || fail "identical release $occurrence failed"
+    run_captain "$mate" answer repeated-call --decision-file "$decision" --release >/dev/null \
+      || fail "identical release retry $occurrence failed"
+    [ "$(grep -c "resolved \[key=captain-hold-repeated-call-$occurrence\]" "$channel")" = 1 ] \
+      || fail "release did not resolve exactly occurrence $occurrence"
+    if [ "$occurrence" -lt 3 ]; then
+      run_captain "$mate" hold repeated-call --reason "same choice" >/dev/null || fail "identical re-hold failed"
+    fi
+  done
+  run_captain "$mate" hold repeated-call --reason "same choice" >/dev/null || fail "fourth hold failed"
+  tasks_in "$mate" done repeated-call >/dev/null || fail "external close failed"
+  run_captain "$mate" answer repeated-call --decision-file "$decision" >/dev/null || fail "external close answer failed"
+  assert_grep 'resolved [key=captain-hold-repeated-call-4]: captain hold repeated-call: answered (repaired)' \
+    "$channel" "external close replay resolved the previous hold"
+  . "$ROOT/bin/fm-classify-lib.sh"
+  case "$(status_open_decisions "$channel")" in
+    *captain-hold-repeated-call-*) fail "identical answers left a parent decision open" ;;
+  esac
 
   run_captain "$mate" hold batch-call --title "Choose the batch release" \
     --reason "batch choice pending" --repo sample >/dev/null \
@@ -3857,6 +3906,7 @@ test_answer_records_and_closes
 test_release_frees_held_work
 test_hold_stamp_precedes_hold_visibility
 test_interrupted_answer_preserves_hold_age
+test_legacy_resolution_requires_a_bound_hold
 test_deferral_leaves_captains_call_until_due
 test_out_of_band_close_is_recordable
 test_visual_review_uses_shared_completion_owner

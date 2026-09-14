@@ -246,6 +246,33 @@ test_words_preserve_final_newline_shape() {
   pass "words preserve their final newline shape in storage and read-back"
 }
 
+test_words_read_failure_preserves_proposal() {
+  local home words real_cat fakebin
+  home=$(make_home words-read-failure)
+  words="$home/words.txt"
+  printf 'original words\n' > "$words"
+  contract "$home" propose --words-file "$words" >/dev/null || fail "initial proposal failed"
+  cp "$home/state/.afk-contract.proposed" "$home/original"
+  real_cat=$(command -v cat)
+  fakebin="$home/fakebin"
+  mkdir -p "$fakebin"
+  cat > "$fakebin/cat" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = "$FM_TEST_WORDS" ]; then
+  printf 'partial words'
+  exit 1
+fi
+exec "$FM_TEST_REAL_CAT" "$@"
+SH
+  chmod +x "$fakebin/cat"
+  if PATH="$fakebin:$PATH" FM_TEST_WORDS="$words" FM_TEST_REAL_CAT="$real_cat" \
+    contract "$home" propose --words-file "$words" > "$home/out" 2>&1; then
+    fail "failed words read created a proposal"
+  fi
+  cmp -s "$home/original" "$home/state/.afk-contract.proposed" || fail "failed read replaced the proposal"
+  pass "failed words reads preserve the pending proposal"
+}
+
 test_propose_confirm_writes_the_record_and_announces_hold_for_return() {
   local home out record proposed_epoch
   home=$(make_home lifecycle)
@@ -684,6 +711,7 @@ test_clause_fields_round_trip_reversible_whitespace
 test_clause_ids_are_input_ordinals_across_accepted_and_refused
 test_readback_renders_words_verbatim_and_both_lists
 test_words_preserve_final_newline_shape
+test_words_read_failure_preserves_proposal
 test_propose_confirm_writes_the_record_and_announces_hold_for_return
 test_confirm_requires_readback_and_refresh_is_a_no_op
 test_confirming_a_new_proposal_archives_the_standing_record

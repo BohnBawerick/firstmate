@@ -1064,6 +1064,27 @@ case "$PROVIDER" in
     if ! caller_has_merge_method "$@"; then
       merge_args=(--squash)
     fi
+    method_pending=false
+    for merge_arg in "$@"; do
+      if [ "$method_pending" = true ]; then
+        case "$merge_arg" in
+          merge|squash|rebase) merge_args+=("--$merge_arg") ;;
+          *) echo "error: unsupported merge method: $merge_arg" >&2; exit 2 ;;
+        esac
+        method_pending=false
+        continue
+      fi
+      case "$merge_arg" in
+        --method) method_pending=true ;;
+        --method=merge|--method=squash|--method=rebase) merge_args+=("--${merge_arg#--method=}") ;;
+        --method=*) echo "error: unsupported merge method: ${merge_arg#--method=}" >&2; exit 2 ;;
+        *) merge_args+=("$merge_arg") ;;
+      esac
+    done
+    if [ "$method_pending" = true ]; then
+      echo "error: --method requires merge, squash, or rebase" >&2
+      exit 2
+    fi
     FM_PR_GITHUB_CALLER_METHOD=$(caller_merge_method "$@")
     github_verify_mergeable || exit 1
     # The away record is locked first, so this last presence and authority read
@@ -1076,7 +1097,7 @@ case "$PROVIDER" in
     merge_status=0
     merge_output=$(gh pr merge "$PR_NUMBER" --repo "$PR_OWNER/$PR_REPO" \
       --match-head-commit "$FM_PR_MERGE_HEAD" \
-      "${merge_args[@]+"${merge_args[@]}"}" "$@" 2>&1) || merge_status=$?
+      "${merge_args[@]+"${merge_args[@]}"}" 2>&1) || merge_status=$?
     if [ "$merge_status" -eq 0 ]; then
       FM_PR_GITHUB_MERGE_ACCEPTED=true
       persist_accepted_merge_authority || exit 1
