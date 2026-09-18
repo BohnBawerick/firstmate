@@ -252,6 +252,10 @@ grep -F "inject deferred: supervisor pane busy (agent mid-turn)" "$DAEMON_LOG" >
 pass "reproduced: daemon hosted in its target pane defers forever on Herdr busy state"
 stop_away
 stop_fixture
+# The native daemon's shutdown flush can outlast stop_fixture. Its cleanup
+# removes the shared pidfile, so let it finish before the fixed topology starts.
+wait_for_log "daemon shutting down" "$DAEMON_LOG" \
+  || fail "native daemon did not shut down with its fixture"
 rm -f "$STATE_DIR"/*.status "$STATE_DIR"/.supervise-daemon.log \
   "$STATE_DIR"/.supervise-daemon.pid "$STATE_DIR"/.supervise-daemon.lock \
   "$STATE_DIR"/.subsuper-* "$STATE_DIR"/.watcher-down* \

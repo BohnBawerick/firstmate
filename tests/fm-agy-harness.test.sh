@@ -223,9 +223,11 @@ test_agy_tmux_names_the_native_binary_an_agent() {
 # view. The agy-shaped body names the foreground process exactly `agy`, which
 # is the same identity surface the tmux liveness probe and the ancestry
 # detector use - no real agy process is needed because the foreground branch
-# answers before the descendant walk touches the process table.
+# answers before the descendant walk touches the process table. The foreground
+# process is the pane shell itself, as in a real idle pane, so the shell-only
+# proof can verify a complete root-to-foreground lineage.
 agy_herdr_process_info_body() {  # <shell-pid> <foreground-name> -> JSON
-  printf '%s\n' "{\"result\":{\"type\":\"pane_process_info\",\"process_info\":{\"pane_id\":\"w9:p1\",\"shell_pid\":$1,\"foreground_processes\":[{\"pid\":$(( $1 + 1 )),\"name\":\"$2\",\"argv\":[\"$2\",\"--prompt-interactive\"],\"argv0\":\"$2\",\"cmdline\":\"$2 --prompt-interactive\"}]}}}"
+  printf '%s\n' "{\"result\":{\"type\":\"pane_process_info\",\"process_info\":{\"pane_id\":\"w9:p1\",\"shell_pid\":$1,\"foreground_process_group_id\":$1,\"foreground_processes\":[{\"pid\":$1,\"name\":\"$2\",\"argv\":[\"$2\",\"--prompt-interactive\"],\"argv0\":\"$2\",\"cmdline\":\"$2 --prompt-interactive\"}]}}}"
 }
 
 agy_herdr_agent_state() {  # <fixture-dir> -> verdict; logs every CLI call
@@ -274,8 +276,10 @@ test_herdr_registered_status_over_a_shell_only_pane_is_stale_not_live() {
   local dir out shell_pid
   dir="$TMP_ROOT/herdr-stale"; mkdir -p "$dir"
   # The descendant walk reads the REAL process table, so the canned pane shell
-  # must be a process this test owns and can prove alive: a short-lived sleep.
-  sleep 30 & shell_pid=$!
+  # must be a process this test owns and can prove alive: a short-lived sleep
+  # whose process name is the idle shell the canned view reports.
+  ln -sf "$(command -v sleep)" "$dir/bash"
+  "$dir/bash" 30 & shell_pid=$!
   printf '%s\n' '{"result":{"agent":{"agent":"agy","agent_status":"done","pane_id":"w9:p1"}}}' > "$dir/agent-get.json"
   agy_herdr_process_info_body "$shell_pid" bash > "$dir/process-info.json"
   out=$(agy_herdr_agent_state "$dir")

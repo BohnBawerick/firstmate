@@ -72,7 +72,11 @@ jobs:
     # A packed hint sum is not a measured job wall time or proof of headroom.
     # Evidence and refresh procedure: docs/fm-test-portable-shards.md.
     # Changes to this cap or the lane count require a separate scope decision.
-    timeout-minutes: 10
+    # The fork's shards carry fork-only tests on top of upstream's. Fork run
+    # 35313257743 measured 586 s of lane 1 script time and was cancelled 0.5 s
+    # after its last script passed; lane 2 took about 8.5 minutes. The cap keeps
+    # the same 1.5x margin over observed time as the serial shards.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
@@ -116,7 +120,7 @@ jobs:
     name: Behavior portable parallel 2
     runs-on: ubuntu-latest
     # Same timeout rationale as portable parallel shard 1 above.
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
@@ -426,8 +430,8 @@ jobs:
           snapshot_output=$(/bin/bash tests/fm-fleet-snapshot-view.test.sh)
           printf '%s\n' "$snapshot_output"
           snapshot_count=$(printf '%s\n' "$snapshot_output" | grep -c '^ok - ')
-          [ "$snapshot_count" -eq 18 ] || {
-            echo "::error::expected 18 snapshot/fleet-view tests, got $snapshot_count"
+          [ "$snapshot_count" -eq 19 ] || {
+            echo "::error::expected 19 snapshot/fleet-view tests, got $snapshot_count"
             exit 1
           }
 

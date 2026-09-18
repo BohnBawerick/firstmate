@@ -299,8 +299,8 @@ export function scopeForUnreadWake(state: string, heartbeat: boolean): UnreadWak
               } catch {
                 return UNSAFE_SCOPE;
               }
-              const latestEvent = statusLines.findLast((line) =>
-                (line.includes(":") && eventVerbs.has(statusLineVerb(line))) || legacyEvent.test(line));
+              const latestEvent = statusLines.filter((line) =>
+                (line.includes(":") && eventVerbs.has(statusLineVerb(line))) || legacyEvent.test(line)).at(-1);
               decisionOwned = hasOpenNeedsDecision(statusLines, resolveVerb, heldVerb, reservedPrefixes) ||
                 statusLineVerb(latestEvent ?? "") === heldVerb;
               staleDecisionCache.set(statusPath, { version, config: decisionConfig, decisionOwned });
