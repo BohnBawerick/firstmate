@@ -1242,9 +1242,7 @@ detach_runner() {  # <source-id>
 #
 # The marker records the claim generation that was reported, so the same strand
 # never wakes twice while a genuinely new claim still does - an alarm that
-# repeats every supervision cycle is as unusable as one nobody gets. It is
-# written before the wake and removed again if the wake does not land, so a
-# failed announcement retries instead of being silently marked as delivered.
+# repeats every supervision cycle is as unusable as one nobody gets.
 report_stranded_source() {  # <source-id> <claim-token> <why-and-recovery>
   local id=$1 token=$2 detail=$3
   case "$token" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
@@ -1287,20 +1285,15 @@ report_launch_failure() {  # <source-id> <registration-identity>
 }
 
 # Shared marker discipline for the announcements above: <marker> holds the
-# generation last reported as its first field, written before the wake and
-# removed again if the wake does not land, so a failed announcement retries
-# instead of being marked delivered, and the same generation never announces
-# twice. A caller may store more after that field (the launch-failure nonce);
+# generation last reported as its first field.
+# A caller may store more after that field (the launch-failure nonce);
 # only the first field decides.
 announce_source_once() {  # <marker> <generation> <key> <payload> [marker-record]
   local marker=$1 generation=$2 key=$3 payload=$4 record=${5:-$2} previous
   previous=$(cat -- "$marker" 2>/dev/null || true)
   [ "${previous%%[[:space:]]*}" != "$generation" ] || return 1
+  fm_wake_append check "$key" "$payload" || return 1
   (umask 077; printf '%s\n' "$record" > "$marker") || return 1
-  if ! fm_wake_append check "$key" "$payload"; then
-    rm -f -- "$marker"
-    return 1
-  fi
   return 0
 }
 

@@ -2891,7 +2891,7 @@ EOF
 
 test_parked_unfetched_run_requires_explicit_ownership() {
   local proof case_dir advanced_short anchor_head status_payload sync_payload rc
-  for proof in custody submitted mismatched-submitted; do
+  for proof in custody submitted mismatched-submitted mismatched-run missing-run; do
     case_dir=$(make_case "parked-explicit-$proof")
     write_meta "$case_dir" no-mistakes ship
     land_shippable_commit "$case_dir"
@@ -2905,22 +2905,29 @@ test_parked_unfetched_run_requires_explicit_ownership() {
 branch_sync:
   state: pipeline_owned" ;;
       submitted) sync_payload="pipeline:
+  run: 01RUN
   submitted_head: $anchor_head" ;;
       mismatched-submitted) sync_payload="pipeline:
+  run: 01RUN
   submitted_head: $(git -C "$case_dir/wt" rev-parse HEAD^)" ;;
+      mismatched-run) sync_payload="pipeline:
+  run: 02RUN
+  submitted_head: $anchor_head" ;;
+      missing-run) sync_payload="pipeline:
+  submitted_head: $anchor_head" ;;
     esac
     rc=0
     FM_FAKE_AXI_STATUS="$status_payload" FM_FAKE_AXI_SYNC="$sync_payload" \
       FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
       run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
     expect_code 0 "$rc" "explicit-$proof: teardown failed"
-    if [ "$proof" = mismatched-submitted ]; then
-      [ ! -s "$case_dir/nm-abort.log" ] || fail "a mismatched submitted head authorized abort"
-    else
-      assert_grep 'abort --run 01RUN' "$case_dir/nm-abort.log" "explicit-$proof did not bind the parked run"
-    fi
+    case "$proof" in
+      mismatched-submitted|mismatched-run|missing-run)
+        [ ! -s "$case_dir/nm-abort.log" ] || fail "explicit-$proof authorized an unproved run abort" ;;
+      *) assert_grep 'abort --run 01RUN' "$case_dir/nm-abort.log" "explicit-$proof did not bind the parked run" ;;
+    esac
   done
-  pass "unfetched parked runs require explicit custody or a matching submitted head"
+  pass "unfetched parked runs require custody or a submitted head bound to that run"
 }
 
 test_parked_run_with_mismatched_ledger_head_is_never_aborted() {

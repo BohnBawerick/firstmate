@@ -164,6 +164,51 @@ hold_source_lock_then_handle() {  # <home> <source-id> <sequence> <ready-file> <
   HOLDER_PID=$!
 }
 
+test_interrupted_strand_announcement_retries() (
+  local home="$TMP_ROOT/interrupted-announcement" id=interrupted-strand-src
+  local claim="$FM_PROCEVENT_CLAIM_ROOT/$id.claim" saved="$TMP_ROOT/interrupted.claim"
+  local fakebin="$TMP_ROOT/interrupted-bin" rc=0 leader token out
+  new_home "$home"
+  mkdir -p "$fakebin"
+  trap 'if [ -f "$saved" ]; then cat "$saved" > "$claim"; fi; pe "$home" retire "$id" >/dev/null 2>&1 || true' EXIT
+  pe_register "$home" lavish "$id" -- "$BLOCKER" "$TMP_ROOT/interrupted-trigger" payload >/dev/null
+  pe "$home" reconcile >/dev/null
+  wait_for "$claim" || fail "interrupted announcement fixture never claimed its source"
+  leader=$(sed -n '2p' "$claim")
+  token=$(sed -n '3p' "$claim")
+  kill -0 -"$leader" 2>/dev/null || fail "interrupted announcement fixture has no live group"
+  cp "$claim" "$saved"
+  awk 'NR == 4 { print "different-live-process-identity"; next } { print }' "$saved" > "$claim"
+
+  cat > "$fakebin/ln" <<'SH'
+#!/usr/bin/env bash
+for target in "$@"; do :; done
+if [ "$target" = "$FM_HOME/state/.wake-queue.lock" ]; then
+  printf 'interrupted\n' > "$FM_TEST_INTERRUPT_LOG"
+  kill -KILL "$PPID"
+  exit 1
+fi
+exec "$FM_TEST_REAL_LN" "$@"
+SH
+  chmod +x "$fakebin/ln"
+  FM_TEST_REAL_LN="$(command -v ln)" FM_TEST_INTERRUPT_LOG="$home/interrupted" \
+    PATH="$fakebin:$PATH" pe "$home" reconcile > "$home/stdout" 2> "$home/stderr" || rc=$?
+  [ "$rc" -ne 0 ] || fail "reconcile survived interruption before wake publication"
+  assert_present "$home/interrupted" "the fault did not reach wake publication"
+  [ "$(stranded_wake_count "$home" "$id")" = 0 ] || fail "interrupted reconcile published a wake"
+
+  out=$(pe "$home" reconcile)
+  assert_contains "$out" "uncertain=1" "retry lost the stranded source"
+  [ "$(stranded_wake_count "$home" "$id")" = 1 ] || fail "retry left the stranded source unannounced"
+  [ "$(stranded_wake_keys "$home" "$id")" = "procevent:$id:stranded:$token" ] \
+    || fail "retry did not preserve the source generation's wake key"
+  pe "$home" reconcile >/dev/null
+  [ "$(stranded_wake_count "$home" "$id")" = 1 ] || fail "a delivered strand was announced again"
+  pass "interrupted strand announcements retry durably once per generation"
+)
+
+test_interrupted_strand_announcement_retries || exit 1
+
 # --- inert with nothing configured ------------------------------------------
 IDLE="$TMP_ROOT/idle"; mkdir -p "$IDLE"
 out=$(pe "$IDLE" list)

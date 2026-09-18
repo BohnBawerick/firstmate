@@ -1842,7 +1842,7 @@ task_status_is_own_parked_run() {  # <worktree> <axi-status-output>
     [ -n "$run_head" ] || return 1
     [ -z "$(fm_nm_resolve_commit "$wt" "$run_head")" ] || return 1
     if ! fm_nm_run_is_pipeline_owned_active "$out"; then
-      submitted_head=$(fm_nm_submitted_head "$wt" "$NM_TEARDOWN_TIMEOUT")
+      submitted_head=$(fm_nm_submitted_head "$wt" "$NM_TEARDOWN_TIMEOUT" "$run_id")
       [ "$(fm_nm_head_identity "$wt" "$run_head" "$submitted_head")" = match ] || return 1
     fi
   fi
