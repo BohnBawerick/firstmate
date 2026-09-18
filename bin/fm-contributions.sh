@@ -127,7 +127,8 @@ read_saved() {
 }
 
 get_input() {
-  "$SCRIPT_DIR/fm-fleet-snapshot.sh" --contribution-input > "$TMP/input.json"
+  "$SCRIPT_DIR/fm-fleet-snapshot.sh" --contribution-input > "$TMP/input.json" \
+    || fail 'contribution input read failed'
 }
 
 project() {
