@@ -2187,6 +2187,58 @@ test_legacy_identities_keep_working() {
   pass "legacy identities, metadata, bindings, and the shim keep working"
 }
 
+test_unicode_board_answers_round_trip() {
+  local home id
+  home=$(make_home unicode-board)
+  python3 - "$home/board-response" <<'PYBOARD'
+import json, sys
+rows = [
+    ("unicode-selected", {"selection": "yes", "note": "café"}, "Café: yes"),
+    ("unicode-note", {"selection": "", "note": "東京"}, "東京: note"),
+    ("unicode-legacy", {"answer": "Crème brûlée"}, "Crème: choice"),
+    ("unicode-reconcile", {"selection": "reconcile", "note": "réexaminer café"}, "Café: reconcile"),
+]
+with open(sys.argv[1], "w", encoding="utf-8") as out:
+    out.write('prompts[4]{tag,text,prompt}:\n')
+    for key, answer, label in rows:
+        ctx = {"question": key, **answer}
+        if "selection" in answer:
+            ctx["schema"] = "fm-bearings-answer.v1"
+        fields = ["choice", label, "Context data: " + json.dumps(ctx, ensure_ascii=False)]
+        out.write('  ' + ','.join(json.dumps(x, ensure_ascii=False) for x in fields) + '\n')
+PYBOARD
+  run_lavish "$home" answers "$home/board-response" > "$home/answers.tsv" || fail 'Unicode answer serialization failed'
+  run_lavish "$home" reconciles "$home/board-response" > "$home/reconciles.tsv" || fail 'Unicode reconcile serialization failed'
+  python3 - "$home" <<'PYASSERT' || fail 'board fields did not round-trip as UTF-8'
+from pathlib import Path
+import sys
+home = Path(sys.argv[1])
+assert home.joinpath('answers.tsv').read_text(encoding='utf-8').splitlines() == [
+    'unicode-selected\tyes - café\tCafé: yes',
+    'unicode-note\t東京\t東京: note',
+    'unicode-legacy\tCrème brûlée\tCrème: choice',
+]
+assert home.joinpath('reconciles.tsv').read_text(encoding='utf-8') == 'unicode-reconcile\tréexaminer café\n'
+PYASSERT
+  for id in unicode-selected unicode-note unicode-legacy; do
+    run_captain "$home" hold "$id" --title "Choose $id" --reason 'choice pending' --repo sample >/dev/null \
+      || fail 'could not create Unicode captain call'
+  done
+  run_captain "$home" answers --source 'Unicode board' < "$home/answers.tsv" >/dev/null || fail 'Unicode answer intake failed'
+  for id in unicode-selected unicode-note unicode-legacy; do
+    tasks_in "$home" show "$id" --full > "$home/$id.show"
+  done
+  python3 - "$home" <<'PYASSERT' || fail 'the persisted captain decision lost its Unicode text'
+from pathlib import Path
+import sys
+home = Path(sys.argv[1])
+for key, answer, label in [('selected', 'yes - café', 'Café: yes'), ('note', '東京', '東京: note'), ('legacy', 'Crème brûlée', 'Crème: choice')]:
+    body = home.joinpath(f'unicode-{key}.show').read_text(encoding='utf-8')
+    assert 'state: done' in body and f'Answer: {answer}' in body and f'Answer as shown to the captain: {label}' in body
+PYASSERT
+  pass 'Unicode selections, notes, labels, and reconciliation text round-trip without re-encoding'
+}
+
 # A board answer must reach the keyed-answer intake through the RUNNER, not just
 # through a hand-fed `answers` call. The captain answered ten calls on a bearings
 # board, the board accepted them, and nothing collected them: the source that
@@ -4013,6 +4065,7 @@ test_reconcile_closes_with_evidence_or_keeps_the_call_open
 test_reconcile_outcomes_retry_partial_failures_once
 test_unbound_source_closes_no_hold
 test_legacy_identities_keep_working
+test_unicode_board_answers_round_trip
 test_board_answer_reaches_the_keyed_answer_intake
 test_chat_channel_feeds_the_same_keyed_answer_intake
 test_origin_slug_validation_precedes_path_construction

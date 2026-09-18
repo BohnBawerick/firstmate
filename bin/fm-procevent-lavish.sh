@@ -429,7 +429,7 @@ cmd_choice_rows() {
   local selection=$1 file=${2-}
   [ -n "$file" ] || usage
   [ -f "$file" ] && [ ! -L "$file" ] || die "result file does not exist: $file"
-  perl -MJSON::PP -e '
+  perl -MJSON::PP -MEncode=encode -e '
     use strict; use warnings;
     my ($selection, $path) = @ARGV;
     open my $fh, "<", $path or exit 1;
@@ -519,16 +519,18 @@ cmd_choice_rows() {
       if ($selection eq "reconciles") {
         next if $choice->{legacy};
         if ($choice->{selection} eq "reconcile") {
-          print length($choice->{note})
-            ? "$choice->{key}\t$choice->{note}\n"
+          my $note = encode("UTF-8", $choice->{note});
+          print length($note)
+            ? "$choice->{key}\t$note\n"
             : "$choice->{key}\n";
         }
         next;
       }
       next if $choice->{selection} eq "reconcile";
+      my $answer = encode("UTF-8", $choice->{answer});
       print length $choice->{mode}
-        ? "$choice->{key}\t$choice->{answer}\t$choice->{label}\t$choice->{mode}\n"
-        : "$choice->{key}\t$choice->{answer}\t$choice->{label}\n";
+        ? "$choice->{key}\t$answer\t$choice->{label}\t$choice->{mode}\n"
+        : "$choice->{key}\t$answer\t$choice->{label}\n";
     }
   ' "$selection" "$file"
 }

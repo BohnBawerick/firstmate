@@ -88,7 +88,9 @@ case "${1:-}" in
               answer='open records written down'
               [ ! -f "$D/answer-verb" ] || verb=$(cat "$D/answer-verb")
               [ ! -f "$D/answer-payload" ] || answer=$(cat "$D/answer-payload")
-              if [ -f "$D/report-helper" ]; then
+              if [ -f "$D/report-doc" ]; then
+                FM_HOME="$(cat "$D/report-home")" "$(cat "$D/report-helper")" --doc "$verb" "$corr" "$(cat "$D/report-doc")" "$answer"
+              elif [ -f "$D/report-helper" ]; then
                 FM_HOME="$(cat "$D/report-home")" "$(cat "$D/report-helper")" "$verb" "$corr" "$answer"
               else
                 printf '%s [%s]: %s\n' "$verb" "$corr" "$answer" \
@@ -349,7 +351,11 @@ case "$target" in
       answer='open records written down'
       [ ! -f "$FM_FAKE_DIR/answer-verb" ] || verb=$(cat "$FM_FAKE_DIR/answer-verb")
       [ ! -f "$FM_FAKE_DIR/answer-payload" ] || answer=$(cat "$FM_FAKE_DIR/answer-payload")
-      printf '%s [corr=%s]: %s\n' "$verb" "$corr" "$answer" >> "$status"
+      if [ -f "$FM_FAKE_DIR/report-doc" ]; then
+        FM_HOME="$(cat "$FM_FAKE_DIR/report-home")" "$(cat "$FM_FAKE_DIR/report-helper")" --doc "$verb" "$corr" "$(cat "$FM_FAKE_DIR/report-doc")" "$answer"
+      else
+        printf '%s [corr=%s]: %s\n' "$verb" "$corr" "$answer" >> "$status"
+      fi
     fi
     ;;
 esac
@@ -856,6 +862,33 @@ test_already_current_unprovable_mate_stays_on_the_nudge_path() {
   pass "T16 an already-current mate with an unprovable runtime keeps the honest nudge path"
 }
 
+arm_documented_report() {
+  local dir=$1 path=$2
+  printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$dir/home" > "$dir/sm1-home/.fm-secondmate-parent"
+  printf '%s\n' "$ROOT/bin/fm-secondmate-report.sh" > "$dir/fake/report-helper"
+  printf '%s\n' "$dir/sm1-home" > "$dir/fake/report-home"
+  printf '%s\n' "$path" > "$dir/fake/report-doc"
+  printf 'Open records written down.\n' > "$dir/sm1-home/$path"
+}
+
+test_documented_report_releases_persist_gate() {
+  local timing path dir out rc
+  for timing in delivered timeout; do
+    for path in 'data/report.md' 'data/report (draft (review)).md'; do
+      dir=$(new_case "documented-$timing")
+      add_local_mate "$dir" sm1
+      arm_documented_report "$dir" "$path"
+      if [ "$timing" = delivered ]; then arm_answer "$dir" sm1; else arm_answer_after_scan "$dir"; fi
+      rc=0
+      out=$(FM_TEST_PERSIST_WAIT=0 run_restart "$dir" sm1) || rc=$?
+      expect_code 0 "$rc" "$timing documented persistence should restart: $out"
+      assert_contains "$out" 'restarted: sm1' 'the documented acknowledgment did not release the persist gate'
+      assert_grep "($path via-helper)" "$dir/home/state/sm1.status" 'the real helper did not serialize the document metadata'
+    done
+  done
+  pass 'documented helper acknowledgments permit restart at both reply boundaries'
+}
+
 test_unsaved_work_keeps_the_conversation() {
   local timing reply verb answer dir out rc
   for timing in delivered timeout; do
@@ -864,18 +897,17 @@ test_unsaved_work_keeps_the_conversation() {
       'failed|open work could not be saved' \
       'working|still saving open work' \
       'done|some open work could not be saved' \
-      'done|open records written down except one unsaved task'; do
+      'done|open records written down except one unsaved task' \
+      'done|open records written down (except one unsaved task)'; do
       verb=${reply%%|*}
       answer=${reply#*|}
       dir=$(new_case "unsaved-$timing-$verb")
       add_local_mate "$dir" sm1
       printf '%s' "$verb" > "$dir/fake/answer-verb"
       printf '%s' "$answer" > "$dir/fake/answer-payload"
+      arm_documented_report "$dir" 'data/report.md'
       if [ "$timing" = delivered ]; then
         arm_answer "$dir" sm1
-        printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$dir/home" > "$dir/sm1-home/.fm-secondmate-parent"
-        printf '%s\n' "$ROOT/bin/fm-secondmate-report.sh" > "$dir/fake/report-helper"
-        printf '%s\n' "$dir/sm1-home" > "$dir/fake/report-home"
       else
         arm_answer_after_scan "$dir"
       fi
@@ -892,6 +924,7 @@ test_unsaved_work_keeps_the_conversation() {
   pass "unsaved or incomplete replies retain the conversation at both restart decisions"
 }
 
+test_documented_report_releases_persist_gate
 test_unsaved_work_keeps_the_conversation
 test_persist_gates_and_asks_only_for_open_records
 test_persist_precedes_restart

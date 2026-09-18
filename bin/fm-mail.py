@@ -247,8 +247,7 @@ def save_retry_pos(pos_path, order_len, window, pos):
 
 
 def load_turn(path):
-    """Return the durable alternating-turn flag (0=new,1=retry) for a single
-    contended slot."""
+    """Return the durable alternating-turn flag (0=new,1=retry)."""
     if not path:
         return 0
     try:
@@ -300,8 +299,7 @@ def cmd_poll_list():
     # cursor are considered as new, then previously unfetchable retry-set uids
     # (already in the cursor) are fetched again so a transient IMAP failure
     # cannot permanently replace real metadata with degraded placeholders. A
-    # bounded window of candidates is scanned to fill the per-poll cap, new
-    # uids first so a large retry backlog can never starve new mail.
+    # bounded window of candidates is scanned to fill the per-poll cap.
     cap = int(os.environ.get('FM_MAIL_POLL_MAX_WAKES') or '20')
     if cap < 1:
         cap = 20
@@ -351,18 +349,19 @@ def cmd_poll_list():
         retry_window = retry_scan_window(retry_order, retry_pos, window)
         retry_candidates = [u for u in retry_window if u in seen]
         turn_path = os.environ.get('FM_MAIL_TURN', '')
-        next_turn = None
+        turn = (load_turn(turn_path)
+                if new_candidates and retry_candidates
+                and (cap == 1 or deadline is not None) else None)
+        next_turn = 1 - turn if turn is not None else None
         if cap == 1 and new_candidates and retry_candidates:
             # A single contended slot alternates between new surfacing and
             # retry recovery, so a sustained new-mail flood can never starve
             # recovered metadata indefinitely, and a retry backlog can never
             # delay new mail for more than one poll.
-            if load_turn(turn_path) == 0:
+            if turn == 0:
                 new_budget, retry_budget = 1, 0
-                next_turn = 1
             else:
                 new_budget, retry_budget = 0, 1
-                next_turn = 0
         else:
             # Reserve a quarter of the cap (at least one) for retry successes
             # so a sustained new-mail flood cannot starve recovered metadata,
@@ -376,7 +375,9 @@ def cmd_poll_list():
         retry_examined = 0
         retry_idx = -1
         first_retry_emitted_index = -1
-        for u in new_candidates[:1] + retry_candidates + new_candidates[1:]:
+        candidates = (retry_candidates + new_candidates if turn == 1
+                      else new_candidates[:1] + retry_candidates + new_candidates[1:])
+        for u in candidates:
             if deadline is not None and time.monotonic() >= deadline:
                 break
             is_retry = u in retry and u in seen
@@ -484,7 +485,7 @@ def cmd_poll_list():
         elif len(retry_window) > 0 and len(retry_candidates) == 0:
             save_retry_pos(retry_pos_path, len(retry_order),
                            len(retry_window), retry_pos)
-        # Persist the cap-one alternation turn only after the rows are emitted
+        # Persist the alternation turn only after the rows are emitted
         # and flushed, so a kill between the decision and the emit can never
         # skip an unspent turn.
         if next_turn is not None:

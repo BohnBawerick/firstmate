@@ -2797,6 +2797,38 @@ land_shippable_commit() {
   git -C "$case_dir/project" fetch -q origin
 }
 
+test_captured_running_gate_is_concluded() {
+  local mode case_dir head status rc
+  for mode in confirmed unconfirmed; do
+    case_dir=$(make_case "captured-running-gate-$mode")
+    write_meta "$case_dir" no-mistakes ship
+    land_shippable_commit "$case_dir"
+    head=$(git -C "$case_dir/wt" rev-parse HEAD)
+    status=$(awk -v head="$head" '
+      /^  id:/ { $0 = "  id: \"01RUN\"" }
+      /^  branch:/ { $0 = "  branch: fm/task-x1" }
+      /^  head:/ { $0 = "  head: " head }
+      /^  head_sha:/ { $0 = "  head_sha: " head }
+      { print }
+    ' "$ROOT/tests/captures/no-mistakes-v1.70.1/parked.toon")
+    rc=0
+    FM_FAKE_AXI_STATUS="$status" FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+      FM_FAKE_NM_ABORT_NOOP="$([ "$mode" = unconfirmed ] && printf 1 || printf 0)" \
+      run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+    assert_present "$case_dir/nm-abort.log" "the captured running gate was orphaned"
+    assert_grep 'abort --run 01RUN' "$case_dir/nm-abort.log" "teardown did not target the verified run"
+    if [ "$mode" = confirmed ]; then
+      expect_code 0 "$rc" 'confirmed parked-run cancellation should permit teardown'
+      assert_absent "$case_dir/state/task-x1.meta" 'confirmed teardown retained the worker metadata'
+    else
+      expect_code 1 "$rc" 'an unconfirmed parked-run cancellation must refuse teardown'
+      assert_present "$case_dir/state/task-x1.meta" 'an unconfirmed cancellation removed worker metadata'
+      assert_present "$case_dir/wt" 'an unconfirmed cancellation removed the worktree'
+    fi
+  done
+  pass 'captured running gates require confirmed cancellation before teardown'
+}
+
 test_parked_own_run_is_aborted_before_teardown() {
   local case_dir rc head
   case_dir=$(make_case parked-run-abort)
@@ -3831,6 +3863,7 @@ test_transient_index_lock_clears_after_first_attempt_and_retry_succeeds
 test_persistent_index_lock_exhausts_retries_and_refuses_loudly
 test_empty_retry_wait_uses_default_without_aborting
 test_fractional_legacy_retry_wait_refuses_without_arithmetic_error
+test_captured_running_gate_is_concluded
 test_parked_own_run_is_aborted_before_teardown
 test_parked_unfetched_run_is_not_aborted_from_ledger_alone
 test_parked_unfetched_run_requires_explicit_ownership

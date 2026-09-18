@@ -160,14 +160,28 @@ report_unreached() {  # <id> <reason>
 }
 
 resolve_persist_reply() {
-  local i=$1 line verb payload
+  local i=$1 line verb payload j depth
   fm_pending_reply_try_resolve "$STATE" "${CORR[i]}" || return 1
   line=$(fm_pending_reply_find_resolve_line "$STATE/${IDS[i]}.status" "${CORR[i]}")
   status_line_verb "$line" verb
   payload=${line#*:}
   payload=${payload#"${payload%%[![:space:]]*}"}
   payload=${payload%"${payload##*[![:space:]]}"}
-  payload=${payload%" (via-helper)"}
+  case "$payload" in
+    *" (via-helper)") payload=${payload%" (via-helper)"} ;;
+    *" via-helper)")
+      depth=0
+      for ((j=${#payload}-1; j>=0; j--)); do
+        case "${payload:j:1}" in
+          ')') depth=$((depth + 1)) ;;
+          '(') depth=$((depth - 1)); [ "$depth" -gt 0 ] || break ;;
+        esac
+      done
+      if [ "$j" -gt 0 ] && [ "${payload:j-1:1}" = ' ' ]; then
+        payload=${payload:0:j-1}
+      fi
+      ;;
+  esac
   pending_count=$((pending_count - 1))
   if [ "$verb" = done ] && [ "$payload" = 'open records written down' ]; then
     launch_restart "$i"

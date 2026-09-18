@@ -653,6 +653,65 @@ PYEOF
   pass "fm-mail: the reserved retry budget survives a new-mail flood"
 }
 
+test_deadline_alternates_first_fetch_opportunity() {
+  local home fakebin real_py harness out
+  home="$TMP_ROOT/deadline-turn"
+  mkdir -p "$home/state" "$home/bin"
+  ln -s "$ROOT/bin/fm-wake-lib.sh" "$home/bin/fm-wake-lib.sh"
+  fakebin=$(fm_fakebin "$home")
+  real_py=$(command -v python3)
+  harness="$home/imap.py"
+  cat > "$harness" <<'PYMAIL'
+import importlib.util, imaplib, os, sys
+from pathlib import Path
+clock = [0.0]
+uid = os.environ['FM_TEST_NEW_UID']
+home = Path(os.environ['FM_HOME'])
+class FakeConn:
+    untagged_responses = {'UIDVALIDITY': [b'90009']}
+    def login(self, *args): pass
+    def select(self, *args): return ('OK', [])
+    def uid(self, command, *args):
+        if command == 'search': return ('OK', [('90 ' + uid).encode()])
+        with (home / 'fetches').open('a') as out: out.write(args[0].decode() + '\n')
+        if args[0] != b'90':
+            clock[0] += 10
+            raise TimeoutError('slow new header')
+        return ('OK', [(b'', b'Subject: recovered metadata\r\nFrom: reader@example.invalid\r\n\r\n')])
+    def logout(self): pass
+    def shutdown(self): pass
+imaplib.IMAP4_SSL = lambda *a, **k: FakeConn()
+spec = importlib.util.spec_from_file_location('fm_mail', sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+mod.time.monotonic = lambda: clock[0]
+sys.exit(mod.cmd_poll_list())
+PYMAIL
+  printf '#!/bin/sh\nexec "%s" "%s" "$@"\n' "$real_py" "$harness" > "$fakebin/python3"
+  chmod +x "$fakebin/python3"
+  printf 'uidvalidity=90009\n90\n' > "$home/state/.mail-seen"
+  printf '90\n' > "$home/state/.mail-retry"
+  out=$(FM_HOME="$home" PATH="$fakebin:$PATH" FM_MAIL_USER=t FM_MAIL_PASS=p \
+    FM_IMAP_HOST=imap.test FM_SMTP_HOST=smtp.test FM_MAIL_POLL_BUDGET_MS=9000 \
+    FM_TEST_NEW_UID=100 "$MAIL" poll 2>&1) || fail "first deadline poll failed: $out"
+  assert_grep '100' "$home/state/.mail-seen" 'the timed-out new message was not durably surfaced'
+  assert_grep '90' "$home/state/.mail-retry" 'the unexamined retry was lost'
+  : > "$home/fetches"
+  out=$(FM_HOME="$home" PATH="$fakebin:$PATH" FM_MAIL_USER=t FM_MAIL_PASS=p \
+    FM_IMAP_HOST=imap.test FM_SMTP_HOST=smtp.test FM_MAIL_POLL_BUDGET_MS=9000 \
+    FM_TEST_NEW_UID=101 "$MAIL" poll 2>&1) || fail "second deadline poll failed: $out"
+  [ "$(head -1 "$home/fetches")" = 90 ] || fail 'a recovered retry never received the first fetch opportunity'
+  assert_contains "$(cat "$home/state/.wake-queue")" 'mail 90 - mail from reader@example.invalid' 'recovered retry metadata never reached the wake queue'
+  ! grep -Fxq '90' "$home/state/.mail-retry" || fail 'the published retry was not acknowledged'
+  : > "$home/fetches"
+  out=$(FM_HOME="$home" PATH="$fakebin:$PATH" FM_MAIL_USER=t FM_MAIL_PASS=p \
+    FM_IMAP_HOST=imap.test FM_SMTP_HOST=smtp.test FM_MAIL_POLL_BUDGET_MS=9000 \
+    FM_TEST_NEW_UID='101 102' "$MAIL" poll 2>&1) || fail "third deadline poll failed: $out"
+  [ "$(head -1 "$home/fetches")" = 101 ] || fail 'new mail did not regain the first fetch opportunity'
+  assert_grep '101' "$home/state/.mail-seen" 'retry priority prevented new mail from progressing'
+  pass 'a deadline-limited poll gives each contending class the first fetch opportunity'
+}
+
 test_poll_cap_one_alternates_new_and_retry() {
   local harness out1 out2 rc1=0 rc2=0
   harness="$TMP_ROOT/cap-one-turn-harness.py"
@@ -2641,6 +2700,7 @@ test_poll_cap_one_turn_not_saved_when_retry_pos_write_fails
 test_poll_retry_surfaces_under_new_mail_flood
 test_poll_resurfaces_degraded_uid_whose_wake_never_recorded
 test_poll_cap_one_never_suppresses_new_mail
+test_deadline_alternates_first_fetch_opportunity
 test_poll_cap_one_alternates_new_and_retry
 test_poll_cap_one_does_not_advance_unexamined_retry_window
 test_poll_fails_closed_when_retry_unwritable
