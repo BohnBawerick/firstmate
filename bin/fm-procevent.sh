@@ -529,19 +529,26 @@ cmd_register_extension() {
   if [ ! -x "$EXTENSION_HOST" ] || [ -L "$EXTENSION_HOST" ]; then
     die "the tracked extension host is unavailable"
   fi
-  extension_lifecycle_lock_acquire || die "cannot lock the extension lifecycle"
+  fm_procevent_source_lock_acquire "$id" || die "cannot lock the source"
+  if ! extension_lifecycle_lock_acquire; then
+    fm_procevent_source_lock_release "$id"
+    die "cannot lock the extension lifecycle"
+  fi
   if ! resolution=$("$EXTENSION_HOST" resolve-process-event "$adapter"); then
     extension_lifecycle_lock_release
+    fm_procevent_source_lock_release "$id"
     die "extension adapter verification failed: $adapter"
   fi
   if [ "$(printf '%s\n' "$resolution" | wc -l | tr -d ' ')" != 1 ]; then
     extension_lifecycle_lock_release
+    fm_procevent_source_lock_release "$id"
     die "extension adapter resolution was malformed: $adapter"
   fi
   IFS=$'\t' read -r schema extension_id extension_version capability_version \
     package_digest binding_digest extra <<< "$resolution"
   if [ "$schema" != fm-extension-process-event-resolution.v1 ] || [ -n "$extra" ]; then
     extension_lifecycle_lock_release
+    fm_procevent_source_lock_release "$id"
     die "extension adapter resolution was malformed: $adapter"
   fi
   if ! fm_procevent_extension_id_valid "$extension_id" \
@@ -550,30 +557,28 @@ cmd_register_extension() {
     || ! fm_procevent_digest_valid "$package_digest" \
     || ! fm_procevent_digest_valid "$binding_digest"; then
     extension_lifecycle_lock_release
+    fm_procevent_source_lock_release "$id"
     die "extension adapter identity was malformed: $adapter"
   fi
   if ! registration_token=$(new_extension_registration_token); then
     extension_lifecycle_lock_release
+    fm_procevent_source_lock_release "$id"
     die "cannot create an extension registration identity"
   fi
-  if ! fm_procevent_source_lock_acquire "$id"; then
-    extension_lifecycle_lock_release
-    die "cannot lock the source"
-  fi
   if ! extension_registration_replacement_safe_locked "$id"; then
-    fm_procevent_source_lock_release "$id"
     extension_lifecycle_lock_release
+    fm_procevent_source_lock_release "$id"
     die "cannot replace extension registration while its prior runner remains active: $id"
   fi
   if ! fm_procevent_extension_registration_publish_locked "$STATE" "$adapter" "$id" \
       "$extension_id" "$extension_version" "$capability_version" "$package_digest" \
       "$binding_digest" "$config_ref" "$registration_token"; then
-    fm_procevent_source_lock_release "$id"
     extension_lifecycle_lock_release
+    fm_procevent_source_lock_release "$id"
     die "cannot publish the extension registration"
   fi
-  fm_procevent_source_lock_release "$id"
   extension_lifecycle_lock_release
+  fm_procevent_source_lock_release "$id"
   owner_lease_refresh
   printf 'registered: %s (%s from %s@%s)\n' "$id" "$adapter" "$extension_id" "$extension_version"
   printf 'owner-token: %s\n' "$registration_token"

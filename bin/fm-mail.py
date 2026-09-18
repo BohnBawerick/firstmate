@@ -376,7 +376,7 @@ def cmd_poll_list():
         retry_examined = 0
         retry_idx = -1
         first_retry_emitted_index = -1
-        for u in new_candidates + retry_candidates:
+        for u in new_candidates[:1] + retry_candidates + new_candidates[1:]:
             if deadline is not None and time.monotonic() >= deadline:
                 break
             is_retry = u in retry and u in seen

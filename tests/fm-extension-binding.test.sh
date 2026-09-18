@@ -1161,7 +1161,6 @@ process_race_retire_pid=
 assert_contains "$(cat "$TMP_ROOT/process-retire-race-retire.out")" "still owns process-event registration" "retirement did not observe the reserved process-event registration"
 assert_present "$H_PROCESS_RETIRE_RACE/state/procevent-inbox/process-race-source.1.result" "reserved process-event did not capture its result"
 pass "process-event resolution reserves the lifecycle before invocation"
-process_race_release=
 
 process_race_result="$H_PROCESS_RETIRE_RACE/state/procevent-inbox/process-race-source.1.result"
 process_race_resolution=$(FM_HOME="$H_PROCESS_RETIRE_RACE" "$HOST" resolve-process-event ext-process-retire-race)
@@ -1285,7 +1284,99 @@ FM_HOME="$H_SIGNAL_LOCK" "$HOST" retire-binding org.example.signal-lock --if-bin
 pass "signal interruption leaves lifecycle lock recovery to the next owner"
 fi
 
+
+bounded_command() {
+  python3 - "$@" <<'PYBOUND'
+import subprocess, sys
+try:
+    sys.exit(subprocess.run(sys.argv[1:], timeout=8).returncode)
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+PYBOUND
+}
+
+test_extension_poll_does_not_block_other_sources() {
+  local home="$HOMES/review-poll" package="$PACKAGES/review-poll" out rc=0
+  make_package "$package" org.example.review-poll ext-review
+  new_home "$home"
+  bind_package "$home" "$package" ext-review --timeout-ms 30000 >/dev/null
+  active_runner_release="$TMP_ROOT/review-poll.release"
+  local marker="$TMP_ROOT/review-poll.marker"
+  FM_HOME="$home" "$PROCEVENT" register-extension ext-review review-long --config-ref "active-block|$marker|$active_runner_release" >/dev/null
+  FM_HOME="$home" "$PROCEVENT" start review-long > "$TMP_ROOT/review-poll.out" 2>&1 &
+  active_runner_pid=$!
+  wait_for_file "$marker" || fail 'long poll did not enter its invocation'
+  out=$(bounded_command env FM_HOME="$home" "$PROCEVENT" register-extension ext-review review-other --config-ref good 2>&1) || rc=$?
+  [ "$rc" = 0 ] || fail "a long poll blocked another source's registration: $out"
+  out=$(bounded_command env FM_HOME="$home" "$PROCEVENT" start review-other 2>&1) || fail "a long poll blocked another source's result: $out"
+  assert_contains "$out" 'review-other.1.result' 'the independent result was not captured'
+  local digest
+  digest=$(FM_HOME="$home" "$HOST" resolve-process-event ext-review | cut -f6)
+  expect_failure 'still active' bounded_command env FM_HOME="$home" "$HOST" retire-binding org.example.review-poll --if-binding-digest "$digest"
+  touch "$active_runner_release"
+  active_runner_release=
+  wait "$active_runner_pid" || fail 'long poll did not complete'
+  active_runner_pid=
+  pass 'long polls allow unrelated delivery while invocation ownership blocks retirement'
+}
+
+test_extension_registration_lock_order() {
+  local home="$HOMES/review-lock" package="$PACKAGES/review-lock" marker="$TMP_ROOT/review-lock.marker" rc=0 out
+  make_package "$package" org.example.review-lock ext-review-lock
+  new_home "$home"
+  bind_package "$home" "$package" ext-review-lock >/dev/null
+  FM_HOME="$home" "$PROCEVENT" register-extension ext-review-lock review-locked --config-ref good >/dev/null
+  FM_HOME="$home" "$PROCEVENT" register-extension ext-review-lock review-independent --config-ref good >/dev/null
+  active_runner_release="$TMP_ROOT/review-lock.release"
+  bash -c '
+    . "$1/bin/fm-pr-lib.sh"
+    . "$1/bin/fm-wake-lib.sh"
+    . "$1/bin/fm-procevent-lib.sh"
+    fm_procevent_source_lock_acquire review-locked || exit 1
+    printf held > "$2"
+    while [ ! -e "$3" ]; do sleep .02; done
+    fm_procevent_source_lock_release review-locked
+  ' bash "$ROOT" "$marker" "$active_runner_release" &
+  active_runner_pid=$!
+  wait_for_file "$marker" || fail 'source owner did not acquire its lock'
+  bounded_command env FM_HOME="$home" "$PROCEVENT" register-extension ext-review-lock review-locked --config-ref replacement > "$TMP_ROOT/review-register.out" 2>&1 &
+  race_register_pid=$!
+  for _ in $(seq 1 40); do
+    [ ! -L "$home/state/procevent/.extension-binding-lifecycle.lock" ] || break
+    sleep .025
+  done
+  out=$(bounded_command env FM_HOME="$home" "$PROCEVENT" start review-independent 2>&1) || rc=$?
+  touch "$active_runner_release"
+  active_runner_release=
+  wait "$active_runner_pid" || fail 'source owner did not release its lock'
+  active_runner_pid=
+  wait "$race_register_pid" || fail 'registration did not complete after the source was released'
+  race_register_pid=
+  [ "$rc" = 0 ] || fail "a source-lock waiter held the lifecycle lock: $out"
+  pass 'registration waits for its source without holding the lifecycle lock'
+}
+
+test_extension_partial_capture_sequence() {
+  local home="$HOMES/review-partial" package="$PACKAGES/review-partial" out
+  make_package "$package" org.example.review-partial ext-review-partial
+  new_home "$home"
+  bind_package "$home" "$package" ext-review-partial >/dev/null
+  FM_HOME="$home" "$PROCEVENT" register-extension ext-review-partial review-partial --config-ref good >/dev/null
+  mkdir -p "$home/state/procevent-inbox"
+  chmod 700 "$home/state/procevent-inbox"
+  printf 'ext-review-partial\n' > "$home/state/procevent-inbox/review-partial.1.adapter"
+  chmod 600 "$home/state/procevent-inbox/review-partial.1.adapter"
+  out=$(FM_HOME="$home" "$PROCEVENT" start review-partial 2>&1) || fail "partial capture recovery failed: $out"
+  assert_contains "$out" 'review-partial.2.result' 'partial publication blocked the next capture'
+  assert_grep 'external evidence: good' "$home/state/procevent-inbox/review-partial.2.result" 'retry did not retain the new result'
+  [ "$(cat "$home/state/procevent-inbox/review-partial.1.adapter")" = ext-review-partial ] || fail 'partial ownership evidence was overwritten'
+  pass 'partial captures reserve their sequence and permit a fresh capture'
+}
+
 if section_enabled lifecycle-runner; then
+test_extension_poll_does_not_block_other_sources
+test_extension_registration_lock_order
+test_extension_partial_capture_sequence
 P_FLOW="$PACKAGES/flow"
 make_package "$P_FLOW" org.example.flow ext-flow
 H_ACTIVE_RUNNER="$HOMES/active-runner"; new_home "$H_ACTIVE_RUNNER"
@@ -1447,10 +1538,9 @@ for control_kind in tab newline; do
   control_source="control-${control_kind}-state-source"
   mkdir -p "$control_state"
   chmod 0700 "$control_state"
-  FM_HOME="$H_STATE_OVERRIDE" FM_STATE_OVERRIDE="$control_state" \
-    "$PROCEVENT" register lavish "$control_source" -- /bin/echo control >/dev/null
-  expect_failure "cannot acquire source ownership" env FM_HOME="$H_STATE_OVERRIDE" FM_STATE_OVERRIDE="$control_state" \
-    "$PROCEVENT" start "$control_source"
+  expect_failure "error:" env FM_HOME="$H_STATE_OVERRIDE" FM_STATE_OVERRIDE="$control_state" \
+    bash -c '"$1" register lavish "$2" -- /bin/echo control && "$1" start "$2"' \
+      _ "$PROCEVENT" "$control_source"
   assert_absent "$TMP_ROOT/claims/$control_source.claim" "control-byte state root created a malformed claim"
   assert_absent "$control_state/procevent-capture-reservations" "control-byte state root created reservation state"
   assert_present "$state_path_decoy" "control-byte state root touched unrelated reservation state"
@@ -1471,7 +1561,7 @@ override_crash_runner_pid=$(sed -n '2p' "$override_crash_claim")
 override_crash_token=$(sed -n '3p' "$override_crash_claim")
 override_crash_records=$(find "$STATE_OVERRIDE/procevent-capture-reservations" -type f \
   -name ".extension-capture-$override_crash_token.*" -print | wc -l | tr -d '[:space:]')
-[ "$override_crash_records" -eq 2 ] || fail "overridden-state crash fixture did not create both immediate reservations"
+[ "$override_crash_records" -eq 1 ] || fail "overridden-state crash fixture did not retain its unconsumed reservation"
 mkdir -p "$H_STATE_OVERRIDE/state/procevent-capture-reservations"
 chmod 0700 "$H_STATE_OVERRIDE/state" "$H_STATE_OVERRIDE/state/procevent-capture-reservations"
 override_crash_decoy="$H_STATE_OVERRIDE/state/procevent-capture-reservations/.extension-capture-$override_crash_token.decoy.json"
@@ -1482,7 +1572,10 @@ wait "$override_crash_start_pid" 2>/dev/null || true
 override_crash_start_pid=
 override_crash_runner_pid=
 FM_HOME="$H_STATE_OVERRIDE" "$PROCEVENT" reconcile >/dev/null
-assert_absent "$override_crash_claim" "reconcile retained a dead overridden-state claim"
+assert_present "$override_crash_claim" "default-state reconciliation crossed state ownership"
+FM_HOME="$H_STATE_OVERRIDE" FM_STATE_OVERRIDE="$STATE_OVERRIDE" "$PROCEVENT" sweep-home >/dev/null \
+  || fail "the owning state's sweep failed"
+assert_absent "$override_crash_claim" "the owning state's sweep retained a dead claim"
 override_crash_records=$(find "$STATE_OVERRIDE/procevent-capture-reservations" -type f \
   -name ".extension-capture-$override_crash_token.*" -print -quit)
 [ -z "$override_crash_records" ] || fail "reconcile left reservations in the recorded overridden state root"
@@ -1531,7 +1624,11 @@ touch "$registry_race_release"
 registry_race_rc=0
 wait "$registry_race_pid" || registry_race_rc=$?
 registry_race_pid=
-[ "$registry_race_rc" -eq 0 ] || fail "registry swap race did not complete through its pinned staging directory"
+[ "$registry_race_rc" -ne 0 ] || fail "registry substitution retained launch authority"
+assert_contains "$(cat "$TMP_ROOT/registry-race.out")" "cannot establish the source launch boundary" \
+  "registry substitution did not report the lost launch boundary"
+assert_present "$STATE_OVERRIDE/procevent-inbox/registry-race-source.1.result" \
+  "registry substitution lost the durably captured result"
 [ -z "$(find "$TMP_ROOT/registry-race-outside" -mindepth 1 -print -quit)" ] \
   || fail "a registry directory swap received external evidence"
 rm "$STATE_OVERRIDE/procevent"
@@ -1739,7 +1836,7 @@ pass "extension launch uses a tracked static core barrier without dynamic code e
 
 signal_state="$H_INVOCATION_CLEANUP/state/extensions/org.example.invocation-cleanup"
 rm -f "$signal_state/descendant.pid"
-FM_HOME="$H_INVOCATION_CLEANUP" "$HOST" process-event ext-invocation-cleanup source.poll \
+FM_HOME="$H_INVOCATION_CLEANUP" "$PROCEVENT" extension-process-event ext-invocation-cleanup source.poll \
   --source-id invocation-cleanup-source --config-ref timeout \
   --expect-extension "$cleanup_id" --expect-version "$cleanup_version" \
   --expect-capability-version "$cleanup_cap" \
@@ -1770,7 +1867,7 @@ pass "signal interruption proves exact invocation-group extinction before host e
 crash_marker="$TMP_ROOT/invocation-crash.marker"
 crash_cleanup_release="$TMP_ROOT/invocation-crash.release"
 crash_config="active-block|$crash_marker|$crash_cleanup_release"
-FM_HOME="$H_INVOCATION_CLEANUP" "$HOST" process-event ext-invocation-cleanup source.poll \
+FM_HOME="$H_INVOCATION_CLEANUP" "$PROCEVENT" extension-process-event ext-invocation-cleanup source.poll \
   --source-id invocation-cleanup-source --config-ref "$crash_config" \
   --expect-extension "$cleanup_id" --expect-version "$cleanup_version" \
   --expect-capability-version "$cleanup_cap" \

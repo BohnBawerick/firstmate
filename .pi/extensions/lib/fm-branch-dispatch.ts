@@ -231,10 +231,19 @@ export function scopeForUnreadWake(state: string, heartbeat: boolean): UnreadWak
   const staleDecisionOwnership = new Map<string, boolean>();
   const resolveVerb = process.env.FM_CLASSIFY_RESOLVE_VERB || "resolved";
   const heldVerb = process.env.FM_CLASSIFY_CAPTAIN_HELD_VERB || "captain-held";
+  const pausedVerb = process.env.FM_CLASSIFY_PAUSED_VERB || "paused";
+  const eventVerbs = new Set(["working", "needs-decision", "blocked", "done", "failed", "note", resolveVerb, heldVerb, pausedVerb]);
+  const legacyPattern = process.env.FM_CAPTAIN_RE || "done:|needs-decision:|blocked:|failed:|PR ready|checks green|ready in branch|merged";
+  let legacyEvent: RegExp;
+  try {
+    legacyEvent = new RegExp(`^\\s*(?:${legacyPattern.replaceAll("[[:space:]]", "\\s")})`, "i");
+  } catch {
+    return UNSAFE_SCOPE;
+  }
   const reservedPrefixes = (process.env.FM_CLASSIFY_RESERVED_KEY_PREFIXES || "pending-reply-")
     .split(/\s+/)
     .filter(Boolean);
-  const decisionConfig = `${resolveVerb}\0${heldVerb}\0${reservedPrefixes.join("\0")}`;
+  const decisionConfig = `${resolveVerb}\0${heldVerb}\0${pausedVerb}\0${legacyPattern}\0${reservedPrefixes.join("\0")}`;
   for (const line of rows) {
     const fields = line.split("\t");
     if (fields.length < 5 || !/^[0-9]+$/.test(fields[1])) return UNSAFE_SCOPE;
@@ -290,8 +299,10 @@ export function scopeForUnreadWake(state: string, heartbeat: boolean): UnreadWak
               } catch {
                 return UNSAFE_SCOPE;
               }
+              const latestEvent = statusLines.findLast((line) =>
+                (line.includes(":") && eventVerbs.has(statusLineVerb(line))) || legacyEvent.test(line));
               decisionOwned = hasOpenNeedsDecision(statusLines, resolveVerb, heldVerb, reservedPrefixes) ||
-                statusLineVerb(statusLines.at(-1) ?? "") === heldVerb;
+                statusLineVerb(latestEvent ?? "") === heldVerb;
               staleDecisionCache.set(statusPath, { version, config: decisionConfig, decisionOwned });
               if (staleDecisionCache.size > 512) {
                 staleDecisionCache.delete(staleDecisionCache.keys().next().value!);

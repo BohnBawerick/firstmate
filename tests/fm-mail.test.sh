@@ -603,6 +603,7 @@ SH
 
 test_poll_retry_surfaces_under_new_mail_flood() {
   local harness out
+  mkdir -p "$HOME_DIR/state"
   harness="$TMP_ROOT/retry-budget-harness.py"
   cat > "$harness" <<'PYEOF'
 import os, sys
@@ -612,8 +613,10 @@ os.environ.update({
     'FM_SMTP_HOST': 'smtp.test', 'FM_SMTP_PORT': '465',
     'FM_MAIL_CURSOR': sys.argv[1],
     'FM_MAIL_RETRY': sys.argv[2],
-    'FM_MAIL_POLL_MAX_WAKES': '4',
+    'FM_MAIL_POLL_MAX_WAKES': '20',
+    'FM_MAIL_POLL_BUDGET_MS': '9000',
 })
+clock = [0.0]
 class FakeConn:
     untagged_responses = {'UIDVALIDITY': [b'90009']}
     def __init__(self, *a, **k):
@@ -626,6 +629,7 @@ class FakeConn:
         if cmd == 'search':
             return ('OK', [b'51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 41'])
         if cmd == 'fetch':
+            clock[0] += .65
             return ('OK', [(b'', b'Subject: good\r\nFrom: a@b.c\r\n\r\n')])
     def logout(self):
         pass
@@ -635,11 +639,9 @@ import importlib.util
 spec = importlib.util.spec_from_file_location('fm_mail', sys.argv[3])
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
+mod.time.monotonic = lambda: clock[0]
 sys.exit(mod.cmd_poll_list())
 PYEOF
-  # cap=4 reserves retry_budget = max(1, 4//4) = 1. Twenty new uids (51-70)
-  # exceed the new window (max(4*4, 4+10) = 16) and would fill the cap alone;
-  # the recovering retry uid 41, sliced separately, must still take its slot.
   {
     printf 'uidvalidity=90009\n'
     printf '41\n'

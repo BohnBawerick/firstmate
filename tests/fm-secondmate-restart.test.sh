@@ -88,8 +88,12 @@ case "${1:-}" in
               answer='open records written down'
               [ ! -f "$D/answer-verb" ] || verb=$(cat "$D/answer-verb")
               [ ! -f "$D/answer-payload" ] || answer=$(cat "$D/answer-payload")
-              printf '%s [%s]: %s\n' "$verb" "$corr" "$answer" \
-                >> "$(cat "$D/answer-status")"
+              if [ -f "$D/report-helper" ]; then
+                FM_HOME="$(cat "$D/report-home")" "$(cat "$D/report-helper")" "$verb" "$corr" "$answer"
+              else
+                printf '%s [%s]: %s\n' "$verb" "$corr" "$answer" \
+                  >> "$(cat "$D/answer-status")"
+              fi
             fi
           fi
           ;;
@@ -286,6 +290,9 @@ test_persist_precedes_restart() {
   dir=$(new_case order)
   add_local_mate "$dir" sm1
   arm_answer "$dir" sm1
+  printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$dir/home" > "$dir/sm1-home/.fm-secondmate-parent"
+  printf '%s\n' "$ROOT/bin/fm-secondmate-report.sh" > "$dir/fake/report-helper"
+  printf '%s\n' "$dir/sm1-home" > "$dir/fake/report-home"
 
   out=$(run_restart "$dir" sm1); rc=$?
 
@@ -312,6 +319,9 @@ test_arrived_answer_precedes_deadline_check() {
   dir=$(new_case arrived-at-bound)
   add_local_mate "$dir" sm1
   arm_answer "$dir" sm1
+  printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$dir/home" > "$dir/sm1-home/.fm-secondmate-parent"
+  printf '%s\n' "$ROOT/bin/fm-secondmate-report.sh" > "$dir/fake/report-helper"
+  printf '%s\n' "$dir/sm1-home" > "$dir/fake/report-home"
 
   out=$(FM_TEST_PERSIST_WAIT=0 run_restart "$dir" sm1); rc=$?
 
@@ -863,6 +873,9 @@ test_unsaved_work_keeps_the_conversation() {
       printf '%s' "$answer" > "$dir/fake/answer-payload"
       if [ "$timing" = delivered ]; then
         arm_answer "$dir" sm1
+        printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$dir/home" > "$dir/sm1-home/.fm-secondmate-parent"
+        printf '%s\n' "$ROOT/bin/fm-secondmate-report.sh" > "$dir/fake/report-helper"
+        printf '%s\n' "$dir/sm1-home" > "$dir/fake/report-home"
       else
         arm_answer_after_scan "$dir"
       fi

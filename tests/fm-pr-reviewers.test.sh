@@ -22,8 +22,12 @@ serve() {
     "api /repos/o/r/pulls/7 --jq "*)
       printf '%s\n' '{"user":{"login":"prauthor"},"base":{"sha":"base123"}}'
       ;;
-    "api /repos/o/r/pulls/7/files?per_page=100 --paginate --jq .[].filename")
-      printf '%s\n' '[{"filename":"a.ts"},{"filename":"dir/b.ts"}]'
+    "api /repos/o/r/pulls/7/files?per_page=100 --paginate --jq "*)
+      if [ "${FM_TEST_RENAMED:-0}" = 1 ]; then
+        printf '%s\n' '[{"filename":"renamed.ts","previous_filename":"a.ts","status":"renamed"}]'
+      else
+        printf '%s\n' '[{"filename":"a.ts"},{"filename":"dir/b.ts"}]'
+      fi
       ;;
     "api --method GET /repos/o/r/commits -f sha=base123 -f path=a.ts -F per_page=100 --jq "*)
       if [ "${FM_TEST_ONLY_AUTHOR:-0}" = 1 ]; then
@@ -50,6 +54,8 @@ serve() {
           {"sha":"carol2","author":{"login":"carol","type":"User"}}]'
       fi
       ;;
+    "api --method GET /repos/o/r/commits -f sha=base123 -f path=renamed.ts "*)
+      printf '[]\n' ;;
     *)
       printf 'unexpected gh call: %s\n' "$*" >&2
       exit 91
@@ -110,6 +116,15 @@ test_refusals_exit_nonzero() {
     "a bare number must be refused as an address, not attempted as a lookup"
   pass "argument and lookup refusals exit nonzero"
 }
+
+test_renamed_file_authors() {
+  local out
+  out=$(FM_TEST_RENAMED=1 run_reviewers) || fail "rename lookup failed"
+  assert_contains "$out" $'carol\t1 recent commit' "rename lost the base path's authors"
+  assert_contains "$out" $'alice\t1 recent commit' "rename lost a second base path author"
+  pass "rename-only changes retain authors from the previous path"
+}
+test_renamed_file_authors
 
 test_candidates_use_api_logins_and_unique_commit_counts
 test_only_author_evidence_says_no_candidates

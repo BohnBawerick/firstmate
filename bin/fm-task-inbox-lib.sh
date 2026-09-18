@@ -260,9 +260,10 @@ fm_task_inbox_body() {  # <record-path>
 fm_task_inbox_doorbell_line() {  # <record-path>
   local dir=${1%/*} abs quoted LC_ALL=C
   abs=$(cd "$dir" 2>/dev/null && pwd) || abs=$dir
-  case "$abs" in
-    *[![:print:]]*) return 1 ;;
-  esac
+  perl -MEncode=decode,FB_CROAK -e '
+    my $path = eval { decode("UTF-8", $ARGV[0], FB_CROAK) };
+    exit 1 if !defined($path) || $path =~ /\p{Cc}/;
+  ' "$abs" || return 1
   quoted=$(printf '%s' "$abs" | sed "s/'/'\\\\''/g")
   printf ": Firstmate instruction waiting: list '%s'/*.msg and, in numeric order, read and act on each, then mv each handled file to '%s'/handled/." \
     "$quoted" "$quoted"

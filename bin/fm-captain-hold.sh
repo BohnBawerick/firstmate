@@ -453,6 +453,13 @@ body_has_resolution_record() {  # <task-body>
   return 1
 }
 
+body_has_current_resolution_record() {
+  local body
+  body=$(decode_shown_value "$1") || return 1
+  body=${body%%$'\n\nPrevious captain hold history:\n'*}
+  body_has_resolution_record "$body"
+}
+
 # The recorded decision digest of either record format, from the show-escaped
 # body (multi-line bodies print as one quoted line with \n escapes). Records
 # are prepended, so the first match is the newest record.
@@ -769,6 +776,9 @@ write_hold_set_stamp() {  # <task-id> <shown-body> <timestamp> <preserve-existin
       $'\n'*) body=${body#$'\n'} ;;
     esac
   fi
+  if [ "$preserve" = 0 ] && body_has_resolution_record "$body"; then
+    body=$(printf 'Previous captain hold history:\n%s' "$body")
+  fi
   new_body=$(printf 'Captain hold set: %s' "$hold_set")
   if [ -n "$body" ]; then
     new_body=$(printf '%s\n\n%s' "$new_body" "$body")
@@ -1055,7 +1065,7 @@ command_answer() {
     # its own record on top. Either way the close mode is the caller's flag,
     # checked against an interrupted close's recorded mode so a retry cannot
     # silently flip a release into a close.
-    if body_has_resolution_record "$body" \
+    if body_has_current_resolution_record "$body" \
       && [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ]; then
       recorded_mode=$(recorded_resolution_mode "$body" || true)
       case "$recorded_mode" in
@@ -1188,7 +1198,7 @@ legacy_keyed_decision_text() {  # <source> <key> <answer> <label>
 }
 
 sanitize_field() {  # <text>
-  printf '%s' "$1" | tr '\n\r\t' '   ' | LC_ALL=C tr -d '\000-\037\177' | cut -c1-512
+  printf '%s' "$1" | tr '\n\r\t' '   ' | LC_ALL=C tr -d '\000-\037\177' | cut -c"1-${2:-512}"
 }
 
 sanitize_reconcile_provenance() {
@@ -1231,7 +1241,7 @@ command_answers() {
     [ -n "${key:-}" ] || continue
     case "$key" in *[!A-Za-z0-9._-]*) continue ;; esac
     [ "${#key}" -le 128 ] || continue
-    answer=$(sanitize_field "${answer:-}")
+    answer=$(sanitize_field "${answer:-}" 4096)
     [ -n "$answer" ] || continue
     label=$(sanitize_field "${label:-}")
     if [ "$answer" = "$RECONCILE_VALUE" ]; then

@@ -119,7 +119,7 @@ record_body() { # <record>
 
 test_text_steer_rides_inbox() {
   local dir err rc rec body typed
-  dir=$(setup_case rides)
+  dir=$(setup_case café)
   err="$dir/send.err"
   run_send "$dir" "$err" -- t1 "please rebase onto main"
   rc=$?

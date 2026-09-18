@@ -216,10 +216,12 @@ test_doorbell_rejects_terminal_controls() {
   marker="$dir/marker"
   mkdir -p "$dir"
   make_watch_stubs "$dir" >/dev/null
-  for label in etx esc; do
+  for label in etx esc csi invalid-utf8; do
     case "$label" in
       etx) control=$'\003' ;;
       esc) control=$'\033' ;;
+      csi) control=$'\302\233' ;;
+      invalid-utf8) control=$'\377' ;;
     esac
     state="$dir/${control}touch marker; # $label/state"
     mkdir -p "$state"

@@ -481,7 +481,7 @@ cmd_choice_rows() {
         next unless $selected eq "" || $selected =~ /\A[A-Za-z0-9._-]{1,128}\z/;
         next unless length($note) <= 512;
         next unless length($selected) || length($note);
-        $answer = length($selected) ? $selected : $note;
+        $answer = join(" - ", grep { length } ($selected, $note));
         $legacy = 0;
       # Time-limited compatibility for captures from pre-change boards; remove
       # once no board carrying the old question/answer context can remain armed.

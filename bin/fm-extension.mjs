@@ -1378,6 +1378,9 @@ async function runExtensionProcess(home, record, verb, request, timeoutMs, state
 
   try {
     await publishInvocationGroup(invocation, owner);
+    if (verb === "invoke" && process.env.FM_EXTENSION_RETIREMENT_MODE === "process-event" && activeLifecycleLock) {
+      await releaseLifecycleLock();
+    }
   } catch (error) {
     await finalizeInvocation(invocation);
     throw error;
@@ -2382,7 +2385,7 @@ async function runInheritedLifecycleRetirement(args) {
       else fail("lifecycle-lock-invalid", "extension lifecycle binding command is invalid");
     }
   } finally {
-    await releaseLifecycleLock();
+    if (activeLifecycleLock) await releaseLifecycleLock();
   }
 }
 

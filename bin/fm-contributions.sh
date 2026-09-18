@@ -282,11 +282,15 @@ settle_final() { # canonical-url task... : copy the URL's final observation to e
     if jq -e '. == null' "$TMP/old.json" >/dev/null; then
       jq -n --slurpfile final "$TMP/final.json" '
         $final[0] + {error:null,pending:[],notified:[]}' > "$TMP/row.json"
-      write_record "$task" "$TMP/row.json"
-    elif jq -e '.error != null' "$TMP/old.json" >/dev/null; then
-      jq '.error = null' "$TMP/old.json" > "$TMP/row.json"
+    else
+      jq --slurpfile final "$TMP/final.json" '
+        . + {error:null,checked_at:$final[0].checked_at,observation:$final[0].observation}' \
+        "$TMP/old.json" > "$TMP/row.json"
+    fi
+    if ! cmp -s "$TMP/old.json" "$TMP/row.json"; then
       write_record "$task" "$TMP/row.json"
     fi
+    publish_pending "$task" "$url" "$TMP/row.json"
   done
 }
 

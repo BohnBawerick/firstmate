@@ -60,7 +60,7 @@ EOF
 [ -n "$AUTHOR" ] && [ -n "$BASE" ] \
   || die "GitHub returned incomplete pull-request state for $URL"
 
-FILES=$(gh api "$ENDPOINT/files?per_page=100" --paginate --jq '.[].filename') \
+FILES=$(gh api "$ENDPOINT/files?per_page=100" --paginate --jq '.[] | if .status == "renamed" then .previous_filename else .filename end') \
   || die "could not read changed files for $URL"
 [ -n "$FILES" ] || {
   printf 'NO CANDIDATES: pull request changes no files\n'

@@ -3887,7 +3887,7 @@ if (needsDecisionOnly.eligible || needsDecisionOnly.eligibleSeqs.length !== 0 ||
 
 // A captain-held task's bounded stale recheck is itself a decision wake. It is
 // excluded while an unrelated routine row remains independently branch-owned.
-writeFileSync(`${state}/task-a.status`, "captain-held [key=route]: awaiting the captain\n \t \n");
+writeFileSync(`${state}/task-a.status`, "captain-held [key=route]: awaiting the captain\nContinuation prose about the requested choice.\n \t \n");
 writeFileSync(
   `${state}/.wake-queue`,
   [
@@ -3901,6 +3901,14 @@ if (!captainHeldMixed.eligible || captainHeldMixed.eligibleSeqs.join(",") !== "2
 }
 if (captainHeldMixed.needsDecisionKeys.join(",") !== "fm-window") {
   throw new Error(`the captain-held stale key was not marked main-owned: ${JSON.stringify(captainHeldMixed)}`);
+}
+
+for (const event of ["working: resumed", "paused: waiting for CI", "merged the delivery"]) {
+  writeFileSync(`${state}/task-a.status`, `captain-held [key=route]: waiting\n${event}\nContinuation prose.\n`);
+  const resumed = scopeForUnreadWake(state, false);
+  if (resumed.eligibleSeqs.join(",") !== "1,2" || resumed.needsDecisionKeys.length !== 0) {
+    throw new Error(`a later recognized event retained the old hold: ${JSON.stringify(resumed)}`);
+  }
 }
 
 writeFileSync(`${state}/task-a.status`, "captain-held [key=route]: awaiting a second captain reminder\n \n");

@@ -167,6 +167,7 @@ resolve_persist_reply() {
   payload=${line#*:}
   payload=${payload#"${payload%%[![:space:]]*}"}
   payload=${payload%"${payload##*[![:space:]]}"}
+  payload=${payload%" (via-helper)"}
   pending_count=$((pending_count - 1))
   if [ "$verb" = done ] && [ "$payload" = 'open records written down' ]; then
     launch_restart "$i"

@@ -239,7 +239,7 @@ if ($rc != 0 && $written == 0) {
 }
 chdir($inbox_dir) or fail("cannot enter inbox directory");
 $sequence = 1;
-$sequence++ while -e "$id.$sequence.result" || -l "$id.$sequence.result";
+$sequence++ while grep { -e "$id.$sequence.$_" || -l "$id.$sequence.$_" } qw(adapter extension result);
 my $prefix = "$id.$sequence";
 my $nonce = ".$prefix.$$";
 my $result_tmp = "$nonce.result";

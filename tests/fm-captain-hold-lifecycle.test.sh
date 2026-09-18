@@ -1388,12 +1388,11 @@ EOF
     || fail "re-hold after release failed"
   assert_grep 'needs-decision [key=captain-hold-mate-call-2]: captain hold mate-call: second release choice' \
     "$channel" "a re-held task did not open a distinct parent decision"
-  printf 'ship it\n' > "$decision"
-  run_captain "$mate" answer mate-call --decision-file "$decision" >/dev/null \
+  run_captain "$mate" answer mate-call --decision-file "$decision" --release >/dev/null \
     || fail "mate close answer failed"
-  assert_grep 'resolved [key=captain-hold-mate-call-2]: captain hold mate-call: answered' \
+  assert_grep 'resolved [key=captain-hold-mate-call-2]: captain hold mate-call: released' \
     "$channel" "the closing answer did not close the second parent decision"
-  run_captain "$mate" answer mate-call --decision-file "$decision" >/dev/null \
+  run_captain "$mate" answer mate-call --decision-file "$decision" --release >/dev/null \
     || fail "idempotent answer retry failed"
   [ "$(grep -c 'captain-hold-mate-call-2' "$channel")" = 2 ] \
     || fail "an answer retry duplicated a parent line: $(cat "$channel")"
@@ -2210,16 +2209,16 @@ test_board_answer_reaches_the_keyed_answer_intake() {
   # in the shape the adapter's own reader parses: a declared field order, an
   # indented CSV row, and the versioned answer context inside its prompt.
   stub="$home/board-source.sh"
-  cat > "$stub" <<'SH'
-#!/usr/bin/env bash
-cat <<'OUT'
-session:
-  status: feedback
-  session_ended: false
-prompts[1]{tag,text,prompt}:
-  "choice","Take the north route","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"sample-board-call\",\"selection\":\"north\",\"note\":\"\"}"
-OUT
-SH
+  python3 - "$home/board-response" <<'PYBOARD'
+import json, sys
+note = "n" * 496 + "TAIL"
+ctx = {"schema": "fm-bearings-answer.v1", "question": "sample-board-call", "selection": "north" + "s" * 123, "note": note}
+label = "Choose the full publication path for this task: north - " + note
+with open(sys.argv[1], "w") as out:
+    out.write('session:\n  status: feedback\n  session_ended: false\nprompts[1]{tag,text,prompt}:\n  ')
+    out.write(",".join(json.dumps(x) for x in ["choice", label, label + "\n\nContext data: " + json.dumps(ctx)]) + "\n")
+PYBOARD
+  printf '#!/bin/sh\ncat "%s"\n' "$home/board-response" > "$stub"
   chmod +x "$stub"
 
   run_procevent "$home" register lavish "$sid" -- "$stub" >/dev/null \
@@ -2242,6 +2241,7 @@ SH
   assert_contains "$show" "north" "the board answer lost the captain's selection"
   assert_contains "$show" "the captured result $sid sequence 1" \
     "the recorded answer did not name the board result that carried it"
+  assert_contains "$show" "$(printf '%0496d' 0 | tr '0' 'n')TAIL" "the accepted note was truncated"
   pass "a board answer reaches the keyed-answer intake and wakes firstmate"
 }
 
