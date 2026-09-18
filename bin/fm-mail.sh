@@ -161,8 +161,9 @@ WOKEN="$STATE_DIR/.mail-woken"
 # per-poll retry window marches through every uid; it is cleared with the set.
 RETRY="$STATE_DIR/.mail-retry"
 RETRY_POS="$STATE_DIR/.mail-retry-pos"
-# Alternating-turn flag for a single contended wake slot (new surfacing vs
-# retry recovery) at cap 1; cleared with the retry machinery on a generation
+# Alternating-turn flag (new surfacing vs retry recovery) for a single contended
+# wake slot at cap 1 and for a deadline-bounded standing poll, which can run out
+# of time after one fetch; cleared with the retry machinery on a generation
 # change so a new mailbox starts with new mail first.
 TURN="$STATE_DIR/.mail-turn"
 

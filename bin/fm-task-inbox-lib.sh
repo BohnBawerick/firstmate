@@ -58,8 +58,9 @@
 # crash or marker failure may produce a rare duplicate rather than silently lose
 # a wake.
 #
-# Inbox paths containing bytes outside printable ASCII are unsupported. The
-# doorbell refuses them rather than sending terminal control bytes to a pane.
+# Inbox paths that are not valid UTF-8 or that contain a control character are
+# unsupported. The doorbell refuses them rather than sending terminal control
+# bytes to a pane; other Unicode paths are accepted.
 #
 # fm_task_inbox_ring requires bin/fm-backend.sh's dispatch (sourced below); the
 # other helpers are dependency-light. Sourced by bin/fm-send.sh, bin/fm-watch.sh,
@@ -255,8 +256,8 @@ fm_task_inbox_body() {  # <record-path>
 # still receives the complete instruction in the line itself. The leading `: `
 # is the POSIX shell no-op, so the same line typed into a pane whose agent has
 # exited (a bare shell) runs nothing; see the dead-pane note in the header.
-# A non-printable path fails without output so terminal controls never reach
-# the pane's line discipline.
+# An invalid-UTF-8 or control-bearing path fails without output so terminal
+# controls never reach the pane's line discipline.
 fm_task_inbox_doorbell_line() {  # <record-path>
   local dir=${1%/*} abs quoted LC_ALL=C
   abs=$(cd "$dir" 2>/dev/null && pwd) || abs=$dir

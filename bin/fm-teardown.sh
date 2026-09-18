@@ -207,18 +207,21 @@
 # removal so the operator can see what happened.
 #
 # Pre-teardown cleanup sequence (runs once every landed/discard-work safety
-# refusal above has already passed, and BEFORE any worktree return, branch
-# delete, or backend kill below - a still-active run or a leaked process may
-# own live work in that worktree):
+# refusal above has already passed, and BEFORE the pending backlog-close record,
+# any worktree return, branch delete, or backend kill below - a still-active run
+# or a leaked process may own live work in that worktree, and a run that cannot
+# be confirmed stopped refuses teardown before that record exists):
 #   Fix 1 - conclude the task's own no-mistakes run. A ship task's worktree can
 #     be torn down while its no-mistakes pipeline run is still PARKED at a gate
 #     (awaiting_approval/fix_review/any awaiting_agent field), with no worker
 #     left to ever answer it - the run then sits there holding a fleet slot
 #     indefinitely (observed 2026-08-03: runs parked 7h39m and parked at a
 #     post-CI approval gate after the worker was already cleaned up). A run
-#     with an autonomous step still under way (running/fixing/ci) is left
-#     alone: no-mistakes drives those against its own gate-repo clone, not the
-#     crew's worktree, so they are not orphaned by removing the worktree.
+#     with an autonomous step still under way (fixing/ci, or running with no
+#     awaiting_agent field or gate) is left alone: no-mistakes drives those
+#     against its own gate-repo clone, not the crew's worktree, so they are not
+#     orphaned by removing the worktree. A parked gate can still report a
+#     top-level running status, so the gate fields, not that status, decide.
 #     conclude_task_no_mistakes_run attributes the active-or-most-recent run to
 #     THIS task only when its branch AND code identity (bin/fm-nm-run-lib.sh's
 #     strict fm_nm_head_matches_worktree rule) both match this worktree, then

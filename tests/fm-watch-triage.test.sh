@@ -2332,6 +2332,9 @@ test_exited_declared_pause_is_bounded_but_live_gate_surfaces() {
 test_live_declared_pause_ticking_footer_keeps_the_bounded_cadence() {
   local dir state fakebin out drain_out window key sig pid statusf gen ticks
   local round prev_hash cur_hash prev_ticks cycles wakes bare back
+  # Rounds 1-6 must stay inside one cadence. The status file ages in wall time,
+  # so a short cadence lets a slow host legitimately re-surface a later round.
+  local cadence=86400
   dir=$(make_case live-paused-ticking-footer); state="$dir/state"; fakebin="$dir/fakebin"
   out="$dir/watch.out"; drain_out="$dir/drain.out"; window="test:fm-paused-ticking"
   statusf="$state/paused-ticking.status"; gen="$dir/footer-gen"; ticks="$dir/ticks"
@@ -2370,7 +2373,7 @@ SH
     FM_FAKE_TMUX_GEN="$gen" FM_FAKE_TMUX_CURRENT_COMMAND=grok \
     FM_FAKE_CREW_STATE='state: paused · source: status-log · holding for the upstream tool release' \
     FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
-    FM_STALE_ESCALATE_SECS=240 FM_PAUSE_RESURFACE_SECS=999 FM_POLL=0.2 FM_SIGNAL_GRACE=1 \
+    FM_STALE_ESCALATE_SECS=240 FM_PAUSE_RESURFACE_SECS="$cadence" FM_POLL=0.2 FM_SIGNAL_GRACE=1 \
     FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
   pid=$!
   wait_for_exit "$pid" 150 || { reap "$pid"; fail "a live declared pause did not surface once on first sight"; }
@@ -2390,7 +2393,7 @@ SH
       FM_FAKE_TMUX_GEN="$gen" FM_FAKE_TMUX_CURRENT_COMMAND=grok \
       FM_FAKE_CREW_STATE='state: paused · source: status-log · holding for the upstream tool release' \
       FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
-      FM_STALE_ESCALATE_SECS=240 FM_PAUSE_RESURFACE_SECS=999 FM_POLL=0.2 FM_SIGNAL_GRACE=1 \
+      FM_STALE_ESCALATE_SECS=240 FM_PAUSE_RESURFACE_SECS="$cadence" FM_POLL=0.2 FM_SIGNAL_GRACE=1 \
       FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
     pid=$!
     # Four whole cycles: enough for the tick's fresh hash to become stably stale

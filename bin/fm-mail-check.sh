@@ -39,9 +39,11 @@
 # (FM_CHECK_TIMEOUT, default 30, read from this check's own environment
 # because the watcher runs it as a direct child). The internal budget
 # FM_MAIL_CHECK_BUDGET (default 15, valid 5..25) is cut down to whatever fits
-# inside that bound before the poll starts. A poll that does not finish is a
-# real condition, so the budget is enforced rather than assumed: a timed-out
-# poll reports one line naming the budget instead of leaving the check silent.
+# inside that bound before the poll starts. The poll's own IMAP work stops at
+# 60% of that budget, so it can still emit and record what it fetched. A poll
+# that does not finish is a real condition, so the budget is enforced rather
+# than assumed: a timed-out poll reports one line naming the budget instead of
+# leaving the check silent.
 set -u
 export LC_ALL=C
 

@@ -7,7 +7,10 @@
 #   poll_list              Emit unseen mail as tab-separated rows for the bash
 #                          poll, bounded to uids this home has not surfaced,
 #                          plus a retry-set of previously unfetchable uids;
-#                          persists the retry-scan position and cap-1 turn flag.
+#                          persists the retry-scan position and the
+#                          new-versus-retry turn flag. FM_MAIL_POLL_BUDGET_MS,
+#                          set by bin/fm-mail-check.sh, stops IMAP work at a
+#                          deadline and emits the rows fetched so far.
 #   seen <cursor>          Print a cursor file (used by `status`).
 #
 # All configuration arrives through the environment, never through arguments,

@@ -82,7 +82,7 @@ Both read the same uncached ownership authority: the lock's process ancestry is 
 
 ## Lost-wake outcome backstop
 
-Every main-actor wake drain checks each task's newest non-blank status event against the latest supervision-branch outcome that causally covers that task's status log.
+Every main-actor wake drain checks each task's newest recognized status event, never trailing continuation prose, against the latest supervision-branch outcome that causally covers that task's status log.
 When that event is terminal or otherwise captain-facing and remains uncovered, the drain prints it once in `STATUS OUTCOME BACKSTOP`, even if the original queue row was already acknowledged; routine events stay silent, and valid open decisions remain owned by `OPEN DECISIONS`.
 The one-shot backstop cursor is independent from signal annotation, so a delayed signal can still present its status context without repeating the recovered event.
 The drain reads one fixed-size per-task outcome index instead of scanning append-only outcome history and inspects at most the final 64 KiB of each status log.

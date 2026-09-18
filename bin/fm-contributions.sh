@@ -40,8 +40,10 @@
 # untouched; only a genuine forge failure or head change records an error.
 # API failure leaves error evidence; an expired or absent observation is not
 # silence. FM_CONTRIBUTIONS_MAX_AGE (default 900 seconds) bounds freshness.
-# A URL whose last good observation is merged is final: it is
-# never re-read, stays fresh, and a stale error beside it is cleared once.
+# A URL whose last good observation is merged is final: it is never re-read,
+# stays fresh, and settles every owner onto that observation, clearing a stale
+# error and replaying any recorded signal not yet notified. Once every owner
+# holds it with nothing left to notify, the URL leaves the budgeted queue.
 # A genuine failure prints its unavailable line only when it starts an episode
 # (no prior owner has an error); a successful read ends the episode.
 # FM_CONTRIBUTIONS_NOW supplies an ISO UTC clock for tests, otherwise UTC now.

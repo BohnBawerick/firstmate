@@ -1051,7 +1051,8 @@ status_presentation_snapshot() {  # <state>
   done
 }
 
-# Read the latest non-blank event through one captured presentation endpoint.
+# Read the latest recognized status event through one captured presentation
+# endpoint; continuation prose appended after it never replaces it.
 # This is the bounded latest-event owner for fleet-wide backstops: at most the
 # final 64 KiB is inspected, and a file that changes during the read is deferred
 # to the next snapshot instead of combining a line from one state with the mtime

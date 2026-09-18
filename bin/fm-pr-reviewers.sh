@@ -3,11 +3,12 @@
 #
 # This is a read-only advisory command. It reads the pull request's exact file
 # list, then the most recent 100 commits on its base commit for each path. A
-# commit is counted once even when it touched multiple changed paths. Candidates
-# use GitHub's own commit author.login mapping; names and email addresses are
-# never converted or guessed. The pull-request author and Bot accounts are
-# excluded. One API read is issued per changed path, so a wide pull request
-# costs proportionally more reads and time.
+# renamed file is read under its previous path, which is the one that exists at
+# the base commit. A commit is counted once even when it touched multiple
+# changed paths. Candidates use GitHub's own commit author.login mapping; names
+# and email addresses are never converted or guessed. The pull-request author
+# and Bot accounts are excluded. One API read is issued per changed path, so a
+# wide pull request costs proportionally more reads and time.
 #
 # Usage: fm-pr-reviewers.sh <pr-url>
 #   Prints candidates in descending unique-commit count as:

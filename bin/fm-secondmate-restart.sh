@@ -29,17 +29,17 @@
 #      All requests go out before any restart, so a slow mate delays only its own
 #      restart instead of serializing the fleet behind it.
 #   B. RESTART. Only after that mate's own correlated answer lands on the parent
-#      channel. The gate is that answer, never a wall clock, so a mate that is
-#      mid-turn queues the request behind that turn; the bound below exists to
-#      end the wait, not to authorize a restart without the answer. A timeout
-#      deliberately leaves that unanswered expectation open: it is a genuine
-#      open loop owned by the ordinary pending-reply recovery ladder, not state
-#      this restart pass may close.
+#      channel as `done: open records written down`; any other answer settles
+#      the request but falls back to the nudge. The gate is that answer, never a
+#      wall clock, so a mate that is mid-turn queues the request behind that
+#      turn; the bound below exists to end the wait, not to authorize a restart
+#      without the answer. A timeout deliberately leaves that expectation open:
+#      a genuine open loop owned by the pending-reply ladder, not this pass.
 #
-# A mate whose persist answer did not arrive or whose runtime cannot prove a
-# restart gets the ordinary re-read nudge and is reported as a nudge, never as a
-# clean reload. Once a relaunch is attempted, any failed or ambiguous result is
-# reported as unknown rather than attributing it to either incarnation.
+# A mate that did not confirm in time that its open work is written down, or
+# whose runtime cannot prove a restart, gets the ordinary re-read nudge and is
+# reported as a nudge, never as a clean reload. Once a relaunch is attempted, a
+# failed or ambiguous result is unknown, not attributed to either incarnation.
 #
 # Placement changes the transport and nothing else. A local mate is restarted
 # with bin/fm-control.sh <id> relaunch; a remote mate is restarted by running THAT
