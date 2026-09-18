@@ -185,7 +185,7 @@ resolve_persist_reply() {
       ;;
   esac
   pending_count=$((pending_count - 1))
-  if [ "$verb" = done ] && [ "$payload" = 'open records written down' ]; then
+  if [ "$verb" = 'done' ] && [ "$payload" = 'open records written down' ]; then
     launch_restart "$i"
   else
     fall_back_to_nudge "${IDS[i]}" \

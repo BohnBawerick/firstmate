@@ -395,7 +395,7 @@ for helper_mode in noted pointer-only; do
   printf '# Saved open records\n\nMode: %s\n' "$helper_mode" > "$REMOTE/$helper_doc"
   helper_note=''
   [ "$helper_mode" != noted ] || helper_note='open records written down'
-  FM_HOME="$REMOTE" "$ROOT/bin/fm-secondmate-report.sh" --doc done "$helper_corr" "$helper_doc" "$helper_note" \
+  FM_HOME="$REMOTE" "$ROOT/bin/fm-secondmate-report.sh" --doc 'done' "$helper_corr" "$helper_doc" "$helper_note" \
     || fail "the remote helper could not publish its report"
   GEN=$((GEN + 1))
   remote_env "$ROOT/bin/fm-procevent.sh" start "$SID" >/dev/null 2>&1 \

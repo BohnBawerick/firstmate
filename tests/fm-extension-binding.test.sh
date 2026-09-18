@@ -1635,6 +1635,7 @@ for control_kind in tab newline; do
   control_source="control-${control_kind}-state-source"
   mkdir -p "$control_state"
   chmod 0700 "$control_state"
+  # shellcheck disable=SC2016 # Child shell intentionally expands its positional parameters.
   expect_failure "error:" env FM_HOME="$H_STATE_OVERRIDE" FM_STATE_OVERRIDE="$control_state" \
     bash -c '"$1" register lavish "$2" -- /bin/echo control && "$1" start "$2"' \
       _ "$PROCEVENT" "$control_source"
