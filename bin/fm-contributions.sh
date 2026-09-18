@@ -40,7 +40,7 @@
 # untouched; only a genuine forge failure or head change records an error.
 # API failure leaves error evidence; an expired or absent observation is not
 # silence. FM_CONTRIBUTIONS_MAX_AGE (default 900 seconds) bounds freshness.
-# A URL whose last good observation is merged or closed is final: it is
+# A URL whose last good observation is merged is final: it is
 # never re-read, stays fresh, and a stale error beside it is cleared once.
 # A genuine failure prints its unavailable line only when it starts an episode
 # (no prior owner has an error); a successful read ends the episode.
@@ -273,7 +273,7 @@ settle_final() { # canonical-url task... : copy the URL's final observation to e
   shift
   jq -n --slurpfile saved "$TMP/saved.json" --arg url "$url" '
     [$saved[0][] | .records[] | select(.url == $url
-      and (.observation.state | IN("merged","closed")))] as $final
+      and (.observation.state == "merged"))] as $final
     | ([$final[] | select(.error == null)] | first) // ($final | first)' > "$TMP/final.json"
   for task in "$@"; do
     fm_pr_task_id_valid "$task" || { printf 'contributions: invalid durable task id\n'; continue; }
@@ -311,7 +311,7 @@ poll() {
     # A contribution with a final observation is not re-read for any owner.
     if jq -ne --slurpfile saved "$TMP/saved.json" --arg url "$url" --args \
       'any($ARGS.positional[] as $task | [$saved[0][] | select(.task == $task) | .records[] | select(.url == $url)] | first;
-        . != null and (.observation.state | IN("merged","closed")))' "${row[@]:1}" >/dev/null; then
+        . != null and (.observation.state == "merged"))' "${row[@]:1}" >/dev/null; then
       settle_final "$url" "${row[@]:1}"
       continue
     fi

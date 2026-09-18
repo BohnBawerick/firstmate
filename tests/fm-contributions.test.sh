@@ -129,7 +129,8 @@ case "$*" in
        mergeable:(if $state == "open" then true else null end),
        merged_at:(if $state == "merged" then "2026-09-16T07:00:00Z" else null end)}' ;;
   'api repos/o/r/issues/9')
-    jq -n --slurpfile labels "$FORGE/labels.json" '{state:"open",user:{login:"author"},labels:$labels[0]}' ;;
+    jq -n --arg state "$(cat "$FORGE/issue-state" 2>/dev/null || printf open)" \
+      --slurpfile labels "$FORGE/labels.json" '{state:$state,user:{login:"author"},labels:$labels[0]}' ;;
   'api repos/o/r/issues/'*'/events?'*) jq -s . "$FORGE/events.json" ;;
   'api repos/o/r/issues/'*'/comments?'*) jq -s . "$FORGE/comments.json" ;;
   'api repos/o/r/pulls/8/reviews?'*) jq -s . "$FORGE/reviews.json" ;;
@@ -644,32 +645,30 @@ test_shared_url_observed_once() {
   pass 'a URL owned by two tasks is observed once and every owner receives the result'
 }
 
-test_terminal_contribution_settles() {
-  local mode home out later=2026-09-17T08:00:00Z
-  for mode in merged closed; do
-    home=$(new_home "terminal-$mode")
-    forge_home "$home"
-    wrap_forge "$home"
-    printf '%s\n' "$mode" > "$home/forge/state"
-    mutate_record "$home" delivery '.records[0].checked_at="2026-09-15T08:00:00Z"'
-    out=$(with_home "$home" "$ROOT/bin/fm-contributions.sh" poll) || fail "terminal observation poll failed ($mode)"
-    [ -z "$out" ] || fail "a $mode observation printed: $out"
-    jq -e --arg now "$NOW" --arg mode "$mode" '.records[0] | .checked_at == $now and .error == null and .observation.state == $mode' \
-      "$home/data/delivery/contributions.json" >/dev/null || fail "a $mode observation was not recorded once without error"
-    cp "$home/data/delivery/contributions.json" "$home/prior.json"
-    : > "$home/forge/calls"
-    printf 'down\n' > "$home/forge/fault"
-    out=$(with_home "$home" env FM_CONTRIBUTIONS_NOW="$later" "$ROOT/bin/fm-contributions.sh" poll) \
-      || fail "poll after a $mode observation failed"
-    [ -z "$out" ] || fail "a $mode contribution woke again when a later read would fail: $out"
-    [ ! -s "$home/forge/calls" ] || fail "a $mode contribution was re-read: $(cat "$home/forge/calls")"
-    cmp -s "$home/prior.json" "$home/data/delivery/contributions.json" \
-      || fail "a $mode contribution record changed after it settled: $(cat "$home/data/delivery/contributions.json")"
-    [ ! -s "$home/state/.wake-queue" ] || fail "a $mode contribution enqueued a wake"
-    NOW=$later bearings "$home" | jq -e '.contributions.checked == 1 and .contributions.counts.nobody == 1
-      and .contributions.complete == true' >/dev/null \
-      || fail "a settled $mode contribution expired into fleet work"
-  done
+test_merged_contribution_settles() {
+  local mode=merged home out later=2026-09-17T08:00:00Z
+  home=$(new_home "terminal-$mode")
+  forge_home "$home"
+  wrap_forge "$home"
+  printf '%s\n' "$mode" > "$home/forge/state"
+  mutate_record "$home" delivery '.records[0].checked_at="2026-09-15T08:00:00Z"'
+  out=$(with_home "$home" "$ROOT/bin/fm-contributions.sh" poll) || fail "terminal observation poll failed ($mode)"
+  [ -z "$out" ] || fail "a $mode observation printed: $out"
+  jq -e --arg now "$NOW" --arg mode "$mode" '.records[0] | .checked_at == $now and .error == null and .observation.state == $mode' \
+    "$home/data/delivery/contributions.json" >/dev/null || fail "a $mode observation was not recorded once without error"
+  cp "$home/data/delivery/contributions.json" "$home/prior.json"
+  : > "$home/forge/calls"
+  printf 'down\n' > "$home/forge/fault"
+  out=$(with_home "$home" env FM_CONTRIBUTIONS_NOW="$later" "$ROOT/bin/fm-contributions.sh" poll) \
+    || fail "poll after a $mode observation failed"
+  [ -z "$out" ] || fail "a $mode contribution woke again when a later read would fail: $out"
+  [ ! -s "$home/forge/calls" ] || fail "a $mode contribution was re-read: $(cat "$home/forge/calls")"
+  cmp -s "$home/prior.json" "$home/data/delivery/contributions.json" \
+    || fail "a $mode contribution record changed after it settled: $(cat "$home/data/delivery/contributions.json")"
+  [ ! -s "$home/state/.wake-queue" ] || fail "a $mode contribution enqueued a wake"
+  NOW=$later bearings "$home" | jq -e '.contributions.checked == 1 and .contributions.counts.nobody == 1
+    and .contributions.complete == true' >/dev/null \
+    || fail "a settled $mode contribution expired into fleet work"
   home=$(new_home terminal-legacy-error)
   forge_home "$home"
   wrap_forge "$home"
@@ -681,7 +680,42 @@ test_terminal_contribution_settles() {
   [ ! -s "$home/forge/calls" ] || fail 'an error-stamped merged record was re-read'
   jq -e --arg at "$NOW" '.records[0] | .error == null and .checked_at == $at and .observation.state == "merged"' \
     "$home/data/delivery/contributions.json" >/dev/null || fail 'an error-stamped merged record did not settle'
-  pass 'a merged or closed contribution settles once, is not re-read, and never wakes again'
+  pass 'a merged contribution settles once, is not re-read, and never wakes again'
+}
+
+test_closed_contributions_expire_and_reopen() {
+  local home task out later=2026-09-17T08:00:00Z
+  home=$(new_home closed-reopened)
+  forge_home "$home"
+  wrap_forge "$home"
+  printf -- '- [ ] filed - Filed issue https://github.com/o/r/issues/9 (repo: sample) (kind: ship)\n' \
+    >> "$home/data/backlog.md"
+  printf 'closed\n' > "$home/forge/state"
+  printf 'closed\n' > "$home/forge/issue-state"
+  with_home "$home" "$ROOT/bin/fm-contributions.sh" poll >/dev/null || fail 'closed contribution poll failed'
+  for task in delivery filed; do
+    jq -e --arg now "$NOW" '.records[0] | .checked_at == $now and .error == null and .observation.state == "closed"' \
+      "$home/data/$task/contributions.json" >/dev/null || fail "closed $task was not observed"
+  done
+  bearings "$home" | jq -e '.contributions.checked == 2 and .contributions.counts.nobody == 2
+    and .contributions.complete == true' >/dev/null || fail 'fresh closed contributions did not settle current work'
+  NOW=$later bearings "$home" | jq -e '.contributions.checked == 0 and .contributions.counts.fleet == 2
+    and .contributions.complete == false' >/dev/null || fail 'closed observations never expired'
+  printf 'open\n' > "$home/forge/state"
+  printf 'open\n' > "$home/forge/issue-state"
+  out=$(with_home "$home" env FM_CONTRIBUTIONS_NOW="$later" "$ROOT/bin/fm-contributions.sh" poll) \
+    || fail 'reopened contribution poll failed'
+  [ -z "$out" ] || fail "reopened contributions reported an unexpected signal: $out"
+  for task in delivery filed; do
+    jq -e --arg now "$later" '.records[0] | .checked_at == $now and .error == null and .observation.state == "open"' \
+      "$home/data/$task/contributions.json" >/dev/null || fail "reopened $task was not observed"
+  done
+  [ "$(grep -cFx 'api repos/o/r/pulls/8' "$home/forge/calls")" = 2 ] || fail 'closed PR was not read again'
+  [ "$(grep -cFx 'api repos/o/r/issues/9' "$home/forge/calls")" = 2 ] || fail 'closed issue was not read again'
+  NOW=$later bearings "$home" | jq -e '.contributions.checked == 2 and .contributions.counts.maintainer == 2
+    and .contributions.counts.nobody == 0 and .contributions.complete == true' >/dev/null \
+    || fail 'reopened contributions did not restore their responsible actors'
+  pass 'closed PRs and issues expire and are observed again after reopening'
 }
 
 test_late_owner_inherits_terminal_observation() {
@@ -789,7 +823,7 @@ test_late_owner_keeps_failure_episode_suppressed() {
 }
 
 failures=0
-for test_name in test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_near_deadline_is_unavailable test_shared_url_observed_once test_terminal_contribution_settles test_late_owner_inherits_terminal_observation test_done_task_open_pr_still_observed test_failure_wakes_once_per_episode test_late_owner_keeps_failure_episode_suppressed; do
+for test_name in test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_near_deadline_is_unavailable test_shared_url_observed_once test_merged_contribution_settles test_closed_contributions_expire_and_reopen test_late_owner_inherits_terminal_observation test_done_task_open_pr_still_observed test_failure_wakes_once_per_episode test_late_owner_keeps_failure_episode_suppressed; do
   ( "$test_name" ) || failures=$((failures + 1))
 done
 [ "$failures" -eq 0 ] || fail "$failures contribution regressions"

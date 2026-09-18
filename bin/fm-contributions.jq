@@ -47,8 +47,8 @@ def projected($input; $saved; $now; $max_age):
     | ($record.observation // {}) as $o
     | (if $record.error == null and $record.observation != null and ($o.head | sha) then $o.head else null end) as $observed_head
     | (($record.checked_at // "") | try fromdateiso8601 catch null) as $checked
-    # A merged or closed observation is final; poll never re-reads it, so it never expires.
-    | ($record.error == null and ($o.state | IN("merged","closed"))) as $final
+    # A merged observation is final; poll never re-reads it, so it never expires.
+    | ($record.error == null and ($o.state == "merged")) as $final
     | (($final or ($checked != null and ($now - $checked) >= 0 and ($now - $checked) <= $max_age))
        and (if $record.kind == "pr" then $observed_head != null
             else $record.error == null and $record.observation != null end)
