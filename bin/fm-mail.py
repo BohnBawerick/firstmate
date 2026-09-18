@@ -17,6 +17,8 @@ import imaplib
 import os
 import re
 import socket
+import signal
+import time
 import ssl
 import sys
 import email
@@ -264,6 +266,35 @@ def save_turn(path, turn):
         f.write(str(turn % 2) + '\n')
 
 
+def poll_call(deadline, call, *args):
+    if deadline is None:
+        return call(*args)
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError('mail poll deadline reached')
+
+    def expire(signum, frame):
+        raise TimeoutError('mail poll deadline reached')
+
+    previous = signal.signal(signal.SIGALRM, expire)
+    signal.setitimer(signal.ITIMER_REAL, remaining)
+    try:
+        return call(*args)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+def poll_logout(m, deadline):
+    try:
+        poll_call(deadline, m.logout)
+    except Exception:
+        try:
+            m.shutdown()
+        except Exception:
+            pass
+
+
 def cmd_poll_list():
     # Bound the expensive header fetches: only uids not already recorded in the
     # cursor are considered as new, then previously unfetchable retry-set uids
@@ -278,13 +309,15 @@ def cmd_poll_list():
     retry, retry_order = load_retry(os.environ.get('FM_MAIL_RETRY', ''))
     retry_pos_path = os.environ.get('FM_MAIL_RETRY_POS', '')
     retry_pos = load_retry_pos(retry_pos_path, len(retry_order))
+    budget = float(os.environ.get('FM_MAIL_POLL_BUDGET_MS', '0')) / 1000
+    deadline = time.monotonic() + budget if budget > 0 else None
     m = None
     try:
-        m = connect_mailbox()
-        m.select('INBOX')
+        m = poll_call(deadline, connect_mailbox)
+        poll_call(deadline, m.select, 'INBOX')
         ur = m.untagged_responses.get('UIDVALIDITY')
         uidv = clean(ur[-1].decode()) if ur else ''
-        typ, data = m.uid('search', None, 'UNSEEN')
+        typ, data = poll_call(deadline, m.uid, 'search', None, 'UNSEEN')
         unseen = []
         for x in (data[0] or b'').split():
             uid = x.decode() if isinstance(x, bytes) else str(x)
@@ -344,6 +377,8 @@ def cmd_poll_list():
         retry_idx = -1
         first_retry_emitted_index = -1
         for u in new_candidates + retry_candidates:
+            if deadline is not None and time.monotonic() >= deadline:
+                break
             is_retry = u in retry and u in seen
             if is_retry:
                 retry_idx += 1
@@ -365,7 +400,7 @@ def cmd_poll_list():
             # surfaced degraded, a retry uid is left for a later scan step, and
             # the scan advances.
             try:
-                typ, msg = m.uid('fetch', u.encode(), '(BODY.PEEK[HEADER])')
+                typ, msg = poll_call(deadline, m.uid, 'fetch', u.encode(), '(BODY.PEEK[HEADER])')
                 if typ != 'OK' or not msg or not msg[0]:
                     raise ValueError('no header data')
                 mi = email.message_from_bytes(msg[0][1])
@@ -401,10 +436,7 @@ def cmd_poll_list():
         # window is re-scanned on the next poll rather than silently
         # restarting from the old head. The persist block below owns when the
         # retry-scan position advances, including under a new-mail flood.
-        try:
-            m.logout()
-        except Exception:
-            pass
+        poll_logout(m, deadline)
         m = None
         print('uidvalidity\t%s' % uidv)
         for uid, idate, fr, subj, status in out:
@@ -448,7 +480,7 @@ def cmd_poll_list():
                                first_retry_emitted_index, retry_pos)
             elif first_retry_emitted_index < 0:
                 save_retry_pos(retry_pos_path, len(retry_order),
-                               max(1, retry_examined), retry_pos)
+                               retry_examined, retry_pos)
         elif len(retry_window) > 0 and len(retry_candidates) == 0:
             save_retry_pos(retry_pos_path, len(retry_order),
                            len(retry_window), retry_pos)
@@ -466,10 +498,7 @@ def cmd_poll_list():
         return 1
     finally:
         if m is not None:
-            try:
-                m.logout()
-            except Exception:
-                pass
+            poll_logout(m, deadline)
 
 
 def main():

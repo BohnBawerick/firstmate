@@ -405,6 +405,99 @@ test_missing_mail_plane_is_reported() {
   pass "fm-mail-check: a missing mail plane is reported, not assumed"
 }
 
+test_poll_deadline_preserves_progress_and_bounds_logout() {
+  local home harness real_py out count retry_uid mode
+  real_py=$(command -v python3)
+  harness="$TMP_ROOT/deadline-imap.py"
+  cat > "$harness" <<'PYEOF'
+import imaplib
+import importlib.util
+import os
+from pathlib import Path
+import sys
+import time
+
+home = Path(os.environ['FM_HOME'])
+mode = (home / 'mode').read_text().strip()
+
+class FakeConn:
+    untagged_responses = {'UIDVALIDITY': [b'90009']}
+
+    def login(self, *args):
+        if mode == 'login':
+            time.sleep(30)
+
+    def select(self, *args):
+        return ('OK', [])
+
+    def uid(self, command, *args):
+        if command == 'search':
+            return ('OK', [b' '.join(str(i).encode() for i in range(1, 21))])
+        if mode == 'fetch':
+            time.sleep(1)
+        return ('OK', [(b'', b'Subject: recovered header\r\nFrom: reader@example.invalid\r\n\r\n')])
+
+    def logout(self):
+        if mode == 'logout':
+            time.sleep(30)
+
+    def shutdown(self):
+        (home / 'closed').write_text('closed\n')
+
+imaplib.IMAP4_SSL = lambda *args, **kwargs: FakeConn()
+spec = importlib.util.spec_from_file_location('fm_mail', sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+sys.exit(mod.cmd_poll_list())
+PYEOF
+  home=$(make_home deadline-fetch)
+  write_env "$home"
+  enter_mailbox "$home" ':'
+  printf '#!/bin/bash\nexec "%s" "%s" "$@"\n' "$real_py" "$harness" > "$FAKEBIN/python3"
+  printf 'fetch\n' > "$home/mode"
+  printf 'uidvalidity=90009\n21\n22\n' > "$home/state/.mail-seen"
+  printf '21\n22\n' > "$home/state/.mail-retry"
+  printf '0\n' > "$home/state/.mail-retry-pos"
+  out="$home/out"
+  run_check "$home" "$out" "$CHECK"
+  assert_not_contains "$(cat "$out")" 'poll did not finish' "slow headers exhausted the watchdog"
+  assert_contains "$(cat "$out")" 'new mail: woke for' "slow headers made no progress"
+  count=$(grep -c '^[0-9]' "$home/state/.mail-seen")
+  [ "$count" -gt 3 ] && [ "$count" -lt 22 ] || fail "slow poll did not emit a partial batch: $count"
+  [ "$(cat "$home/state/.mail-retry-pos")" = 0 ] || fail "deadline skipped an unexamined retry"
+  retry_uid=$(tail -1 "$home/state/.mail-retry")
+  [ -n "$retry_uid" ] || fail "the interrupted fetch did not retain a retry"
+  grep -Fxq "$retry_uid" "$home/state/.mail-seen" || fail "degraded mail did not reach the cursor"
+  assert_present "$home/closed" "expired poll left its connection open"
+  printf 'fast\n' > "$home/mode"
+  run_check "$home" "$out" "$CHECK"
+  count=$(grep '^[0-9]' "$home/state/.mail-seen" | sort -u | wc -l | tr -d '[:space:]')
+  [ "$count" = 22 ] || fail "the next poll lost remaining mail: $count"
+  [ ! -s "$home/state/.mail-retry" ] || fail "the timed-out header did not recover"
+  assert_contains "$(cat "$home/state/.wake-queue")" "check: mail $retry_uid - mail from reader@example.invalid" \
+    "the degraded header never published its recovered metadata"
+
+  for mode in logout login; do
+    home=$(make_home "deadline-$mode")
+    write_env "$home"
+    printf '%s\n' "$mode" > "$home/mode"
+    out="$home/out"
+    run_check "$home" "$out" "$CHECK" FM_MAIL_CHECK_BUDGET=5 FM_MAIL_POLL_MAX_WAKES=2
+    assert_not_contains "$(cat "$out")" 'poll did not finish' "$mode exceeded the watchdog"
+    if [ "$mode" = logout ]; then
+      assert_contains "$(cat "$out")" 'new mail: woke for' "hung logout discarded completed rows"
+      assert_present "$home/closed" "hung logout left its connection open"
+      count=$(grep -c '^[0-9]' "$home/state/.mail-seen")
+      [ "$count" = 2 ] || fail "hung logout lost completed rows"
+    else
+      assert_contains "$(cat "$out")" 'mail poll deadline reached' "hung login hid the inner deadline"
+      assert_absent "$home/state/.mail-seen" "hung login advanced the mail cursor"
+    fi
+  done
+  pass "mail deadlines preserve completed and degraded rows and bound login and logout"
+}
+
+test_poll_deadline_preserves_progress_and_bounds_logout
 test_help_and_usage
 test_arm_writes_and_binds_the_check_and_disarm_removes_it
 test_arm_resolves_a_relative_home_into_the_shim

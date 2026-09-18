@@ -84,7 +84,11 @@ case "${1:-}" in
             corr=$(cat "$inbox"/*.msg 2>/dev/null \
               | grep -oE 'corr=[0-9a-f]{16}' | head -1)
             if [ -n "$corr" ]; then
-              printf 'done [%s]: open records written down\n' "$corr" \
+              verb=done
+              answer='open records written down'
+              [ ! -f "$D/answer-verb" ] || verb=$(cat "$D/answer-verb")
+              [ ! -f "$D/answer-payload" ] || answer=$(cat "$D/answer-payload")
+              printf '%s [%s]: %s\n' "$verb" "$corr" "$answer" \
                 >> "$(cat "$D/answer-status")"
             fi
           fi
@@ -317,15 +321,8 @@ test_arrived_answer_precedes_deadline_check() {
 }
 
 # --- T2c: an answer arriving between resolution and timeout wins -------------
-test_answer_between_resolution_and_timeout_wins() {
-  local dir out rc
-  dir=$(new_case answer-at-timeout-decision)
-  add_local_mate "$dir" sm1
-
-  # Delay the modelled answer until the first resolution attempt has completed
-  # its unsuccessful status scan. The real pending-reply machinery publishes
-  # that scan signature with mv; this wrapper appends the correlated answer only
-  # after that publication, reproducing the boundary race deterministically.
+arm_answer_after_scan() {
+  local dir=$1
   cat > "$dir/fakebin/mv" <<'SH'
 #!/usr/bin/env bash
 set -u
@@ -338,12 +335,29 @@ case "$target" in
       : > "$FM_FAKE_DIR/answer-after-scan"
       corr=${target##*/}
       status=$(sed -n 's/^parent_status=//p' "$target")
-      printf 'done [corr=%s]: open records written down\n' "$corr" >> "$status"
+      verb=done
+      answer='open records written down'
+      [ ! -f "$FM_FAKE_DIR/answer-verb" ] || verb=$(cat "$FM_FAKE_DIR/answer-verb")
+      [ ! -f "$FM_FAKE_DIR/answer-payload" ] || answer=$(cat "$FM_FAKE_DIR/answer-payload")
+      printf '%s [corr=%s]: %s\n' "$verb" "$corr" "$answer" >> "$status"
     fi
     ;;
 esac
 SH
   chmod +x "$dir/fakebin/mv"
+
+}
+
+test_answer_between_resolution_and_timeout_wins() {
+  local dir out rc
+  dir=$(new_case answer-at-timeout-decision)
+  add_local_mate "$dir" sm1
+
+  # Delay the modelled answer until the first resolution attempt has completed
+  # its unsuccessful status scan. The real pending-reply machinery publishes
+  # that scan signature with mv; this wrapper appends the correlated answer only
+  # after that publication, reproducing the boundary race deterministically.
+  arm_answer_after_scan "$dir"
 
   out=$(FM_TEST_PERSIST_WAIT=0 run_restart "$dir" sm1); rc=$?
 
@@ -832,6 +846,40 @@ test_already_current_unprovable_mate_stays_on_the_nudge_path() {
   pass "T16 an already-current mate with an unprovable runtime keeps the honest nudge path"
 }
 
+test_unsaved_work_keeps_the_conversation() {
+  local timing reply verb answer dir out rc
+  for timing in delivered timeout; do
+    for reply in \
+      'blocked|open work could not be saved' \
+      'failed|open work could not be saved' \
+      'working|still saving open work' \
+      'done|some open work could not be saved' \
+      'done|open records written down except one unsaved task'; do
+      verb=${reply%%|*}
+      answer=${reply#*|}
+      dir=$(new_case "unsaved-$timing-$verb")
+      add_local_mate "$dir" sm1
+      printf '%s' "$verb" > "$dir/fake/answer-verb"
+      printf '%s' "$answer" > "$dir/fake/answer-payload"
+      if [ "$timing" = delivered ]; then
+        arm_answer "$dir" sm1
+      else
+        arm_answer_after_scan "$dir"
+      fi
+      out=$(FM_TEST_PERSIST_WAIT=0 run_restart "$dir" sm1); rc=$?
+      expect_code 3 "$rc" "$timing $verb must retain the conversation: $out"
+      assert_contains "$out" 'nudged: sm1:' "$timing $verb did not use the fallback"
+      assert_contains "$out" 'summary: 0 of 1 restarted' "$timing $verb claimed a restart"
+      if grep -Fxq '/exit' "$dir/fake/literal"; then
+        fail "$timing $verb stopped the agent"
+      fi
+      assert_absent "$dir/home/state/sm1.control-relaunch" "$timing $verb opened a relaunch"
+    done
+  done
+  pass "unsaved or incomplete replies retain the conversation at both restart decisions"
+}
+
+test_unsaved_work_keeps_the_conversation
 test_persist_gates_and_asks_only_for_open_records
 test_persist_precedes_restart
 test_arrived_answer_precedes_deadline_check

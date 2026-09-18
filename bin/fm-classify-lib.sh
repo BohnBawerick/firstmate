@@ -160,20 +160,36 @@ last_status_line() {  # <status-file> [<previous-event-var>]
 # A bare legacy free-text line counts as an event only when a captain token leads
 # it, so continuation prose that merely mentions one cannot hide a declaration.
 _fm_status_event_scan() {
-  local line last='' prev='' fallback='' verb legacy_re
+  local line last='' prev='' fallback='' verb legacy_re matched
+  local offset=${1:-0} skip_first=${2:-0} event_endpoint=0 newline=1 LC_ALL=C
   legacy_re="^[[:space:]]*(${FM_CAPTAIN_RE:-$FM_CLASSIFY_CAPTAIN_RE_DEFAULT})"
-  while IFS= read -r line || [ -n "$line" ]; do
+  while IFS= read -r line || { newline=0; [ -n "$line" ]; }; do
+    if [ "$#" -gt 0 ]; then
+      offset=$((offset + ${#line} + newline))
+      if [ "$skip_first" = 1 ]; then skip_first=0; continue; fi
+    fi
     case "$line" in *[![:space:]]*) fallback=$line ;; *) continue ;; esac
+    matched=0
     case "$line" in *:*) status_line_verb "$line" verb ;; *) verb='' ;; esac
     case "$verb" in
       working|needs-decision|blocked|done|failed|note|\
       "${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}"|\
       "${FM_CLASSIFY_RESOLVE_VERB:-$FM_CLASSIFY_RESOLVE_VERB_DEFAULT}"|\
-      "${FM_CLASSIFY_CAPTAIN_HELD_VERB:-$FM_CLASSIFY_CAPTAIN_HELD_VERB_DEFAULT}") prev=$last; last=$line ;;
-      *) _fm_classify_matches "$line" "$legacy_re" && { prev=$last; last=$line; } ;;
+      "${FM_CLASSIFY_CAPTAIN_HELD_VERB:-$FM_CLASSIFY_CAPTAIN_HELD_VERB_DEFAULT}") matched=1 ;;
+      *) _fm_classify_matches "$line" "$legacy_re" && matched=1 ;;
     esac
+    if [ "$matched" = 1 ]; then
+      prev=$last
+      last=$line
+      event_endpoint=$offset
+    fi
   done
-  printf '%s\n%s\n' "$prev" "${last:-$fallback}"
+  if [ "$#" -gt 0 ]; then
+    [ -n "$last" ] || return 1
+    printf '%s\t%s' "$event_endpoint" "${last%$'\r'}"
+  else
+    printf '%s\n%s\n' "$prev" "${last:-$fallback}"
+  fi
   [ -n "$last" ]
 }
 
@@ -1073,20 +1089,7 @@ status_snapshot_latest_event() {  # <status-file> <captured-endpoint> <captured-
   scratch="$(_fm_status_span_scratch "$f").latest"
   _fm_status_read_span "$f" "$start" "$length" > "$scratch" 2>/dev/null \
     || { rm -f "$scratch"; return 1; }
-  if record=$(LC_ALL=C perl -e '
-    my ($path, $start, $skip_first) = @ARGV;
-    open my $file, "<", $path or exit 1;
-    binmode $file;
-    scalar(<$file>) if $skip_first;
-    my ($latest, $end);
-    while (defined(my $line = <$file>)) {
-      next unless $line =~ /[^\s]/;
-      $line =~ s/[\r\n]+\z//;
-      ($latest, $end) = ($line, $start + tell($file));
-    }
-    exit 1 unless defined $end;
-    print "$end\t$latest";
-  ' "$scratch" "$start" "$skip_first"); then :; else rm -f "$scratch"; return 1; fi
+  if record=$(_fm_status_event_scan "$start" "$skip_first" < "$scratch"); then :; else rm -f "$scratch"; return 1; fi
   rm -f "$scratch"
   event_endpoint=${record%%$'\t'*}
   line=${record#*$'\t'}

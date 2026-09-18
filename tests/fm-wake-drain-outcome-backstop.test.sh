@@ -109,7 +109,7 @@ test_branch_annotation_cannot_consume_the_main_resurfacing_backstop() {
   main_out="$dir/main.out"
   old=$(( $(date +%s) - 20 ))
 
-  printf 'done: branch intake never produced an outcome\n' > "$state/lost-task.status"
+  printf 'done: branch intake never produced an outcome\nAdditional report details.\n' > "$state/lost-task.status"
   set_mtime "$old" "$state/lost-task.status"
   append_wake "$state" signal lost-task.status 'signal: lost-task.status' \
     || fail "could not queue the branch-owned status signal"
@@ -135,6 +135,10 @@ test_branch_annotation_cannot_consume_the_main_resurfacing_backstop() {
     || fail "main drain failed after the branch lost its wake"
   grep -F 'lost-task done: branch intake never produced an outcome' "$main_out" >/dev/null \
     || fail "the next main drain did not recover the branch-acknowledged keyless done event: $(cat "$main_out")"
+  printf 'More report details.\n' >> "$state/lost-task.status"
+  FM_STATE_OVERRIDE="$state" "$DRAIN" > "$main_out" || fail "repeat main drain failed"
+  assert_not_contains "$(cat "$main_out")" 'STATUS OUTCOME BACKSTOP (' \
+    "continuation prose replayed an already presented event"
   pass "a branch annotation and queue acknowledgement cannot consume the main drain's loss backstop"
 }
 
@@ -505,6 +509,29 @@ test_backstop_output_is_bounded() {
   pass "the outcome backstop caps each item and its total task output deterministically"
 }
 
+test_snapshot_preserves_the_recognized_event_endpoint() (
+  local dir status endpoint size ident
+  dir=$(make_case event-endpoint)
+  status="$dir/state/task.status"
+  . "$ROOT/bin/fm-classify-lib.sh"
+  printf 'done [corr=0123456789abcdef]: caf\303\251 complete\r\n' > "$status"
+  endpoint=$(wc -c < "$status" | tr -d '[:space:]')
+  printf 'Continuation mentions done: without declaring an event.\n' >> "$status"
+  size=$(_fm_status_file_size "$status")
+  ident=$(_fm_open_decisions_file_ident "$status")
+  status_snapshot_latest_event "$status" "$size" "$ident" || fail "snapshot lost the done event"
+  [ "$FM_STATUS_SNAPSHOT_EVENT_ENDPOINT" = "$endpoint" ] || fail "snapshot changed the event byte endpoint"
+  assert_contains "$FM_STATUS_SNAPSHOT_EVENT_LINE" 'done [corr=0123456789abcdef]:' "snapshot selected prose"
+  printf 'waiting: external dependency' >> "$status"
+  size=$(_fm_status_file_size "$status")
+  FM_CLASSIFY_PAUSED_VERB=waiting status_snapshot_latest_event "$status" "$size" "$ident" \
+    || fail "snapshot missed the configured pause event"
+  [ "$FM_STATUS_SNAPSHOT_EVENT_ENDPOINT" = "$size" ] || fail "unterminated event endpoint is wrong"
+  [ "$FM_STATUS_SNAPSHOT_EVENT_LINE" = 'waiting: external dependency' ] || fail "snapshot revived an older event"
+  pass "snapshot event recognition preserves byte endpoints and configured verbs"
+)
+
+test_snapshot_preserves_the_recognized_event_endpoint
 test_uncovered_keyless_captain_events_surface_on_the_next_main_drain
 test_newer_task_outcome_and_routine_latest_events_stay_silent
 test_older_or_other_task_outcome_cannot_hide_a_new_captain_event

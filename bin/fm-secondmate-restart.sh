@@ -159,6 +159,25 @@ report_unreached() {  # <id> <reason>
   printf 'unreached: %s: %s\n' "$1" "$2"
 }
 
+resolve_persist_reply() {
+  local i=$1 line verb payload
+  fm_pending_reply_try_resolve "$STATE" "${CORR[i]}" || return 1
+  line=$(fm_pending_reply_find_resolve_line "$STATE/${IDS[i]}.status" "${CORR[i]}")
+  status_line_verb "$line" verb
+  payload=${line#*:}
+  payload=${payload#"${payload%%[![:space:]]*}"}
+  payload=${payload%"${payload##*[![:space:]]}"}
+  pending_count=$((pending_count - 1))
+  if [ "$verb" = done ] && [ "$payload" = 'open records written down' ]; then
+    launch_restart "$i"
+  else
+    fall_back_to_nudge "${IDS[i]}" \
+      "it did not confirm that all open work is written down, so its conversation was not spent: $line"
+    PLAN[i]="done"
+  fi
+  return 0
+}
+
 restart_mate() {  # <array-index>
   local i=$1 id restart_out restart_rc restart_reason ran_on
   id=${IDS[$i]}
@@ -334,10 +353,8 @@ while [ "$((pending_count + restart_active_count))" -gt 0 ]; do
   # expired mate must not hold an already-confirmed mate behind its fallback.
   i=0
   while [ "$i" -lt "${#IDS[@]}" ]; do
-    if [ "${PLAN[i]}" = persisted-pending ] \
-      && fm_pending_reply_try_resolve "$STATE" "${CORR[i]}"; then
-      pending_count=$((pending_count - 1))
-      launch_restart "$i"
+    if [ "${PLAN[i]}" = persisted-pending ]; then
+      resolve_persist_reply "$i" || true
     fi
     i=$((i + 1))
   done
@@ -350,9 +367,8 @@ while [ "$((pending_count + restart_active_count))" -gt 0 ]; do
     if [ "$now" -ge "${DEADLINE[i]}" ]; then
       # A reply can land after the fleet-wide resolution pass. Recheck at the
       # timeout decision so an answer already on disk wins over the fallback.
-      if fm_pending_reply_try_resolve "$STATE" "${CORR[i]}"; then
-        pending_count=$((pending_count - 1))
-        launch_restart "$i"
+      if resolve_persist_reply "$i"; then
+        :
       else
         fall_back_to_nudge "${IDS[$i]}" \
           "it did not confirm within ${PERSIST_WAIT}s that its open work is written down, so its conversation was not spent"
