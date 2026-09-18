@@ -1,0 +1,89 @@
+fm-contributions.sh poll: CLI transcript
+base = d000503 (before the fix), head = 7c0a238 (the change).
+The real poll and the real fm-fleet-snapshot.sh run. GitHub is the repo's fake 'gh' on PATH, which logs each call.
+The fixture home owns one contribution: https://github.com/o/r/pull/8.
+
+##### large-backlog-BASE
+product under test: <tmp>/base/bin/fm-contributions.sh poll
+backlog.md bytes: 186209
+poll exit: 0
+poll stderr:
+  | <tmp>/base/bin/fm-fleet-snapshot.sh: line 1978: /usr/bin/jq: Argument list too long
+forge (gh) calls made by poll:
+  | (none)
+persisted data/delivery/contributions.json:
+  | (file not written)
+
+##### large-backlog-HEAD
+product under test: <worktree>/bin/fm-contributions.sh poll
+backlog.md bytes: 186209
+poll exit: 0
+poll stderr:
+forge (gh) calls made by poll:
+  | api repos/o/r/pulls/8
+  | api repos/o/r/issues/8/comments?per_page=100 --paginate --slurp
+  | api repos/o/r/pulls/8/reviews?per_page=100 --paginate --slurp
+  | api repos/o/r/pulls/8/comments?per_page=100 --paginate --slurp
+  | api repos/o/r/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/check-runs?filter=all&per_page=100 --paginate --slurp
+  | api repos/o/r/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/statuses?per_page=100 --paginate --slurp
+  | api repos/o/r
+  | pr view https://github.com/o/r/pull/8 --json headRefOid,reviewDecision
+persisted data/delivery/contributions.json:
+  | {"url":"https://github.com/o/r/pull/8","checked_at":"2026-09-16T08:00:00Z","error":null,"state":"open","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+
+##### small-backlog-HEAD
+product under test: <worktree>/bin/fm-contributions.sh poll
+backlog.md bytes: 119
+poll exit: 0
+poll stderr:
+forge (gh) calls made by poll:
+  | api repos/o/r/pulls/8
+  | api repos/o/r/issues/8/comments?per_page=100 --paginate --slurp
+  | api repos/o/r/pulls/8/reviews?per_page=100 --paginate --slurp
+  | api repos/o/r/pulls/8/comments?per_page=100 --paginate --slurp
+  | api repos/o/r/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/check-runs?filter=all&per_page=100 --paginate --slurp
+  | api repos/o/r/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/statuses?per_page=100 --paginate --slurp
+  | api repos/o/r
+  | pr view https://github.com/o/r/pull/8 --json headRefOid,reviewDecision
+persisted data/delivery/contributions.json:
+  | {"url":"https://github.com/o/r/pull/8","checked_at":"2026-09-16T08:00:00Z","error":null,"state":"open","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+
+##### jq-assembly-fails-BASE
+product under test: <tmp>/base/bin/fm-contributions.sh poll
+backlog.md bytes: 119
+poll exit: 0
+poll stderr:
+  | jq: injected failure
+forge (gh) calls made by poll:
+  | (none)
+persisted data/delivery/contributions.json:
+  | (file not written)
+
+##### jq-assembly-fails-HEAD
+product under test: <worktree>/bin/fm-contributions.sh poll
+backlog.md bytes: 119
+poll exit: 1
+poll stderr:
+  | jq: injected failure
+  | fm-fleet-snapshot: contribution input assembly failed
+  | fm-contributions: contribution input read failed
+forge (gh) calls made by poll:
+  | (none)
+persisted data/delivery/contributions.json:
+  | (file not written)
+
+Sibling path: 'verdict' reads the same input through get_input
+
+##### verdict-large-backlog-BASE (186209 byte backlog)
+verdict exit: 0
+stderr:
+  | <tmp>/base/bin/fm-fleet-snapshot.sh: line 1978: /usr/bin/jq: Argument list too long
+persisted verdict:
+  | {"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source":"https://github.com/o/r/pull/8#issuecomment-1","actor":"fleet","summary":"rebase needed"}
+
+##### verdict-large-backlog-HEAD (186209 byte backlog)
+verdict exit: 0
+stderr:
+persisted verdict:
+  | {"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","source":"https://github.com/o/r/pull/8#issuecomment-1","actor":"fleet","summary":"rebase needed"}
+

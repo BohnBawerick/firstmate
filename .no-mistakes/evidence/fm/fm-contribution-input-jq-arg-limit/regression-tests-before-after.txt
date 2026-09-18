@@ -1,0 +1,18 @@
+New regression tests, run against the old code and the new code
+
+== OLD code (d000503) with the new test files copied in ==
+$ bash tests/fm-contributions.test.sh   -> contrib-base exit=1
+  not ok - poll on a large backlog did not observe the owned contribution
+  not ok - poll did not name the failed input read: <tmp>/base/bin/fm-fleet-snapshot.sh: line 380: <tmp-fixture>/input-unavailable/data/backlog.md: Permission denied
+  not ok - 2 contribution regressions
+$ bash tests/fm-fleet-snapshot-view.test.sh   -> view-base exit=1
+  not ok - a large backlog contribution input read must not print errors: <tmp>/base/bin/fm-fleet-snapshot.sh: line 1978: /usr/bin/jq: Argument list too long
+
+== NEW code (7c0a238) ==
+$ bash tests/fm-contributions.test.sh   -> exit=0
+  ok - a large backlog does not blind the contribution poll
+  ok - poll stops with a named error when the contribution input cannot be read
+  not ok lines: 0
+$ bash tests/fm-fleet-snapshot-view.test.sh   -> exit=0
+  ok - large backlog snapshot avoids jq's per-argument size limit
+  not ok lines: 0

@@ -1,0 +1,71 @@
+Contribution input read: CLI transcript
+base = d000503 (before the fix), head = 7c0a238 (the change). All fixture homes live under a temp dir.
+Fixture 'large-home': data/backlog.md is 185423 bytes (700 queued tasks); its backlog JSON is over 128 KiB.
+
+== 1. Large backlog, BEFORE the fix (the reported defect) ==
+$ FM_HOME=<tmp>/large-home <base>/bin/fm-fleet-snapshot.sh --contribution-input
+  exit code   : 0
+  stdout bytes: 0
+  stderr      : 
+    | <tmp>/base/bin/fm-fleet-snapshot.sh: line 1978: /usr/bin/jq: Argument list too long
+
+== 2. Large backlog, AFTER the fix ==
+$ FM_HOME=<tmp>/large-home bin/fm-fleet-snapshot.sh --contribution-input
+  exit code   : 0
+  stdout bytes: 1042818
+  stderr      : (empty)
+  JSON summary: {"top_level_keys":["backlog","tasks"],"backlog_keys":["path","present","records"],"records":700,"tasks":[],"backlog_json_bytes":771859}
+
+== 3. Small backlog: output is unchanged by the fix ==
+$ FM_HOME=<tmp>/small-home <base>/bin/fm-fleet-snapshot.sh --contribution-input
+  exit code   : 0
+  stdout bytes: 2413
+  stderr      : (empty)
+$ FM_HOME=<tmp>/small-home bin/fm-fleet-snapshot.sh --contribution-input
+  exit code   : 0
+  stdout bytes: 2413
+  stderr      : (empty)
+  cmp base-vs-head output: byte-identical
+  same shape, small vs large (head): top-level keys ["backlog","tasks"] vs ["backlog","tasks"]; record key sets equal: true
+
+== 4. Adversarial: the jq call that assembles the JSON fails (fault-injected jq wrapper on PATH) ==
+   wrapper fails only the contribution-input assembly call; every other jq call goes to /usr/bin/jq
+$ BEFORE: PATH=<tmp>/badjq:$PATH FM_HOME=<tmp>/small-home <base>/bin/fm-fleet-snapshot.sh --contribution-input
+  exit code   : 0
+  stdout bytes: 0
+  stderr      : 
+    | jq: injected failure
+$ AFTER : PATH=<tmp>/badjq:$PATH FM_HOME=<tmp>/small-home bin/fm-fleet-snapshot.sh --contribution-input
+  exit code   : 1
+  stdout bytes: 0
+  stderr      : 
+    | jq: injected failure
+    | fm-fleet-snapshot: contribution input assembly failed
+
+== 5. Adversarial: same jq fault in the main snapshot's contribution-input staging step (--json) ==
+$ BEFORE: PATH=<tmp>/badjq:$PATH FM_HOME=<tmp>/small-home <base>/bin/fm-fleet-snapshot.sh --json
+  exit code   : 0
+  stdout bytes: 4416
+  stderr      : 
+    | jq: injected failure
+$ AFTER : PATH=<tmp>/badjq:$PATH FM_HOME=<tmp>/small-home bin/fm-fleet-snapshot.sh --json
+  exit code   : 1
+  stdout bytes: 0
+  stderr      : 
+    | jq: injected failure
+    | fm-fleet-snapshot: contribution input assembly failed
+
+== 6. Adversarial: unreadable backlog (chmod 000) ==
+$ AFTER : FM_HOME=<tmp>/unreadable-home bin/fm-fleet-snapshot.sh --contribution-input
+  exit code   : 1
+  stdout bytes: 0
+  stderr      : 
+    | bin/fm-fleet-snapshot.sh: line 380: <tmp>/unreadable-home/data/backlog.md: Permission denied
+    | fm-fleet-snapshot: backlog read failed
+
+== 7. Stress: 1193813 byte backlog (4000 tasks with PR links) and 300 state/*.meta tasks ==
+$ FM_HOME=<tmp>/huge-home bin/fm-fleet-snapshot.sh --contribution-input
+  exit code   : 0
+  stdout bytes: 6501370
+  stderr      : (empty)
+  JSON summary: {"top_level_keys":["backlog","tasks"],"records":4000,"tasks":300}
