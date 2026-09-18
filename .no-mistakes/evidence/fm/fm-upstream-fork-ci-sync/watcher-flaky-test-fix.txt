@@ -1,0 +1,11 @@
+# Flaky test found during the focused run: tests/fm-watch-triage.test.sh
+# test_live_declared_pause_ticking_footer_keeps_the_bounded_cadence (pre-existing on fork main, commit 406d850).
+# Under heavy host load the full suite took 1192 s (hint 263 s) and failed once:
+#   not ok - footer tick 2 printed a wake reason for a standing declared pause: stale: test:fm-paused-ticking (paused 1000s, ...)
+# Alone it passed 3 of 3 times, and the full suite passed alone.
+# Cause: rounds 1-6 ran with FM_PAUSE_RESURFACE_SECS=999. When 999 s of wall time pass between the
+# first-sight surface and round 2, the watcher correctly re-surfaces the declared pause, so the test failed.
+# Reproduction (temporary copy, declaration and reminder marker aged 1000 s before round 2):
+#   old cadence 999   -> not ok - footer tick 2 re-surfaced a standing declared pause: ... (paused 1001s, ...)   rc=1
+#   new cadence 86400 -> ok - a live declared pause keeps its bounded cadence ...                                  rc=0
+# Fix: rounds 1-6 use a one-day cadence. The final recheck round still sets FM_PAUSE_RESURFACE_SECS=240 and ages the pause by 500 s.

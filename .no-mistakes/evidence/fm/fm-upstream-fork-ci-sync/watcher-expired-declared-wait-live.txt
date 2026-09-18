@@ -1,0 +1,16 @@
+# Live watcher drive: real bin/fm-watch.sh + real bin/fm-crew-state.sh + real tmux (private socket) + real bin/fm-wake-drain.sh acks.
+# The pane runs a quiet script that prints one line and then stays silent. The task status declares a wait whose clearing time passed 2 hours ago.
+# Driver: /tmp/nmtest-run/watch-live.sh (FM_POLL=1 FM_SIGNAL_GRACE=1 FM_STALE_ESCALATE_SECS=1 FM_PAUSE_RESURFACE_SECS=999)
+pane command: bash
+status: paused: waiting on the build queue until 2026-09-18T02:41:21Z
+=== watcher run 1
+  exit=0
+  watch: signal: /tmp/nmtest-watch/state/wedge.status
+  drain: 1789706483	2	signal	wedge.status	signal: /tmp/nmtest-watch/state/wedge.status
+  drain: wake annotation: latest wake-EVENT observed at drain, not current state: wedge.status: paused: waiting on the build queue until 2026-09-18T02:41:21Z
+=== watcher run 2
+  exit=0
+  watch: stale: wedgelab:fm-wedge (paused 3s, awaiting external - the declared clearing time has passed, rechecked on a long cadence not a wedge; confirm the wait cleared)
+=== verdict
+expired-wait recheck surfaced: yes
+generic wedge escalation first: no

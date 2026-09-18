@@ -1,0 +1,46 @@
+===== BEFORE fix (48b9e5e) =====
+$ fm-captain-hold.sh hold X --title "Pick route" --reason "first choice"
+X
+rc=0
+$ fm-captain-hold.sh answer X --decision-file decision.txt --release   # decision: Proceed
+released: X
+rc=0
+$ fm-captain-hold.sh hold X --reason "second choice"
+X
+rc=0
+$ fm-captain-hold.sh answer X --decision-file decision.txt --release   # same words again
+released: X
+rc=0
+--- parent channel (parent/state/mate1.status):
+needs-decision [key=captain-hold-X-1]: captain hold X: first choice
+resolved [key=captain-hold-X-1]: captain hold X: released
+needs-decision [key=captain-hold-X-2]: captain hold X: second choice
+--- tasks-axi show X:
+  id: X
+  state: queued
+  held: no
+--- verdict: second decision opened=1 resolved=0
+
+===== AFTER fix (HEAD 82b3f92) =====
+$ fm-captain-hold.sh hold X --title "Pick route" --reason "first choice"
+X
+rc=0
+$ fm-captain-hold.sh answer X --decision-file decision.txt --release   # decision: Proceed
+released: X
+rc=0
+$ fm-captain-hold.sh hold X --reason "second choice"
+X
+rc=0
+$ fm-captain-hold.sh answer X --decision-file decision.txt --release   # same words again
+released: X
+rc=0
+--- parent channel (parent/state/mate1.status):
+needs-decision [key=captain-hold-X-1]: captain hold X: first choice
+resolved [key=captain-hold-X-1]: captain hold X: released
+needs-decision [key=captain-hold-X-2]: captain hold X: second choice
+resolved [key=captain-hold-X-2]: captain hold X: released
+--- tasks-axi show X:
+  id: X
+  state: queued
+  held: no
+--- verdict: second decision opened=1 resolved=1

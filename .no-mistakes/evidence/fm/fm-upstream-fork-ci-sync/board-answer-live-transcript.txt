@@ -1,0 +1,35 @@
+# Live board answer: real fm-bearings-board.sh build -> real Lavish session -> headless Chromium click "Yes" + 505-char note starting "café" -> real armed fm-procevent lavish poller -> fm-captain-hold.sh keyed-answer intake -> tasks-axi.
+# Title is 41 chars, so "title -> yes - note" is > 512 bytes (review finding r14); note has a 2-byte é (finding r19).
+$ wake queue:
+1789705869	1	check	procevent:lavish-1d2865b88a5db3af:1	check: procevent lavish lavish-1d2865b88a5db3af 1
+$ tasks-axi show board-call --full (body decoded):
+task:
+  id: board-call
+  title: Choose the publication route for the fork
+  state: done
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: route choice pending
+  hold_kind: captain
+  hold_until: "-"
+  kind: captain
+  repo: sample
+  priority: "-"
+  created: "-"
+  closed: 2026-09-18
+  deps: none
+  links: none
+  body (decoded):
+Resolution recorded by fm-captain-hold.
+Decision digest: e3ee7b113758c814c224be6bae37ebd5d3104b19c4eada632d7119266b48b067
+Resolution mode: answered
+
+Captain decision:
+Captain answered this call through the captured result lavish-1d2865b88a5db3af sequence 1.
+Task: board-call
+Answer: yes - café nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnTAIL
+Answer as shown to the captain: Choose the publication route for the fork -> yes - café nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+
+CHECK state done: True
+CHECK complete 506-byte note (café...TAIL) present in persisted decision: True

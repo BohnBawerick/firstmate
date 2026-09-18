@@ -1,0 +1,10 @@
+ok - a newer push to one PR supersedes that PR's in-flight CI
+ok - distinct PRs get distinct concurrency groups
+ok - every main push keeps its own group and is never cancelled
+ok - non-PR events, including release work, keep independent non-cancelling runs
+ok - compliance body events retain independent per-event groups
+ok - every PR head publishes the complete CI result set
+ok - the CI suite starts independently of lint
+ok - every ci.yml job carries a finite timeout
+ok - the incident's unbounded jobs keep their recommended caps
+ok - the already-measured lane bounds are unchanged

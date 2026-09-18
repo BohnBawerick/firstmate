@@ -1,0 +1,88 @@
+# Live drive: real bin/fm-contributions.sh poll in a scratch home against 12 merged + 1 open real upstream PRs (kunchenguid/firstmate), read-only GitHub API.
+# gh is a pass-through spy that logs each real call. FM_CONTRIBUTIONS_BUDGET=25 seconds per poll (about 3 PR observations).
+# Expected: once a PR settles as merged it is never re-read; unacked pending signals cause no forge reads; the open PR is reached and then re-read every poll.
+=== poll 1
+  out: contribution-wake: check: contributions merged-4689 17f131b96c3425bca45a2b34e578a701b76d2a60698d62594a3cc0487d196854
+  out: contribution-wake: check: contributions merged-4689 e2d6ac5ea2991b81380be994279e8e3d3e6622336954fb7fcfd2404addf473f2
+  out: contribution-wake: check: contributions merged-4710 40948fb3c274c9af57c97b7ae30bb9effb749ad7e50f23bd95cc47bc22109ccb
+  exit=0
+  records:
+    merged-4689	merged	2026-09-18T04:42:19Z	-	2 pending
+    merged-4692	merged	2026-09-18T04:42:19Z	-	0 pending
+    merged-4710	merged	2026-09-18T04:42:19Z	-	1 pending
+  forge reads this poll per PR:
+          3 pulls/4689
+          3 pulls/4692
+          3 pulls/4710
+          1 pulls/4738
+  total gh calls: 25
+=== poll 2
+  out: contribution-wake: check: contributions merged-4775 9582c58f8603f31423ae8173a12f8cd021e377fde1d2836f4fc484194d57bf9e
+  out: contribution-wake: check: contributions merged-4775 736a8443709ce057b94ff2fdf23a4d50fc47ab41e7549439a41d9cabaf05a8cf
+  out: contribution-wake: check: contributions merged-4775 930226fdf60f00f963a32088253f72f5088ddae3dfd7ede94be4120185f42b4c
+  exit=0
+  records:
+    merged-4689	merged	2026-09-18T04:42:19Z	-	2 pending
+    merged-4692	merged	2026-09-18T04:42:19Z	-	0 pending
+    merged-4710	merged	2026-09-18T04:42:19Z	-	1 pending
+    merged-4738	merged	2026-09-18T04:42:44Z	-	0 pending
+    merged-4775	merged	2026-09-18T04:42:44Z	-	3 pending
+  forge reads this poll per PR:
+          3 pulls/4738
+          3 pulls/4775
+          3 pulls/4777
+  total gh calls: 23
+=== poll 3
+  out: contribution-wake: check: contributions merged-4778 5d3459ed8559627302ce64f38a0b25198b582e5d3b5c7806464a11af23d30330
+  out: contribution-wake: check: contributions merged-4778 9d530ad04369794d77de4d114b5a46687d3a1ca536714abda0471f339c6825fa
+  exit=0
+  records:
+    merged-4689	merged	2026-09-18T04:42:19Z	-	2 pending
+    merged-4692	merged	2026-09-18T04:42:19Z	-	0 pending
+    merged-4710	merged	2026-09-18T04:42:19Z	-	1 pending
+    merged-4738	merged	2026-09-18T04:42:44Z	-	0 pending
+    merged-4775	merged	2026-09-18T04:42:44Z	-	3 pending
+    merged-4777	merged	2026-09-18T04:43:09Z	-	0 pending
+    merged-4778	merged	2026-09-18T04:43:09Z	-	2 pending
+  forge reads this poll per PR:
+          3 pulls/4777
+          3 pulls/4778
+          3 pulls/4779
+  total gh calls: 24
+=== poll 4
+  forge reads this poll per PR:
+          3 pulls/4779
+          3 pulls/4783
+          3 pulls/4788
+          1 pulls/4799
+  total gh calls: 25
+=== poll 5
+  out: contribution-wake: check: contributions merged-4799 2f7346a225c758a24821da32a5beba31af763a01c6665521bb84b7d6ed273efe
+  out: contribution-wake: check: contributions merged-4799 2d52804d6fb0b2faa4eac6ed2a6f6592124db4f1f2a59f9bbce208888e9c3ad0
+  out: contribution-wake: check: contributions merged-4799 094ecb0ec1024b25895a1586d4f89906bb3e933d5e417fa8725c7775aa3a988b
+  forge reads this poll per PR:
+          3 pulls/4799
+          3 pulls/4800
+          3 pulls/4804
+  total gh calls: 24
+=== poll 6
+  forge reads this poll per PR:
+          3 pulls/4804
+  total gh calls: 8
+=== poll 7
+  forge reads this poll per PR:
+          3 pulls/4804
+  total gh calls: 8
+merged-4689	merged	2026-09-18T04:42:19Z	-	2 pending
+merged-4692	merged	2026-09-18T04:42:19Z	-	0 pending
+merged-4710	merged	2026-09-18T04:42:19Z	-	1 pending
+merged-4738	merged	2026-09-18T04:42:44Z	-	0 pending
+merged-4775	merged	2026-09-18T04:42:44Z	-	3 pending
+merged-4777	merged	2026-09-18T04:43:09Z	-	0 pending
+merged-4778	merged	2026-09-18T04:43:09Z	-	2 pending
+merged-4779	merged	2026-09-18T04:43:44Z	-	0 pending
+merged-4783	merged	2026-09-18T04:43:44Z	-	0 pending
+merged-4788	merged	2026-09-18T04:43:44Z	-	0 pending
+merged-4799	merged	2026-09-18T04:44:10Z	-	3 pending
+merged-4800	merged	2026-09-18T04:44:10Z	-	0 pending
+open-4804	open	2026-09-18T04:44:44Z	-	0 pending

@@ -1,0 +1,21 @@
+# Live doorbell under a UTF-8 home path. The test lab is mktemp -d "$TMPDIR/fm-inbox-live.XXXXXX", so the inbox path contains "café".
+$ TMPDIR="/tmp/nmtest-café" FM_SEND_INBOX_LIVE_E2E=1 FM_SEND_INBOX_LIVE_HARNESSES=claude bash tests/fm-send-inbox-doorbell-live-e2e.test.sh
+not ok - claude (2.1.273 (Claude Code)): composer stayed visibly pending; the pane is not steerable
+#    Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team). If not, take a moment to review what's in this folder first.
+#    Claude Code'll be able to read, edit, and execute files here.
+#    Security guide
+#    ❯ No, exit
+#      Yes, I trust this folder
+#    Enter to confirm · Esc to cancel
+not ok - live steering-inbox doorbell guard found failures above
+exit=1
+# claude blocked on its folder-trust dialog for the untrusted worktree path (environment, not product).
+
+$ TMPDIR="/tmp/nmtest-café" FM_SEND_INBOX_LIVE_E2E=1 FM_SEND_INBOX_LIVE_HARNESSES=pi bash tests/fm-send-inbox-doorbell-live-e2e.test.sh
+ok - pi (0.85.1): the doorbell reached a real worker, which acted and acked with the mv
+ok - live steering-inbox doorbell guard: 1 harness(es) honored the doorbell contract
+exit=0
+
+# Doorbell line built by the lib for a UTF-8 path and for a path with an ESC control byte:
+UTF-8 path -> : Firstmate instruction waiting: list '/tmp/nmtest-café/home/state/t1.inbox'/*.msg and, in numeric order, read and act on each, then mv each handled file to '/tmp/nmtest-café/home/state/t1.inbox'/handled/. [rc=0]
+ESC-byte path -> (no line) [rc=1]

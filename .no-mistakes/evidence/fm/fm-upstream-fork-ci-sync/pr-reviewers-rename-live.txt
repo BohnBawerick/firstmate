@@ -1,0 +1,15 @@
+# Live read-only GitHub check of fm-pr-reviewers.sh on https://github.com/kunchenguid/firstmate/pull/80 (file renamed: tests/fm-secondmate.test.sh -> tests/fm-secondmate-safety.test.sh; base 9e21160a)
+commits at base for tests/fm-secondmate.test.sh: 4
+commits at base for tests/fm-secondmate-safety.test.sh: 0
+
+$ bin/fm-pr-reviewers.sh https://github.com/kunchenguid/firstmate/pull/80   # BEFORE fix (48b9e5e)
+e-jung	2 recent commits
+rc=0
+
+$ bin/fm-pr-reviewers.sh https://github.com/kunchenguid/firstmate/pull/80   # AFTER fix (HEAD)
+e-jung	2 recent commits
+rc=0
+
+# Pass-through gh spy (real API calls, arguments logged): which path the renamed file's authorship query used
+old: path=tests/fm-secondmate-safety.test.sh 
+new: path=tests/fm-secondmate.test.sh 

@@ -1,0 +1,14 @@
+# Publication audit of HEAD 82b3f928e9f1d0610ba9c6ccbff08b0408bc89b7 vs fork main 308bdfab525e28d11edc16953d872cb8e5d3bf4c
+## graph
+fork main ancestor of HEAD: yes
+intake upstream 888871de ancestor of HEAD: yes
+commits on HEAD not in fork main: 199
+commits in fork main not in HEAD: 0
+merge commits in range: 2
+## tracked private-path candidates at HEAD (paths ending state/ config/ data/ projects/ .no-mistakes/ .env, credentials, keys)
+(none)
+## tracked files under top-level state/
+## files added in range that .gitignore would ignore
+(none)
+## upstream drift since the merge (fresh git ls-remote of kunchenguid/firstmate at test time)
+upstream main now: 9bc051ff43c6e4d23c163ee8f1d87551a11050c0 (3 commits after merged 888871de: #4775, #4799, #4800)
