@@ -124,11 +124,14 @@ fm_nm_head_identity() {  # <worktree> <run_head> [<submitted_head>]
 # neither can anchor identity on its own (verified against the installed
 # v1.48.0). Echoes empty for every no-answer case - no CLI, no pipeline binding
 # for this branch, or a bounded-out call - because none of them is a refutation.
-fm_nm_submitted_head() {  # <worktree> <timeout_secs>
-  local out
+fm_nm_submitted_head() {  # <worktree> <timeout_secs> [<run-id>]
+  local out expected_run=${3:-}
   command -v no-mistakes >/dev/null 2>&1 || return 0
   out=$(fm_nm_run "$1" "$2" axi sync --check) || return 0
   [ -n "$out" ] || return 0
+  if [ -n "$expected_run" ]; then
+    [ "$(fm_nm_strip_quotes "$(fm_nm_field "$out" run)")" = "$expected_run" ] || return 0
+  fi
   fm_nm_strip_quotes "$(fm_nm_field "$out" submitted_head)"
 }
 
@@ -141,16 +144,174 @@ fm_nm_head_matches_worktree() {  # <worktree> <run_head>
   [ "$(fm_nm_head_identity "$1" "$2")" = match ]
 }
 
-# Liveness class of a recorded run's status word, echoed as "terminal", "live",
-# or "unknown", for the live-over-terminal selection rule above.
-# The coarse `no-mistakes runs` ledger emits exactly these four status words; an
+# Liveness class of a recorded ledger status word.
+# The coarse `no-mistakes runs` ledger emits database status words; an
 # `axi status` run object reports its terminal result through its own outcome
 # field as well, which fm_nm_run_is_active below checks directly.
 fm_nm_run_status_class() {  # <status_word>
   case "${1:-}" in
     completed|failed|cancelled) printf 'terminal' ;;
-    running)                    printf 'live' ;;
+    pending|running)            printf 'live' ;;
     *)                          printf 'unknown' ;;
+  esac
+}
+
+# Select from a complete `no-mistakes axi` overview with the existing awk
+# toolchain. A capped overview requires an optional Python 3 sqlite3 reader
+# for a read-only same-branch query of NM_HOME/state.sqlite (default:
+# ~/.no-mistakes/state.sqlite; relative NM_HOME resolves from the worktree).
+# If that reader or inventory is unavailable, report unknown with available
+# candidate ids rather than treating the displayed window as complete.
+# Structural completeness applies to the whole table; semantic validation
+# applies only to the requested branch, after complete identity lookup when
+# capped. Branch names are matched exactly without a character whitelist.
+# Its rows are ordered by creation time descending (not last update), then id.
+# The newest same-branch row is the candidate regardless of outcome: an older
+# live run must not hide a newer failure. If the newest is live and another
+# same-branch live run exists, neither has exclusive authority: report all
+# candidate ids as unknown. A newer live row can replace cancelled history,
+# but the caller must fetch its full status BY ID and prove branch/head or
+# active pipeline custody before using its steps. Never reuse another run's
+# gate detail. This is a read-only selection, not teardown authorization.
+#
+# Prints selected|id|status|candidate-ids, unknown|reason, absent (no row
+# for this branch), or unavailable (CLI has no overview table). Malformed or
+# structurally truncated tables report unknown, retaining every readable
+# same-branch candidate id.
+fm_nm_select_run() {  # <branch> <axi-overview> <worktree>
+  local selection inventory available_ids
+  selection=$(printf '%s\n' "$2" | awk -v branch="$1" '
+    function scalar(s) {
+      sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s)
+      if (s ~ /^".*"$/) s = substr(s, 2, length(s)-2)
+      return s
+    }
+    function row_fields(s, f, i, ch, n, quoted, escaped) {
+      for (i in f) delete f[i]
+      n = 1; f[n] = ""
+      for (i = 1; i <= length(s); i++) {
+        ch = substr(s, i, 1)
+        if (escaped) { f[n] = f[n] ch; escaped = 0 }
+        else if (quoted && ch == "\\") escaped = 1
+        else if (ch == "\"") quoted = !quoted
+        else if (!quoted && ch == ",") { n++; f[n] = "" }
+        else f[n] = f[n] ch
+      }
+      if (quoted || escaped) return 0
+      for (i = 1; i <= n; i++) {
+        sub(/^[ \t]+/, "", f[i]); sub(/[ \t]+$/, "", f[i])
+      }
+      return n
+    }
+    /^count: / {
+      if (counts++) bad = 1
+      count = scalar(substr($0, 8))
+      if (count !~ /^[0-9]+ of [0-9]+ total$/) bad = 1
+      split(count, c, " "); shown = c[1]; total = c[3]
+    }
+    /^runs\[[0-9]+\]\{id,branch,status,head,pr\}:$/ {
+      if (found++) bad = 1
+      expected = $0; sub(/^runs\[/, "", expected); sub(/\].*$/, "", expected)
+      inrows = 1; next
+    }
+    /^runs\[/ { bad = 1; found = 1 }
+    inrows && /^[ \t]+/ {
+      seen++
+      n = row_fields($0, f)
+      if (n != 5) bad = 1
+      id = f[1]; br = f[2]; st = f[3]; head = f[4]
+      if (br != branch) next
+      if (id ~ /^[A-Za-z0-9_-]+$/) {
+        if (known[id]++) invalid_run = 1
+        else ids = ids (ids == "" ? "" : ", ") id
+      }
+      if (n != 5) next
+      if (id !~ /^[A-Za-z0-9_-]+$/ ||
+          st !~ /^[a-z_-]+$/ || head !~ /^[a-fA-F0-9]+$/ || length(head) < 7 || length(head) > 40) {
+        invalid_run = 1; next
+      }
+      if (first == "") { first = id; first_status = st }
+      if (st == "running" || st == "pending") live++
+      if (st !~ /^(pending|running|completed|failed|cancelled)$/) unknown_status = 1
+      next
+    }
+    inrows { inrows = 0 }
+    END {
+      if (!found) print "unavailable"
+      else if (bad || counts != 1 || seen != expected || seen != shown || total < shown)
+        print "unknown|unreadable runs table; run ids: " ids
+      else if (shown < total) print "incomplete|" ids
+      else if (invalid_run) print "unknown|unreadable runs table; run ids: " ids
+      else if (unknown_status) print "unknown|unrecognized run status; run ids: " ids
+      else if (first == "") print "absent"
+      else if ((first_status == "running" || first_status == "pending") && live > 1)
+        print "unknown|competing live runs; run ids: " ids
+      else print "selected|" first "|" first_status "|" ids
+    }
+  ')
+  case "$selection" in
+    incomplete\|*) available_ids=${selection#*|} ;;
+    *) printf '%s\n' "$selection"; return ;;
+  esac
+  if ! inventory=$(python3 - "$1" "$2" "$3" "$available_ids" 2>/dev/null <<'PY'
+import json
+import os
+import re
+import sqlite3
+import sys
+from contextlib import closing
+from pathlib import Path
+
+branch, overview, worktree, available_ids = sys.argv[1:]
+ids = available_ids.split(", ") if available_ids else []
+try:
+    repos = [line[6:].strip() for line in overview.splitlines() if line.startswith("repo: ")]
+    if len(repos) != 1:
+        raise ValueError
+    repo_path = json.loads(repos[0]) if repos[0].startswith('"') else repos[0]
+    if not isinstance(repo_path, str) or not os.path.isabs(repo_path):
+        raise ValueError
+    root = Path(os.environ.get("NM_HOME") or Path.home() / ".no-mistakes")
+    if not root.is_absolute():
+        root = Path(worktree) / root
+    with closing(sqlite3.connect((root / "state.sqlite").as_uri() + "?mode=ro", uri=True, timeout=1)) as db:
+        db.execute("BEGIN")
+        repo = db.execute("SELECT id FROM repos WHERE working_path = ?", (repo_path,)).fetchall()
+        if len(repo) != 1:
+            raise ValueError
+        rows = db.execute(
+            "SELECT id, branch, status, head_sha FROM runs WHERE repo_id = ? AND branch = ? "
+            "ORDER BY created_at DESC, id DESC", (repo[0][0], branch)
+        ).fetchall()
+    displayed_ids = set(ids)
+    for row in rows:
+        if isinstance(row[0], str) and re.fullmatch(r"[A-Za-z0-9_-]+", row[0]) and row[0] not in ids:
+            ids.append(row[0])
+    if not displayed_ids.issubset(row[0] for row in rows):
+        raise ValueError
+    for row in rows:
+        if (not all(isinstance(value, str) for value in row)
+                or not re.fullmatch(r"[A-Za-z0-9_-]+", row[0]) or row[1] != branch
+                or not re.fullmatch(r"[a-z_-]+", row[2]) or not re.fullmatch(r"[a-fA-F0-9]{7,40}", row[3])):
+            raise ValueError
+    print("count: %d of %d total" % (len(rows), len(rows)))
+    print("runs[%d]{id,branch,status,head,pr}:" % len(rows))
+    for row in rows:
+        print("  " + ",".join(json.dumps(value, ensure_ascii=False) for value in row) + ',""')
+except (ValueError, OSError, sqlite3.Error):
+    print("unknown|complete same-branch run inventory unreadable; run ids: " + ", ".join(ids))
+PY
+  ); then
+    printf 'unknown|complete same-branch run inventory reader unavailable; run ids: %s\n' "$available_ids"
+    return
+  fi
+  case "$inventory" in
+    unknown\|*) selection=$inventory ;;
+    *) selection=$(fm_nm_select_run "$1" "$inventory" "$3") ;;
+  esac
+  case "$selection" in
+    selected\|*|unknown\|*|absent) printf '%s\n' "$selection" ;;
+    *) printf 'unknown|complete same-branch run inventory unreadable; run ids: %s\n' "$available_ids" ;;
   esac
 }
 
@@ -194,16 +355,11 @@ fm_nm_run_is_pipeline_owned_active() {  # <toon-output>
 # Read-only attribution from the newest-first `no-mistakes runs` ledger.
 # The newest row for this branch must resolve to this worktree's code identity.
 # An unknown or mismatched head ends attribution; older rows cannot anchor it.
-# Once a terminal row binds, a separately verified live row may supersede it.
+# Creation order decides precedence, including a newer verified failure.
 # Optional expected-head binds the first row to the detailed status response.
 fm_nm_runs_status_for_worktree() {  # <worktree> <branch> <runs-list-output> [expected-head]
   local wt=$1 branch=$2 list=$3 expected_head=${4:-}
   local row_full row st br sha day clock pr extra year_num month_num day_num max_day
-  # Set only by the newest binding row when its status classifies terminal, and
-  # printed when the scan ends without finding a live row for this worktree. It
-  # is the sole reason the scan continues past the newest row, and every exit
-  # below leaves the loop rather than returning, so a malformed older row can
-  # never swallow an answer the newest row had already decided.
   local decided=''
   [ -n "$list" ] || return 0
   while IFS= read -r row; do
@@ -236,16 +392,6 @@ fm_nm_runs_status_for_worktree() {  # <worktree> <branch> <runs-list-output> [ex
     esac
     [ "$day_num" -ge 1 ] && [ "$day_num" -le "$max_day" ] || break
     [ "$br" = "$branch" ] || continue
-    if [ -n "$decided" ]; then
-      # Live-over-terminal: the newest row bound to this worktree but is a
-      # terminal record, so the older rows are searched for a live run that
-      # binds to the same worktree by the same head rule. Only such a row
-      # displaces the held terminal word; anything else leaves it standing.
-      [ "$(fm_nm_run_status_class "$st")" = live ] || continue
-      fm_nm_head_matches_worktree "$wt" "$sha" || continue
-      decided=$st
-      break
-    fi
     if [ -n "$expected_head" ]; then
       case "$expected_head" in *[!A-Fa-f0-9]*|'') break ;; esac
       [ "${#expected_head}" -ge 7 ] && [ "${#expected_head}" -le 40 ] || break
@@ -258,11 +404,6 @@ fm_nm_runs_status_for_worktree() {  # <worktree> <branch> <runs-list-output> [ex
     if [ -n "$row_full" ]; then
       if fm_nm_head_matches_worktree "$wt" "$sha"; then
         decided=$st
-        # A live or unclassifiable word is this worktree's current answer and
-        # ends the scan; only a terminal one keeps looking for a live sibling.
-        if [ "$(fm_nm_run_status_class "$st")" = terminal ]; then
-          continue
-        fi
       fi
       break
     fi

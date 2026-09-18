@@ -3,9 +3,10 @@
 #
 # Origin: the 2026-09-12 GitHub Actions starvation incident. firstmate CI had no
 # concurrency deduplication, so every superseded PR head kept its full job
-# fan-out, and four jobs carried no timeout at all. These tests hold both
-# safeguards: PR runs supersede within one PR while main pushes are never
-# cancelled, and every CI job carries a finite hang tripwire.
+# fan-out, and four jobs carried no timeout at all. These tests hold those
+# safeguards. PR runs supersede within one PR while main pushes are never
+# cancelled. Every new PR head publishes the full result set without waiting
+# for lint, and every CI job carries a finite hang tripwire.
 #
 # The workflow is parsed as YAML and its concurrency expressions are resolved
 # against simulated pull_request and push contexts, so the assertions describe
@@ -22,10 +23,11 @@ command -v ruby >/dev/null 2>&1 \
   || fail "ruby is required to parse .github/workflows/ci.yml as YAML"
 
 # Resolve the workflow's concurrency contract under one simulated event and
-# print "<group><TAB><cancel-in-progress>". Only the two expression constructs
-# this workflow uses are resolved: an `a || b` fallback and an `==` comparison.
+# print "<group><TAB><cancel-in-progress>" from the workflow expression model.
+# The parser supports context values, strings, equality, boolean operators,
+# and parentheses. Unknown syntax fails instead of silently approximating it.
 resolve_concurrency() {
-  local event=$1 pr_number=$2 run_id=$3
+  local event=$1 pr_number=$2 run_id=$3 workflow=${4:-$CI_WORKFLOW} action=${5:-synchronize}
   ruby -ryaml -e '
 doc = YAML.load_file(ARGV[0])
 concurrency = doc.fetch("concurrency")
@@ -34,6 +36,7 @@ context = {
   "github.event_name" => ARGV[1],
   "github.event.pull_request.number" => ARGV[2],
   "github.run_id" => ARGV[3],
+  "github.event.action" => ARGV[4],
 }
 
 value = lambda do |token|
@@ -43,14 +46,35 @@ value = lambda do |token|
   context.fetch(token)
 end
 
+truthy = lambda { |v| v != false && v != nil && v != "" && v != 0 }
 evaluate = lambda do |expression|
-  expression = expression.strip
-  if expression.include?("==")
-    left, right = expression.split("==", 2)
-    next value.call(left) == value.call(right) ? "true" : "false"
+  tokens = expression.scan(/github\.[a-zA-Z0-9_.]+|\x27[^\x27]*\x27|==|\|\||&&|[()]/)
+  raise "unsupported expression: #{expression}" unless tokens.join == expression.gsub(/\s+/, "")
+  precedence = {"||" => 1, "&&" => 2, "==" => 3}
+  parse = nil
+  parse = lambda do |minimum|
+    token = tokens.shift
+    if token == "("
+      left = parse.call(0)
+      raise "missing closing parenthesis" unless tokens.shift == ")"
+    else
+      raise "missing operand" unless token
+      left = value.call(token)
+    end
+    while precedence.fetch(tokens.first, -1) >= minimum
+      operator = tokens.shift
+      right = parse.call(precedence.fetch(operator) + 1)
+      left = case operator
+             when "==" then left == right
+             when "&&" then truthy.call(left) ? right : left
+             when "||" then truthy.call(left) ? left : right
+             end
+    end
+    left
   end
-  resolved = expression.split("||").map { |token| value.call(token) }.find { |v| !v.empty? }
-  resolved.to_s
+  result = parse.call(0)
+  raise "trailing expression tokens" unless tokens.empty?
+  result.to_s
 end
 
 interpolate = lambda do |raw|
@@ -59,7 +83,7 @@ end
 
 puts [interpolate.call(concurrency.fetch("group")),
       interpolate.call(concurrency.fetch("cancel-in-progress"))].join("\t")
-' "$CI_WORKFLOW" "$event" "$pr_number" "$run_id"
+' "$workflow" "$event" "$pr_number" "$run_id" "$action"
 }
 
 job_timeout() {
@@ -100,6 +124,95 @@ test_main_pushes_are_never_cancelled() {
   [ "$(cancel_of "$first")" = false ] \
     || fail "push runs must never cancel an in-progress run, got $(cancel_of "$first")"
   pass "every main push keeps its own group and is never cancelled"
+}
+
+test_non_pr_events_keep_independent_runs() {
+  local event first second
+  for event in push workflow_dispatch schedule release; do
+    first=$(resolve_concurrency "$event" "" 910001) || fail "could not resolve $event"
+    second=$(resolve_concurrency "$event" "" 910002) || fail "could not resolve $event"
+    [ "$(group_of "$first")" != "$(group_of "$second")" ] || fail "$event runs share a group"
+    [ "$(cancel_of "$first")" = false ] || fail "$event cancels work"
+  done
+  pass "non-PR events, including release work, keep independent non-cancelling runs"
+}
+
+test_compliance_body_events_keep_independent_groups() {
+  local workflow action first second head other ordinary
+  workflow="$ROOT/.github/workflows/no-mistakes-required.yml"
+  ordinary=$(resolve_concurrency pull_request 108 920001) || fail "could not resolve ordinary CI"
+  head=$(resolve_concurrency pull_request 108 920001 "$workflow" synchronize) || fail "could not resolve compliance"
+  for action in opened edited; do
+    first=$(resolve_concurrency pull_request 108 920001 "$workflow" "$action") || fail "could not resolve $action"
+    second=$(resolve_concurrency pull_request 108 920002 "$workflow" "$action") || fail "could not resolve $action"
+    other=$(resolve_concurrency pull_request 109 920001 "$workflow" "$action") || fail "could not resolve another PR"
+    [ "$(group_of "$first")" != "$(group_of "$second")" ] || fail "$action body events can replace each other"
+    [ "$(group_of "$first")" != "$(group_of "$head")" ] || fail "$action body events share a head-change group"
+    [ "$(group_of "$first")" != "$(group_of "$other")" ] || fail "distinct compliance PRs share a group"
+    [ "$(group_of "$first")" != "$(group_of "$ordinary")" ] || fail "ordinary CI can replace compliance work"
+  done
+  pass "compliance body events retain independent per-event groups"
+}
+
+test_each_pr_head_reports_the_complete_ci_result_set() {
+  local actual expected
+  # shellcheck disable=SC2016 # The GitHub matrix expression is literal Ruby input.
+  actual=$(ruby -ryaml -e '
+doc = YAML.load_file(ARGV[0])
+pull_request = doc.fetch(true).fetch("pull_request")
+raise "CI no longer runs for pull requests to main" unless pull_request.fetch("branches").include?("main")
+
+doc.fetch("jobs").each do |id, job|
+  condition = job["if"]
+  unless condition.nil? || condition == "always()"
+    raise "#{id} can omit its result from a PR head through job-level condition #{condition.inspect}"
+  end
+
+  name = job.fetch("name")
+  matrix = job.dig("strategy", "matrix")
+  if matrix
+    raise "#{id} has an unmodelled result matrix" unless matrix.keys == ["shard"]
+    matrix.fetch("shard").each { |shard| puts name.gsub("${{ matrix.shard }}", shard.to_s) }
+  else
+    puts name
+  end
+end
+' "$CI_WORKFLOW") || fail "could not resolve the PR result set"
+  expected=$(cat <<'RESULTS'
+Lint
+Test coverage guard
+Behavior portable parallel 1
+Behavior portable parallel 2
+Behavior portable serial 1
+Behavior portable serial 2
+Behavior portable serial 3
+Behavior portable serial 4
+Behavior portable serial 5
+Behavior tests (Herdr)
+Behavior timing aggregate
+Stock macOS Bash snapshot compatibility
+Repo invariants
+RESULTS
+)
+  [ "$actual" = "$expected" ] \
+    || fail "a PR head no longer publishes the complete CI result set:"$'\n'"$actual"
+  pass "every PR head publishes the complete CI result set"
+}
+
+test_ci_suite_does_not_wait_for_lint() {
+  local blocked
+  blocked=$(ruby -ryaml -e '
+jobs = YAML.load_file(ARGV[0]).fetch("jobs")
+depends_on_lint = lambda do |id, seen|
+  raise "dependency cycle at #{id}" if seen.include?(id)
+  needs = Array(jobs.fetch(id)["needs"])
+  needs.include?("lint") || needs.any? { |need| depends_on_lint.call(need, seen + [id]) }
+end
+jobs.each_key { |id| puts id if id != "lint" && depends_on_lint.call(id, []) }
+' "$CI_WORKFLOW") || fail "could not resolve CI job dependencies"
+  [ -z "$blocked" ] \
+    || fail "these CI jobs wait for lint instead of starting independently:"$'\n'"$blocked"
+  pass "the CI suite starts independently of lint"
 }
 
 test_every_job_has_a_finite_timeout() {
@@ -154,6 +267,10 @@ CAPS
 test_pr_pushes_supersede_within_one_pr
 test_separate_prs_do_not_cancel_each_other
 test_main_pushes_are_never_cancelled
+test_non_pr_events_keep_independent_runs
+test_compliance_body_events_keep_independent_groups
+test_each_pr_head_reports_the_complete_ci_result_set
+test_ci_suite_does_not_wait_for_lint
 test_every_job_has_a_finite_timeout
 test_previously_unbounded_jobs_keep_their_caps
 test_measured_lanes_keep_their_existing_bounds
