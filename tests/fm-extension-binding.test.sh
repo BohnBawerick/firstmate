@@ -252,7 +252,7 @@ elif mode.startswith("active-block|"):
     raw(success({"status":"result", "output":"active runner completed\n"}))
 elif request["operation"] == "source.poll": raw(success({"status":"no-result" if mode == "no-result" else "result", "output":"" if mode == "no-result" else f"external evidence: {mode}\n"}))
 elif request["operation"] == "result.classify": raw(success({"classification":"external-ready"}))
-elif request["operation"] == "result.terminal": raw(success({"value":True}))
+elif request["operation"] == "result.terminal": raw(success({"value":not request["input"].get("content", "").startswith("replay ")}))
 elif request["operation"] == "result.silent":
     content = request.get("input", {}).get("content", "")
     if content == "external evidence: crash-silent\\n":
@@ -1357,26 +1357,123 @@ test_extension_registration_lock_order() {
 }
 
 test_extension_partial_capture_sequence() {
-  local home="$HOMES/review-partial" package="$PACKAGES/review-partial" out
+  local home="$HOMES/review-partial" package="$PACKAGES/review-partial" out state_root
   make_package "$package" org.example.review-partial ext-review-partial
   new_home "$home"
   bind_package "$home" "$package" ext-review-partial >/dev/null
-  FM_HOME="$home" "$PROCEVENT" register-extension ext-review-partial review-partial --config-ref good >/dev/null
+  FM_HOME="$home" "$PROCEVENT" register-extension ext-review-partial review-partial --config-ref replay >/dev/null
   mkdir -p "$home/state/procevent-inbox"
   chmod 700 "$home/state/procevent-inbox"
   printf 'ext-review-partial\n' > "$home/state/procevent-inbox/review-partial.1.adapter"
   chmod 600 "$home/state/procevent-inbox/review-partial.1.adapter"
   out=$(FM_HOME="$home" "$PROCEVENT" start review-partial 2>&1) || fail "partial capture recovery failed: $out"
   assert_contains "$out" 'review-partial.2.result' 'partial publication blocked the next capture'
-  assert_grep 'external evidence: good' "$home/state/procevent-inbox/review-partial.2.result" 'retry did not retain the new result'
+  out=$(FM_HOME="$home" "$PROCEVENT" start review-partial 2>&1) || fail "second capture failed: $out"
+  assert_contains "$out" 'review-partial.3.result' 'capture did not advance past the published result'
+  state_root=$(find "$home/state/extensions/org.example.review-partial" -name request-ids -print)
+  [ "$(sort -u "$state_root" | wc -l | tr -d ' ')" = 2 ] || fail 'partial capture reused the request identity'
+  [ "$(cat "${state_root%/*}/side-effect-count")" = 2 ] || fail 'the idempotent extension replayed an old event'
   [ "$(cat "$home/state/procevent-inbox/review-partial.1.adapter")" = ext-review-partial ] || fail 'partial ownership evidence was overwritten'
-  pass 'partial captures reserve their sequence and permit a fresh capture'
+  pass 'partial captures reserve their sequence for both requests and results'
+}
+
+test_extension_source_cleanup_is_independent() {
+  local home="$HOMES/review-cleanup" package="$PACKAGES/review-cleanup" out token
+  make_package "$package" org.example.review-cleanup ext-review-cleanup
+  new_home "$home"
+  bind_package "$home" "$package" ext-review-cleanup --timeout-ms 30000 >/dev/null
+  active_runner_release="$TMP_ROOT/review-cleanup.release"
+  local marker="$TMP_ROOT/review-cleanup.marker"
+  FM_HOME="$home" "$PROCEVENT" register-extension ext-review-cleanup cleanup-active --config-ref "active-block|$marker|$active_runner_release" >/dev/null
+  FM_HOME="$home" "$PROCEVENT" start cleanup-active > "$TMP_ROOT/review-cleanup.out" 2>&1 &
+  active_runner_pid=$!
+  wait_for_file "$marker" || fail 'long poll did not start'
+  out=$(FM_HOME="$home" "$PROCEVENT" register-extension ext-review-cleanup cleanup-retire --config-ref good) || fail 'could not register sibling'
+  token=$(printf '%s\n' "$out" | sed -n 's/^owner-token: //p')
+  out=$(bounded_command env FM_HOME="$home" "$PROCEVENT" retire cleanup-retire --if-owner "$token" 2>&1) || fail "sibling poll blocked source retirement: $out"
+  FM_HOME="$home" "$PROCEVENT" register-extension ext-review-cleanup cleanup-recover --config-ref good >/dev/null
+  out=$(FM_HOME="$home" "$PROCEVENT" reconcile 2>&1) || fail "sibling poll blocked recovery: $out"
+  wait_for_file "$home/state/procevent-inbox/cleanup-recover.1.result" || fail "reconcile did not recover the sibling source: $out"
+  kill -0 "$(cat "$marker")" || fail 'source cleanup stopped the unrelated poll'
+  assert_present "$home/state/procevent/cleanup-active.source" 'source cleanup retired its sibling'
+  touch "$active_runner_release"
+  active_runner_release=
+  wait "$active_runner_pid" || fail 'unrelated poll did not finish'
+  active_runner_pid=
+  pass 'source retirement and recovery leave sibling invocations running'
+}
+
+test_extension_handshake_has_source_ownership() {
+  local home="$HOMES/review-handshake" package="$PACKAGES/review-handshake"
+  local marker="$TMP_ROOT/review-handshake.marker" out
+  active_runner_release="$TMP_ROOT/review-handshake.release"
+  make_package "$package" org.example.review-handshake ext-review-handshake "$(printf 'handshake-block\n%s\n%s' "$marker" "$active_runner_release")"
+  printf 'skip initial handshake\n' > "$marker"
+  new_home "$home"
+  bind_package "$home" "$package" ext-review-handshake >/dev/null
+  FM_HOME="$home" "$PROCEVENT" register-extension ext-review-handshake handshake-source --config-ref good >/dev/null
+  rm "$marker"
+  FM_HOME="$home" "$PROCEVENT" start handshake-source > "$TMP_ROOT/review-handshake.out" 2>&1 &
+  active_runner_pid=$!
+  wait_for_file "$marker" || fail 'the source handshake did not start'
+  out=$(FM_HOME="$home" "$HOST" cleanup-invocations --source-id unrelated 2>&1) || fail "unrelated cleanup touched the handshake: $out"
+  expect_failure 'still active' env FM_HOME="$home" "$HOST" cleanup-invocations --source-id handshake-source
+  touch "$active_runner_release"
+  active_runner_release=
+  wait "$active_runner_pid" || fail 'the source handshake did not finish'
+  active_runner_pid=
+  pass 'handshake invocations retain their source ownership during cleanup'
+}
+
+test_extension_interrupted_capture_recovers_runner() {
+  local home="$HOMES/review-interrupted" package="$PACKAGES/review-interrupted" out
+  make_package "$package" org.example.review-interrupted ext-interrupted
+  new_home "$home"
+  bind_package "$home" "$package" ext-interrupted >/dev/null
+  FM_HOME="$home" "$PROCEVENT" register-extension ext-interrupted interrupted-source --config-ref good >/dev/null
+  mkdir "$home/fault"
+  cat > "$home/fault/CaptureStop.pm" <<'PERL'
+package CaptureStop;
+BEGIN {
+  *CORE::GLOBAL::link = sub {
+    my ($from, $to) = @_;
+    my $linked = CORE::link($from, $to);
+    if ($linked && $to =~ /\.adapter$/) {
+      open my $out, '>', $ENV{FM_TEST_CAPTURE_STOP} or die $!;
+      print {$out} "$$\n";
+      close $out;
+      kill 'STOP', $$;
+    }
+    return $linked;
+  };
+}
+1;
+PERL
+  PERL5LIB="$home/fault" PERL5OPT=-MCaptureStop FM_TEST_CAPTURE_STOP="$home/stopped" \
+    FM_HOME="$home" "$PROCEVENT" start interrupted-source > "$home/interrupted.out" 2>&1 &
+  override_crash_start_pid=$!
+  wait_for_file "$home/stopped" || fail 'capture never reached sidecar publication'
+  override_crash_runner_pid=$(sed -n '2p' "$TMP_ROOT/claims/interrupted-source.claim")
+  assert_present "$home/state/procevent/interrupted-source.runner" 'interruption did not leave a runner marker'
+  assert_present "$home/state/procevent-inbox/interrupted-source.1.adapter" 'interruption did not leave a sidecar'
+  assert_absent "$home/state/procevent-inbox/interrupted-source.1.result" 'interruption occurred after result publication'
+  kill -KILL -"$override_crash_runner_pid" || fail 'could not interrupt the capture generation'
+  wait "$override_crash_start_pid" 2>/dev/null || true
+  override_crash_start_pid=
+  override_crash_runner_pid=
+  out=$(FM_HOME="$home" "$PROCEVENT" start interrupted-source 2>&1) || fail "interrupted capture could not recover: $out"
+  assert_contains "$out" 'interrupted-source.2.result' 'recovery did not publish the next result'
+  assert_absent "$home/state/procevent/interrupted-source.runner" 'successful recovery retained its runner marker'
+  pass 'a capture interrupted after sidecar publication can reclaim its runner marker'
 }
 
 if section_enabled lifecycle-runner; then
 test_extension_poll_does_not_block_other_sources
 test_extension_registration_lock_order
 test_extension_partial_capture_sequence
+test_extension_source_cleanup_is_independent
+test_extension_handshake_has_source_ownership
+test_extension_interrupted_capture_recovers_runner
 P_FLOW="$PACKAGES/flow"
 make_package "$P_FLOW" org.example.flow ext-flow
 H_ACTIVE_RUNNER="$HOMES/active-runner"; new_home "$H_ACTIVE_RUNNER"
@@ -1704,7 +1801,7 @@ rm "$capture_signal_authority"
 capture_signal=$(perl "$ROOT/bin/fm-procevent-extension-capture.pl" \
   9 8 6 capture-signal-source ext-flow org.example.flow 1.2.3 1 \
   "sha256:$(printf 'a%.0s' {1..64})" "sha256:$(printf 'b%.0s' {1..64})" signal-token \
-  capture-signal-source.runner .capture-signal.output "$$" "$forged_claim_identity" 1024 -- perl -e 'kill "KILL", $$')
+  capture-signal-source.runner .capture-signal.output "$$" "$forged_claim_identity" 1024 1 -- perl -e 'kill "KILL", $$')
 exec 9<&-
 exec 6<&-
 exec 8<&-
@@ -1731,7 +1828,7 @@ ln -s "$TMP_ROOT/capture-swap-outside" "$capture_swap_inbox"
 capture_swap=$(perl "$ROOT/bin/fm-procevent-extension-capture.pl" \
   9 8 6 capture-swap-source ext-flow org.example.flow 1.2.3 1 \
   "sha256:$(printf 'a%.0s' {1..64})" "sha256:$(printf 'b%.0s' {1..64})" swap-token \
-  capture-swap-source.runner .capture-swap.output "$$" "$forged_claim_identity" 1024 -- /bin/printf 'pinned helper result')
+  capture-swap-source.runner .capture-swap.output "$$" "$forged_claim_identity" 1024 1 -- /bin/printf 'pinned helper result')
 exec 9<&-
 exec 6<&-
 exec 8<&-

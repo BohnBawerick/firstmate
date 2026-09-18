@@ -265,8 +265,8 @@ run_extension_invocation_cleanup() {  # [cleanup selector...]
   fi
 }
 
-cleanup_extension_binding_invocations() {  # <binding-digest>
-  run_extension_invocation_cleanup --binding-digest "$1"
+cleanup_extension_source_invocations() {  # <source-id>
+  run_extension_invocation_cleanup --source-id "$1"
 }
 
 cleanup_extension_registration_invocations_locked() {  # <source-id>
@@ -274,7 +274,7 @@ cleanup_extension_registration_invocations_locked() {  # <source-id>
   fm_procevent_extension_registration_load_locked "$STATE" "$1"
   owner_state=$?
   case "$owner_state" in
-    0) cleanup_extension_binding_invocations "$FM_PROCEVENT_EXTENSION_BINDING_DIGEST" ;;
+    0) cleanup_extension_source_invocations "$1" ;;
     1) return 0 ;;
     *) return 1 ;;
   esac
@@ -513,7 +513,11 @@ extension_source_request_id() {  # <adapter> <source-id> <next-sequence> <regist
 next_result_sequence() {  # <source-id>
   local id=$1 inbox seq=1
   inbox=$(fm_procevent_inbox_dir "$STATE")
-  while [ -e "$inbox/$id.$seq.result" ]; do seq=$((seq + 1)); done
+  while [ -e "$inbox/$id.$seq.result" ] || [ -L "$inbox/$id.$seq.result" ] \
+    || [ -e "$inbox/$id.$seq.adapter" ] || [ -L "$inbox/$id.$seq.adapter" ] \
+    || [ -e "$inbox/$id.$seq.extension" ] || [ -L "$inbox/$id.$seq.extension" ]; do
+    seq=$((seq + 1))
+  done
   printf '%s\n' "$seq"
 }
 
@@ -888,7 +892,7 @@ cmd_start() {
       9 8 6 "$id" "$adapter" "$FM_PROCEVENT_EXTENSION_ID" \
       "$FM_PROCEVENT_EXTENSION_VERSION" "$FM_PROCEVENT_EXTENSION_CAPABILITY_VERSION" \
       "$FM_PROCEVENT_EXTENSION_PACKAGE_DIGEST" "$FM_PROCEVENT_EXTENSION_BINDING_DIGEST" \
-      "$CLAIM_TOKEN" "$runner" "$out" "$$" "$(fm_pid_identity "$$")" "$MAX_OUTPUT_BYTES" \
+      "$CLAIM_TOKEN" "$runner" "$out" "$$" "$(fm_pid_identity "$$")" "$MAX_OUTPUT_BYTES" "$extension_sequence" \
       "$launch_ready" -- "${ARGV[@]}" > "$launch_reply" &
     launch_pid=$!
     while [ ! -s "$REG/$launch_ready" ] && kill -0 "$launch_pid" 2>/dev/null; do sleep 0.01; done
@@ -1729,7 +1733,7 @@ cmd_retire() {
         die "cannot confirm runner identity; source remains registered: $id"
       fi
       if [ -n "$extension_binding_digest" ] \
-        && ! cleanup_extension_binding_invocations "$extension_binding_digest"; then
+        && ! cleanup_extension_source_invocations "$id"; then
         fm_procevent_source_lock_release "$id"
         die "cannot prove external adapter cleanup; source remains registered: $id"
       fi
@@ -1740,7 +1744,7 @@ cmd_retire() {
       rm -f -- "$(staging_file "$id" "$token")"
     fi
   elif [ -n "$extension_binding_digest" ] \
-    && ! cleanup_extension_binding_invocations "$extension_binding_digest"; then
+    && ! cleanup_extension_source_invocations "$id"; then
     fm_procevent_source_lock_release "$id"
     die "cannot prove external adapter cleanup; source remains registered: $id"
   fi

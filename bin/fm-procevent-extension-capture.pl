@@ -91,14 +91,15 @@ if (@ARGV && $ARGV[0] eq 'handoff') {
 
 my ($registry_fd, $inbox_fd, $reservation_fd, $id, $adapter, $extension_id, $extension_version, $capability_version,
     $package_digest, $binding_digest, $claim_token, $runner_name, $output_name,
-    $runner_pid, $claim_identity, $limit, @command) = @ARGV;
+    $runner_pid, $claim_identity, $limit, $sequence, @command) = @ARGV;
 my $launch_ready_name;
 $launch_ready_name = shift @command if @command && $command[0] ne "--";
 die "missing command\n" unless @command && shift(@command) eq "--";
 die "invalid limit\n" unless defined $limit && $limit =~ /\A\d+\z/;
 die "invalid launch boundary\n" if defined($launch_ready_name)
   && $launch_ready_name !~ /\A\.[A-Za-z0-9._-]{1,384}\.launch-ready\z/;
-our ($registry_dir, $registry, $reservation_dir, $reservation_root, $sequence);
+die "invalid sequence\n" unless defined $sequence && $sequence =~ /\A[1-9][0-9]*\z/;
+our ($registry_dir, $registry, $reservation_dir, $reservation_root);
 
 sub fail { die "capture failed: $_[0]\n"; }
 sub safe_dir {
@@ -156,7 +157,7 @@ sub write_reservation {
   my $reservation = open_new(".extension-capture-$claim_token.$token.json");
   my $record = encode_json({
     schema => 'fm-procevent-capture-reservation.v1', token => $token,
-    operation => $operation, source_id => $id, sequence => $sequence,
+    operation => $operation, source_id => $id, sequence => 0 + $sequence,
     inbox_device => "$inbox_stat->[0]", inbox_inode => "$inbox_stat->[1]",
     result_device => "$result_stat->[0]", result_inode => "$result_stat->[1]",
     claim_pid => "$runner_pid", claim_identity => $claim_identity,
@@ -180,6 +181,12 @@ chdir($inbox_dir) or fail("cannot enter inbox directory");
 safe_dir(".", 0700) or fail("unsafe inbox directory");
 chdir($registry_dir) or fail("cannot return to registry directory");
 getcwd() eq $registry or fail("registry directory changed");
+my @runner_stat = lstat($runner_name);
+if (@runner_stat) {
+  fail("unsafe runner record") unless -f _ && !-l _ && $runner_stat[4] == $<
+    && ($runner_stat[2] & 07777) == 0600 && $runner_stat[3] == 1;
+  unlink($runner_name) or fail("cannot reclaim runner record");
+}
 my $runner = open_new($runner_name);
 write_all($runner, "$runner_pid\n");
 close($runner) or fail("cannot close runner record");
@@ -238,8 +245,6 @@ if ($rc != 0 && $written == 0) {
   exit 0;
 }
 chdir($inbox_dir) or fail("cannot enter inbox directory");
-$sequence = 1;
-$sequence++ while grep { -e "$id.$sequence.$_" || -l "$id.$sequence.$_" } qw(adapter extension result);
 my $prefix = "$id.$sequence";
 my $nonce = ".$prefix.$$";
 my $result_tmp = "$nonce.result";

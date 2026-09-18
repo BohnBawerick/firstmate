@@ -1198,13 +1198,12 @@ async function finalizeInvocation(invocation) {
   if (activeInvocation === invocation) activeInvocation = null;
 }
 
-async function reserveInvocation(home, record, verb, request, statePath) {
+async function reserveInvocation(home, record, verb, request, statePath, sourceId) {
   if (process.platform === "win32") fail("platform-unsupported", "extension launch cleanup requires POSIX process groups");
   const root = await invocationRoot(home, true);
   const token = makeRequestId();
   const paths = invocationPaths(root, token);
   const hostIdentity = await selfIdentity();
-  const sourceId = request?.input?.source_id || null;
   const owner = {
     schema: INVOCATION_OWNER_SCHEMA,
     token,
@@ -1335,14 +1334,14 @@ async function cleanupRecordedInvocations(home, { sourceId = null, bindingDigest
   return cleaned;
 }
 
-async function runExtensionProcess(home, record, verb, request, timeoutMs, statePath = "") {
+async function runExtensionProcess(home, record, verb, request, timeoutMs, statePath = "", sourceId = request?.input?.source_id || null) {
   const requestBytes = Buffer.from(`${canonicalJson(request)}\n`, "utf8");
   if (requestBytes.length > MAX_JSON_BYTES) fail("request-oversized", `extension request exceeds ${MAX_JSON_BYTES} bytes`);
   const entryInfo = await lstat(record.packageInfo.entrypoint).catch(() => fail("entrypoint-missing", "bound extension entrypoint is missing"));
   if (!entryInfo.isFile() || entryInfo.isSymbolicLink() || entryInfo.nlink !== 1 || entryInfo.uid !== currentUid()) {
     fail("entrypoint-invalid", "bound extension entrypoint identity is unsafe");
   }
-  const { invocation, owner } = await reserveInvocation(home, record, verb, request, statePath);
+  const { invocation, owner } = await reserveInvocation(home, record, verb, request, statePath, sourceId);
   const { child } = invocation;
   let stdoutBytes = 0;
   let stderrBytes = 0;
@@ -1443,7 +1442,7 @@ function validateHandshakeResponse(response, request, binding) {
   }
 }
 
-async function handshake(home, record, statePath = "") {
+async function handshake(home, record, statePath = "", sourceId = null) {
   const binding = record.binding;
   const request = {
     schema: HANDSHAKE_REQUEST_SCHEMA,
@@ -1458,7 +1457,7 @@ async function handshake(home, record, statePath = "") {
       adapter_names: binding.capabilities[0].adapter_names,
     },
   };
-  const response = await runExtensionProcess(home, record, "handshake", request, HANDSHAKE_TIMEOUT_MS, statePath);
+  const response = await runExtensionProcess(home, record, "handshake", request, HANDSHAKE_TIMEOUT_MS, statePath, sourceId);
   validateHandshakeResponse(response, request, binding);
 }
 
@@ -1702,7 +1701,6 @@ async function invokeProcessEvent(home, adapter, operation, options) {
   const record = selectAdapter(bindings, adapter);
   assertExpectedRecord(record, options);
   const statePath = await ensureExtensionState(home, record.binding);
-  await handshake(home, record, statePath);
   let input;
   if (operation === "source.poll") {
     const sourceId = boundedString(options["--source-id"], 64, "source id", /^[A-Za-z0-9._-]+$/);
@@ -1713,6 +1711,7 @@ async function invokeProcessEvent(home, adapter, operation, options) {
     const captured = await readCapturedResult(home, options["--result-file"], operation, options);
     input = { source_id: captured.sourceId, sequence: captured.sequence, content: captured.content };
   }
+  await handshake(home, record, statePath, input.source_id);
   const requestId = options["--request-id"] || makeRequestId();
   if (!REQUEST_ID_RE.test(requestId)) fail("usage", "--request-id must be sha256:<64 lowercase hex>");
   const request = {

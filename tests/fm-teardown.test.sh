@@ -2803,6 +2803,7 @@ test_captured_running_gate_is_concluded() {
     case_dir=$(make_case "captured-running-gate-$mode")
     write_meta "$case_dir" no-mistakes ship
     land_shippable_commit "$case_dir"
+    seed_backlog_in_flight "$case_dir"
     head=$(git -C "$case_dir/wt" rev-parse HEAD)
     status=$(awk -v head="$head" '
       /^  id:/ { $0 = "  id: \"01RUN\"" }
@@ -2824,6 +2825,8 @@ test_captured_running_gate_is_concluded() {
       expect_code 1 "$rc" 'an unconfirmed parked-run cancellation must refuse teardown'
       assert_present "$case_dir/state/task-x1.meta" 'an unconfirmed cancellation removed worker metadata'
       assert_present "$case_dir/wt" 'an unconfirmed cancellation removed the worktree'
+      assert_absent "$case_dir/state/task-x1.backlog-close" 'an unconfirmed cancellation authorized backlog replay'
+      [ "$(backlog_row_state "$case_dir")" = in_flight ] || fail 'an unconfirmed cancellation closed the backlog'
     fi
   done
   pass 'captured running gates require confirmed cancellation before teardown'
