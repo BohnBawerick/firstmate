@@ -5,6 +5,8 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HERDR_LAB_HELPER="${HERDR_LAB_HELPER:-$ROOT/bin/fm-herdr-lab.sh}"
+# shellcheck source=tests/lib.sh
+. "$ROOT/tests/lib.sh"
 
 command -v herdr >/dev/null 2>&1 || { echo "skip: herdr not found"; exit 0; }
 command -v jq >/dev/null 2>&1 || { echo "skip: jq not found"; exit 0; }
@@ -52,24 +54,31 @@ export FM_CHECK_INTERVAL=999999
 export FM_STALE_ESCALATE_SECS=999999
 export FM_INJECT_CONFIRM_SLEEP=0.2
 export FM_INJECT_CONFIRM_RETRIES=2
-trap 'set +e
-if [ "${AWAY_STARTED:-0}" = 1 ]; then
-  FM_HOME="$HOME_DIR" HERDR_SESSION="$HERDR_LAB_SESSION" \
-    FM_SUPERVISOR_TARGET="${TARGET:-}" FM_SUPERVISOR_BACKEND=herdr \
-    "$ROOT/bin/fm-afk-launch.sh" stop >/dev/null 2>&1 || true
-fi
-if [ "${FIXTURE_RUNNING:-0}" = 1 ]; then
-  "$HERDR_LAB_HELPER" run "$HERDR_LAB_SESSION" pane send-keys "$PANE_ID" ctrl+c >/dev/null 2>&1 || true
-fi
-"$HERDR_LAB_HELPER" teardown "$HERDR_LAB_SESSION" >/dev/null 2>&1 || true
-rm -rf "${HOME_DIR:-}"' EXIT
+cleanup() {
+  local test_rc=$?
+  set +e
+  if [ "${AWAY_STARTED:-0}" = 1 ]; then
+    FM_HOME="$HOME_DIR" HERDR_SESSION="$HERDR_LAB_SESSION" \
+      FM_SUPERVISOR_TARGET="${TARGET:-}" FM_SUPERVISOR_BACKEND=herdr \
+      "$ROOT/bin/fm-afk-launch.sh" stop >/dev/null 2>&1 || true
+  fi
+  if [ "${FIXTURE_RUNNING:-0}" = 1 ]; then
+    "$HERDR_LAB_HELPER" run "$HERDR_LAB_SESSION" pane send-keys "$PANE_ID" ctrl+c >/dev/null 2>&1 || true
+  fi
+  "$HERDR_LAB_HELPER" teardown "$HERDR_LAB_SESSION" || test_rc=1
+  rm -rf "${HOME_DIR:-}"
+  fm_test_cleanup
+  exit "$test_rc"
+}
+trap cleanup EXIT
 
 $HERDR_LAB_HELPER provision "$HERDR_LAB_SESSION" >/dev/null \
   || fail "could not provision the named Herdr lab"
 
 HOME_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-self-deadlock-home.XXXXXX")
 STATE_DIR="$HOME_DIR/state"
-mkdir -p "$STATE_DIR"
+mkdir -p "$STATE_DIR" "$HOME_DIR/fakebin"
+fm_fake_blind_ancestry "$HOME_DIR/fakebin"
 
 WORKSPACE_JSON=$($HERDR_LAB_HELPER run "$HERDR_LAB_SESSION" \
   workspace create --cwd /tmp --label fm-afk-self-deadlock --no-focus) \
@@ -243,14 +252,24 @@ grep -F "inject deferred: supervisor pane busy (agent mid-turn)" "$DAEMON_LOG" >
 pass "reproduced: daemon hosted in its target pane defers forever on Herdr busy state"
 stop_away
 stop_fixture
+# The native daemon's shutdown flush can outlast stop_fixture. Its cleanup
+# removes the shared pidfile, so let it finish before the fixed topology starts.
+wait_for_log "daemon shutting down" "$DAEMON_LOG" \
+  || fail "native daemon did not shut down with its fixture"
 rm -f "$STATE_DIR"/*.status "$STATE_DIR"/.supervise-daemon.log \
   "$STATE_DIR"/.supervise-daemon.pid "$STATE_DIR"/.supervise-daemon.lock \
   "$STATE_DIR"/.subsuper-* "$STATE_DIR"/.watcher-down* \
   "$STATE_DIR"/.last-watcher-beat "$STATE_DIR"/.watch.lock \
   "$STATE_DIR"/daemon-child.* "$STATE_DIR"/submitted.log
 
+# Daemon entry requires a confirmed away posture before target validation.
+if ! FM_HOME="$HOME_DIR" "$ROOT/bin/fm-afk-contract.sh" propose >/dev/null \
+  || ! FM_HOME="$HOME_DIR" "$ROOT/bin/fm-afk-contract.sh" confirm >/dev/null; then
+  fail "could not confirm the isolated away posture"
+fi
+
 # Verify the repaired native compatibility path refuses ambient targeting.
-GUARD_OUTPUT=$(CLAUDECODE=1 FM_HOME="$HOME_DIR" HERDR_SESSION="$HERDR_LAB_SESSION" \
+GUARD_OUTPUT=$(PATH="$HOME_DIR/fakebin:$PATH" CLAUDECODE=1 FM_HOME="$HOME_DIR" HERDR_SESSION="$HERDR_LAB_SESSION" \
   FM_SUPERVISOR_BACKEND=herdr "$ROOT/bin/fm-afk-launch.sh" start-native 2>&1) \
   && fail "Claude + Herdr native launch accepted missing explicit target"
 printf "%s" "$GUARD_OUTPUT" | grep -F \
@@ -258,7 +277,7 @@ printf "%s" "$GUARD_OUTPUT" | grep -F \
   || fail "native compatibility path did not report its explicit-target requirement"
 [ ! -e "$STATE_DIR/.afk-daemon-terminal" ] \
   || fail "native compatibility guard created a daemon terminal before refusing"
-MISMATCH_OUTPUT=$(CLAUDECODE=1 FM_HOME="$HOME_DIR" HERDR_SESSION="$HERDR_LAB_SESSION" \
+MISMATCH_OUTPUT=$(PATH="$HOME_DIR/fakebin:$PATH" CLAUDECODE=1 FM_HOME="$HOME_DIR" HERDR_SESSION="$HERDR_LAB_SESSION" \
   FM_SUPERVISOR_TARGET="default:$PANE_ID" FM_SUPERVISOR_BACKEND=herdr \
   "$ROOT/bin/fm-afk-launch.sh" start-native 2>&1) \
   && fail "Claude + Herdr native launch accepted a target outside its session"
@@ -269,7 +288,7 @@ failed_run_cleanup_probe
 
 # Exercise the repaired topology with a busy fleet worker and an idle Claude pane.
 # CLAUDECODE makes the launcher take the same harness branch as a Claude primary.
-CLAUDECODE=1 FM_HOME="$HOME_DIR" HERDR_SESSION="$HERDR_LAB_SESSION" \
+PATH="$HOME_DIR/fakebin:$PATH" CLAUDECODE=1 FM_HOME="$HOME_DIR" HERDR_SESSION="$HERDR_LAB_SESSION" \
   FM_SUPERVISOR_TARGET="$TARGET" FM_SUPERVISOR_BACKEND=herdr \
   FM_AFK_LAUNCH_LABEL="fm-afk-self-deadlock-fixed" \
   "$ROOT/bin/fm-afk-launch.sh" start-native >/dev/null \

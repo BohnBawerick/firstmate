@@ -63,7 +63,13 @@ branch_sync:
 ## Regression coverage
 
 `tests/fm-crew-state.test.sh` pins both directions over throwaway git repos and a fake CLI serving the exact shapes above.
-Seven assertions cover the case: a live run at an unresolvable head reported through `axi status` and through the coarse runs list; a terminal verdict preserved when `submitted_head` binds the run; a terminal verdict withheld as `unknown` on both paths when nothing binds it; a genuine failure at the current head still reported `failed`; and a provably diverged newest row blocking attribution instead of falling through to an older row.
+The suite covers creation-ordered run selection, ID-addressed gate details, newer verified failures over older live runs, and newer verified live runs over terminal history.
+Unfetched heads require the selected run's submitted-head proof or active custody; adjacent ledger rows and a different run's submitted-head proof do not establish ownership.
+Locally mismatched history yields to current pane or status evidence.
+The attribution and selection contracts remain owned by `bin/fm-nm-run-lib.sh`.
+
+Verified on 2026-09-18 through `bin/fm-test-run.sh tests/fm-crew-state.test.sh` on Linux, with no-mistakes v1.72.0 installed.
+The suite uses isolated Git repositories and captured or synthetic CLI records; it does not change the live daemon.
 
 ```console
 $ bash tests/fm-crew-state.test.sh | tail -1

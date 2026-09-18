@@ -475,7 +475,7 @@ test_a_spawned_worker_does_not_inherit_the_spawning_sessions_helm() {
   make_home "$dir"
   mkdir -p "$dir/projects" "$dir/data/w1"
   printf '# Firstmate\n' > "$dir/AGENTS.md"
-  printf 'brief for the worker\n' > "$dir/data/w1/brief.md"
+  printf '# Task\nVerify that the worker cannot inherit the spawning session identity.\n' > "$dir/data/w1/brief.md"
   touch "$dir/state/.last-watcher-beat"
 
   fake=$(fm_fakebin "$dir/fake")
@@ -578,13 +578,19 @@ test_autoarm_declines_without_recording_a_failure() {
   pass "the auto-arm declines silently and records no failure for a home it does not hold"
 }
 
-guard_turn_as() {  # <dir> <session-id>
+# The once-per-pair decline is the non-Claude harness path: in --claude mode the
+# guard lets a non-owner Stop end with a diagnostic instead, which
+# tests/fm-turnend-foreign-owner-arm-fix.test.sh covers in depth.
+guard_turn_as() {  # <dir> <session-id> [guard-mode-flag]
   local dir=$1 session=$2
-  detached_run env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" FM_CLAUDE_AUTOARM_SYNC_WAIT_MS=100 "$FAKE_CLAUDE" -c '
-      printf "%s\n" "{\"session_id\":\"$2\",\"stop_hook_active\":false}" \
-        | "$1" --claude
+  shift 2
+  detached_run env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$FAKE_CLAUDE" -c '
+      guard=$1; session=$2
+      shift 2
+      printf "%s\n" "{\"session_id\":\"$session\",\"stop_hook_active\":false}" \
+        | "$guard" "$@"
       exit $?
-    ' _ "$dir/bin/fm-turnend-guard.sh" "$session"
+    ' _ "$dir/bin/fm-turnend-guard.sh" "$session" "$@"
 }
 
 guard_turn() {  # <dir>
@@ -611,7 +617,7 @@ start_peer_session() {  # <dir> <session-id>
   rm -f "$base.go" "$base.rc" "$base.out" "$base.pid"
   bash -c '"$0" "$@" &' "$TMP_ROOT/detached.sh" "$$" "$base.launch" "$base.launch.rc" \
     env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
-    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" FM_CLAUDE_AUTOARM_SYNC_WAIT_MS=100 \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
     "$FAKE_CLAUDE" -c '
       dir=$1; session=$2; base=$3
       printf "%s\n" "$$" > "$base.pid"
@@ -619,7 +625,7 @@ start_peer_session() {  # <dir> <session-id>
         if [ -f "$base.go" ]; then
           rm -f "$base.go"
           printf "%s\n" "{\"session_id\":\"$session\",\"stop_hook_active\":false}" \
-            | "$dir/bin/fm-turnend-guard.sh" --claude > "$base.out" 2>&1
+            | "$dir/bin/fm-turnend-guard.sh" > "$base.out" 2>&1
           printf "%s\n" "$?" > "$base.rc"
         fi
         sleep 0.05
@@ -668,8 +674,14 @@ test_turnend_guard_reports_the_decline_once_then_stops_blocking() {
     [ -z "$out" ] || fail "turn $turn repeated the decline: $out"
   done
 
-  # The decline must not spend the auto-arm block budget, which belongs to a
+  # A Claude session in the same home ends its turn with the foreign-owner
+  # diagnostic. It must not spend the auto-arm block budget, which belongs to a
   # genuinely broken arm in a home this session actually holds.
+  rc=$(guard_turn_as "$dir" other-claude --claude)
+  out=$(run_output)
+  expect_code 0 "$rc" "a Claude session was blocked in a home it cannot repair"
+  assert_contains "$out" "OWNED BY ANOTHER LIVE SESSION" \
+    "the Claude session was not told another session owns supervision"
   [ -e "$dir/state/.turnend-claude-blocks" ] \
     && fail "the decline consumed the auto-arm block budget"
 
