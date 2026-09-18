@@ -165,7 +165,10 @@ mark_firstmate_home() {
 }
 
 # A firstmate home that is also a real git repo (so it can host detached
-# worktrees for teardown/lease tests).
+# worktrees for teardown/lease tests). The commit runs with auto maintenance
+# off: git would otherwise start a detached `git maintenance run --auto`, whose
+# worktree prune deletes the .git/worktrees/<id> directory that the caller's
+# `git worktree add` has made but not yet locked, and that add then fails.
 make_firstmate_git_root() {
   local home=$1
   mkdir -p "$home/bin"
@@ -177,7 +180,7 @@ SH
   chmod +x "$home/bin/fm-guard.sh"
   git -C "$home" init -q
   git -C "$home" add AGENTS.md bin/fm-guard.sh
-  git -C "$home" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm initial
+  git -C "$home" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' -c maintenance.auto=false commit -qm initial
 }
 
 # Scaffold a filled secondmate charter brief under <home>/data/<id>/brief.md.
