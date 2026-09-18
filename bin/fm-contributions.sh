@@ -303,8 +303,12 @@ poll() {
   [ "$ERRORS" -eq 0 ] || printf 'contributions: %s unreadable durable record(s)\n' "$ERRORS"
   # One line per distinct URL: the URL, then every owning task.
   jq_lib -nr --slurpfile input "$TMP/input.json" --slurpfile saved "$TMP/saved.json" '
-    known($input[0];$saved[0]) | map(. as $k | . + {at:([$saved[0][] | select(.task == $k.task) | .records[] | select(.url == $k.url) | .checked_at] | first // "")})
-    | group_by(.url) | map({url:.[0].url,at:(map(.at) | min),tasks:(map(.task) | unique)})
+    known($input[0];$saved[0]) | map(. as $k | . + {record:([$saved[0][] | select(.task == $k.task) | .records[] | select(.url == $k.url)] | first)})
+    | group_by(.url) | map(select(
+        (all(.[]; .record != null and .record.error == null and .record.observation.state == "merged"
+          and (([.record.pending[]?.token] - (.record.notified // [])) | length == 0))
+         and (map(.record | {checked_at,observation}) | unique | length == 1)) | not)
+      | {url:.[0].url,at:(map(.record.checked_at // "") | min),tasks:(map(.task) | unique)})
     | sort_by(.at,.tasks[0],.url)[] | [.url] + .tasks | @tsv' > "$TMP/known.tsv"
   DEADLINE=$(( $(date +%s) + BUDGET ))
   BUDGET_EXHAUSTED=0

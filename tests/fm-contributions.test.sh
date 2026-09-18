@@ -862,8 +862,59 @@ test_merged_pending_signal_replays_once() {
   pass 'an interrupted merged signal publication replays exactly once'
 }
 
+test_settled_history_does_not_starve_open_contributions() {
+  local home task number out later head
+  home=$(new_home settled-history-budget)
+  forge_home "$home"
+  wrap_forge "$home"
+  for number in $(seq 101 124); do
+    task="history-$number"
+    record "$home" "$task" "$number" merged mergeable
+    mutate_record "$home" "$task" '.records[0].checked_at="2026-09-15T08:00:00Z"'
+  done
+  mutate_record "$home" history-101 '.records[0] |= (.seen=["comment:old"] | .notified=["comment:old"]
+    | .pending=[{token:"comment:old",type:"comment",source:(.url + "#issuecomment-old"),body:"Already notified"}])'
+  cp "$home/data/history-101/contributions.json" "$home/settled.json"
+  record "$home" recovering-owner 102 open conflicting
+  mutate_record "$home" recovering-owner '.records[0].error="interrupted reconciliation" | .records[0].seen=["owner-specific"]'
+  printf -- '- [ ] late-owner - Shared https://github.com/o/r/pull/102 (repo: sample) (kind: ship)\n' >> "$home/data/backlog.md"
+  mutate_record "$home" history-103 '.records[0] |= (.seen=["comment:pending"] | .notified=[]
+    | .pending=[{token:"comment:pending",type:"comment",source:(.url + "#issuecomment-pending"),body:"Awaiting notification"}])'
+  cat > "$home/fakebin/date" <<'SH'
+#!/bin/sh
+if [ "$*" = +%s ]; then
+  clock=$(cat "$FORGE/clock")
+  printf '%s\n' "$((clock + 1))" > "$FORGE/clock"
+  printf '%s\n' "$clock"
+else
+  exec /bin/date "$@"
+fi
+SH
+  for later in 2026-09-17T08:00:00Z 2026-09-17T09:00:00Z; do
+    /bin/date +%s > "$home/forge/clock"
+    if [ "$later" = 2026-09-17T08:00:00Z ]; then head=$HEAD_B; else head=$HEAD_A; fi
+    printf '%s\n' "$head" > "$home/forge/head"
+    out=$(with_home "$home" env FM_CONTRIBUTIONS_NOW="$later" FM_CONTRIBUTIONS_BUDGET=20 \
+      "$ROOT/bin/fm-contributions.sh" poll) || fail "bounded contribution poll failed: $out"
+    jq -e --arg at "$later" --arg head "$head" '.records[0] | .checked_at == $at and .observation.head == $head and .error == null' \
+      "$home/data/delivery/contributions.json" >/dev/null || fail 'settled history starved the active contribution'
+  done
+  [ "$(grep -cFx 'api repos/o/r/pulls/8' "$home/forge/calls")" = 2 ] || fail 'active contribution was not read on each poll'
+  cmp -s "$home/settled.json" "$home/data/history-101/contributions.json" || fail 'settled notified history was rewritten'
+  for task in recovering-owner late-owner; do
+    jq -e --slurpfile final "$home/data/history-102/contributions.json" '.records[0] | .observation == $final[0].records[0].observation
+      and .checked_at == $final[0].records[0].checked_at and .error == null' "$home/data/$task/contributions.json" >/dev/null \
+      || fail 'merged owner reconciliation was skipped'
+  done
+  jq -e '.records[0].seen == ["owner-specific"]' "$home/data/recovering-owner/contributions.json" >/dev/null || fail 'owner acknowledgment history changed'
+  jq -e '.records[0] | .notified == ["comment:pending"] and (.pending | length) == 1' \
+    "$home/data/history-103/contributions.json" >/dev/null || fail 'merged pending signal was not replayed'
+  [ "$(wc -l < "$home/state/.wake-queue" | tr -d ' ')" = 1 ] || fail 'merged signal was lost or replayed more than once'
+  pass 'settled history leaves poll budget for active contributions and unfinished recovery'
+}
+
 failures=0
-for test_name in test_merged_observation_reaches_existing_owners test_merged_pending_signal_replays_once test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_near_deadline_is_unavailable test_shared_url_observed_once test_merged_contribution_settles test_closed_contributions_expire_and_reopen test_late_owner_inherits_terminal_observation test_done_task_open_pr_still_observed test_failure_wakes_once_per_episode test_late_owner_keeps_failure_episode_suppressed; do
+for test_name in test_settled_history_does_not_starve_open_contributions test_merged_observation_reaches_existing_owners test_merged_pending_signal_replays_once test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_near_deadline_is_unavailable test_shared_url_observed_once test_merged_contribution_settles test_closed_contributions_expire_and_reopen test_late_owner_inherits_terminal_observation test_done_task_open_pr_still_observed test_failure_wakes_once_per_episode test_late_owner_keeps_failure_episode_suppressed; do
   ( "$test_name" ) || failures=$((failures + 1))
 done
 [ "$failures" -eq 0 ] || fail "$failures contribution regressions"
