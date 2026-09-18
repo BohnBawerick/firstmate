@@ -94,9 +94,9 @@ if [ "$DOC_MODE" = 1 ]; then
   shift
   NOTE=$*
   if [ -n "$NOTE" ]; then
-    printf '%s [%s]: %s (%s via-helper)\n' "$VERB" "$token" "$NOTE" "$DOC_PATH" >> "$DESTINATION"
+    printf '%s [%s]: %s (report=%s via-helper)\n' "$VERB" "$token" "$NOTE" "$DOC_PATH" >> "$DESTINATION"
   else
-    printf '%s [%s]: %s (via-helper)\n' "$VERB" "$token" "$DOC_PATH" >> "$DESTINATION"
+    printf '%s [%s]: report=%s (via-helper)\n' "$VERB" "$token" "$DOC_PATH" >> "$DESTINATION"
   fi
 else
   NOTE=$*

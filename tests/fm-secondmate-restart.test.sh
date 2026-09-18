@@ -92,6 +92,9 @@ case "${1:-}" in
                 FM_HOME="$(cat "$D/report-home")" "$(cat "$D/report-helper")" --doc "$verb" "$corr" "$(cat "$D/report-doc")" "$answer"
               elif [ -f "$D/report-helper" ]; then
                 FM_HOME="$(cat "$D/report-home")" "$(cat "$D/report-helper")" "$verb" "$corr" "$answer"
+              elif [ -f "$D/corr-suffix" ]; then
+                [ "$(cat "$D/corr-suffix")" != bracketed ] || corr="[$corr]"
+                printf '%s: %s %s\n' "$verb" "$answer" "$corr" >> "$(cat "$D/answer-status")"
               else
                 printf '%s [%s]: %s\n' "$verb" "$corr" "$answer" \
                   >> "$(cat "$D/answer-status")"
@@ -353,6 +356,10 @@ case "$target" in
       [ ! -f "$FM_FAKE_DIR/answer-payload" ] || answer=$(cat "$FM_FAKE_DIR/answer-payload")
       if [ -f "$FM_FAKE_DIR/report-doc" ]; then
         FM_HOME="$(cat "$FM_FAKE_DIR/report-home")" "$(cat "$FM_FAKE_DIR/report-helper")" --doc "$verb" "$corr" "$(cat "$FM_FAKE_DIR/report-doc")" "$answer"
+      elif [ -f "$FM_FAKE_DIR/corr-suffix" ]; then
+        corr="corr=$corr"
+        [ "$(cat "$FM_FAKE_DIR/corr-suffix")" != bracketed ] || corr="[$corr]"
+        printf '%s: %s %s\n' "$verb" "$answer" "$corr" >> "$status"
       else
         printf '%s [corr=%s]: %s\n' "$verb" "$corr" "$answer" >> "$status"
       fi
@@ -883,7 +890,7 @@ test_documented_report_releases_persist_gate() {
       out=$(FM_TEST_PERSIST_WAIT=0 run_restart "$dir" sm1) || rc=$?
       expect_code 0 "$rc" "$timing documented persistence should restart: $out"
       assert_contains "$out" 'restarted: sm1' 'the documented acknowledgment did not release the persist gate'
-      assert_grep "($path via-helper)" "$dir/home/state/sm1.status" 'the real helper did not serialize the document metadata'
+      assert_grep "(report=$path via-helper)" "$dir/home/state/sm1.status" 'the real helper did not serialize the document metadata'
     done
   done
   pass 'documented helper acknowledgments permit restart at both reply boundaries'
@@ -924,6 +931,40 @@ test_unsaved_work_keeps_the_conversation() {
   pass "unsaved or incomplete replies retain the conversation at both restart decisions"
 }
 
+test_plain_correlated_persistence_replies() {
+  local timing suffix reply dir verb answer out rc
+  for timing in delivered timeout; do
+    for suffix in bracketed bare; do
+      for reply in \
+        'done|open records written down' \
+        'blocked|open work could not be saved' \
+        'done|open records written down except one unsaved task'; do
+        verb=${reply%%|*}
+        answer=${reply#*|}
+        dir=$(new_case "plain-$timing-$suffix")
+        add_local_mate "$dir" sm1
+        printf '%s' "$suffix" > "$dir/fake/corr-suffix"
+        printf '%s' "$verb" > "$dir/fake/answer-verb"
+        printf '%s' "$answer" > "$dir/fake/answer-payload"
+        if [ "$timing" = delivered ]; then arm_answer "$dir" sm1; else arm_answer_after_scan "$dir"; fi
+        rc=0
+        out=$(FM_TEST_PERSIST_WAIT=0 run_restart "$dir" sm1) || rc=$?
+        if [ "$reply" = 'done|open records written down' ]; then
+          expect_code 0 "$rc" "$timing $suffix affirmative reply must restart: $out"
+          assert_grep '/exit' "$dir/fake/literal" "$timing $suffix did not restart the mate"
+          assert_contains "$out" 'restarted: sm1' "$timing $suffix did not report the restart"
+        else
+          expect_code 3 "$rc" "$timing $suffix incomplete reply must retain the conversation: $out"
+          assert_no_grep '/exit' "$dir/fake/literal" "$timing $suffix stopped the mate without persistence"
+          assert_contains "$out" 'nudged: sm1' "$timing $suffix did not use the fallback"
+        fi
+      done
+    done
+  done
+  pass 'plain correlated replies release the persist gate only after affirmative acknowledgment'
+}
+
+test_plain_correlated_persistence_replies
 test_documented_report_releases_persist_gate
 test_unsaved_work_keeps_the_conversation
 test_persist_gates_and_asks_only_for_open_records

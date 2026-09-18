@@ -42,6 +42,8 @@ cat > "$PARENT/data/secondmates.md" <<EOF
 EOF
 printf '# Detailed remote answer\n\nThe build is green.\n' > "$REMOTE/data/reply/report.md"
 printf '# Mentioned but never offered\n' > "$REMOTE/data/reply/prose-only.md"
+printf 'ios\n' > "$REMOTE/.fm-secondmate-home"
+printf 'schema=fm-secondmate-parent.v1\nroute=remote\n' > "$REMOTE/.fm-secondmate-parent"
 : > "$REMOTE/state/parent-replies.status"
 SOURCE_BEFORE="$TMP_ROOT/source-before"
 cp "$REMOTE/state/parent-replies.status" "$SOURCE_BEFORE"
@@ -385,6 +387,28 @@ assert_no_document_decision() { # <label>
   fi
   assert_no_grep '[key=remote-reply-document-' "$PARENT/state/ios.status" "$1"
 }
+
+for helper_mode in noted pointer-only; do
+  helper_corr=$(fm_pending_reply_create "$PARENT" "$PARENT/state" ios 'write down open records')
+  fm_pending_reply_mark_delivered "$PARENT/state" "$helper_corr" || fail "helper request was not marked delivered"
+  helper_doc="data/reply/helper-$helper_mode.md"
+  printf '# Saved open records\n\nMode: %s\n' "$helper_mode" > "$REMOTE/$helper_doc"
+  helper_note=''
+  [ "$helper_mode" != noted ] || helper_note='open records written down'
+  FM_HOME="$REMOTE" "$ROOT/bin/fm-secondmate-report.sh" --doc done "$helper_corr" "$helper_doc" "$helper_note" \
+    || fail "the remote helper could not publish its report"
+  GEN=$((GEN + 1))
+  remote_env "$ROOT/bin/fm-procevent.sh" start "$SID" >/dev/null 2>&1 \
+    || fail "the helper report was not captured"
+  [ "$(fm_pending_reply_get "$PARENT/state/pending-replies/$helper_corr" phase)" = resolved ] \
+    || fail "the helper report did not resolve its pending request"
+  cmp -s "$REMOTE/$helper_doc" "$PARENT/data/remote-secondmates/ios/$helper_doc" \
+    || fail "the helper report resolved without delivering its document"
+  assert_grep "report=data/remote-secondmates/ios/$helper_doc" "$PARENT/state/ios.status" \
+    "the helper report did not point to the delivered local document"
+  mirrored_cursor_is_current "the helper report did not advance the reply cursor"
+done
+pass 'real helper document reports resolve requests and deliver their referenced bytes'
 
 printf '# valid report behind a malformed pointer\n' > "$REMOTE/data/reply/result.md"
 mirror_lines 'working [key=malformed-report]: malformed offer report=data/reply/result.md.bak'

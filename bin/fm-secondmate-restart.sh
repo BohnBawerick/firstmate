@@ -165,6 +165,8 @@ resolve_persist_reply() {
   line=$(fm_pending_reply_find_resolve_line "$STATE/${IDS[i]}.status" "${CORR[i]}")
   status_line_verb "$line" verb
   payload=${line#*:}
+  payload=${payload//"[corr=${CORR[i]}]"/}
+  payload=${payload//"corr=${CORR[i]}"/}
   payload=${payload#"${payload%%[![:space:]]*}"}
   payload=${payload%"${payload##*[![:space:]]}"}
   case "$payload" in
