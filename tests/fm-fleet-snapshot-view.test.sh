@@ -152,7 +152,7 @@ test_empty_fleet_json() {
 }
 
 test_large_backlog_does_not_hit_jq_argument_limit() {
-  local home out bearings summary encoded_bytes padding i
+  local home out bearings summary encoded_bytes padding i contribution status
   home=$(make_home large-backlog)
   padding=$(printf '%*s' 220 '' | tr ' ' x)
   {
@@ -179,6 +179,17 @@ test_large_backlog_does_not_hit_jq_argument_limit() {
   encoded_bytes=$(printf '%s' "$out" | jq -c '.backlog' | wc -c | tr -d ' ')
   [ "$encoded_bytes" -gt 131072 ] \
     || fail "large backlog regression fixture did not exceed 128 KiB when encoded ($encoded_bytes bytes)"
+  contribution=$(FM_HOME="$home" "$SNAPSHOT" --contribution-input 2>"$home/contribution.err")
+  status=$?
+  [ "$status" -eq 0 ] \
+    || fail "a large backlog must not fail the contribution input read (exit $status): $(cat "$home/contribution.err")"
+  [ ! -s "$home/contribution.err" ] \
+    || fail "a large backlog contribution input read must not print errors: $(cat "$home/contribution.err")"
+  printf '%s' "$out" | jq -c '.backlog' > "$home/snapshot-backlog.json"
+  printf '%s' "$contribution" | jq -e --slurpfile snapshot_backlog "$home/snapshot-backlog.json" '
+    (keys == ["backlog","tasks"]) and .tasks == [] and .backlog == $snapshot_backlog[0]
+  ' >/dev/null \
+    || fail "large backlog contribution input did not match the snapshot backlog"
   pass "large backlog snapshot avoids jq's per-argument size limit"
 }
 

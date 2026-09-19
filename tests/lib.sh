@@ -685,14 +685,18 @@ fm_git_identity() {
 # commit. Uses an inline identity so it works whether or not fm_git_identity was
 # called. The initial branch is pinned rather than inherited from
 # init.defaultBranch, so a fixture that names main resolves the same on a
-# developer machine and on a runner that still defaults to master.
+# developer machine and on a runner that still defaults to master. The commit
+# runs with auto maintenance off: git would otherwise start a detached
+# `git maintenance run --auto`, whose worktree prune deletes the
+# .git/worktrees/<id> directory that a following `git worktree add` has made but
+# not yet locked, and that add then fails.
 fm_git_init_commit() {
   local dir=$1
   mkdir -p "$dir"
   git -C "$dir" init -q -b main
   printf '# %s\n' "$(basename "$dir")" > "$dir/README.md"
   git -C "$dir" add README.md
-  git -C "$dir" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm initial
+  git -C "$dir" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' -c maintenance.auto=false commit -qm initial
 }
 
 # fm_git_add_origin <repo> <bare>: clone <repo> bare into <bare> and register it

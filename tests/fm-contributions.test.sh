@@ -763,6 +763,49 @@ test_done_task_open_pr_still_observed() {
   pass 'an open PR linked from a done task keeps being observed'
 }
 
+test_large_backlog_poll_observes_owned_contribution() {
+  local home padding i
+  home=$(new_home large-backlog)
+  forge_home "$home"
+  wrap_forge "$home"
+  rm "$home/data/delivery/contributions.json"
+  padding=$(printf '%*s' 220 '' | tr ' ' x)
+  i=0
+  while [ "$i" -lt 700 ]; do
+    printf -- '- [ ] bulk-%s - %s (repo: sample) (kind: ship)\n' "$i" "$padding" >> "$home/data/backlog.md"
+    i=$((i + 1))
+  done
+  [ "$(wc -c < "$home/data/backlog.md")" -gt 131072 ] || fail 'large backlog fixture is not over the argument limit'
+  with_home "$home" "$ROOT/bin/fm-contributions.sh" poll >/dev/null 2>"$home/poll.err" \
+    || fail "poll failed on a large backlog: $(cat "$home/poll.err")"
+  grep -qFx 'api repos/o/r/pulls/8' "$home/forge/calls" 2>/dev/null \
+    || fail 'poll on a large backlog did not observe the owned contribution'
+  jq -e '.records[0] | .checked_at != null and .error == null' "$home/data/delivery/contributions.json" >/dev/null \
+    || fail 'poll on a large backlog did not record the observation'
+  pass 'a large backlog does not blind the contribution poll'
+}
+
+test_poll_stops_when_contribution_input_is_unavailable() {
+  local home status
+  home=$(new_home input-unavailable)
+  forge_home "$home"
+  wrap_forge "$home"
+  chmod 000 "$home/data/backlog.md"
+  if [ -r "$home/data/backlog.md" ]; then
+    chmod 644 "$home/data/backlog.md"
+    pass 'unreadable backlog cannot be simulated for this user; skipped'
+    return 0
+  fi
+  with_home "$home" "$ROOT/bin/fm-contributions.sh" poll >"$home/poll.out" 2>"$home/poll.err"
+  status=$?
+  chmod 644 "$home/data/backlog.md"
+  [ "$status" -ne 0 ] || fail 'poll reported success without a readable contribution input'
+  grep -qF 'fm-contributions: contribution input read failed' "$home/poll.err" \
+    || fail "poll did not name the failed input read: $(cat "$home/poll.err")"
+  [ ! -e "$home/forge/calls" ] || fail 'poll observed the forge without a contribution input'
+  pass 'poll stops with a named error when the contribution input cannot be read'
+}
+
 test_failure_wakes_once_per_episode() {
   local home out line='contributions: observation unavailable for https://github.com/o/r/pull/8'
   local error='"forge observation unavailable or changed during read"'
@@ -914,7 +957,7 @@ SH
 }
 
 failures=0
-for test_name in test_settled_history_does_not_starve_open_contributions test_merged_observation_reaches_existing_owners test_merged_pending_signal_replays_once test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_near_deadline_is_unavailable test_shared_url_observed_once test_merged_contribution_settles test_closed_contributions_expire_and_reopen test_late_owner_inherits_terminal_observation test_done_task_open_pr_still_observed test_failure_wakes_once_per_episode test_late_owner_keeps_failure_episode_suppressed; do
+for test_name in test_large_backlog_poll_observes_owned_contribution test_poll_stops_when_contribution_input_is_unavailable test_settled_history_does_not_starve_open_contributions test_merged_observation_reaches_existing_owners test_merged_pending_signal_replays_once test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_near_deadline_is_unavailable test_shared_url_observed_once test_merged_contribution_settles test_closed_contributions_expire_and_reopen test_late_owner_inherits_terminal_observation test_done_task_open_pr_still_observed test_failure_wakes_once_per_episode test_late_owner_keeps_failure_episode_suppressed; do
   ( "$test_name" ) || failures=$((failures + 1))
 done
 [ "$failures" -eq 0 ] || fail "$failures contribution regressions"
