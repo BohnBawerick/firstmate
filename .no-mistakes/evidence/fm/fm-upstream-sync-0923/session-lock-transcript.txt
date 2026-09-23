@@ -1,0 +1,26 @@
+=== TARGET (7df5f1f) ===
+## 1. acquire from this live Claude session
+lock acquired: THIS session holds the fleet lock (harness pid 1078140)
+    exit=0
+    .lock line1=1078140  .lock-session=<this-session-id>...  (CLAUDE_PID=1078140)
+## 2. same session re-acquires from a fresh shell
+lock acquired: THIS session holds the fleet lock (harness pid 1078140)
+    exit=0
+    .lock line1=1078140  .lock-session=<this-session-id>...  (CLAUDE_PID=1078140)
+lock: held by THIS session (harness pid 1078140)
+## 3. another live Claude-shaped harness holds the lock
+error: NOT THIS SESSION - another live firstmate session holds the lock (pid 1190762, session other-session-id); operate read-only until resolved
+    exit=1
+lock: held by ANOTHER live session (harness pid 1190762)
+## 3b. fleet mutation (fm-send.sh) is refused while another session holds the lock
+error: refusing to steer a worker - this session does not hold the fleet lock for /tmp/fmlive.yuaP/lk-a/home/state.
+Another live firstmate session (harness pid 1190762) holds it, and only that session
+may change fleet state. Operate read-only from here, or end that session first.
+    exit=1
+## 4. adversarial: caller copies the holder's session id but names a CLAUDE_PID outside its own ancestry
+error: NOT THIS SESSION - another live firstmate session holds the lock (pid 1190762, session <this-session-id>); operate read-only until resolved
+    exit=1
+## 5. holder dies; this session reclaims
+lock acquired: THIS session holds the fleet lock (harness pid 1078140)
+    exit=0
+    .lock line1=1078140  .lock-session=<this-session-id>...  (CLAUDE_PID=1078140)

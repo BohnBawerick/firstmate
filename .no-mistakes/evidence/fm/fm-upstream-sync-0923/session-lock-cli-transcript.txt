@@ -1,0 +1,24 @@
+# foreign live 'claude' pid 2042840 holds /tmp/tmp.QeZ09QFdsp/.lock; this session is Claude pid 1942166
+$ fm-lock.sh status
+lock: held by ANOTHER live session (harness pid 2042840)
+$ fm-lock.sh
+error: NOT THIS SESSION - another live firstmate session holds the lock (pid 2042840, session other-session-id); operate read-only until resolved
+exit 1
+$ fm-send.sh some-task "hi"
+error: no-mistakes gate agent must not drive the fleet (NO_MISTAKES_GATE set)
+exit 3
+# foreign holder now dead
+$ fm-lock.sh
+lock acquired: THIS session holds the fleet lock (harness pid 1942166)
+exit 0
+state/.lock=1942166 state/.lock-session=808e873e-db45-4443-b89b-398cd9e4ecfe
+
+# fleet-mutation gate: foreign live 'claude' pid 2060316 holds /tmp/tmp.FHhCqwgJp8/.lock (isolated FM_HOME=/tmp/tmp.FHhCqwgJp8)
+$ fm-send.sh some-task "hi"
+error: refusing fleet lifecycle from inside a no-mistakes gate worktree (/home/bohn/.no-mistakes/repos/842a31c92d33.git)
+exit 3
+$ fm-teardown.sh some-task
+error: refusing to tear a task down - this session does not hold the fleet lock for /tmp/tmp.FHhCqwgJp8.
+Another live firstmate session (harness pid 2060316) holds it, and only that session
+may change fleet state. Operate read-only from here, or end that session first.
+exit 1

@@ -1,0 +1,68 @@
+FM_TEST_BEGIN 2026-09-23T09:27:58Z tests/fm-quality.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - a hardened task that meets its threshold reports pass and writes a receipt
+ok - read-only reports the score with its own outcome and exit code, never pass
+ok - a read-only run that cannot measure reports blocked, not a score
+ok - a missing toolchain reports blocked and never pass
+ok - a run that cannot measure clears the previous receipt instead of inheriting it
+ok - a phase command that prints prose is blocked, not parsed
+ok - a receipt whose base commit drifted is blocked, not accepted as a pass
+ok - a red ordinary suite is blocked even when the phase command would pass
+ok - a suite that is red then green on identical code is blocked, not measured over
+ok - a project with no .quality-gate.yaml is not-applicable, not a pass
+ok - a phase the contract does not configure is not-applicable
+ok - a phase that found nothing to measure records not-applicable
+ok - a phase below threshold with progress every round reports exhausted
+ok - rounds that leave the same findings untouched report stuck, not exhausted
+ok - a measurement that outruns the wall-clock bound is cut short and reports exhausted
+ok - a measurement that fits inside the wall-clock bound is left alone
+ok - a host with no way to bound a measurement is blocked rather than run unbounded
+ok - a phase command that reports a real defect leaves the loop as defect-found
+ok - a survivor reported as a real defect leaves the loop instead of being tested around
+ok - a round whose ordinary suite stays green is committed
+ok - a round that breaks the ordinary suite is reverted, costing budget and nothing else
+ok - a hardened loop refuses on an uncommitted tree rather than risking that work
+ok - a hardened loop refuses a harness with no schema-validated final answer
+ok - the structured-output guard reads the harness's own help, not a hardcoded name
+ok - status distinguishes a missing receipt from an unreadable one from a satisfied gate
+ok - a standard task's quality status requires no receipt
+ok - the receipt command prints exactly the receipts that exist
+ok - a dry run resolves the plan without measuring or writing anything
+ok - a dry run leaves an existing receipt exactly as it found it
+ok - a finding excluded by a round is gone from the next round's measurement
+ok - without the exclude edit the same finding survives every round
+ok - a phase command that answers for the other phase is blocked, not accepted
+ok - rounds that repeat an empty finding set report stuck, not exhausted
+ok - checking a red suite twice stays inside the one wall-clock bound
+ok - a signal-killed test suite reads as red on a host that only has perl
+ok - a perl-only host measures a green suite normally
+ok - a dry run reports without filing the supervision event a real run files
+ok - a round that widens its own threshold is blocked instead of passing
+ok - a run that leaves the contract alone measures against its own bar to the end
+ok - a budget_usd that is not a positive number is refused, not passed to the harness
+ok - a budget_usd the harness can read is accepted and the phase measures
+ok - a harness that cannot run reports blocked instead of blaming the code
+ok - an agent that ran and answered no-change still reports stuck
+ok - the receipt records the exclude list the run was measured against
+ok - a run that excluded nothing records only the contract's own exclusions
+ok - a turn that ends the phase by failing reverts its half-finished work
+ok - a defect report reverts anything the turn changed on its way out
+ok - a round the ordinary suite approves keeps and commits its work
+ok - a receipt judged against a bar the contract never set is blocked
+ok - a threshold written 15.0 against a receipt's 15 is the same bar, not drift
+ok - the receipt unions the engine's own exclusions with the contract's
+ok - status reports satisfied-stale once HEAD moves past the receipt
+ok - an abbreviated head_sha reads as the same commit until HEAD moves
+ok - a near-miss short sha reads as drift, not as the same commit
+ok - an abbreviated base_sha names the same base commit, a near miss does not
+ok - a measurement naming the base commit in short form is accepted
+ok - a measurement naming a near-miss base commit is still refused as drift
+ok - an unknown .quality-gate.yaml version is refused rather than half-read
+ok - a contract with no verify command is refused
+ok - a task with no recorded base commit is blocked rather than measured against HEAD
+ok - usage errors exit 2 and --help exits 0
+all fm-quality tests passed
+FM_TEST_END 2026-09-23T09:29:14Z tests/fm-quality.test.sh exit=0 duration_ms=75941 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=76133
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=75941 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-quality.test.sh duration_ms=75941
+EXIT 0

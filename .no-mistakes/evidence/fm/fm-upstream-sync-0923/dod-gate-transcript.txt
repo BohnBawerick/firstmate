@@ -1,0 +1,15 @@
+=== BEFORE (739a510) ===
+--- status line: done: PR https://github.com/o/r/pull/7 ready
+--- worker HEAD c79b0c8 on origin? 0 branches
+--- fm-crew-state.sh demo:
+state: done · source: status-log · PR https://github.com/o/r/pull/7 ready
+--- now push the head so it is reachable outside the copy
+state: done · source: status-log · PR https://github.com/o/r/pull/7 ready
+
+=== AFTER (7df5f1f) ===
+--- status line: done: PR https://github.com/o/r/pull/7 ready
+--- worker HEAD f12c391 on origin? 0 branches
+--- fm-crew-state.sh demo:
+state: blocked · source: status-log · named head f12c391554c2ae02f461a9f16073f2e3a0c9d409 is unreachable outside the worker copy
+--- now push the head so it is reachable outside the copy
+state: done · source: status-log · PR https://github.com/o/r/pull/7 ready

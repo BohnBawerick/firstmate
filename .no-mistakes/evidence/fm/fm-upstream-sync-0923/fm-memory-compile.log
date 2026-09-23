@@ -1,0 +1,37 @@
+FM_TEST_BEGIN 2026-09-23T09:27:58Z tests/fm-memory-compile.test.sh family=session-bootstrap expected_gate_skip=none
+ok - the bundle is core plus a catalog of every note plus only the matched note bodies
+ok - the core is core.md, then captain.md, and its total absence is reported
+ok - data/memory/core.md shadowing a non-empty data/captain.md emits a notice naming its tokens
+ok - triggers match on word boundaries, ignore case, allow several words, and are required
+ok - auto context is the project registry, the backlog, and live task metadata
+ok - missing context file causes compiler to exit non-zero
+ok - the cap drops notes first, then the catalog, and never the core
+ok - a budget that cannot be read stops the compile instead of being assumed
+ok - a home missing memory files still compiles a bundle and names what is missing
+ok - a symlinked note is skipped rather than followed out of data/memory/notes
+ok - symlinked data/memory directory is guarded and not trusted
+ok - the catalog is published on demand, rendered fresh on every compile, and reports staleness
+ok - migration turns each learnings heading into one cited, dated, triggered note
+ok - migration disambiguates slug collisions, preserves them on rerun, and refuses removal if headings are missing
+ok - the original is frozen and archived, verified, and only then removed
+ok - --dry-run writes nothing and --keep-learnings leaves the original in place
+ok - the migration refuses to remove the original when it cannot archive it
+ok - a home with no learnings file still gets a compilable data/memory/ layout
+ok - a now.md dated today appears in the bundle, clearly delimited, ahead of the catalog
+ok - a now.md dated any other day does not appear in the bundle, and the bundle says why
+ok - a now.md with no date in front matter is dropped and reported
+ok - no now.md produces output with no notice or operating picture section
+ok - the budget cap drops notes first, then catalog, then operating picture, and never core
+ok - an operating picture too large to fit is dropped alone and never takes the catalog with it
+ok - a generation home still reads the home-level data/memory/now.md
+ok - a compile of a named memory directory depends on that directory alone
+ok - the date: key is authoritative over updated: in the operating picture
+ok - the stale operating picture notice names the date the file carries and today
+ok - the shipped docs/examples/now.md template compiles as a valid operating picture
+ok - a symlinked now.md is skipped rather than followed
+# all fm-memory-compile tests passed
+FM_TEST_END 2026-09-23T09:28:05Z tests/fm-memory-compile.test.sh exit=0 duration_ms=6897 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=7095
+FM_TEST_SUMMARY_FAMILY family=session-bootstrap count=1 duration_ms=6897 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-memory-compile.test.sh duration_ms=6897
+EXIT 0
