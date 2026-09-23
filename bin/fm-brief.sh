@@ -401,7 +401,7 @@ Substitute \`<epoch>\` with the current Unix time in seconds - run \`date +%s\` 
 Use \`$PAUSED_VERB: {why}\` (distinct from \`blocked:\`) only when your domain is deliberately idling on a known external wait you expect to clear on its own, naming when it clears with \`until <YYYY-MM-DDTHH:MMZ>\` (UTC) when you know; use \`blocked:\` when you are stuck and need firstmate to act.
 Use this only for material phase changes, a captain decision, a real blocker, a failure, work ready for review, or work you landed.
 Work you landed includes a merge you performed yourself under standing merge authority and one the captain merged on the forge: under that authority nothing is ever \"ready for review\", so a landed merge that goes unreported reaches the captain as silence.
-For a captain decision, append \`needs-decision [key=<slug>]: {summary of options}\`.
+For a captain decision, append \`needs-decision [key=<slug>] [at=<epoch>]: {summary of options}\`.
 This is also how you return the answer to a marked from-firstmate request above.
 A marked request requires one correlated answer after the work; it does not require a separate receipt or start acknowledgement.
 Never append \`working:\` merely to acknowledge receipt or announce that a marked request has started.
@@ -601,8 +601,9 @@ land in the generation or the report.
    the report, and the status file below.
 3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
 4. Report status by appending one line:
-   \`echo "{state}: {one short line}" >> $STATUS_FILE\`
+   \`echo "{state} [at=<epoch>]: {one short line}" >> $STATUS_FILE\`
    States: working, needs-decision, blocked, $PAUSED_VERB, done, failed.
+   Substitute \`<epoch>\` with the current Unix time in seconds - run \`date +%s\` and write the number it printed; a stamp that is not plain digits records no time at all.
    Each append wakes firstmate, so report sparingly: only phase changes a supervisor
    would act on and the needs-decision/blocked/paused/done/failed states. No step-by-step
    FYI progress lines; firstmate reads your pane for that.
@@ -610,16 +611,16 @@ land in the generation or the report.
    known external wait you expect to clear on its own (an upstream release, a rate-limit reset):
    firstmate then leaves your idle pane alone and rechecks it on a long cadence instead of
    treating it as a possible wedge. Use \`blocked:\` when you are stuck and need help.
-5. If you hit the same obstacle twice, append \`blocked: {why}\` and stop; firstmate will help.
+5. If you hit the same obstacle twice, append \`blocked [at=<epoch>]: {why}\` and stop; firstmate will help.
 6. If a decision belongs above you (product choices, destructive actions, ask-user findings),
-   append \`needs-decision [key=<slug>]: {summary of options}\` and stop. Firstmate will apply the configured authority and reply.
+   append \`needs-decision [key=<slug>] [at=<epoch>]: {summary of options}\` and stop. Firstmate will apply the configured authority and reply.
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\`
    or \`working:\` line never closes it, even when the answer is what started that work.
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply,
-   append \`resolved [key=<slug>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
+   append \`resolved [key=<slug>] [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
    every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
-   daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
+   daemon error, append \`blocked [at=<epoch>]: {the daemon error}\` and stop; only firstmate manages the daemon.
 
 # Definition of done
 Write your dream receipt to \`$DATA/$ID/report.md\`: what you read since the cursor, which drop claims you promoted
@@ -702,7 +703,7 @@ The path check is authoritative: \`git rev-parse --git-dir\` and \`git rev-parse
 If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append \`blocked [at=<epoch>]: launched in primary checkout, not an isolated worktree\` to the status file and stop.
 
 1. Confirm this worktree is on the local default branch before creating yours: \`git rev-parse HEAD\` must equal \`git rev-parse refs/heads/main\` (or \`refs/heads/master\` if that is the default).
-If it does not, STOP - do not branch from a remote tip - append \`blocked: worktree is not on the local default branch\` to the status file and stop.
+If it does not, STOP - do not branch from a remote tip - append \`blocked [at=<epoch>]: worktree is not on the local default branch\` to the status file and stop.
 Then create your branch: \`git checkout -b fm/$ID\`$SETUP2
 
 # Rules

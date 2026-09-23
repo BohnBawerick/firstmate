@@ -3608,7 +3608,9 @@ test_gone_endpoint_reports_once_instead_of_escalating_forever() {
 # schedule, reason and count, because neither shows the agent is gone.
 test_live_and_unproven_endpoints_still_wedge_escalate() {
   local dir state fakebin out capture window key spec verdict comm inventory
-  local working='state: working · source: run-step · ci running'
+  # A status-log verdict, not a run-step or pane one: a provably working crew
+  # has its wedge escalation suppressed at the threshold (wedge_timer_check).
+  local working='state: working · source: status-log · still compiling'
   window="test:fm-wedge"; key=$(printf '%s' "$window" | tr ':/.' '___')
   for spec in 'alive|grok|fm-wedge' 'ambiguous|node|fm-wedge' 'unreadable||fm-wedge'; do
     verdict=${spec%%|*}; comm=${spec#*|}; inventory=${comm#*|}; comm=${comm%%|*}
@@ -3643,7 +3645,9 @@ test_live_and_unproven_endpoints_still_wedge_escalate() {
 test_gone_report_rearms_when_the_endpoint_comes_back() {
   local dir state fakebin out capture window key
   local failed='state: failed · source: run-step · run failed'
-  local working='state: working · source: run-step · ci running'
+  # A status-log verdict, not a run-step or pane one: a provably working crew
+  # has its wedge escalation suppressed at the threshold (wedge_timer_check).
+  local working='state: working · source: status-log · still compiling'
   window="test:fm-wedge"; key=$(printf '%s' "$window" | tr ':/.' '___')
   dir=$(wedge_threshold_fixture gone-rearm 'working: still compiling' 0)
   state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"; capture="$dir/pane.txt"

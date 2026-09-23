@@ -304,7 +304,7 @@ SH
 # TERM can be ignored or remain pending on a stopped child, so never follow it
 # with an unbounded wait. Keep process evidence before the final owned-PID kill.
 wait_for_exit() {
-  local pid=$1 limit=${2:-50} i=0
+  local pid=$1 limit=${2:-50} i=0 kids kid
   while [ "$i" -lt "$limit" ]; do
     if ! is_live_non_zombie "$pid"; then
       wait "$pid"
@@ -313,12 +313,28 @@ wait_for_exit() {
     sleep 0.1
     i=$((i + 1))
   done
-  printf 'wait_for_exit: owned pid %s exceeded %s polls; reaping it\n' "$pid" "$limit" >&2
+  printf 'wait_for_exit: owned pid %s exceeded %s polls; sending TERM\n' "$pid" "$limit" >&2
   ps -p "$pid" -o pid= -o ppid= -o stat= -o command= >&2 2>/dev/null || true
   # Escalate rather than block: a process whose signal handler was dropped
   # survives TERM, and an unbounded wait on it turns one stuck child into a
-  # stuck script and then a stuck lane.
-  fm_test_reap_pid "$pid" || true
+  # stuck script and then a stuck lane. Descendants are snapshotted first, so
+  # anything the child orphans on its way out is still reaped by pid.
+  kids=$(fm_test_descendant_pids "$pid")
+  kill -TERM "$pid" 2>/dev/null || true
+  i=0
+  while [ "$i" -lt 20 ] && is_live_non_zombie "$pid"; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  if is_live_non_zombie "$pid"; then
+    printf 'wait_for_exit: owned pid %s survived TERM; sending KILL\n' "$pid" >&2
+    kill -KILL "$pid" 2>/dev/null || true
+  fi
+  wait "$pid" 2>/dev/null || true
+  for kid in $kids; do
+    fm_test_pid_gone "$kid" && continue
+    fm_test_signal_pid_hard "$kid" || true
+  done
   return 124
 }
 

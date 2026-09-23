@@ -2826,13 +2826,14 @@ EOF
   make_fake_toolchain "$fakebin"
   make_fake_ps_claude "$fakebin"
 
-  # The lock names this session's own declared pid, so ownership resolves; it is
-  # a symlink rather than a regular file, so fm-lock.sh refuses to acquire it.
+  # The lock names this suite's shell, which the fake ps presents as the claude
+  # harness ancestor of the session start, so ownership resolves by ancestry; it
+  # is a symlink rather than a regular file, so fm-lock.sh refuses to acquire it.
   printf '%s\n' "$$" > "$home/state/lock-target"
   ln -s "$home/state/lock-target" "$home/state/.lock"
 
   out=$(env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
-    CLAUDE_PID="$$" FM_HOME="$home" FM_ROOT_OVERRIDE="$root" \
+    FM_FAKE_HARNESS_PID="$$" FM_HOME="$home" FM_ROOT_OVERRIDE="$root" \
     PATH="$fakebin:$BASE_PATH" "$SESSION_START")
 
   assert_contains "$out" "READ-ONLY SESSION - FLEET LOCK OWNERSHIP WAS NOT VERIFIED" \

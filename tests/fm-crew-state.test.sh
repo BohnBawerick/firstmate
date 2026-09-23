@@ -3074,7 +3074,9 @@ UNFETCHED_HEAD=dead1eafdead1eafdead1eafdead1eafdead1eaf
 
 # (e2) The live reproduction, primary path: this branch's own running run,
 # reported at a head this worktree cannot resolve, with older failed runs of the
-# same branch still sitting at the worktree head.
+# same branch still sitting at the worktree head. The selected run is executing on
+# the task's branch while the daemon answers, so it binds regardless of head
+# (fm_nm_run_is_executing in bin/fm-nm-run-lib.sh).
 test_advanced_pipeline_head_is_not_reported_failed() {
   reset_fakes
   local d short out
@@ -3094,8 +3096,8 @@ EOF
 )"
   out=$(run_crew_state "$d" advhead)
   assert_not_contains "$out" "state: failed" "a live run must never be answered by a stale failed run"
-  assert_contains "$out" "state: unknown" "an unfetched run without custody proof is unverified"
-  assert_not_contains "$out" "source: run-step" "the branch name alone cannot attribute an unfetched run"
+  assert_contains "$out" "state: working" "the branch's own executing run answers even at an unfetched head"
+  assert_contains "$out" "source: run-step" "an executing run on the task's branch binds regardless of head"
   pass "pipeline-advanced run head is not reported as a stale failure"
 }
 

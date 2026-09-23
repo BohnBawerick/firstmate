@@ -403,7 +403,7 @@ test_kimi_launch_then_send_is_verified() {
   assert_contains "$out" "spawned $id harness=kimi" "kimi spawn did not report success"
 
   launch=$(cat "$CASE_DIR/launch.log")
-  [ "$launch" = "export COMPACT_ADVISER_DISABLE=1; env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID '$FAKEBIN_DIR/kimi' --model 'kimi-code/k3' --auto" ] \
+  [ "$launch" = "export COMPACT_ADVISER_DISABLE=1; unset CLAUDE_PID CLAUDE_CODE_SESSION_ID; env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI '$FAKEBIN_DIR/kimi' --model 'kimi-code/k3' --auto" ] \
     || fail "kimi launch did not use the absolute binary, model, and --auto only: $launch"
   assert_not_contains "$launch" "--effort" "kimi launch emitted a nonexistent effort flag"
   assert_not_contains "$launch" "turn-ended" "kimi launch embedded a turn-end path"
@@ -477,12 +477,12 @@ test_kimi_spawn_refuses_shared_task_temp_root() {
   local id rec out rc task_tmp launch_dir launch_file stale_file
   id="kimi-sharedtmp-z1-$$"
   task_tmp="/tmp/fm-$id"
-  KIMI_RUNTIME_TASK_TMPS+=("$task_tmp")
-  rm -rf "$task_tmp"
-  mkdir "$task_tmp"
-  chmod 777 "$task_tmp"
+  # read_spawn_record claims and wipes /tmp/fm-<id>, so each pre-existing
+  # temp root below is planted only after it.
   rec=$(make_spawn_case sharedtmp "$id")
   read_spawn_record "$rec"
+  mkdir "$task_tmp"
+  chmod 777 "$task_tmp"
   launch_dir=$(kimi_launch_dir "$id" "$HOME_DIR")
   KIMI_RUNTIME_LAUNCH_DIR=$launch_dir
   rm -rf "$launch_dir"
@@ -494,11 +494,10 @@ test_kimi_spawn_refuses_shared_task_temp_root() {
   assert_absent "$task_tmp/launch.sh" "kimi spawn staged its launch command in a shared directory"
   assert_absent "$launch_dir" "kimi spawn staged a namespaced launch directory after refusing the shared temp root"
   [ ! -s "$CASE_DIR/launch.log" ] || fail "kimi spawn launched despite an unsafe task temp root"
-  rm -rf "$task_tmp"
-  mkdir "$task_tmp"
-  chmod 755 "$task_tmp"
   rec=$(make_spawn_case ownedtmp "$id")
   read_spawn_record "$rec"
+  mkdir "$task_tmp"
+  chmod 755 "$task_tmp"
   launch_dir=$(kimi_launch_dir "$id" "$HOME_DIR")
   KIMI_RUNTIME_LAUNCH_DIR=$launch_dir
   rm -rf "$launch_dir"
@@ -779,7 +778,7 @@ test_kimi_falls_back_to_expanded_home_binary() {
   rc=$?
   expect_code 0 "$rc" "Kimi HOME fallback spawn should succeed"
   launch=$(cat "$CASE_DIR/launch.log")
-  [ "$launch" = "export COMPACT_ADVISER_DISABLE=1; env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID '$fallback' --auto" ] \
+  [ "$launch" = "export COMPACT_ADVISER_DISABLE=1; unset CLAUDE_PID CLAUDE_CODE_SESSION_ID; env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI '$fallback' --auto" ] \
     || fail "Kimi fallback did not expand HOME into an absolute executable: $launch"
   pass "fm-spawn: Kimi fallback expands the active HOME"
 }

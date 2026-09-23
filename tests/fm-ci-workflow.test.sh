@@ -201,15 +201,17 @@ doc.fetch("jobs").each do |id, job|
   name = job.fetch("name")
   matrix = job.dig("strategy", "matrix")
   if matrix
-    raise "#{id} has an unmodelled result matrix" unless matrix.keys == ["shard"]
-    matrix.fetch("shard").each { |shard| puts name.gsub("${{ matrix.shard }}", shard.to_s) }
+    raise "#{id} has an unmodelled result matrix" unless matrix.keys.size == 1
+    axis = matrix.keys.first
+    matrix.fetch(axis).each { |value| puts name.gsub("${{ matrix.#{axis} }}", value.to_s) }
   else
     puts name
   end
 end
 ' "$CI_WORKFLOW") || fail "could not resolve the PR result set"
   expected=$(cat <<'RESULTS'
-Lint
+Lint 1
+Lint 2
 Test coverage guard
 Behavior portable parallel 1
 Behavior portable parallel 2
@@ -218,6 +220,10 @@ Behavior portable serial 2
 Behavior portable serial 3
 Behavior portable serial 4
 Behavior portable serial 5
+Behavior portable serial 6
+Behavior portable serial 7
+Behavior portable serial 8
+Behavior portable serial 9
 Behavior tests (Herdr)
 Behavior timing aggregate
 Stock macOS Bash snapshot compatibility

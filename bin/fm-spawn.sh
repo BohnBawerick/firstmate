@@ -3721,11 +3721,6 @@ kimi_wait_for_ready() {
         fi
       fi
     fi
-    if kimi_trust_dialog_is_showing "$pane"; then
-      kimi_accept_trust_dialog "$pane"
-      accepted=$?
-      [ "$accepted" -ne 2 ] || return 2
-    fi
     i=$((i + 1))
     [ "$i" -ge "$max" ] || sleep "$interval"
   done
@@ -4769,15 +4764,6 @@ omp) LAUNCH=${LAUNCH//__OMPBIN__/"$(shell_quote "$OMP_BIN")"} ;;
 agy) LAUNCH=${LAUNCH//__AGYBIN__/"$(shell_quote "$AGY_BIN")"} ;;
 esac
 LAUNCH=${LAUNCH//__WORKTREE__/$sq_worktree}
-# Claude Code's two declared identity values are exported into every descendant
-# of the spawning session, and bin/fm-session-lock-lib.sh reads them to answer
-# who holds this home. A worker that inherited them would answer that question
-# as the session that spawned it and pass the fleet-mutation gate in its name.
-# Cleared for EVERY runtime, with no per-harness exception a later change can
-# get wrong: a claude worker publishes its own values anyway, so clearing them
-# costs it nothing, and every other runtime publishes none and must not borrow
-# these.
-LAUNCH="env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID $LAUNCH"
 case "$HARNESS" in
 claude | codex | opencode | pi | pi-signed | grok | kimi | gemini | muse | rovo | agy)
   LAUNCH="env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI $LAUNCH"
@@ -4816,6 +4802,16 @@ if [ "$KIND" = secondmate ]; then
   # injected carrier and this on/off snapshot are guaranteed to agree.
   LAUNCH="FM_ROOT_OVERRIDE= FM_STATE_OVERRIDE= FM_DATA_OVERRIDE= FM_PROJECTS_OVERRIDE= FM_CONFIG_OVERRIDE= FM_PUBLIC_FOLLOWUP_PRIMARY_HOME=$sq_primary_home FM_HOME=$sq_home FM_TRACE_CONTEXT=$SPAWN_TRACE_EFFECTIVE FM_SUPERVISION_MODEL=$supervision_model $LAUNCH"
 fi
+# Claude Code's two declared identity values are exported into every descendant
+# of the spawning session, and bin/fm-session-lock-lib.sh reads them to answer
+# who holds this home. A worker that inherited them would answer that question
+# as the session that spawned it and pass the fleet-mutation gate in its name.
+# Cleared for EVERY runtime, with no per-harness exception a later change can
+# get wrong: a claude worker publishes its own values anyway, so clearing them
+# costs it nothing, and every other runtime publishes none and must not borrow
+# these. Like the exports below it is a statement outside every generated prefix,
+# so it also covers a compound raw launch expression.
+LAUNCH="unset CLAUDE_PID CLAUDE_CODE_SESSION_ID; $LAUNCH"
 # Every agent this fleet launches - crewmate, scout, and secondmate, on a fresh
 # spawn and on a relaunch alike - runs with the compact-adviser kill switch on.
 # This is an export statement rather than a forwarded ambient name or a

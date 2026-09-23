@@ -216,7 +216,7 @@ test_ship_modes_generate_clean_briefs() {
     assert_grep 'never a bare number such as "PR 108"' "$brief" "$id: brief missing the full-PR-URL rule"
     assert_grep "mid-task \`working:\` line (including setup complete) is nonterminal" "$brief" \
       "$id: brief missing nonterminal working:/setup-complete gate protection"
-    assert_grep "blocked: worktree is not on the local default branch" "$brief" \
+    assert_grep "blocked [at=<epoch>]: worktree is not on the local default branch" "$brief" \
       "$id: brief missing the local-default-branch base assertion"
     assert_no_grep "EOF" "$brief" "$id: brief leaked a heredoc EOF marker (unterminated heredoc)"
   done
@@ -597,7 +597,7 @@ test_no_mistakes_worker_starts_own_validation() {
     "no-mistakes DOD did not bind completion to a green PR"
   assert_grep "stop, never \`done:\`." "$brief" \
     "no-mistakes DOD did not route an unstartable run to blocked: instead of done:"
-  assert_grep "If the run dies mid-pipeline, append \`failed:" "$brief" \
+  assert_grep "If the run dies mid-pipeline, append \`failed [at=<epoch>]:" "$brief" \
     "no-mistakes DOD did not surface a mid-pipeline death"
 
   # Skill form is absent in a crewmate worktree; no scaffold may instruct it.
