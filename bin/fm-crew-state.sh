@@ -58,7 +58,13 @@
 #      once the worktree has moved off the run head. Every other run - terminal,
 #      or parked at a gate - binds through the ternary identity verdict, where
 #      pipeline custody (fm_nm_run_is_pipeline_owned_active) resolves an
-#      unverified head but never a proved mismatch. A record whose identity is
+#      unverified head but never a proved mismatch. An unverified ACTIVE head
+#      also binds as the one ledger-anchored continuation: the branch's newest
+#      ledger row is active and the row immediately before it ended at exactly
+#      this worktree's head (fm_nm_runs_status_for_worktree in
+#      bin/fm-nm-run-lib.sh); with the daemon answered down that route keeps
+#      the run and names the dead instrument rather than an identity failure.
+#      A record whose identity is
 #      proven by none of those routes is not this worktree's run to report on:
 #      it leaves HAVE_RUN=0 so the pane and status log answer, because a stale
 #      record naming this branch must never override a crew that is visibly
@@ -917,8 +923,12 @@ nm_run_identity_is_proved() {
 }
 
 HAVE_RUN=0
-# Full responses supply their own verified step/gate detail. Coarse responses
-# supply only a verified ledger row's status word.
+# RUN_SOURCE distinguishes the two ways HAVE_RUN=1 can happen: "full" means
+# $RUN_OUT is real `axi status` TOON with step/gate detail (including a
+# same-branch run the strict head rule rejected but the ledger proved is this
+# worktree's pipeline-owned continuation); "coarse" means only a bare status
+# word came back from the runs-list fallback, so the run-step block below skips
+# the TOON field parsing entirely for this crew.
 RUN_SOURCE=full
 NM_DAEMON_ANSWER=""
 RUN_DEAD_DAEMON=""
@@ -972,6 +982,15 @@ if [ "$KIND" = ship ] && [ -n "$CREW_BRANCH" ] && command -v no-mistakes >/dev/n
             if fm_nm_run_is_pipeline_owned_active "$RUN_OUT" \
               || { fm_nm_run_is_executing "$RUN_OUT" && ! nm_daemon_answered_down; }; then
               HAVE_RUN=1
+            elif fm_nm_run_is_active "$RUN_OUT" \
+              && [ "$(fm_nm_runs_status_for_worktree "$WT" "$CREW_BRANCH" "$(nm_runs_list)" "$(strip_quotes "$(nm_field head)")")" = running ]; then
+              # The ledger anchor PROVED code identity; only liveness can still
+              # fail, so a dead daemon is reported as such rather than as an
+              # identity failure, and a parked run keeps its gate and findings.
+              HAVE_RUN=1
+              if ! fm_nm_run_is_parked "$RUN_OUT" && nm_daemon_answered_down; then
+                RUN_DEAD_DAEMON="no-mistakes daemon unreachable; last run record $(strip_quotes "$(nm_field status)") - unverified"
+              fi
             else
               emit unknown run-step "selected run code identity unverified; run ids: $candidate_ids"
             fi
@@ -1032,8 +1051,12 @@ if [ "$KIND" = ship ] && [ -n "$CREW_BRANCH" ] && command -v no-mistakes >/dev/n
         COARSE_STATUS=$(fm_nm_runs_status_for_worktree "$WT" "$CREW_BRANCH" "$(nm_runs_list)")
         if [ -n "$COARSE_STATUS" ]; then
           HAVE_RUN=1
-          # Only the verified ledger row supplies this coarse result.
-          RUN_SOURCE=coarse
+          # A branch-matching answer the strict rule rejected is this branch's
+          # own current run once the ledger proves the pipeline-owned
+          # continuation, so its axi TOON is the authoritative run detail
+          # (RUN_SOURCE stays full); only a foreign-branch answer leaves
+          # coarse status-word detail.
+          [ "$run_branch" = "$CREW_BRANCH" ] || RUN_SOURCE=coarse
         fi
       fi
     fi

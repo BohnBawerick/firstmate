@@ -13,9 +13,10 @@
 # (fm_nm_run_is_executing) while the daemon is not proven down, because the
 # pipeline rebases the branch and commits its fix rounds in its own checkout,
 # so a live run's head routinely differs from the local head. An unfetched
-# head otherwise needs an explicit submitted-head match or active pipeline
-# custody proof. Coarse ledger rows never prove an unfetched continuation. A
-# false positive lets teardown act on a run it does not own.
+# head otherwise needs an explicit submitted-head match, active pipeline
+# custody proof, or the one ledger-anchored continuation that
+# fm_nm_runs_status_for_worktree below recognizes. A false positive lets
+# teardown act on a run it does not own.
 #
 # Bounded call to an arbitrary command in dir $1, timeout $2 seconds, and its
 # `no-mistakes "$@"` specialization. The bounded
@@ -431,15 +432,42 @@ fm_nm_run_is_executing() {  # <toon-output>
   return 1
 }
 
-# Read-only attribution from the newest-first `no-mistakes runs` ledger.
-# The newest row for this branch must resolve to this worktree's code identity.
-# An unknown or mismatched head ends attribution; older rows cannot anchor it.
-# Creation order decides precedence, including a newer verified failure.
-# Optional expected-head binds the first row to the detailed status response.
+# ONE owner for attribution from the pipeline's own runs ledger, replacing a
+# per-row scan-and-skip. The ledger is the real top-level `no-mistakes runs
+# --limit N` listing (plain text, no run id, no quoting, newest-first, columns
+# "<status> <branch> <short-sha> <date> [<pr-url>]"; the `axi` surface has no
+# runs-listing subcommand - verified against the installed CLI). Prints the
+# status word of the branch's CURRENT run row, or nothing when the ledger
+# cannot prove attribution. When optional expected head $4 is supplied, its
+# abbreviated commit identity must match the newest row. The branch's NEWEST
+# row alone decides; older rows are history and never answer for the present:
+#   - newest row's head resolves and matches the worktree (fm_nm_head_matches_worktree):
+#     its status word
+#   - newest row's head resolves but does not match: nothing (a newer run that
+#     is not this worktree's makes every older row stale history)
+#   - newest row's head does not resolve in this copy (the pipeline committed
+#     its fix round in its own checkout and the task copy never fetched it):
+#     recognized ONLY as a provable pipeline-owned continuation of the
+#     submitted head, which requires ALL of: the row is ACTIVE (status
+#     running), and the immediately older row for the SAME branch resolves to
+#     EXACTLY the worktree HEAD. The pipeline's own ledger then proves an
+#     unbroken run sequence from a run that ended at the submitted head to an
+#     active run on the same branch - the anchored active row's status word is
+#     printed. Anything else (no anchor row, an anchor that is merely an
+#     ancestor, a terminal unresolvable row) prints nothing, so branch-name
+#     coincidence, arbitrary remote state, and other tasks' runs never match.
+# An older live row never displaces a newer terminal result.
+# There is no branch-name-only acceptance here: a live row whose head this copy
+# cannot tie to the worktree is not this worktree's run just because the branch
+# name matches. The one live bind is the EXECUTING record on the `axi status`
+# route (fm_nm_run_is_executing above), which the caller pairs with its own
+# liveness evidence.
+# Read-only: git reads resolve objects in place; custody never changes.
 fm_nm_runs_status_for_worktree() {  # <worktree> <branch> <runs-list-output> [expected-head]
   local wt=$1 branch=$2 list=$3 expected_head=${4:-}
-  local row_full row st br sha day clock pr extra year_num month_num day_num max_day
+  local local_full row_full row st br sha day clock pr extra year_num month_num day_num max_day pending_st=''
   local decided=''
+  local_full=$(git -C "$wt" rev-parse HEAD 2>/dev/null) || return 0
   [ -n "$list" ] || return 0
   while IFS= read -r row; do
     row=$(fm_nm_trim "$row")
@@ -471,6 +499,15 @@ fm_nm_runs_status_for_worktree() {  # <worktree> <branch> <runs-list-output> [ex
     esac
     [ "$day_num" -ge 1 ] && [ "$day_num" -le "$max_day" ] || break
     [ "$br" = "$branch" ] || continue
+    if [ -n "$pending_st" ]; then
+      # This is the row immediately older than the active unresolvable row:
+      # the only admissible anchor, and only exact head equality proves the
+      # worktree still sits at the submitted head.
+      if [ "$(fm_nm_resolve_commit "$wt" "$sha")" = "$local_full" ]; then
+        decided=$pending_st
+      fi
+      break
+    fi
     if [ -n "$expected_head" ]; then
       case "$expected_head" in *[!A-Fa-f0-9]*|'') break ;; esac
       [ "${#expected_head}" -ge 7 ] && [ "${#expected_head}" -le 40 ] || break
@@ -486,7 +523,8 @@ fm_nm_runs_status_for_worktree() {  # <worktree> <branch> <runs-list-output> [ex
       fi
       break
     fi
-    break
+    [ "$st" = running ] || break
+    pending_st=$st
   done <<< "$list"
   printf '%s' "$decided"
   return 0

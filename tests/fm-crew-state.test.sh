@@ -3102,7 +3102,9 @@ EOF
 }
 
 # (e2) Same shape reached through the coarse runs list, when the repo-wide
-# `axi status` answer belongs to another crew's branch.
+# `axi status` answer belongs to another crew's branch. The newest row is active
+# at an unfetched head and the row immediately before it sits at exactly the
+# worktree head, so the ledger anchor proves the continuation.
 test_coarse_advanced_pipeline_head_is_not_reported_failed() {
   reset_fakes
   local d short out
@@ -3120,9 +3122,9 @@ EOF
 )"
   out=$(run_crew_state "$d" advcoarse)
   assert_not_contains "$out" "state: failed" "the coarse walk must not fall through to a superseded failed row"
-  assert_not_contains "$out" "source: run-step" "an unresolvable coarse head is unknown attribution, not a binding"
-  assert_contains "$out" "state: unknown" "with no pane or log to answer, unbindable attribution reports unknown"
-  pass "coarse walk stops at an unresolvable newest row instead of binding a stale failure"
+  assert_contains "$out" "source: run-step" "the ledger-anchored continuation binds via the runs list"
+  assert_contains "$out" "state: working" "the anchored active row reads working"
+  pass "coarse walk binds the anchored active row instead of a stale failure"
 }
 
 # The run's submitted head - the head it was LAUNCHED against, which is what the
@@ -3339,10 +3341,10 @@ EOF
     --source claude-hook --event user-prompt-submit
   local out; out=$(run_crew_state "$d" feat-f10c)
   assert_not_contains "$out" "state: failed" "an unresolvable active row must not fall to the older failed row"
-  assert_not_contains "$out" "source: run-step" "unknown attribution must not bind a run"
-  assert_contains "$out" "state: working" "the busy crew still reads working through the pane fallback"
-  assert_contains "$out" "source: pane" "unknown attribution falls to the pane, not an older row"
-  pass "coarse scan stops on an unresolvable active row instead of binding an older one"
+  assert_contains "$out" "source: run-step" "the ledger-anchored continuation binds via the runs list"
+  assert_contains "$out" "state: working" "the anchored active fix round reads working"
+  assert_contains "$out" "validating (background run)" "coarse resolution keeps coarse run detail"
+  pass "coarse scan anchors the unresolvable active row instead of falling to an older one"
 }
 
 # Coarse negative control: the anchor must end at EXACTLY this worktree's
@@ -3838,9 +3840,10 @@ test_runs_list_continuation_found_when_axi_answers_other_branch() {
 EOF
 )"
   out=$(run_crew_state "$d" coarsefix)
-  assert_not_contains "$out" "source: run-step" "coarse ledger rows cannot bind an unfetched run"
-  assert_contains "$out" "state: unknown" "an unfetched coarse head without another source stays unknown"
-  pass "runs-list fallback rejects an unfetched continuation without explicit proof"
+  assert_contains "$out" "source: run-step" "ledger continuation attributes via the runs list too"
+  assert_contains "$out" "state: working" "coarse continuation reads working"
+  assert_contains "$out" "validating (background run)" "coarse resolution keeps coarse detail, not the other branch's run"
+  pass "runs-list continuation attribution works when axi answers another branch"
 }
 
 # The AXI overview supplies run ids in creation order; the plain runs listing
