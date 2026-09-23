@@ -262,10 +262,9 @@ rm -f "$STATE_DIR"/*.status "$STATE_DIR"/.supervise-daemon.log \
   "$STATE_DIR"/.last-watcher-beat "$STATE_DIR"/.watch.lock \
   "$STATE_DIR"/daemon-child.* "$STATE_DIR"/submitted.log
 
-# Daemon entry requires a confirmed away posture before target validation.
-if ! FM_HOME="$HOME_DIR" "$ROOT/bin/fm-afk-contract.sh" propose >/dev/null \
-  || ! FM_HOME="$HOME_DIR" "$ROOT/bin/fm-afk-contract.sh" confirm >/dev/null; then
-  fail "could not confirm the isolated away posture"
+# Daemon entry requires a written away posture before target validation.
+if ! FM_HOME="$HOME_DIR" "$ROOT/bin/fm-afk-contract.sh" enter --words "isolated lab away posture" >/dev/null; then
+  fail "could not enter the isolated away posture"
 fi
 
 # Verify the repaired native compatibility path refuses ambient targeting.
