@@ -7,7 +7,7 @@
 #   1. bin/fm-session-lock-lib.sh's fleet-mutation gate, exercised through the
 #      real mutating entry points rather than through the predicate alone.
 #   2. bin/fm-lock.sh's ownership wording, and a background continuation of the
-#      lock-holding conversation inheriting the helm.
+#      lock-holding Claude session inheriting the helm under the trusted-id rule.
 #   3. bin/fm-turnend-guard.sh telling a correct decline apart from a failure,
 #      and standing down after one report.
 #
@@ -280,33 +280,76 @@ test_lock_output_states_ownership_in_words() {
   pass "the lock path names ownership in words, never as a bare pid"
 }
 
-# A caller whose ordinary tool shell has the recorded holder somewhere above it
-# in the real process tree is granted the helm by the ancestry walk, not by the
-# conversation. It inherits an existing owner's record and has no authority to
-# rename the conversation on it - doing so would lock that owner's own
-# background continuation out of a home the owner still holds.
-test_an_ancestry_grant_never_renames_the_recorded_conversation() {
-  local dir inner rc out sidecar
-  dir="$TMP_ROOT/tier3-sidecar"
+# Start a long-lived Claude-shaped session in a tree detached from this suite,
+# shaped the way real Claude Code runs one: the session process exports its own
+# pid as CLAUDE_PID beside its CLAUDE_CODE_SESSION_ID, so every hook and tool
+# shell it runs sees a CLAUDE_PID that is a Claude-shaped member of its own
+# harness ancestry - the only shape bin/fm-session-lock-lib.sh trusts the id
+# from. It runs <command...> once, publishes the output and exit code under
+# <base>, stays alive so the home stays genuinely held, and echoes its pid.
+start_claude_session() {  # <base> <session-id> <command...>
+  local base=$1 session=$2 pid
+  shift 2
+  rm -f "$base.pid" "$base.out" "$base.rc"
+  bash -c '"$0" "$@" &' "$TMP_ROOT/detached.sh" "$$" "$base.launch" "$base.launch.rc" \
+    env -u CLAUDE_PID CLAUDE_CODE_SESSION_ID="$session" \
+    "$FAKE_CLAUDE" -c '
+      base=$1
+      shift
+      printf "%s\n" "$$" > "$base.pid"
+      export CLAUDE_PID=$$
+      "$@" < /dev/null > "$base.out" 2>&1
+      printf "%s\n" "$?" > "$base.rc"
+      sleep 600
+      :
+    ' _ "$base" "$@" >/dev/null 2>&1
+  wait_for_file "$base.pid" || fail "a fixture Claude session never published its pid"
+  pid=$(tr -d '[:space:]' < "$base.pid")
+  printf '%s\n' "$pid" >> "$TMP_ROOT/holders"
+  wait_for_file "$base.rc" || fail "a fixture Claude session never finished its command"
+  printf '%s\n' "$pid"
+}
+
+# Run <command...> once in a short-lived detached Claude-shaped session carrying
+# <session-id>, with CLAUDE_PID naming that session's own process, and print the
+# exit code. An empty <session-id> runs with no session id at all.
+claude_run() {  # <session-id> <command...>
+  local session=$1
+  shift
+  if [ -n "$session" ]; then
+    detached_run env -u CLAUDE_PID CLAUDE_CODE_SESSION_ID="$session" \
+      "$FAKE_CLAUDE" -c 'export CLAUDE_PID=$$; "$@"; exit $?' _ "$@"
+  else
+    detached_run env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+      "$FAKE_CLAUDE" -c 'export CLAUDE_PID=$$; "$@"; exit $?' _ "$@"
+  fi
+}
+
+# A caller whose tool shell has the recorded holder somewhere above it in the
+# real process tree is granted the helm by the ancestry walk. The acquisition
+# says so in words, keeps the live recorded pid on line 1, and an unrelated
+# session outside that tree is still refused.
+test_an_ancestry_grant_is_reported_in_words() {
+  local dir inner rc out
+  dir="$TMP_ROOT/ancestry-grant"
   make_home "$dir"
 
-  # Two nested live harnesses. The INNER one records itself as the holder under
-  # conversation conv-owner, then runs fm-lock.sh and stays alive so the home is
-  # still genuinely held while the assertions below run.
-  cat > "$TMP_ROOT/tier3-inner.sh" <<'SH'
+  # Two nested live harnesses. The INNER one records itself as the holder, then
+  # runs fm-lock.sh and stays alive so the home is still genuinely held while the
+  # assertions below run.
+  cat > "$TMP_ROOT/ancestry-inner.sh" <<'SH'
 #!/usr/bin/env bash
 set -u
 home=$1
 out=$2
 rcfile=$3
 printf '%s\n' "$$" > "$home/state/.lock"
-printf 'conv-owner\n' > "$home/state/.lock.session"
 "$home/bin/fm-lock.sh" > "$out" 2>&1
 printf '%s\n' "$?" > "$rcfile"
 sleep 600
 :
 SH
-  cat > "$TMP_ROOT/tier3-outer.sh" <<'SH'
+  cat > "$TMP_ROOT/ancestry-outer.sh" <<'SH'
 #!/usr/bin/env bash
 set -u
 fake=$1
@@ -316,102 +359,98 @@ shift 2
 :
 SH
 
-  env -u CLAUDE_PID CLAUDE_CODE_SESSION_ID=conv-intruder \
+  env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
     FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
-    "$FAKE_CLAUDE" "$TMP_ROOT/tier3-outer.sh" "$FAKE_CLAUDE" "$TMP_ROOT/tier3-inner.sh" \
-    "$dir" "$TMP_ROOT/tier3.out" "$TMP_ROOT/tier3.rc" > /dev/null 2>&1 &
+    "$FAKE_CLAUDE" "$TMP_ROOT/ancestry-outer.sh" "$FAKE_CLAUDE" "$TMP_ROOT/ancestry-inner.sh" \
+    "$dir" "$TMP_ROOT/ancestry.out" "$TMP_ROOT/ancestry.rc" > /dev/null 2>&1 &
   printf '%s\n' "$!" >> "$TMP_ROOT/holders"
-  wait_for_file "$TMP_ROOT/tier3.rc" || fail "the nested ancestry fixture never ran fm-lock.sh"
+  wait_for_file "$TMP_ROOT/ancestry.rc" || fail "the nested ancestry fixture never ran fm-lock.sh"
   inner=$(cat "$dir/state/.lock" 2>/dev/null || true)
   printf '%s\n' "$inner" >> "$TMP_ROOT/holders"
 
-  rc=$(tr -d '[:space:]' < "$TMP_ROOT/tier3.rc")
-  out=$(cat "$TMP_ROOT/tier3.out" 2>/dev/null || true)
+  rc=$(tr -d '[:space:]' < "$TMP_ROOT/ancestry.rc")
+  out=$(cat "$TMP_ROOT/ancestry.out" 2>/dev/null || true)
   expect_code 0 "$rc" "the ancestry walk no longer grants the helm: $out"
   assert_contains "$out" "inside this session's harness ancestry" \
-    "an ancestry grant named a conversation match that never happened"
+    "an ancestry grant did not say which signal granted it"
+  [ "$(cat "$dir/state/.lock" 2>/dev/null || true)" = "$inner" ] \
+    || fail "an ancestry confirmation rewrote the live recorded pid"
 
-  # state/.lock.session is the recorded conversation (AGENTS.md's state
-  # inventory), and it must still name the owner's.
-  sidecar=$(cat "$dir/state/.lock.session" 2>/dev/null || true)
-  [ "$sidecar" = conv-owner ] \
-    || fail "an ancestry grant rewrote the recorded conversation to '$sidecar'"
-
-  # The consequence that matters: the owner's own continuation still inherits
-  # the helm, and the unrelated conversation still does not.
-  detached_run env -u CLAUDE_PID CLAUDE_CODE_SESSION_ID=conv-owner \
-    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
-    "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/fm-wake-drain.sh" > /dev/null
+  rc=$(claude_run conv-intruder env FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$dir/bin/fm-wake-drain.sh")
   out=$(run_output)
-  assert_not_contains "$out" "does not hold the fleet lock" \
-    "the recorded owner's own continuation was locked out of the home it holds"
-
-  rc=$(detached_run env -u CLAUDE_PID CLAUDE_CODE_SESSION_ID=conv-intruder \
-    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
-    "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/fm-wake-drain.sh")
-  out=$(run_output)
-  [ "$rc" != 0 ] || fail "an unrelated conversation inherited the helm through a renamed record"
+  [ "$rc" != 0 ] || fail "a session outside the holder's tree inherited the helm"
   assert_contains "$out" "does not hold the fleet lock" \
-    "an unrelated conversation was not refused"
+    "a session outside the holder's tree was not refused"
 
-  pass "an ancestry grant inherits the recorded conversation instead of renaming it"
+  pass "an ancestry grant is reported in words and grants nothing outside that tree"
 }
 
-test_a_background_continuation_of_the_same_conversation_inherits_the_helm() {
+test_a_background_continuation_of_the_same_session_inherits_the_helm() {
   local dir holder rc out
   dir="$TMP_ROOT/continuation"
   make_home "$dir"
-  holder=$(start_lock_holder "$dir")
 
-  # The holder takes the helm while publishing its conversation, exactly as a
-  # Claude Code session does.
-  CLAUDE_PID="$holder" CLAUDE_CODE_SESSION_ID=conv-alpha \
-    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$dir/bin/fm-lock.sh" >/dev/null \
-    || fail "the holder could not record its own conversation on the lock"
+  # The holder takes the helm exactly as a Claude Code session does: its lock
+  # line names its own CLAUDE_PID and the sidecar names its session id.
+  holder=$(start_claude_session "$TMP_ROOT/continuation-holder" conv-alpha \
+    env FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$dir/bin/fm-lock.sh")
+  expect_code 0 "$(cat "$TMP_ROOT/continuation-holder.rc")" \
+    "the holder could not take the helm: $(cat "$TMP_ROOT/continuation-holder.out")"
+  assert_contains "$(cat "$TMP_ROOT/continuation-holder.out")" \
+    "lock acquired: THIS session holds the fleet lock (harness pid $holder)" \
+    "a trusted session did not anchor the lock on its own CLAUDE_PID"
+  [ "$(cat "$dir/state/.lock-session" 2>/dev/null || true)" = conv-alpha ] \
+    || fail "the holder did not record its session id beside the lock"
 
-  # A background continuation is a different process in a detached tree, under
-  # its own harness, carrying the SAME conversation. It must inherit the helm.
-  detached_run env -u CLAUDE_PID CLAUDE_CODE_SESSION_ID=conv-alpha FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/fm-wake-drain.sh" >/dev/null
+  # A background continuation is a different process in a detached tree, whose
+  # own CLAUDE_PID names its Claude-shaped ancestor, carrying the SAME session id.
+  claude_run conv-alpha env FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$dir/bin/fm-wake-drain.sh" >/dev/null
   out=$(run_output)
   assert_not_contains "$out" "does not hold the fleet lock" \
-    "a background continuation of the lock-holding conversation was locked out of its own home"
+    "a background continuation of the lock-holding session was locked out of its own home"
 
-  # A different conversation is a different session and stays out.
-  rc=$(detached_run env -u CLAUDE_PID CLAUDE_CODE_SESSION_ID=conv-beta \
+  # A different session id is a different session and stays out.
+  rc=$(claude_run conv-beta env FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$dir/bin/fm-wake-drain.sh")
+  out=$(run_output)
+  [ "$rc" != 0 ] || fail "an unrelated session inherited the helm"
+  assert_contains "$out" "does not hold the fleet lock" \
+    "an unrelated session was not refused"
+
+  # The same id with no CLAUDE_PID of its own is untrusted: a hand-started
+  # primary inside a Claude pane carries the pane's id and must never own with it.
+  rc=$(detached_run env -u CLAUDE_PID CLAUDE_CODE_SESSION_ID=conv-alpha \
     FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
     "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/fm-wake-drain.sh")
   out=$(run_output)
-  [ "$rc" != 0 ] || fail "an unrelated conversation inherited the helm"
+  [ "$rc" != 0 ] || fail "a session id without a trusted CLAUDE_PID inherited the helm"
   assert_contains "$out" "does not hold the fleet lock" \
-    "an unrelated conversation was not refused"
+    "an untrusted session id was not refused"
 
-  pass "a background continuation of the lock-holding conversation inherits the helm, and only it does"
+  pass "a background continuation of the lock-holding session inherits the helm, and only it does"
 }
 
-test_an_inherited_helm_records_its_own_live_pid() {
+test_a_dead_recorded_pid_is_reclaimed_onto_the_continuations_live_pid() {
   local dir holder continuation rc out recorded
   dir="$TMP_ROOT/continuation-pid"
   make_home "$dir"
-  holder=$(start_lock_holder "$dir")
+  holder=$(start_claude_session "$TMP_ROOT/reclaim-holder" conv-gamma \
+    env FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$dir/bin/fm-lock.sh")
+  [ "$(cat "$dir/state/.lock" 2>/dev/null || true)" = "$holder" ] \
+    || fail "the holder did not take the helm"
 
-  CLAUDE_PID="$holder" CLAUDE_CODE_SESSION_ID=conv-gamma \
-    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$dir/bin/fm-lock.sh" >/dev/null \
-    || fail "the holder could not record its own conversation on the lock"
-
-  # The process that took the helm exits while the conversation carries on in a
-  # live background continuation - the split this whole contract exists for.
+  # The process that took the helm exits while the session carries on in a live
+  # background continuation. A dead recorded pid is never owned; the
+  # continuation reclaims it through the ordinary stale-owner path.
   retire_fixture_process "$holder"
-  continuation=$(start_harness_process "$TMP_ROOT/continuation.pid")
-
-  rc=$(detached_run env CLAUDE_PID="$continuation" CLAUDE_CODE_SESSION_ID=conv-gamma \
-    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
-    "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/fm-lock.sh")
-  out=$(run_output)
-  expect_code 0 "$rc" "the continuation of the lock-holding conversation was refused its own home: $out"
+  continuation=$(start_claude_session "$TMP_ROOT/reclaim-continuation" conv-gamma \
+    env FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$dir/bin/fm-lock.sh")
+  rc=$(cat "$TMP_ROOT/reclaim-continuation.rc")
+  out=$(cat "$TMP_ROOT/reclaim-continuation.out")
+  expect_code 0 "$rc" "the continuation of the lock-holding session was refused its own home: $out"
 
   # state/.lock is the pid every OTHER process tests for liveness (AGENTS.md's
-  # state inventory), so an inherited helm that leaves a dead pid there reads as
-  # a free home fleet-wide.
+  # state inventory), so a reclaim that leaves a dead pid there reads as a free
+  # home fleet-wide.
   recorded=$(cat "$dir/state/.lock" 2>/dev/null || true)
   [ "$recorded" = "$continuation" ] \
     || fail "the lock names $recorded, not the live continuation $continuation"
@@ -421,33 +460,28 @@ test_an_inherited_helm_records_its_own_live_pid() {
     FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
     "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/fm-wake-drain.sh")
   out=$(run_output)
-  [ "$rc" != 0 ] || fail "an unrelated session mutated a home whose helm was inherited"
+  [ "$rc" != 0 ] || fail "an unrelated session mutated a home the continuation reclaimed"
   assert_contains "$out" "does not hold the fleet lock" \
-    "an unrelated session was not refused after the helm was inherited"
+    "an unrelated session was not refused after the reclaim"
 
-  pass "a helm inherited by conversation id records the continuation's own live pid"
+  pass "a dead recorded pid is reclaimed onto the continuation's own live pid"
 }
 
-# The recorded pid can also die AFTER the helm was legitimately inherited, and
-# bin/fm-lock.sh does not run again on an ordinary turn. The Stop auto-arm does,
-# so it is what has to notice - and an ownership-keyed reclaim never would,
-# because ownership resolves perfectly well through the conversation id.
-test_the_autoarm_reclaims_a_dead_recorded_pid_under_an_inherited_helm() {
+# The recorded pid can also die while the session carries on, and bin/fm-lock.sh
+# does not run again on an ordinary turn. The Stop auto-arm does, so it is what
+# has to notice and reclaim.
+test_the_autoarm_reclaims_a_dead_recorded_pid() {
   local dir holder continuation rc out recorded
   dir="$TMP_ROOT/autoarm-reclaim"
   make_home "$dir"
-  holder=$(start_lock_holder "$dir")
-
-  CLAUDE_PID="$holder" CLAUDE_CODE_SESSION_ID=conv-epsilon \
-    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$dir/bin/fm-lock.sh" >/dev/null \
-    || fail "the holder could not record its own conversation on the lock"
+  holder=$(start_claude_session "$TMP_ROOT/autoarm-holder" conv-epsilon \
+    env FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$dir/bin/fm-lock.sh")
+  [ "$(cat "$dir/state/.lock" 2>/dev/null || true)" = "$holder" ] \
+    || fail "the holder did not take the helm"
 
   retire_fixture_process "$holder"
-  continuation=$(start_harness_process "$TMP_ROOT/autoarm-continuation.pid")
-
-  detached_run env CLAUDE_PID="$continuation" CLAUDE_CODE_SESSION_ID=conv-epsilon \
-    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
-    "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/fm-claude-stop-autoarm.sh" >/dev/null
+  continuation=$(start_claude_session "$TMP_ROOT/autoarm-continuation" conv-epsilon \
+    env FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$dir/bin/fm-claude-stop-autoarm.sh")
 
   recorded=$(cat "$dir/state/.lock" 2>/dev/null || true)
   [ "$recorded" = "$continuation" ] \
@@ -461,14 +495,15 @@ test_the_autoarm_reclaims_a_dead_recorded_pid_under_an_inherited_helm() {
   assert_contains "$out" "does not hold the fleet lock" \
     "an unrelated session was not refused after the auto-arm ran"
 
-  pass "the Stop auto-arm reclaims a dead recorded pid under an inherited helm"
+  pass "the Stop auto-arm reclaims a dead recorded pid onto the session's live pid"
 }
 
 # A worker firstmate launches is a descendant of the spawning session, so it
 # inherits that session's declared identity unless the launch boundary clears
-# it. This drives the REAL bin/fm-spawn.sh against a fake pane backend, then
-# runs the launch command it produced with the spawning session's declared
-# identity still in the environment, exactly as a pane would.
+# it. This drives the REAL bin/fm-spawn.sh from inside the lock-holding session
+# against a fake pane backend, then runs the launch command it produced with the
+# spawning session's declared identity still in the environment, exactly as a
+# pane would.
 test_a_spawned_worker_does_not_inherit_the_spawning_sessions_helm() {
   local dir holder fake proj wt id launchlog launch rc out
   dir="$TMP_ROOT/spawn-identity"
@@ -518,25 +553,28 @@ SH
   wt="$dir/wt"
   fm_git_worktree "$proj" "$wt" wt-spawn-identity
 
-  holder=$(start_lock_holder "$dir")
-  CLAUDE_PID="$holder" CLAUDE_CODE_SESSION_ID=conv-spawn \
-    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" "$dir/bin/fm-lock.sh" >/dev/null \
-    || fail "the spawning session could not take the helm"
-
   # The worker's own command, through the unverified-adapter escape hatch, so
   # the worker asks the real gate whether it may change this home's fleet state.
   id=w1
   : > "$launchlog"
-  CLAUDE_PID="$holder" CLAUDE_CODE_SESSION_ID=conv-spawn \
-    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
+  cat > "$TMP_ROOT/spawn-session.sh" <<'SH'
+#!/usr/bin/env bash
+set -u
+dir=$1
+"$dir/bin/fm-lock.sh" || exit 1
+"$dir/bin/fm-spawn.sh" "$2" "$3" "$4" --mode no-mistakes --yolo off
+SH
+  chmod +x "$TMP_ROOT/spawn-session.sh"
+  holder=$(start_claude_session "$TMP_ROOT/spawn-holder" conv-spawn \
+    env FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
     FM_STATE_OVERRIDE="$dir/state" FM_DATA_OVERRIDE="$dir/data" \
     FM_PROJECTS_OVERRIDE="$dir/projects" FM_CONFIG_OVERRIDE="$dir/config" \
     FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" FM_FAKE_LAUNCH_LOG="$launchlog" \
     TMUX="fake,1,0" PATH="$fake:$PATH" \
-    "$dir/bin/fm-spawn.sh" "$id" "$proj" \
-    "$fake/codex -c 'FM_HOME=$dir FM_ROOT_OVERRIDE=$dir $dir/bin/fm-wake-drain.sh; exit \$?'" \
-    --mode no-mistakes --yolo off > "$dir/spawn.out" 2>&1 \
-    || fail "the spawn under test failed: $(cat "$dir/spawn.out")"
+    "$TMP_ROOT/spawn-session.sh" "$dir" "$id" "$proj" \
+    "$fake/codex -c 'FM_HOME=$dir FM_ROOT_OVERRIDE=$dir $dir/bin/fm-wake-drain.sh; exit \$?'")
+  expect_code 0 "$(cat "$TMP_ROOT/spawn-holder.rc")" \
+    "the spawn under test failed: $(cat "$TMP_ROOT/spawn-holder.out")"
 
   launch=$(grep -v '^[[:space:]]*$' "$launchlog" | tail -1)
   [ -n "$launch" ] || fail "the spawn sent no launch command to the pane"
@@ -823,10 +861,10 @@ test_the_gate_answers_before_argument_validation
 test_the_lock_holder_itself_still_mutates
 test_a_caller_outside_any_harness_session_is_not_a_competing_session
 test_lock_output_states_ownership_in_words
-test_a_background_continuation_of_the_same_conversation_inherits_the_helm
-test_an_ancestry_grant_never_renames_the_recorded_conversation
-test_an_inherited_helm_records_its_own_live_pid
-test_the_autoarm_reclaims_a_dead_recorded_pid_under_an_inherited_helm
+test_a_background_continuation_of_the_same_session_inherits_the_helm
+test_an_ancestry_grant_is_reported_in_words
+test_a_dead_recorded_pid_is_reclaimed_onto_the_continuations_live_pid
+test_the_autoarm_reclaims_a_dead_recorded_pid
 test_a_spawned_worker_does_not_inherit_the_spawning_sessions_helm
 test_autoarm_declines_without_recording_a_failure
 test_turnend_guard_reports_the_decline_once_then_stops_blocking

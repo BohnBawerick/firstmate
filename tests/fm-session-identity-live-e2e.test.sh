@@ -10,14 +10,17 @@
 # assumption already written into the fixture.
 #
 # This guard launches the real installed Claude Code once in an isolated lab,
-# records the declared identity from a hook process, and then proves against
-# those real values that:
+# records the declared identity from a hook process, and proves from inside
+# that real hook that:
 #   - both the session's start and its stop declare the same identity;
-#   - CLAUDE_PID names a live process the shared harness predicate accepts,
-#     and fm_session_lock_self_pid prefers it over the ancestry walk;
-#   - a process holding only the recorded conversation id inherits the helm
-#     (the background-continuation case this task exists to fix);
-#   - a different conversation id does not.
+#   - CLAUDE_PID names a live process the shared harness predicate accepts and
+#     is a Claude-shaped member of the hook's own harness ancestry, so the
+#     library's trust gate accepts the session id, and
+#     fm_session_lock_anchor_pid records CLAUDE_PID as the lock owner;
+#   - the trusted id matches a sidecar naming this session and not one naming
+#     another session;
+#   - the same id beside a CLAUDE_PID that is not a Claude-shaped ancestor is
+#     not trusted at all.
 #
 # Run explicitly with FM_SESSION_IDENTITY_LIVE=1. One tiny no-tool prompt is
 # issued, so the model cost is negligible. An absent harness is reported and
@@ -62,9 +65,23 @@ cat >/dev/null 2>&1 || true
 {
   printf 'declared_pid=%s\n' "${CLAUDE_PID:-}"
   printf 'declared_session=%s\n' "${CLAUDE_CODE_SESSION_ID:-}"
-  printf 'session_pid=%s\n' "$(fm_harness_session_pid 2>/dev/null || echo NONE)"
-  printf 'session_id=%s\n' "$(fm_harness_session_id 2>/dev/null || echo NONE)"
-  printf 'self_pid=%s\n' "$(fm_session_lock_self_pid 2>/dev/null || echo NONE)"
+  printf 'trusted_id=%s\n' "$(fm_session_lock_trusted_session_id 2>/dev/null || echo NONE)"
+  printf 'anchor_pid=%s\n' "$(fm_session_lock_anchor_pid 2>/dev/null || echo NONE)"
+  state="$FM_IDENTITY_PROBE_DIR/$1.state"
+  mkdir -p "$state"
+  printf '%s\n' "${CLAUDE_CODE_SESSION_ID:-}" > "$state/.lock-session"
+  if fm_session_lock_same_session "$state"; then
+    printf 'same_session_own=yes\n'
+  else
+    printf 'same_session_own=no\n'
+  fi
+  printf '%s\n' "${CLAUDE_CODE_SESSION_ID:-}-not-this-session" > "$state/.lock-session"
+  if fm_session_lock_same_session "$state"; then
+    printf 'same_session_other=yes\n'
+  else
+    printf 'same_session_other=no\n'
+  fi
+  printf 'untrusted_id=%s\n' "$(CLAUDE_PID=$$ fm_session_lock_trusted_session_id 2>/dev/null || echo NONE)"
   printf 'ancestry_pid=%s\n' "$(fm_harness_ancestry_pid 2>/dev/null || echo NONE)"
   if fm_harness_pid_alive "${CLAUDE_PID:-0}" 2>/dev/null; then
     printf 'declared_pid_is_live_harness=yes\n'
@@ -117,34 +134,21 @@ pass "the real harness declares one session identity to every hook process"
 
 [ "$(field start declared_pid_is_live_harness)" = yes ] \
   || fail "CLAUDE_PID $START_PID is not a live harness process by the shared predicate"
-[ "$(field start session_pid)" = "$START_PID" ] || fail "fm_harness_session_pid did not return CLAUDE_PID"
-[ "$(field start session_id)" = "$START_ID" ] || fail "fm_harness_session_id did not return CLAUDE_CODE_SESSION_ID"
-[ "$(field start self_pid)" = "$START_PID" ] \
-  || fail "fm_session_lock_self_pid preferred the ancestry walk over the declared pid"
+[ "$(field start trusted_id)" = "$START_ID" ] \
+  || fail "the trust gate refused the real session's own id (CLAUDE_PID $START_PID is not a Claude-shaped ancestor of the hook)"
+[ "$(field start anchor_pid)" = "$START_PID" ] \
+  || fail "fm_session_lock_anchor_pid did not record CLAUDE_PID for a trusted session"
 note "ancestry walk from the hook process resolved: $(field start ancestry_pid)"
-pass "the declared identity is live, and the shared resolver prefers it over the ancestry walk"
+pass "the declared identity is live and trusted, and the lock anchor is CLAUDE_PID"
 
-# The background-continuation case, replayed against the values the real
-# harness just produced: a process that holds the conversation id but is
-# nowhere in the lock owner's process tree still holds the helm.
-STATE="$LAB/state"
-mkdir -p "$STATE"
-printf '%s\n' "$START_PID" > "$STATE/.lock"
-printf '%s\n' "$START_ID" > "$STATE/.lock.session"
-
-owned_with() {
-  # shellcheck disable=SC2016 # $1/$2 are the inner bash -c positional parameters
-  env -u CLAUDE_PID CLAUDE_CODE_SESSION_ID="$1" bash -c '
-    . "$1/bin/fm-session-lock-lib.sh"
-    fm_session_lock_owned_by_self "$2"
-  ' _ "$PROJECT" "$STATE"
-}
-
-owned_with "$START_ID" \
-  || fail "a continuation of the real conversation $START_ID was refused the helm"
-if owned_with "${START_ID}-not-this-conversation"; then
-  fail "a different conversation id was granted the helm"
-fi
-pass "a continuation of the real conversation inherits the helm, and a stranger does not"
+for phase in start stop; do
+  [ "$(field "$phase" same_session_own)" = yes ] \
+    || fail "the $phase hook did not match a sidecar naming its own session"
+  [ "$(field "$phase" same_session_other)" = no ] \
+    || fail "the $phase hook matched a sidecar naming another session"
+  [ "$(field "$phase" untrusted_id)" = NONE ] \
+    || fail "the $phase hook trusted the session id beside a CLAUDE_PID that is not a Claude-shaped ancestor"
+done
+pass "the same session matches its own sidecar, another session's does not, and an untrusted pid adds nothing"
 
 printf '# fm-session-identity-live-e2e: verified against claude %s\n' "$CLAUDE_VERSION"

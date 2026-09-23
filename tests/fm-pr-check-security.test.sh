@@ -17,6 +17,7 @@ WATCH="$ROOT/bin/fm-watch.sh"
 TEARDOWN="$ROOT/bin/fm-teardown.sh"
 REGISTER="$ROOT/bin/fm-check-register.sh"
 TMP_ROOT=$(fm_test_tmproot fm-pr-check-security)
+fm_git_identity fmtest fmtest@example.invalid
 BASE_PATH=${FM_TEST_BASE_PATH:-/usr/bin:/bin:/usr/sbin:/sbin}
 REAL_CP=$(command -v cp)
 REAL_MV=$(command -v mv)
@@ -159,6 +160,9 @@ make_case() {
   fakebin="$dir/fakebin"
   fake_root="$dir/root"
   mkdir -p "$dir/home/state" "$dir/home/data" "$dir/home/config" "$dir/wt" "$fakebin" "$fake_root/bin"
+  git -C "$dir/wt" init -q
+  git -C "$dir/wt" commit -q --allow-empty -m init
+  git -C "$dir/wt" update-ref refs/remotes/origin/main "$(git -C "$dir/wt" rev-parse HEAD)"
   cat > "$fake_root/bin/fm-guard.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'guard\n' >> "$FM_TEST_GUARD_LOG"
@@ -180,6 +184,10 @@ case "${1:-} ${2:-}" in
     case " $* " in
       *statusCheckRollup*)
         printf '%s\n' "{\"state\":\"OPEN\",\"isDraft\":false,\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"headRefOid\":\"${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}\",\"baseRefName\":\"main\",\"statusCheckRollup\":[{\"__typename\":\"CheckRun\",\"name\":\"ci\",\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\"}]}"
+        exit 0
+        ;;
+      *" --json isDraft "*)
+        printf '%s\n' "{\"isDraft\":${FM_TEST_GH_DRAFT:-false}}"
         exit 0
         ;;
       *headRefOid,reviewDecision*)
@@ -260,10 +268,12 @@ write_task_meta() {
 # Extra "field=value" arguments are written before pr=, because
 # fm_pr_metadata_identity_parse rejects an unrecognised line after it.
 write_poll_meta() {
-  local state=$1 id=$2 url=$3
+  local state=$1 id=$2 url=$3 case_dir
+  case_dir=$(cd "$state/../.." && pwd)
   shift 3
   fm_write_meta "$state/$id.meta" \
     "window=fm-$id" \
+    "worktree=$case_dir/wt" \
     "$@" \
     "pr=$url"
 }
@@ -550,6 +560,79 @@ test_invalid_entrypoints_have_zero_side_effects() {
   pass "PR and teardown entrypoints reject invalid arguments before every side effect"
 }
 
+# A draft cannot be merged, so arming a merge poll on one would wait for an event
+# that cannot occur. Only a positive draft reading refuses, and it refuses before
+# anything is recorded or armed; a ready or unreadable one arms as before.
+test_draft_pull_request_is_not_armed() {
+  local dir rc
+  dir=$(make_case draft-refused)
+  write_task_meta "$dir"
+  cp "$dir/home/state/task-a.meta" "$dir/meta.before"
+  set +e
+  FM_TEST_GH_DRAFT=true run_check_entry "$dir" task-a https://github.com/o/r/pull/9 \
+    > "$dir/stdout" 2> "$dir/stderr"; rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "arming accepted a draft pull request"
+  grep -qi 'draft' "$dir/stderr" || fail "the refusal did not name the draft state"
+  grep -qF 'https://github.com/o/r/pull/9' "$dir/stderr" || fail "the refusal did not name the pull request"
+  cmp -s "$dir/meta.before" "$dir/home/state/task-a.meta" || fail "a refused draft changed the task metadata"
+  [ ! -e "$dir/home/state/task-a.check.sh" ] || fail "a refused draft armed a poll"
+  [ ! -e "$dir/home/state/task-a.pr-poll" ] || fail "a refused draft wrote a poll sidecar"
+  [ ! -s "$dir/guard.log" ] || fail "a refused draft reached the guard"
+
+  dir=$(make_case draft-cleared)
+  write_task_meta "$dir"
+  FM_TEST_GH_DRAFT=false run_check_entry "$dir" task-a https://github.com/o/r/pull/9 \
+    > "$dir/stdout" 2> "$dir/stderr" || fail "arming refused a pull request that is not a draft"
+  grep -qxF 'pr=https://github.com/o/r/pull/9' "$dir/home/state/task-a.meta" \
+    || fail "a non-draft pull request was not recorded"
+  [ -f "$dir/home/state/task-a.check.sh" ] || fail "a non-draft pull request was not armed"
+
+  dir=$(make_case draft-unreadable)
+  write_task_meta "$dir"
+  FM_TEST_GH_DRAFT=null run_check_entry "$dir" task-a https://github.com/o/r/pull/9 \
+    > "$dir/stdout" 2> "$dir/stderr" || fail "an unreadable draft state blocked arming"
+  [ -f "$dir/home/state/task-a.check.sh" ] || fail "an unreadable draft state was not armed"
+  pass "arming refuses a draft pull request, naming it, and arms a ready or unreadable one"
+}
+
+# With no forge-reported head (gh cannot supply one), the named head is the
+# worker copy's HEAD, and a HEAD that exists only there is refused.
+test_unpushed_named_head_refuses_registration() {
+  local dir sha
+  dir=$(make_case unpushed-named-head)
+  write_task_meta "$dir"
+  git -C "$dir/wt" commit -q --allow-empty -m 'only in the copy'
+  sha=$(git -C "$dir/wt" rev-parse HEAD)
+  FM_TEST_GH_HEAD=unavailable run_check_entry "$dir" task-a https://github.com/o/r/pull/4 \
+    > "$dir/stdout" 2> "$dir/stderr" && fail "unpushed PR head was registered"
+  grep -Fq "named head $sha is unreachable outside the worker copy" "$dir/stderr" \
+    || fail "refusal did not name the unreachable head: $(cat "$dir/stderr")"
+  ! grep -q '^pr=' "$dir/home/state/task-a.meta" || fail "unpushed PR head still recorded pr="
+  [ ! -e "$dir/home/state/task-a.check.sh" ] || fail "unpushed PR head still armed a poll"
+  pass "fm-pr-check refuses to register a PR whose named head is only in the worker copy"
+}
+
+# A direct-PR worker pushes from its own copy: the forge still reports the
+# head pushed when the PR opened, but a later fix committed only in the copy
+# is the named head, so registration is refused.
+test_direct_pr_unpushed_commit_refuses_registration() {
+  local dir pushed later
+  dir=$(make_case direct-pr-unpushed)
+  fm_write_meta "$dir/home/state/task-a.meta" \
+    "window=firstmate:fm-task-a" "endpoint_task_id=task-a" "worktree=$dir/wt" \
+    "project=$dir/project" "kind=ship" "mode=direct-PR"
+  pushed=$(git -C "$dir/wt" rev-parse HEAD)
+  git -C "$dir/wt" commit -q --allow-empty -m 'fix only in the copy'
+  later=$(git -C "$dir/wt" rev-parse HEAD)
+  FM_TEST_GH_HEAD=$pushed run_check_entry "$dir" task-a https://github.com/o/r/pull/4 \
+    > "$dir/stdout" 2> "$dir/stderr" && fail "direct-PR head with an unpushed later commit was registered"
+  grep -Fq "named head $later is unreachable outside the worker copy" "$dir/stderr" \
+    || fail "direct-PR refusal did not name the unpushed commit: $(cat "$dir/stderr")"
+  [ ! -e "$dir/home/state/task-a.check.sh" ] || fail "direct-PR unpushed commit still armed a poll"
+  pass "fm-pr-check refuses a direct-PR registration while a later commit is only in the copy"
+}
+
 test_valid_recording_and_merge_derivation() {
   local dir expected sidecar count rc
   dir=$(make_case valid-recording)
@@ -643,7 +726,7 @@ SH
     fm_write_meta "$dir/home/state/$id.meta" \
       "window=firstmate:fm-$id" \
       "endpoint_task_id=$id" \
-      "worktree=$dir/missing-worktree" \
+      "worktree=$dir/wt" \
       "project=$dir/project" \
       'kind=ship' \
       'mode=local-only'
@@ -674,6 +757,7 @@ SH
       || fail "path-safe legacy task ID could not use the PR merge flow"
     fm_pr_poll_artifacts_valid "$dir/home/state" "$id" "$POLL" \
       || fail "path-safe legacy task ID did not publish an authenticated poll"
+    rm -rf "$dir/wt"
     FM_HOME="$dir/home" FM_ROOT_OVERRIDE="$ROOT" PATH="$dir/fakebin:$BASE_PATH" \
       "$TEARDOWN" "$id" --force > "$dir/teardown.out" 2> "$dir/teardown.err" \
       || fail "legacy path-safe task ID could not be torn down"
@@ -686,7 +770,7 @@ run_watcher_bounded() {
   local home=$1 fakebin=$2 check_interval=${FM_TEST_CHECK_INTERVAL:-0} watch_root=${FM_TEST_WATCH_ROOT:-$ROOT}
   local check_timeout=${FM_TEST_CHECK_TIMEOUT:-1}
   shift 2
-  perl -e 'my $pid=fork; die unless defined $pid; if (!$pid) { exec @ARGV } local $SIG{ALRM}=sub { kill "TERM", $pid; waitpid $pid, 0; exit 124 }; alarm 10; waitpid $pid, 0; alarm 0; exit($? >> 8)' \
+  perl -e 'my $pid=fork; die unless defined $pid; if (!$pid) { exec @ARGV } local $SIG{ALRM}=sub { kill "TERM", $pid; waitpid $pid, 0; exit 124 }; alarm 60; waitpid $pid, 0; alarm 0; exit($? >> 8)' \
     env FM_HOME="$home" FM_ROOT_OVERRIDE="$watch_root" FM_CHECK_INTERVAL="$check_interval" FM_CHECK_TIMEOUT="$check_timeout" \
       FM_POLL=0.02 FM_HEARTBEAT=999999 FM_SIGNAL_GRACE=0 PATH="$fakebin:$BASE_PATH" "$WATCH" "$@"
 }
@@ -1651,7 +1735,7 @@ test_merged_poll_retries_a_failed_upward_report() {
     set -e
     [ "$rc" -eq 0 ] || fail "merged-poll-upward-retry: post-recovery retry failed: $(cat "$dir/watch-3.err")"
   fi
-  assert_grep "done [key=merged-task-a]: merged task-a $url" "$replies" \
+  assert_grep "done [key=merged-task-a]: merged task-a $url" <(sed -E 's/ \[at=[0-9]+\]//' "$replies") \
     "merged-poll-upward-retry: repaired binding did not receive the retry"
   assert_poll_absent "$state" task-a
   pass "a failed upward merge report keeps its poll armed for repair and retry"
@@ -1680,7 +1764,7 @@ test_self_merge_and_poll_publish_one_outcome() {
   set -e
   [ "$rc" -eq 0 ] \
     || fail "merge-outcome-committed: watcher failed: $(cat "$dir/watch.err")"
-  [ "$(grep -c -F "done [key=merged-task-a]: merged task-a $url" "$replies")" -eq 1 ] \
+  [ "$(sed -E 's/ \[at=[0-9]+\]//' "$replies" | grep -c -F "done [key=merged-task-a]: merged task-a $url")" -eq 1 ] \
     || fail "merge-outcome-committed: self and poll reports produced duplicate merge outcomes"
   assert_no_grep "check: $state/task-a.check.sh: merged" "$state/.wake-queue" \
     "merge-outcome-committed: absorbed poll published a second outcome"
@@ -1758,7 +1842,7 @@ test_merged_poll_reports_upward_from_a_secondmate_home_once() {
     check:*task-a.check.sh:*merged) ;;
     *) fail "merged-poll-upward: the poll's own row was lost: $(cat "$dir/watch-1.out")" ;;
   esac
-  assert_grep "done [key=merged-task-a]: merged task-a $url" "$replies" \
+  assert_grep "done [key=merged-task-a]: merged task-a $url" <(sed -E 's/ \[at=[0-9]+\]//' "$replies") \
     "merged-poll-upward: a merge this home did not perform was never reported upward"
   [ "$(grep -c -F "$url" "$replies")" -eq 1 ] \
     || fail "merged-poll-upward: one detected merge produced more than one upward line"
@@ -2198,15 +2282,12 @@ test_gitlab_merged_poll_retires() {
 
 # --- poll-path merge authority ----------------------------------------------
 
-write_away_record() {  # <dir> [<fm-afk-contract.sh propose args>...]
+write_away_record() {  # <dir> [<fm-afk-contract.sh enter args>...]
   local dir=$1
   shift
   FM_HOME="$dir/home" FM_STATE_OVERRIDE="$dir/home/state" \
-    "$ROOT/bin/fm-afk-contract.sh" propose "$@" >/dev/null \
-    || fail "could not propose an away-posture record"
-  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$dir/home/state" \
-    "$ROOT/bin/fm-afk-contract.sh" confirm >/dev/null \
-    || fail "could not confirm an away-posture record"
+    "$ROOT/bin/fm-afk-contract.sh" enter "$@" >/dev/null \
+    || fail "could not enter an away-posture record"
 }
 
 archive_away_record() {  # <dir>
@@ -2250,18 +2331,19 @@ test_merged_poll_row_carries_the_merge_authority() {
   local dir state url expected posture
   url=https://github.com/o/r/pull/1
 
-  for posture in yolo grant; do
+  # Both a yolo=on task and an ordinary one merge under the record's away
+  # authority; the words model retired the per-task grant and the yolo tag.
+  for posture in yolo words; do
     dir=$(make_case "queued-merge-authority-$posture")
     state="$dir/home/state"
     write_task_meta "$dir" task-a
     if [ "$posture" = yolo ]; then
       printf 'yolo=on\n' >> "$state/task-a.meta"
       write_away_record "$dir"
-      expected=yolo
     else
-      write_away_record "$dir" --grant task-a
-      expected=away-grant
+      write_away_record "$dir" --words 'merge task-a when green'
     fi
+    expected=away
     run_check_entry "$dir" task-a "$url" >/dev/null 2> "$dir/seed.err" \
       || fail "$posture: could not arm the merge poll"
     queue_merge "$dir" "$url"
@@ -2273,7 +2355,7 @@ test_merged_poll_row_carries_the_merge_authority() {
       || fail "$posture: published merge left its authority record behind"
   done
 
-  pass "queued merges retain yolo and away-grant after captain return"
+  pass "queued merges retain their away authority after captain return"
 }
 
 test_merged_poll_row_names_no_authority_when_no_record_grants_one() {
@@ -2399,7 +2481,7 @@ test_teardown_cannot_race_authority_consumption() {
   rc=0
   wait "$watcher_pid" || rc=$?
   [ "$rc" -eq 0 ] || fail "teardown race: watcher failed with $rc: $(cat "$dir/watch.err")"
-  [ "$(merged_ledger_row "$state" task-a)" = "check: merge landed: task-a $url yolo" ] \
+  [ "$(merged_ledger_row "$state" task-a)" = "check: merge landed: task-a $url away" ] \
     || fail "teardown race: concurrent cleanup downgraded the merge authority"
   pass "teardown cannot race merged-poll authority consumption"
 }
@@ -2805,6 +2887,9 @@ test_retirement_refuses_replacement_and_nonterminal_results
 test_retirement_queue_failure_and_receipt_tampering
 test_gitlab_merged_poll_retires
 test_invalid_entrypoints_have_zero_side_effects
+test_draft_pull_request_is_not_armed
+test_unpushed_named_head_refuses_registration
+test_direct_pr_unpushed_commit_refuses_registration
 test_valid_recording_and_merge_derivation
 test_rejected_metacharacter_bytes_are_inert
 test_static_poll_contract
