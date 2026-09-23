@@ -83,15 +83,20 @@ test_moved_branch_without_named_head_is_refused() {
   pass "a moved remote branch that lacks the named head is refused"
 }
 
-test_no_mistakes_prevalidation_done_is_not_gated() {
-  local repo wt
+test_no_mistakes_done_without_checks_green_is_gated() {
+  local repo wt line rc
   repo="$TMP_ROOT/preval-repo"
   wt="$TMP_ROOT/preval-wt"
   fm_git_worktree "$repo" "$wt" fm/preval
   git -C "$wt" commit -q --allow-empty -m 'only in the disposable copy'
-  accept_done ship no-mistakes "$wt" "$repo" 'done: implementation complete' \
-    || fail "no-mistakes pre-validation done: must not require named-head reachability"
-  pass "no-mistakes pre-validation done: is not gated"
+  for line in \
+    'done: PR https://github.com/o/r/pull/7 ready' \
+    'done: implementation complete'; do
+    rc=0
+    accept_done ship no-mistakes "$wt" "$repo" "$line" >/dev/null || rc=$?
+    [ "$rc" -eq 1 ] || fail "no-mistakes done: skipped the named-head gate: $line"
+  done
+  pass "no-mistakes done: without checks green is gated"
 }
 
 test_local_only_linked_branch_is_accepted() {
@@ -305,7 +310,7 @@ test_non_done_lines_are_not_gated() {
 
 test_scout_done_is_not_gated
 test_unpushed_ship_done_is_refused
-test_no_mistakes_prevalidation_done_is_not_gated
+test_no_mistakes_done_without_checks_green_is_gated
 test_remote_containing_named_head_is_accepted
 test_moved_branch_without_named_head_is_refused
 test_free_text_sha_is_not_the_named_head

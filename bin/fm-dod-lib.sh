@@ -10,10 +10,9 @@
 # bin/fm-pr-check.sh (PR registration), and bin/fm-inactive-reconcile.sh
 # (secondmate ledger-first publish of a child done). A ship `done:` is not
 # accepted while the named head exists only in the worker's disposable copy.
-# The check tests that head, not whether some branch moved. In no-mistakes
-# mode the pre-validation `done: {summary}` is the pipeline handoff and is
-# not gated; only the later CI-ready `done: PR <url> checks green` is. The
-# named head is the worker copy's HEAD, except that a done naming the task's
+# The check tests that head, not whether some branch moved. Every ship done:
+# is gated in every mode; a no-mistakes worker appends no pre-validation done.
+# The named head is the worker copy's HEAD, except that a done naming the task's
 # recorded pr= passes when the forge holds that head: a forge-reported
 # pr_head= in no-mistakes mode, or a recorded merge
 # (state/<id>.pr-poll-merge-notified). Teardown's landed-work test remains the
@@ -376,18 +375,14 @@ fm_dod_note_reports_ci_ready() {  # <note>
 }
 
 # 0 when this ship done: is one the named-head gate must accept or refuse.
-# no-mistakes pre-validation done: is the pipeline handoff and is not gated.
 # Empty mode is treated as no-mistakes, the unregistered-project default.
 fm_dod_should_gate_ship_done() {  # <kind> <mode> <line>
-  local note
   [ "$1" = ship ] || return 1
   [ "$(status_line_verb "$3")" = "done" ] || return 1
-  note=$(status_line_note "$3")
   case "$2" in
-    direct-PR|local-only) return 0 ;;
-    no-mistakes|'') fm_dod_note_reports_ci_ready "$note" ;;
-    *) return 1 ;;
+    direct-PR|local-only|no-mistakes|'') return 0 ;;
   esac
+  return 1
 }
 
 # The PR/MR URL from a `done: PR <url>...` note, or empty.
