@@ -380,6 +380,8 @@ test_domain_alpha_stale_parent_event_does_not_become_current_work() {
     .secondmate_current.records[] | select(.id == "domain-alpha")
     | .provenance.selected == "structured-home"
       and .freshness.status == "fresh"
+      and .parent_event.age_seconds == null
+      and (.parent_event | has("emitted_at_epoch") | not)
       and .terminal_evidence.provenance == "parent-direct-report-terminal"
       and .terminal_evidence.trust == "untrusted-supplement"
       and .terminal_evidence.captured == true
@@ -429,7 +431,11 @@ SH
       and .parent_event.activity_scan.available == true
   ' >/dev/null || fail "GNU stat fixture corrupted the authoritative secondmate summary: $canonical"
   assert_contains "$(cat "$stat_log")" '-c %a' "GNU registry mode must use stat -c"
-  assert_contains "$(cat "$stat_log")" '-c %Y' "GNU parent-event mtime must use stat -c"
+  assert_contains "$(cat "$stat_log")" '-c %Y' "GNU status-observation mtime must use stat -c"
+  printf '%s' "$canonical" | jq -e '
+    .secondmate_current.records[] | select(.id == "domain-alpha")
+    | .parent_event.age_seconds == null and (.parent_event | has("emitted_at_epoch") | not)
+  ' >/dev/null || fail "legacy event acquired an age from GNU stat"
   assert_contains "$(cat "$stat_log")" '-c %s' "GNU parent-event size must use stat -c"
   if grep -q '^-f ' "$stat_log"; then
     fail "GNU snapshot invoked BSD stat -f before its GNU file reads: $(cat "$stat_log")"
@@ -905,13 +911,14 @@ EOF
 EOF
   fm_write_meta "$mate/state/done.meta" \
     "window=firstmate:fm-done" "worktree=$mate/projects/done" "project=sample" \
-    "harness=claude" "kind=ship" "mode=no-mistakes"
+    "harness=claude" "kind=ship" "mode=no-mistakes" \
+    "pr=https://github.com/o/r/pull/9" "pr_head=0123456789abcdef0123456789abcdef01234567"
   fm_write_meta "$mate/state/failed.meta" \
     "window=firstmate:fm-failed" "worktree=$mate/projects/failed" "project=sample" \
     "harness=claude" "kind=ship" "mode=no-mistakes"
   record_claude_state "$mate/state" "done" idle
   record_claude_state "$mate/state" failed idle
-  printf 'done: complete\n' > "$mate/state/done.status"
+  printf 'done: PR https://github.com/o/r/pull/9\n' > "$mate/state/done.status"
   printf 'failed: stopped\n' > "$mate/state/failed.status"
   rm "$mate/state/parked.meta" "$mate/state/parked.status"
   refresh_local_secondmate_ledgers "$home"

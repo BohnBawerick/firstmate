@@ -10,14 +10,15 @@
 #   - Scope: only a genuine primary checkout (plain checkout or validly marked
 #     secondmate home) with AGENTS.md, bin/, and the effective state dir - the
 #     exact fm-turnend-guard.sh scope. Child crew/scout worktrees stay inert.
-#   - Identity: only when THIS session holds state/.lock, by the one ownership
-#     contract in bin/fm-session-lock-lib.sh - which recognizes a background
-#     continuation of the lock-holding conversation as that same session, so a
-#     forked continuation arms the watcher instead of standing down blind.
+#   - Identity: only when THIS session holds state/.lock, as
+#     bin/fm-session-lock-lib.sh decides it: the recorded pid is a harness
+#     ancestor, or a live lock was recorded under this same trusted Claude
+#     session id (which is what keeps a background session arming after its
+#     transient helper chain is recycled).
 #     When an existing numeric owner fails the shared harness-liveness predicate,
 #     the hook delegates guarded recovery to bin/fm-lock.sh and then re-verifies
 #     ownership. A live owner, missing lock, malformed lock, or unresolved
-#     identity remains inert, so a competing session never arms or rewakes.
+#     ancestry remains inert, so a competing session never arms or rewakes.
 #     Standing down there is a DECLINE, not a failure: it deliberately writes no
 #     epoch and no failure record, and bin/fm-turnend-guard.sh owns telling those
 #     two apart so a session that can never legitimately arm is not blocked
@@ -127,23 +128,18 @@ fm_hook_payload_is_foreign_host "$PAYLOAD" && exit 0
 fm_primary_scope_matches "$FM_ROOT" "$STATE" || exit 0
 
 # --- identity: only the lock-owning session's hooks may arm ------------------
-# The recorded pid's LIVENESS decides whether a reclaim is due, not whether this
-# session owns the home. This hook is the only thing that fires on an ordinary
-# turn, so it is where the live-pid invariant bin/fm-session-lock-lib.sh states
-# is actually kept: a session that inherited the helm by conversation id owns
-# the home while the pid it inherited may since have died, and ownership alone
-# would skip the reclaim forever.
+# A prior session may have died after leaving its numeric harness pid in .lock.
+# Use the shared liveness predicate to recognize only that stale-owner case.
 # Defer the mutating claim until after the unchanged AFK and need gates, so an
 # idle or away home remains byte-for-byte inert. Missing or malformed locks are
 # uncertainty rather than stale-owner evidence and remain inert.
 RECOVER_SESSION_LOCK=0
-LOCK_PID=$(cat "$STATE/.lock" 2>/dev/null || true)
-case "$LOCK_PID" in
-  ''|*[!0-9]*) exit 0 ;;
-esac
-if fm_harness_pid_alive "$LOCK_PID"; then
-  fm_session_lock_owned_by_self "$STATE" || exit 0
-else
+if ! fm_session_lock_owned_by_self "$STATE"; then
+  LOCK_PID=$(cat "$STATE/.lock" 2>/dev/null || true)
+  case "$LOCK_PID" in
+    ''|*[!0-9]*) exit 0 ;;
+  esac
+  fm_harness_pid_alive "$LOCK_PID" && exit 0
   RECOVER_SESSION_LOCK=1
 fi
 
