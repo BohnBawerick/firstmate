@@ -553,15 +553,17 @@ wrap_forge() { # home: log gh calls and apply per-call faults from $FORGE/fault
 set -eu
 printf '%s\n' "$*" >> "$FORGE/calls"
 fault=$(cat "$FORGE/fault" 2>/dev/null || true)
+# Parallel reads share the clock: replace it atomically so none reads it empty.
+advance() { printf '%s\n' "$(( $(cat "$FORGE/clock") + $1 ))" > "$FORGE/clock.$$"; mv -f "$FORGE/clock.$$" "$FORGE/clock"; }
 case "$fault" in latency) sleep "${FORGE_LATENCY:-2}" ;; esac
 case "$fault:$*" in
   # Advance once before the parallel read wave; its readers share this clock.
   reserve:'api repos/o/r/issues/9')
-    printf '%s\n' "$(( $(cat "$FORGE/clock") + 6 ))" > "$FORGE/clock" ;;
+    advance 6 ;;
   exhaust:'api repos/o/r/issues/8/comments?'*)
-    printf '%s\n' "$(( $(cat "$FORGE/clock") + 100 ))" > "$FORGE/clock" ;;
+    advance 100 ;;
   fail-late:'api repos/o/r/pulls/8/reviews?'*)
-    printf '%s\n' "$(( $(cat "$FORGE/clock") + 100 ))" > "$FORGE/clock"
+    advance 100
     printf 'HTTP 502\n' >&2; exit 1 ;;
   fail:'api repos/o/r/pulls/8/reviews?'*) printf 'HTTP 502\n' >&2; exit 1 ;;
   down:*) printf 'HTTP 502\n' >&2; exit 1 ;;
@@ -967,7 +969,9 @@ test_settled_history_does_not_starve_open_contributions() {
 #!/bin/sh
 if [ "$*" = +%s ]; then
   clock=$(cat "$FORGE/clock")
-  printf '%s\n' "$((clock + 1))" > "$FORGE/clock"
+  # Parallel forge reads tick together: replace atomically so none reads it empty.
+  printf '%s\n' "$((clock + 1))" > "$FORGE/clock.$$"
+  mv -f "$FORGE/clock.$$" "$FORGE/clock"
   printf '%s\n' "$clock"
 else
   exec /bin/date "$@"
