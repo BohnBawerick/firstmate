@@ -485,7 +485,7 @@ cmd_terminal() {
 # failed" is never proof that nothing was said.
 result_has_queued_content() {  # <result-file>
   awk '
-    /^(prompts|feedback)\[[0-9]+\]\{[^}]*\}:[[:space:]]*$/ {
+    /^(prompts|feedback)\[[0-9]+\](\{[^}]*\})?:[[:space:]]*$/ {
       verdict = "present"
       exit
     }
@@ -521,6 +521,93 @@ cmd_silent() {
   [ "$content_rc" -eq 1 ]
 }
 
+# Parse either Lavish prompt representation into one JSON document. Uniform rows use
+# a declared field list and CSV values; non-uniform rows use YAML-like list items and
+# may contain nested attachment rows. The latter are metadata on the current item,
+# never additional prompt items.
+prompt_rows_json() {  # <result-file>
+  perl -MJSON::PP -e '
+    use strict; use warnings;
+    my ($path) = @ARGV;
+    open my $fh, "<", $path or exit 1;
+    my ($declared, $header, $mode, $malformed) = (0, 0, "", 0);
+    my (@fields, @rows);
+    sub unquote {
+      my ($value) = @_;
+      $value =~ s/^\s+//; $value =~ s/\s+$//;
+      if ($value =~ /^"((?:[^"\\]|\\.)*)"$/s) {
+        $value = $1;
+        $value =~ s/\\(.)/$1 eq "n" ? "\n" : $1 eq "t" ? "\t" : $1 eq "r" ? "\r" : $1/ge;
+      }
+      return $value;
+    }
+    sub csv_values {
+      my ($row) = @_;
+      my @values;
+      while (length $row) {
+        if ($row =~ s/^"((?:[^"\\]|\\.)*)"//) {
+          push @values, unquote("\"$1\"");
+        } else {
+          $row =~ s/^([^,]*)//;
+          push @values, $1;
+        }
+        last unless $row =~ s/^,//;
+      }
+      return @values;
+    }
+    my ($current, $line);
+    while (defined($line = <$fh>)) {
+      if (!$header) {
+        if ($line =~ /^(?:prompts|feedback)\[(\d+)\]\{([^}]*)\}:\s*$/) {
+          ($declared, $header, $mode, @fields) = ($1, 1, "table", split /,/, $2);
+          next;
+        }
+        if ($line =~ /^(?:prompts|feedback)\[(\d+)\]:\s*$/) {
+          ($declared, $header, $mode) = ($1, 1, "list");
+          next;
+        }
+        next;
+      }
+      if ($mode eq "table") {
+        last unless $line =~ /^\s/;
+        last if @rows >= $declared;
+        chomp $line; $line =~ s/^\s+//;
+        my @values = csv_values($line);
+        if (@values > @fields) {
+          my ($preserve) = grep { $fields[$_] eq "prompt" } 0 .. $#fields;
+          ($preserve) = grep { $fields[$_] eq "text" } 0 .. $#fields unless defined $preserve;
+          if (defined $preserve) {
+            my $count = @values - @fields;
+            my @parts = splice @values, $preserve, $count + 1;
+            splice @values, $preserve, 0, join(",", @parts);
+          }
+        }
+        if (@values != @fields) { $malformed++; next; }
+        my %row; $row{$fields[$_]} = $values[$_] for 0 .. $#fields;
+        push @rows, \%row;
+        next;
+      }
+      if ($line =~ /^  -\s+(.+)$/) {
+        push @rows, $current if defined $current;
+        $current = {};
+        if ($1 =~ /^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/) {
+          $current->{$1} = unquote($2);
+        } else { $malformed++; }
+        next;
+      }
+      if ($line =~ /^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/) {
+        $current->{$1} = unquote($2) if defined $current;
+        next;
+      }
+      last if $line =~ /^\S/;
+    }
+    push @rows, $current if defined $current;
+    close $fh;
+    print encode_json({declared => $header ? 0 + $declared : 0,
+      rows => \@rows, malformed => 0 + $malformed, header => 0 + $header});
+  ' "$1"
+}
+
 # Print `key<TAB>answer<TAB>label[<TAB>mode]` for each non-reconcile structured choice the
 # captain submitted in a captured result; the optional mode column relays the
 # card's declared close mode (`done` or `release`) to the keyed-answer intake. The published response frames queued feedback as
@@ -537,46 +624,20 @@ cmd_silent() {
 # `<origin>-decision-<key>` identities pre-collapse decks still carry; the
 # security property is the slug SHAPE, which is unchanged.
 cmd_choice_rows() {
-  local selection=$1 file=${2-}
+  local selection=$1 file=${2-} parsed
   [ -n "$file" ] || usage
   [ -f "$file" ] && [ ! -L "$file" ] || die "result file does not exist: $file"
-  perl -MJSON::PP -MEncode=encode -e '
+  parsed=$(prompt_rows_json "$file") || return 1
+  printf '%s' "$parsed" | perl -MJSON::PP -MEncode=encode -e '
     use strict; use warnings;
-    my ($selection, $path) = @ARGV;
-    open my $fh, "<", $path or exit 1;
-    my (@fields, $want, @rows);
-    while (my $line = <$fh>) {
-      if (!@fields) {
-        next unless $line =~ /^prompts\[(\d+)\]\{([^}]*)\}:\s*$/;
-        ($want, @fields) = ($1, split /,/, $2);
-        next;
-      }
-      last unless $line =~ /^\s/;
-      last if @rows >= $want;
-      chomp $line;
-      push @rows, $line;
-    }
-    close $fh;
+    my ($selection) = @ARGV;
+    my $doc = decode_json(do { local $/; <STDIN> });
+    my @rows = @{$doc->{rows} || []};
     my %seen;
     my @choices;
-    for my $row (@rows) {
-      $row =~ s/^\s+//;
-      my @vals;
-      while (length $row) {
-        if ($row =~ s/^"((?:[^"\\]|\\.)*)"//) {
-          my $v = $1;
-          $v =~ s/\\(.)/$1 eq "n" ? "\n" : $1 eq "t" ? "\t" : $1 eq "r" ? "\r" : $1/ge;
-          push @vals, $v;
-        } else {
-          $row =~ s/^([^,]*)//;
-          push @vals, $1;
-        }
-        last unless $row =~ s/^,//;
-      }
-      my %f;
-      $f{$fields[$_]} = $vals[$_] for 0 .. $#fields;
-      next unless defined $f{tag} && $f{tag} eq "choice";
-      my $prompt = $f{prompt};
+    for my $f (@rows) {
+      next unless defined $f->{tag} && $f->{tag} eq "choice";
+      my $prompt = $f->{prompt};
       next unless defined $prompt && $prompt =~ /Context data:\s*(\{.*\})/s;
       my $ctx = $1;
       my $data = eval { decode_json($ctx) };
@@ -616,7 +677,7 @@ cmd_choice_rows() {
           || ($data->{close} ne "done" && $data->{close} ne "release");
         $mode = $data->{close};
       }
-      my $label = defined $f{text} ? $f{text} : "";
+      my $label = defined $f->{text} ? $f->{text} : "";
       s/[\x00-\x1f\x7f]/ /g for ($answer, $note, $label);
       $label = substr($label, 0, 512);
       if (defined $seen{$key}) { $choices[$seen{$key}] = undef }
@@ -643,7 +704,7 @@ cmd_choice_rows() {
         ? "$choice->{key}\t$answer\t$choice->{label}\t$choice->{mode}\n"
         : "$choice->{key}\t$answer\t$choice->{label}\n";
     }
-  ' "$selection" "$file"
+  ' "$selection"
 }
 
 cmd_answers() { cmd_choice_rows answers "$@"; }
@@ -658,61 +719,19 @@ cmd_reconciles() { cmd_choice_rows reconciles "$@"; }
 # comment matches the captured element text. Choice rows keep Context data
 # out of that field. A pure annotation has no prompt.
 cmd_read() {
-  local file=${1-} lifecycle session_ended
+  local file=${1-} lifecycle session_ended parsed
   [ -n "$file" ] || usage
   [ -f "$file" ] && [ ! -L "$file" ] || die "result file does not exist: $file"
   lifecycle=$(cmd_classify "$file")
   session_ended=$(session_field "$file" session_ended)
-  perl -e '
+  parsed=$(prompt_rows_json "$file") || return 1
+  printf '%s' "$parsed" | perl -MJSON::PP -e '
     use strict; use warnings;
-    my ($path, $lifecycle, $session_ended) = @ARGV;
-    open my $fh, "<", $path or exit 1;
-    my (@fields, $want, @rows);
-    while (my $line = <$fh>) {
-      if (!@fields) {
-        next unless $line =~ /^(?:prompts|feedback)\[(\d+)\]\{([^}]*)\}:\s*$/;
-        ($want, @fields) = ($1, split /,/, $2);
-        next;
-      }
-      last unless $line =~ /^\s/;
-      last if defined($want) && @rows >= $want;
-      chomp $line;
-      push @rows, $line;
-    }
-    close $fh;
-    $want = 0 unless defined $want;
-    my @parsed;
-    my $malformed = 0;
-    for my $row (@rows) {
-      $row =~ s/^\s+//;
-      my @vals;
-      while (length $row) {
-        if ($row =~ s/^"((?:[^"\\]|\\.)*)"//) {
-          push @vals, $1;
-        } else {
-          $row =~ s/^([^,]*)//;
-          push @vals, $1;
-        }
-        last unless $row =~ s/^,//;
-      }
-      if (@vals > @fields) {
-        my ($preserve) = grep { $fields[$_] eq "prompt" } 0 .. $#fields;
-        ($preserve) = grep { $fields[$_] eq "text" } 0 .. $#fields unless defined $preserve;
-        if (defined $preserve) {
-          my $count = @vals - @fields + 1;
-          my @parts = splice @vals, $preserve, $count;
-          splice @vals, $preserve, 0, join(",", @parts);
-        }
-      }
-      if (@vals != @fields) {
-        $malformed++;
-        next;
-      }
-      s/\\(.)/$1 eq "n" ? "\n" : $1 eq "t" ? "\t" : $1 eq "r" ? "\r" : $1/ge for @vals;
-      my %f;
-      $f{$fields[$_]} = $vals[$_] for 0 .. $#fields;
-      push @parsed, \%f;
-    }
+    my ($lifecycle, $session_ended) = @ARGV;
+    my $doc = decode_json(do { local $/; <STDIN> });
+    my $want = $doc->{declared} || 0;
+    my @parsed = @{$doc->{rows} || []};
+    my $malformed = $doc->{malformed} || 0;
     my $presented = scalar @parsed;
     my $complete = ($presented == $want && !$malformed) ? "yes" : "no";
     my @messages;
@@ -787,7 +806,8 @@ cmd_read() {
       print "ANNOTATIONS: (none)\n";
     }
     print "END LAVISH RESULT ($presented of $want)\n";
-  ' "$file" "$lifecycle" "$session_ended"
+    exit($complete eq "yes" ? 0 : 1);
+  ' "$lifecycle" "$session_ended"
 }
 
 case "${1-}" in

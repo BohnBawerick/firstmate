@@ -4016,6 +4016,83 @@ PM
   pass "both body-decoding paths work without the allow_nonref default"
 }
 
+test_lavish_list_form_feedback_is_complete() {
+  local home result mismatch out rc silent_rc
+  home=$(make_home lavish-list-form)
+  result="$home/list-form.result"
+  cat > "$result" <<'EOF'
+ session:
+   status: feedback
+   session_ended: true
+ prompts[5]:
+   - uid: "1"
+     prompt: "A free comment"
+     selector: "#comment"
+     tag: p
+     text: "Element text"
+   - uid: "2"
+     prompt: "Choice\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"list-choice\",\n  \"selection\": \"yes\",\n  \"note\": \"choice note\"\n}"
+     selector: "#choice"
+     tag: choice
+     text: "Choose yes"
+   - uid: "3"
+     prompt: "Attached comment"
+     selector: "#attached"
+     tag: p
+     text: "Attached element"
+     attachments[1]{id,type}:
+       attachment-id,image
+   - uid: "4"
+     prompt: "Session says stop"
+     selector: ""
+     tag: message
+     text: "Session message"
+   - uid: "5"
+     prompt: "Another comment"
+     selector: "#another"
+     tag: p
+     text: "Another element"
+ next_step: done
+EOF
+  # The leading spaces above are intentional YAML-like fixture indentation.
+  # Normalize only the block indentation so the adapter sees the published shape.
+  perl -pi -e 's/^ //' "$result"
+
+  set +e
+  out=$(run_lavish "$home" read "$result" 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -eq 0 ] || fail "complete list-form feedback was rejected: $out"
+  assert_contains "$out" "declared_items: 5" "list-form declared count was lost"
+  assert_contains "$out" "presented_items: 5" "list-form items were dropped"
+  assert_contains "$out" "complete: yes" "complete list-form feedback was marked incomplete"
+  assert_contains "$out" "annotation_count: 4" "list-form annotation count was wrong"
+  assert_contains "$out" "| A free comment" "freeform annotation comment was lost"
+  assert_contains "$out" "| Attached comment" "annotation with an attachment was lost"
+  assert_contains "$out" "SESSION-ENDING MESSAGE" "session-ending message was not presented"
+  assert_contains "$out" "| Session says stop" "session-ending message body was lost"
+
+  out=$(run_lavish "$home" answers "$result") || fail "list-form choice answer could not be read"
+  assert_contains "$out" $'list-choice\tyes - choice note' "list-form Context data answer was lost"
+
+  silent_rc=0
+  run_lavish "$home" silent "$result" >/dev/null 2>&1 || silent_rc=$?
+  [ "$silent_rc" -ne 0 ] || fail "list-form feedback was incorrectly treated as silent"
+
+  mismatch="$home/list-form-mismatch.result"
+  perl -pe 's/prompts\[5\]:/prompts[6]:/' "$result" > "$mismatch"
+  set +e
+  out=$(run_lavish "$home" read "$mismatch" 2>&1)
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "declared list-form count mismatch reported success: $out"
+  assert_contains "$out" "complete: no" "declared list-form count mismatch was marked complete"
+  silent_rc=0
+  run_lavish "$home" silent "$mismatch" >/dev/null 2>&1 || silent_rc=$?
+  [ "$silent_rc" -ne 0 ] || fail "nonzero declared list-form feedback was treated as silent"
+  pass "Lavish list-form feedback preserves annotations, choices, attachments, and incomplete captures"
+}
+
 # Cleanup rewrites a captain-held row's body to append the finished work's
 # deliverable, so every byte of that body has to survive the decode. The
 # assertions below are on bytes, not characters: a decoder that prints a
@@ -4081,6 +4158,7 @@ test_retained_body_keeps_its_utf8_bytes() {
 
 test_uninventoried_report_decision_refuses_completion
 test_hold_decodes_a_bare_scalar_body_without_the_nonref_default
+test_lavish_list_form_feedback_is_complete
 test_retained_body_keeps_its_utf8_bytes
 test_completion_gate_attests_and_transfers
 test_answer_records_and_closes
