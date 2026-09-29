@@ -3126,6 +3126,51 @@ out=$("$ROOT/bin/fm-procevent-lavish.sh" reconciles "$READ") \
   || fail "reconciles lost or invented rows in an overfull table: $out"
 pass "table parsing reports and preserves rows beyond the declared count"
 
+for shape in table list; do
+  if [ "$shape" = table ]; then
+    cat > "$READ" <<'EOF'
+session:
+  status: feedback
+prompts[3]{uid,prompt,selector,tag,text}:
+  "el-a","Comment café","section#comment",note,"Element café"
+  "el-b","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"unicode-answer\",\"selection\":\"yes\",\"note\":\"東京\"}","section#answer",choice,"Answer 東京"
+  "el-c","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"unicode-reconcile\",\"selection\":\"reconcile\",\"note\":\"réexaminer café\"}","section#reconcile",choice,"Reconcile"
+EOF
+  else
+    cat > "$READ" <<'EOF'
+session:
+  status: feedback
+prompts[3]:
+  - uid: "el-a"
+    prompt: "Comment café"
+    selector: "section#comment"
+    tag: note
+    text: "Element café"
+  - uid: "el-b"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"unicode-answer\",\"selection\":\"yes\",\"note\":\"東京\"}"
+    selector: "section#answer"
+    tag: choice
+    text: "Answer 東京"
+  - uid: "el-c"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"unicode-reconcile\",\"selection\":\"reconcile\",\"note\":\"réexaminer café\"}"
+    selector: "section#reconcile"
+    tag: choice
+    text: "Reconcile"
+EOF
+  fi
+  out=$(read_out) || fail "${shape}-form Unicode read failed"
+  assert_contains "$out" "Comment café" "${shape}-form Unicode comment was lost"
+  out=$("$ROOT/bin/fm-procevent-lavish.sh" answers "$READ") \
+    || fail "${shape}-form Unicode answers failed"
+  [ "$out" = "$(printf 'unicode-answer\tyes - 東京\tAnswer 東京')" ] \
+    || fail "${shape}-form Unicode answer was corrupted: $out"
+  out=$("$ROOT/bin/fm-procevent-lavish.sh" reconciles "$READ") \
+    || fail "${shape}-form Unicode reconciles failed"
+  [ "$out" = "$(printf 'unicode-reconcile\tréexaminer café')" ] \
+    || fail "${shape}-form Unicode reconcile note was corrupted: $out"
+done
+pass "Lavish table and list forms preserve Unicode comments, answers, and reconcile notes"
+
 cat > "$READ" <<'EOF'
 session:
   file: /review.html

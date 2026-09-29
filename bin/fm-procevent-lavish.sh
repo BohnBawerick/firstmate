@@ -533,7 +533,7 @@ prompt_rows_json() {  # <result-file>
   perl -MJSON::PP -e '
     use strict; use warnings;
     my ($path) = @ARGV;
-    open my $fh, "<", $path or exit 1;
+    open my $fh, "<:encoding(UTF-8)", $path or exit 1;
     my ($declared, $header, $mode, $malformed) = (0, 0, "", 0);
     my (@fields, @rows);
     sub unquote {
@@ -633,6 +633,7 @@ cmd_choice_rows() {
   parsed=$(prompt_rows_json "$file") || return 1
   printf '%s' "$parsed" | perl -MJSON::PP -MEncode=encode -e '
     use strict; use warnings;
+    binmode STDOUT, ":raw";
     my ($selection) = @ARGV;
     my $doc = decode_json(do { local $/; <STDIN> });
     my @rows = @{$doc->{rows} || []};
@@ -643,7 +644,7 @@ cmd_choice_rows() {
       my $prompt = $f->{prompt};
       next unless defined $prompt && $prompt =~ /Context data:\s*(\{.*\})/s;
       my $ctx = $1;
-      my $data = eval { decode_json($ctx) };
+      my $data = eval { decode_json(encode("UTF-8", $ctx)) };
       next unless ref($data) eq "HASH";
       my ($key, $selected, $note, $answer, $legacy);
       if (defined($data->{schema}) && !ref($data->{schema})
@@ -703,9 +704,10 @@ cmd_choice_rows() {
       }
       next if $choice->{selection} eq "reconcile";
       my $answer = encode("UTF-8", $choice->{answer});
+      my $label = encode("UTF-8", $choice->{label});
       print length $choice->{mode}
-        ? "$choice->{key}\t$answer\t$choice->{label}\t$choice->{mode}\n"
-        : "$choice->{key}\t$answer\t$choice->{label}\n";
+        ? "$choice->{key}\t$answer\t$label\t$choice->{mode}\n"
+        : "$choice->{key}\t$answer\t$label\n";
     }
   ' "$selection"
 }
@@ -730,6 +732,7 @@ cmd_read() {
   parsed=$(prompt_rows_json "$file") || return 1
   printf '%s' "$parsed" | perl -MJSON::PP -e '
     use strict; use warnings;
+    binmode STDOUT, ":encoding(UTF-8)";
     my ($lifecycle, $session_ended) = @ARGV;
     my $doc = decode_json(do { local $/; <STDIN> });
     my $want = $doc->{declared} || 0;
