@@ -3102,6 +3102,34 @@ cat > "$READ" <<'EOF'
 session:
   file: /review.html
   status: feedback
+prompts[1]{uid,prompt,selector,tag,text}:
+  "el-a","first comment","section#first",note,"First item"
+  "el-b","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"overflow-answer\",\"selection\":\"yes\",\"note\":\"\"}","section#answer",choice,"Yes"
+  "el-c","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"overflow-reconcile\",\"selection\":\"reconcile\",\"note\":\"check extra\"}","section#reconcile",choice,"Reconcile"
+EOF
+read_status=0
+out=$(read_out 2>&1) || read_status=$?
+[ "$read_status" -ne 0 ] || fail "read certified more table rows than declared as complete"
+assert_contains "$out" "declared_items: 1" "an overfull table lost its declared count"
+assert_contains "$out" "presented_items: 3" "read discarded table rows beyond the declared count"
+assert_contains "$out" "complete: no" "an overfull table was certified as complete"
+assert_contains "$out" "| First item" "read dropped the first row from an overfull table"
+assert_contains "$out" "| Yes" "read dropped an answer row beyond the declared count"
+assert_contains "$out" "| Reconcile" "read dropped a reconcile row beyond the declared count"
+out=$("$ROOT/bin/fm-procevent-lavish.sh" answers "$READ") \
+  || fail "answers failed on an overfull table"
+[ "$out" = "$(printf 'overflow-answer\tyes\tYes')" ] \
+  || fail "answers lost or invented rows in an overfull table: $out"
+out=$("$ROOT/bin/fm-procevent-lavish.sh" reconciles "$READ") \
+  || fail "reconciles failed on an overfull table"
+[ "$out" = "$(printf 'overflow-reconcile\tcheck extra')" ] \
+  || fail "reconciles lost or invented rows in an overfull table: $out"
+pass "table parsing reports and preserves rows beyond the declared count"
+
+cat > "$READ" <<'EOF'
+session:
+  file: /review.html
+  status: feedback
   session_ended: true
   ended_by: user
 prompts[2]{uid,prompt,selector,tag,text}:

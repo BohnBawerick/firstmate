@@ -570,7 +570,6 @@ prompt_rows_json() {  # <result-file>
       }
       if ($mode eq "table") {
         last unless $line =~ /^\s/;
-        last if @rows >= $declared;
         chomp $line; $line =~ s/^\s+//;
         my @values = csv_values($line);
         if (@values > @fields) {
