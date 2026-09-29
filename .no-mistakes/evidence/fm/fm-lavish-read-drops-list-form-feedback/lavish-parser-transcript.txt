@@ -1,0 +1,166 @@
+COMPLETE LIST-FORM READ
+SESSION-ENDING MESSAGE
+| Synthetic session-ending message
+END SESSION-ENDING MESSAGE
+
+declared_items: 6
+presented_items: 6
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: true
+annotation_count: 5
+session_ending_message_count: 1
+
+ANNOTATIONS
+ANNOTATION 1 of 5
+element_uid: note-1
+element_selector: section#first
+tag: p
+text:
+| First element
+prompt:
+| First synthetic comment
+ANNOTATION 2 of 5
+element_uid: note-2
+element_selector: section#second
+tag: p
+text:
+| Second element
+prompt:
+| Second synthetic comment
+ANNOTATION 3 of 5
+element_uid: choice-1
+element_selector: section#choice
+tag: choice
+text:
+| Choose yes
+ANNOTATION 4 of 5
+element_uid: reconcile-1
+element_selector: section#reconcile
+tag: choice
+text:
+| Check again
+ANNOTATION 5 of 5
+element_uid: attached-1
+element_selector: section#attachment
+tag: p
+text:
+| Attached element
+prompt:
+| Comment with attachment metadata
+END ANNOTATIONS
+END LAVISH RESULT (6 of 6)
+
+COMPLETE LIST-FORM ANSWERS
+synthetic-choice	yes - captured note	Choose yes
+
+COMPLETE LIST-FORM RECONCILES
+synthetic-reconcile	review latest
+
+COMPLETE LIST-FORM CLASSIFY
+feedback
+silent_status=1
+terminal_status=0
+
+MISMATCHED LIST-FORM READ
+SESSION-ENDING MESSAGE
+| Synthetic session-ending message
+END SESSION-ENDING MESSAGE
+
+declared_items: 7
+presented_items: 6
+malformed_items: 0
+complete: no
+lifecycle: feedback
+session_ended: true
+annotation_count: 5
+session_ending_message_count: 1
+
+ANNOTATIONS
+ANNOTATION 1 of 5
+element_uid: note-1
+element_selector: section#first
+tag: p
+text:
+| First element
+prompt:
+| First synthetic comment
+ANNOTATION 2 of 5
+element_uid: note-2
+element_selector: section#second
+tag: p
+text:
+| Second element
+prompt:
+| Second synthetic comment
+ANNOTATION 3 of 5
+element_uid: choice-1
+element_selector: section#choice
+tag: choice
+text:
+| Choose yes
+ANNOTATION 4 of 5
+element_uid: reconcile-1
+element_selector: section#reconcile
+tag: choice
+text:
+| Check again
+ANNOTATION 5 of 5
+element_uid: attached-1
+element_selector: section#attachment
+tag: p
+text:
+| Attached element
+prompt:
+| Comment with attachment metadata
+END ANNOTATIONS
+END LAVISH RESULT (6 of 7)
+read_status=1
+silent_status=1
+
+OVERFULL TABLE-FORM READ
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 3
+malformed_items: 0
+complete: no
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 3
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 3
+element_uid: table-note
+element_selector: section#table
+tag: note
+text:
+| Table item
+prompt:
+| line one
+| {
+|   "question": "synthetic",
+| }
+ANNOTATION 2 of 3
+element_uid: table-choice
+element_selector: section#answer
+tag: choice
+text:
+| Yes
+ANNOTATION 3 of 3
+element_uid: table-reconcile
+element_selector: section#reconcile
+tag: choice
+text:
+| Reconcile
+END ANNOTATIONS
+END LAVISH RESULT (3 of 1)
+read_status=1
+
+OVERFULL TABLE-FORM ANSWERS
+table-answer	yes	Yes
+
+OVERFULL TABLE-FORM RECONCILES
+table-reconcile	check extra

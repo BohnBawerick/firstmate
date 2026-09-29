@@ -1,0 +1,7 @@
+session:
+  file: /synthetic-review.html
+  status: feedback
+prompts[1]{uid,prompt,selector,tag,text}:
+  "table-note","line one\n{\n  \"question\": \"synthetic\",\n}","section#table",note,"Table item"
+  "table-choice","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"table-answer\",\"selection\":\"yes\",\"note\":\"\"}","section#answer",choice,"Yes"
+  "table-reconcile","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"table-reconcile\",\"selection\":\"reconcile\",\"note\":\"check extra\"}","section#reconcile",choice,"Reconcile"

@@ -1,0 +1,67 @@
+REGISTER OUTPUT
+registered: lavish-live-list-form (lavish)
+
+START OUTPUT
+not-autohandled: lavish-live-list-form (left for the handler; still unacknowledged)
+retired: lavish-live-list-form (adapter classified the captured result terminal)
+captured: /tmp/fm-list-form-runner.cSSZHF/state/procevent-inbox/lavish-live-list-form.1.result
+
+WAKE QUEUE
+1790691074	1	check	procevent:lavish-live-list-form:1	check: procevent lavish lavish-live-list-form 1
+
+CAPTURED RESULT READ
+SESSION-ENDING MESSAGE
+| Synthetic session-ending message
+END SESSION-ENDING MESSAGE
+
+declared_items: 6
+presented_items: 6
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: true
+annotation_count: 5
+session_ending_message_count: 1
+
+ANNOTATIONS
+ANNOTATION 1 of 5
+element_uid: note-1
+element_selector: section#first
+tag: p
+text:
+| First element
+prompt:
+| First synthetic comment
+ANNOTATION 2 of 5
+element_uid: note-2
+element_selector: section#second
+tag: p
+text:
+| Second element
+prompt:
+| Second synthetic comment
+ANNOTATION 3 of 5
+element_uid: choice-1
+element_selector: section#choice
+tag: choice
+text:
+| Choose yes
+ANNOTATION 4 of 5
+element_uid: reconcile-1
+element_selector: section#reconcile
+tag: choice
+text:
+| Check again
+ANNOTATION 5 of 5
+element_uid: attached-1
+element_selector: section#attachment
+tag: p
+text:
+| Attached element
+prompt:
+| Comment with attachment metadata
+END ANNOTATIONS
+END LAVISH RESULT (6 of 6)
+
+CAPTURED RESULT MODE
+600 /tmp/fm-list-form-runner.cSSZHF/state/procevent-inbox/lavish-live-list-form.1.result

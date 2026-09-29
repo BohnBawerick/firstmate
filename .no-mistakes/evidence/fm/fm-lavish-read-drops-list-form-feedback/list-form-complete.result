@@ -1,0 +1,39 @@
+session:
+  file: /synthetic-review.html
+  status: feedback
+  session_ended: true
+  ended_by: user
+prompts[6]:
+  - uid: "note-1"
+    prompt: "First synthetic comment"
+    selector: "section#first"
+    tag: p
+    text: "First element"
+  - uid: "note-2"
+    prompt: "Second synthetic comment"
+    selector: "section#second"
+    tag: p
+    text: "Second element"
+  - uid: "choice-1"
+    prompt: "Choose yes\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"synthetic-choice\",\n  \"selection\": \"yes\",\n  \"note\": \"captured note\"\n}"
+    selector: "section#choice"
+    tag: choice
+    text: "Choose yes"
+  - uid: "reconcile-1"
+    prompt: "Check again\n\nContext data:\n{\n  \"schema\": \"fm-bearings-answer.v1\",\n  \"question\": \"synthetic-reconcile\",\n  \"selection\": \"reconcile\",\n  \"note\": \"review latest\"\n}"
+    selector: "section#reconcile"
+    tag: choice
+    text: "Check again"
+  - uid: "attached-1"
+    prompt: "Comment with attachment metadata"
+    selector: "section#attachment"
+    tag: p
+    text: "Attached element"
+    attachments[1]{id,type}:
+      synthetic-image,image
+  - uid: "message-1"
+    prompt: "Synthetic session-ending message"
+    selector: ""
+    tag: message
+    text: "Session message"
+next_step: done
