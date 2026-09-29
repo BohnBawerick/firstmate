@@ -3136,7 +3136,9 @@ prompts[2]{uid,prompt,selector,tag,text}:
   "el-a","","section#call",note,"Complete annotation"
   "el-b","","section#other",note
 EOF
-out=$(read_out) || fail "read failed on a capture containing a malformed item"
+read_status=0
+out=$(read_out 2>&1) || read_status=$?
+[ "$read_status" -ne 0 ] || fail "read certified a malformed capture as complete"
 assert_contains "$out" "declared_items: 2" "a malformed capture lost its declared count"
 assert_contains "$out" "presented_items: 1" \
   "a row missing declared fields was certified as presented"
