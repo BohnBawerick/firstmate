@@ -529,6 +529,8 @@ cmd_silent() {
 # Uniform rows use a declared field list and CSV values.
 # Non-uniform rows use YAML-like list items and may contain nested attachment
 # rows, which are metadata on the current item rather than more prompt items.
+# Decode the capture as UTF-8 once here; output consumers encode text as UTF-8
+# once so comments, answer labels, and reconcile notes keep their bytes.
 prompt_rows_json() {  # <result-file>
   perl -MJSON::PP -e '
     use strict; use warnings;
