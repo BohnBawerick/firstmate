@@ -1,0 +1,101 @@
+[list-mismatch-ended read]
+SESSION-ENDING MESSAGE
+| Session says stop café
+END SESSION-ENDING MESSAGE
+
+declared_items: 4
+presented_items: 3
+malformed_items: 0
+complete: no
+lifecycle: ended
+session_ended: true
+annotation_count: 2
+session_ending_message_count: 1
+
+ANNOTATIONS
+ANNOTATION 1 of 2
+element_uid: 1
+element_selector: div#bb-call > div:nth-of-type(1) > div > form
+tag: choice
+text:
+| Choose a live Unicode answer -> yes - 東京 café
+ANNOTATION 2 of 2
+element_uid: 2
+element_selector: div#bb-call > div:nth-of-type(2) > div > form
+tag: choice
+text:
+| Choose a live reconcile note -> reconcile - réexaminer café
+END ANNOTATIONS
+END LAVISH RESULT (3 of 4)
+read_exit=1
+[list-mismatch-ended silent]
+silent_exit=1
+
+[table-overfull read]
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 3
+malformed_items: 0
+complete: no
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 3
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 3
+element_uid: el-a
+element_selector: section#comment
+tag: note
+text:
+| Element café
+prompt:
+| Comment café
+ANNOTATION 2 of 3
+element_uid: el-b
+element_selector: section#answer
+tag: choice
+text:
+| Answer 東京
+ANNOTATION 3 of 3
+element_uid: el-c
+element_selector: section#reconcile
+tag: choice
+text:
+| Reconcile
+END ANNOTATIONS
+END LAVISH RESULT (3 of 1)
+read_exit=1
+[table-overfull silent]
+silent_exit=1
+[table-overfull answers]
+table-unicode-answer	yes - 東京	Answer 東京
+[table-overfull reconciles]
+table-unicode-reconcile	réexaminer café
+
+[table-malformed read]
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 2
+presented_items: 1
+malformed_items: 1
+complete: no
+lifecycle: feedback
+session_ended: true
+annotation_count: 1
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 1
+element_uid: el-a
+element_selector: section#call
+tag: note
+text:
+| Complete annotation
+END ANNOTATIONS
+END LAVISH RESULT (1 of 2)
+read_exit=1
+[table-malformed silent]
+silent_exit=1
+

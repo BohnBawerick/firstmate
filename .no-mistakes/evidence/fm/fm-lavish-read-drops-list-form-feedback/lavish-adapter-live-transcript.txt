@@ -1,0 +1,353 @@
+
+===== scenario 1a: list-form declared count mismatch =====
+$ sed -n '1,240p' /tmp/fm-lavish-live.bsBkK0/list-count-mismatch.result
+session:
+  status: ended
+  session_ended: true
+prompts[3]:
+  - uid: "list-answer"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"list-mismatch-answer\",\"selection\":\"accept\",\"note\":\"\"}"
+    selector: "#list-answer"
+    tag: choice
+    text: "Accept"
+  - uid: "list-reconcile"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"list-mismatch-reconcile\",\"selection\":\"reconcile\",\"note\":\"check list mismatch\"}"
+    selector: "#list-reconcile"
+    tag: choice
+    text: "Reconcile"
+
+$ bin/fm-procevent-lavish.sh read list-count-mismatch.result
+exit_status: 1
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 3
+presented_items: 2
+malformed_items: 0
+complete: no
+lifecycle: ended
+session_ended: true
+annotation_count: 2
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 2
+element_uid: list-answer
+element_selector: #list-answer
+tag: choice
+text:
+| Accept
+ANNOTATION 2 of 2
+element_uid: list-reconcile
+element_selector: #list-reconcile
+tag: choice
+text:
+| Reconcile
+END ANNOTATIONS
+END LAVISH RESULT (2 of 3)
+
+$ bin/fm-procevent-lavish.sh answers list-count-mismatch.result
+exit_status: 0
+list-mismatch-answer	accept	Accept
+
+$ bin/fm-procevent-lavish.sh reconciles list-count-mismatch.result
+exit_status: 0
+list-mismatch-reconcile	check list mismatch
+
+$ bin/fm-procevent-lavish.sh silent list-count-mismatch.result
+exit_status: 1
+(no output)
+
+$ bin/fm-procevent-lavish.sh answers list-count-mismatch.result
+exit_status: 0
+list-mismatch-answer	accept	Accept
+
+$ bin/fm-procevent-lavish.sh reconciles list-count-mismatch.result
+exit_status: 0
+list-mismatch-reconcile	check list mismatch
+
+===== scenario 1b: table-form declared count mismatch =====
+$ sed -n '1,240p' /tmp/fm-lavish-live.bsBkK0/table-count-mismatch.result
+session:
+  status: ended
+  session_ended: true
+prompts[3]{uid,prompt,selector,tag,text}:
+  "table-answer","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"table-mismatch-answer\",\"selection\":\"accept\",\"note\":\"\"}","#table-answer",choice,"Accept table"
+  "table-reconcile","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"table-mismatch-reconcile\",\"selection\":\"reconcile\",\"note\":\"check table mismatch\"}","#table-reconcile",choice,"Reconcile table"
+
+$ bin/fm-procevent-lavish.sh read table-count-mismatch.result
+exit_status: 1
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 3
+presented_items: 2
+malformed_items: 0
+complete: no
+lifecycle: ended
+session_ended: true
+annotation_count: 2
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 2
+element_uid: table-answer
+element_selector: #table-answer
+tag: choice
+text:
+| Accept table
+ANNOTATION 2 of 2
+element_uid: table-reconcile
+element_selector: #table-reconcile
+tag: choice
+text:
+| Reconcile table
+END ANNOTATIONS
+END LAVISH RESULT (2 of 3)
+
+$ bin/fm-procevent-lavish.sh answers table-count-mismatch.result
+exit_status: 0
+table-mismatch-answer	accept	Accept table
+
+$ bin/fm-procevent-lavish.sh reconciles table-count-mismatch.result
+exit_status: 0
+table-mismatch-reconcile	check table mismatch
+
+$ bin/fm-procevent-lavish.sh silent table-count-mismatch.result
+exit_status: 1
+(no output)
+
+$ bin/fm-procevent-lavish.sh answers table-count-mismatch.result
+exit_status: 0
+table-mismatch-answer	accept	Accept table
+
+$ bin/fm-procevent-lavish.sh reconciles table-count-mismatch.result
+exit_status: 0
+table-mismatch-reconcile	check table mismatch
+
+===== scenario 2: overfull table preserves all rows and UTF-8 =====
+$ sed -n '1,240p' /tmp/fm-lavish-live.bsBkK0/table-extra-unicode.result
+session:
+  status: ended
+  session_ended: true
+prompts[1]{uid,prompt,selector,tag,text}:
+  "unicode-note","Comment café","#unicode-note",note,"Élément café"
+  "unicode-answer","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"unicode-table-answer\",\"selection\":\"oui\",\"note\":\"東京\"}","#unicode-answer",choice,"Réponse 東京"
+  "unicode-reconcile","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"unicode-table-reconcile\",\"selection\":\"reconcile\",\"note\":\"réexaminer café\"}","#unicode-reconcile",choice,"Réconcilier"
+
+$ bin/fm-procevent-lavish.sh read table-extra-unicode.result
+exit_status: 1
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 3
+malformed_items: 0
+complete: no
+lifecycle: ended
+session_ended: true
+annotation_count: 3
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 3
+element_uid: unicode-note
+element_selector: #unicode-note
+tag: note
+text:
+| Élément café
+prompt:
+| Comment café
+ANNOTATION 2 of 3
+element_uid: unicode-answer
+element_selector: #unicode-answer
+tag: choice
+text:
+| Réponse 東京
+ANNOTATION 3 of 3
+element_uid: unicode-reconcile
+element_selector: #unicode-reconcile
+tag: choice
+text:
+| Réconcilier
+END ANNOTATIONS
+END LAVISH RESULT (3 of 1)
+
+$ bin/fm-procevent-lavish.sh answers table-extra-unicode.result
+exit_status: 0
+unicode-table-answer	oui - 東京	Réponse 東京
+
+$ bin/fm-procevent-lavish.sh reconciles table-extra-unicode.result
+exit_status: 0
+unicode-table-reconcile	réexaminer café
+
+$ bin/fm-procevent-lavish.sh silent table-extra-unicode.result
+exit_status: 1
+(no output)
+
+$ bin/fm-procevent-lavish.sh answers table-extra-unicode.result
+exit_status: 0
+unicode-table-answer	oui - 東京	Réponse 東京
+
+$ bin/fm-procevent-lavish.sh reconciles table-extra-unicode.result
+exit_status: 0
+unicode-table-reconcile	réexaminer café
+
+===== scenario 3: nested attachments do not hide later list items =====
+$ sed -n '1,240p' /tmp/fm-lavish-live.bsBkK0/list-nested-attachments.result
+session:
+  status: ended
+  session_ended: true
+prompts[5]:
+  - uid: "before"
+    prompt: "Before attachment"
+    selector: "#before"
+    tag: note
+    text: "Before element"
+  - uid: "attached"
+    prompt: "Attached comment café"
+    selector: "#attached"
+    tag: note
+    text: "Attached element"
+    attachments[1]{id,type}:
+      synthetic-image,image
+  - uid: "after-answer"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"after-attachment-answer\",\"selection\":\"ship\",\"note\":\"après 東京\"}"
+    selector: "#after-answer"
+    tag: choice
+    text: "Ship after attachment 東京"
+  - uid: "after-reconcile"
+    prompt: "Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"after-attachment-reconcile\",\"selection\":\"reconcile\",\"note\":\"réviser café\"}"
+    selector: "#after-reconcile"
+    tag: choice
+    text: "Reconcile after attachment"
+  - uid: "ending"
+    prompt: "Session finished after attachments"
+    selector: ""
+    tag: message
+    text: "Session message"
+
+$ bin/fm-procevent-lavish.sh read list-nested-attachments.result
+exit_status: 0
+SESSION-ENDING MESSAGE
+| Session finished after attachments
+END SESSION-ENDING MESSAGE
+
+declared_items: 5
+presented_items: 5
+malformed_items: 0
+complete: yes
+lifecycle: ended
+session_ended: true
+annotation_count: 4
+session_ending_message_count: 1
+
+ANNOTATIONS
+ANNOTATION 1 of 4
+element_uid: before
+element_selector: #before
+tag: note
+text:
+| Before element
+prompt:
+| Before attachment
+ANNOTATION 2 of 4
+element_uid: attached
+element_selector: #attached
+tag: note
+text:
+| Attached element
+prompt:
+| Attached comment café
+ANNOTATION 3 of 4
+element_uid: after-answer
+element_selector: #after-answer
+tag: choice
+text:
+| Ship after attachment 東京
+ANNOTATION 4 of 4
+element_uid: after-reconcile
+element_selector: #after-reconcile
+tag: choice
+text:
+| Reconcile after attachment
+END ANNOTATIONS
+END LAVISH RESULT (5 of 5)
+
+$ bin/fm-procevent-lavish.sh answers list-nested-attachments.result
+exit_status: 0
+after-attachment-answer	ship - après 東京	Ship after attachment 東京
+
+$ bin/fm-procevent-lavish.sh reconciles list-nested-attachments.result
+exit_status: 0
+after-attachment-reconcile	réviser café
+
+$ bin/fm-procevent-lavish.sh silent list-nested-attachments.result
+exit_status: 1
+(no output)
+
+$ bin/fm-procevent-lavish.sh answers list-nested-attachments.result
+exit_status: 0
+after-attachment-answer	ship - après 東京	Ship after attachment 東京
+
+$ bin/fm-procevent-lavish.sh reconciles list-nested-attachments.result
+exit_status: 0
+after-attachment-reconcile	réviser café
+
+===== scenario 4: malformed table row retains valid neighbors =====
+$ sed -n '1,240p' /tmp/fm-lavish-live.bsBkK0/table-malformed-neighbors.result
+session:
+  status: ended
+  session_ended: true
+prompts[3]{uid,prompt,selector,tag,text}:
+  "valid-answer","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"neighbor-answer\",\"selection\":\"keep\",\"note\":\"\"}","#valid-answer",choice,"Keep valid answer"
+  "broken","missing text column","#broken",note
+  "valid-reconcile","Context data: {\"schema\":\"fm-bearings-answer.v1\",\"question\":\"neighbor-reconcile\",\"selection\":\"reconcile\",\"note\":\"retain valid neighbor\"}","#valid-reconcile",choice,"Keep valid reconcile"
+
+$ bin/fm-procevent-lavish.sh read table-malformed-neighbors.result
+exit_status: 1
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 3
+presented_items: 2
+malformed_items: 1
+complete: no
+lifecycle: ended
+session_ended: true
+annotation_count: 2
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 2
+element_uid: valid-answer
+element_selector: #valid-answer
+tag: choice
+text:
+| Keep valid answer
+ANNOTATION 2 of 2
+element_uid: valid-reconcile
+element_selector: #valid-reconcile
+tag: choice
+text:
+| Keep valid reconcile
+END ANNOTATIONS
+END LAVISH RESULT (2 of 3)
+
+$ bin/fm-procevent-lavish.sh answers table-malformed-neighbors.result
+exit_status: 0
+neighbor-answer	keep	Keep valid answer
+
+$ bin/fm-procevent-lavish.sh reconciles table-malformed-neighbors.result
+exit_status: 0
+neighbor-reconcile	retain valid neighbor
+
+$ bin/fm-procevent-lavish.sh silent table-malformed-neighbors.result
+exit_status: 1
+(no output)
+
+$ bin/fm-procevent-lavish.sh answers table-malformed-neighbors.result
+exit_status: 0
+neighbor-answer	keep	Keep valid answer
+
+$ bin/fm-procevent-lavish.sh reconciles table-malformed-neighbors.result
+exit_status: 0
+neighbor-reconcile	retain valid neighbor
+
+ALL LIVE LAVISH ADAPTER SCENARIOS PASSED

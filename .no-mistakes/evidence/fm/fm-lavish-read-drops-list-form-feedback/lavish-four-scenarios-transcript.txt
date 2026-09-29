@@ -1,0 +1,194 @@
+===== list-count-mismatch: read =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh read /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/list-count-mismatch.txt
+exit_status: 1
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 3
+presented_items: 2
+malformed_items: 0
+complete: no
+lifecycle: feedback
+session_ended: true
+annotation_count: 2
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 2
+element_uid: list-note
+element_selector: section#list-note
+tag: note
+text:
+| List item café
+prompt:
+| List comment café
+ANNOTATION 2 of 2
+element_uid: list-answer
+element_selector: section#list-answer
+tag: choice
+text:
+| List answer 東京
+END ANNOTATIONS
+END LAVISH RESULT (2 of 3)
+===== list-count-mismatch: answers =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh answers /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/list-count-mismatch.txt
+exit_status: 0
+list-mismatch-answer	yes - 東京	List answer 東京
+===== list-count-mismatch: reconciles =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh reconciles /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/list-count-mismatch.txt
+exit_status: 0
+(no output)
+===== list-count-mismatch: silent =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh silent /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/list-count-mismatch.txt
+exit_status: 1
+(no output)
+===== table-extra-unicode: read =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh read /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/table-extra-unicode.txt
+exit_status: 1
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 3
+malformed_items: 0
+complete: no
+lifecycle: feedback
+session_ended: true
+annotation_count: 3
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 3
+element_uid: table-note
+element_selector: section#table-note
+tag: note
+text:
+| Table item café
+prompt:
+| Table comment café
+ANNOTATION 2 of 3
+element_uid: table-answer
+element_selector: section#table-answer
+tag: choice
+text:
+| Table answer 東京
+ANNOTATION 3 of 3
+element_uid: table-reconcile
+element_selector: section#table-reconcile
+tag: choice
+text:
+| Table reconcile
+END ANNOTATIONS
+END LAVISH RESULT (3 of 1)
+===== table-extra-unicode: answers =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh answers /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/table-extra-unicode.txt
+exit_status: 0
+table-extra-answer	yes - 東京	Table answer 東京
+===== table-extra-unicode: reconciles =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh reconciles /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/table-extra-unicode.txt
+exit_status: 0
+table-extra-reconcile	réexaminer café
+===== table-extra-unicode: silent =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh silent /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/table-extra-unicode.txt
+exit_status: 1
+(no output)
+===== list-nested-attachments: read =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh read /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/list-nested-attachments.txt
+exit_status: 0
+SESSION-ENDING MESSAGE
+| Session ending message after attachment
+END SESSION-ENDING MESSAGE
+
+declared_items: 4
+presented_items: 4
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: true
+annotation_count: 3
+session_ending_message_count: 1
+
+ANNOTATIONS
+ANNOTATION 1 of 3
+element_uid: attachment-note
+element_selector: section#attachment-note
+tag: note
+text:
+| Attached example
+prompt:
+| Review the attached example
+ANNOTATION 2 of 3
+element_uid: after-answer
+element_selector: section#after-answer
+tag: choice
+text:
+| Answer after attachment
+ANNOTATION 3 of 3
+element_uid: after-reconcile
+element_selector: section#after-reconcile
+tag: choice
+text:
+| Reconcile after attachment
+END ANNOTATIONS
+END LAVISH RESULT (4 of 4)
+===== list-nested-attachments: answers =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh answers /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/list-nested-attachments.txt
+exit_status: 0
+after-attachment-answer	accept - still visible	Answer after attachment
+===== list-nested-attachments: reconciles =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh reconciles /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/list-nested-attachments.txt
+exit_status: 0
+after-attachment-reconcile	check after attachment
+===== list-nested-attachments: silent =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh silent /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/list-nested-attachments.txt
+exit_status: 1
+(no output)
+===== table-malformed-neighbors: read =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh read /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/table-malformed-neighbors.txt
+exit_status: 1
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 4
+presented_items: 3
+malformed_items: 1
+complete: no
+lifecycle: feedback
+session_ended: true
+annotation_count: 3
+session_ending_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 3
+element_uid: valid-note
+element_selector: section#valid-note
+tag: note
+text:
+| Valid neighboring note
+prompt:
+| Valid comment
+ANNOTATION 2 of 3
+element_uid: valid-answer
+element_selector: section#valid-answer
+tag: choice
+text:
+| Valid neighboring answer
+ANNOTATION 3 of 3
+element_uid: valid-reconcile
+element_selector: section#valid-reconcile
+tag: choice
+text:
+| Valid neighboring reconcile
+END ANNOTATIONS
+END LAVISH RESULT (3 of 4)
+===== table-malformed-neighbors: answers =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh answers /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/table-malformed-neighbors.txt
+exit_status: 0
+malformed-neighbor-answer	keep	Valid neighboring answer
+===== table-malformed-neighbors: reconciles =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh reconciles /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/table-malformed-neighbors.txt
+exit_status: 0
+malformed-neighbor-reconcile	inspect neighbor
+===== table-malformed-neighbors: silent =====
+command: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/bin/fm-procevent-lavish.sh silent /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3PXBCP64Q1VS8N218E7T25R/.tmp-lavish-adapter-live/table-malformed-neighbors.txt
+exit_status: 1
+(no output)
+===== verification =====
+PASS: all four synthetic scenarios satisfied their executable adapter contracts

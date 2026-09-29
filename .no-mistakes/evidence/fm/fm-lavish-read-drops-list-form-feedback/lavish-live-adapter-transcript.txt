@@ -1,0 +1,42 @@
+[classify]
+feedback
+
+[read]
+SESSION-ENDING MESSAGE
+| Session says stop café
+END SESSION-ENDING MESSAGE
+
+declared_items: 3
+presented_items: 3
+malformed_items: 0
+complete: yes
+lifecycle: feedback
+session_ended: true
+annotation_count: 2
+session_ending_message_count: 1
+
+ANNOTATIONS
+ANNOTATION 1 of 2
+element_uid: 1
+element_selector: div#bb-call > div:nth-of-type(1) > div > form
+tag: choice
+text:
+| Choose a live Unicode answer -> yes - 東京 café
+ANNOTATION 2 of 2
+element_uid: 2
+element_selector: div#bb-call > div:nth-of-type(2) > div > form
+tag: choice
+text:
+| Choose a live reconcile note -> reconcile - réexaminer café
+END ANNOTATIONS
+END LAVISH RESULT (3 of 3)
+read_exit=0
+
+[answers]
+live-unicode-answer	yes - 東京 café	Choose a live Unicode answer -> yes - 東京 café
+
+[reconciles]
+live-unicode-reconcile	réexaminer café
+
+[silent]
+silent_exit=1
