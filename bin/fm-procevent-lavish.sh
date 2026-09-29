@@ -21,9 +21,12 @@
 #            what Lavish delivered. The freeform message (tag=message) is its
 #            own labeled field, printed first and distinct from per-element
 #            annotations; it is labeled SESSION-ENDING MESSAGE only when the
-#            session ended. Declared and presented item counts,
-#            plus a completeness verdict, follow before all annotations so a
-#            partial read is obvious. Each annotation retains its element uid,
+#            session ended. It accepts both field-declared CSV tables and
+#            YAML-like item lists, including list items with nested attachment
+#            metadata. Declared and presented item counts, plus a completeness
+#            verdict, follow before all annotations so a partial read is
+#            obvious. A count mismatch or malformed row prints `complete: no`
+#            and exits nonzero. Each annotation retains its element uid,
 #            selector, tag, and text. A non-choice freeform comment (`prompt`)
 #            is printed as its own field even when a selector is also present
 #            and even when that comment matches the element text, so typed
@@ -473,12 +476,13 @@ cmd_terminal() {
 }
 
 # Whether a completed result carries any queued content block at all. The
-# published response frames content as a top-level `prompts[N]{...}:` or
-# `feedback[N]{...}:` header whose rows are INDENTED, so this anchors on column
-# zero: an indented payload line is captain-supplied text and must never be able
-# to forge - or, here, to hide behind - a content header. Any recognized block
-# is content regardless of its declared count, while a malformed top-level
-# prompts or feedback header makes the result indeterminate.
+# published response frames content as a top-level `prompts[N]:` or
+# `feedback[N]:` list, or as the field-declared table variant
+# `prompts[N]{...}:` or `feedback[N]{...}:`. This check anchors on column zero:
+# an indented payload line is captain-supplied text and must never be able to
+# forge - or, here, to hide behind - a content header. Any recognized block is
+# content regardless of its declared count, while a malformed top-level prompts
+# or feedback header makes the result indeterminate.
 #
 # 0 = content present, 1 = provably no content, anything else = the check did
 # not complete. The caller must distinguish those three, because "the check
@@ -521,10 +525,10 @@ cmd_silent() {
   [ "$content_rc" -eq 1 ]
 }
 
-# Parse either Lavish prompt representation into one JSON document. Uniform rows use
-# a declared field list and CSV values; non-uniform rows use YAML-like list items and
-# may contain nested attachment rows. The latter are metadata on the current item,
-# never additional prompt items.
+# Parse either Lavish prompt representation into one JSON document.
+# Uniform rows use a declared field list and CSV values.
+# Non-uniform rows use YAML-like list items and may contain nested attachment
+# rows, which are metadata on the current item rather than more prompt items.
 prompt_rows_json() {  # <result-file>
   perl -MJSON::PP -e '
     use strict; use warnings;
@@ -537,8 +541,8 @@ prompt_rows_json() {  # <result-file>
       $value =~ s/^\s+//; $value =~ s/\s+$//;
       if ($value =~ /^"((?:[^"\\]|\\.)*)"$/s) {
         $value = $1;
-        $value =~ s/\\(.)/$1 eq "n" ? "\n" : $1 eq "t" ? "\t" : $1 eq "r" ? "\r" : $1/ge;
       }
+      $value =~ s/\\(.)/$1 eq "n" ? "\n" : $1 eq "t" ? "\t" : $1 eq "r" ? "\r" : $1/ge;
       return $value;
     }
     sub csv_values {
@@ -549,7 +553,7 @@ prompt_rows_json() {  # <result-file>
           push @values, unquote("\"$1\"");
         } else {
           $row =~ s/^([^,]*)//;
-          push @values, $1;
+          push @values, unquote($1);
         }
         last unless $row =~ s/^,//;
       }
@@ -609,10 +613,10 @@ prompt_rows_json() {  # <result-file>
 
 # Print `key<TAB>answer<TAB>label[<TAB>mode]` for each non-reconcile structured choice the
 # captain submitted in a captured result; the optional mode column relays the
-# card's declared close mode (`done` or `release`) to the keyed-answer intake. The published response frames queued feedback as
-# a `prompts[N]{field,...}:` header followed by exactly N indented CSV rows whose
-# quoted fields carry JSON-style escapes, so this reads the declared field ORDER
-# rather than assuming a fixed column, and takes only rows whose `tag` field is
+# card's declared close mode (`done` or `release`) to the keyed-answer intake.
+# Queued feedback can use field-declared CSV rows or YAML-like list items, so the
+# shared parser normalizes both forms and preserves every parsed item even when
+# the declared count differs. This command takes only rows whose `tag` field is
 # `choice`. A freeform `message` row is captain prose and is deliberately never a
 # source of decision keys. A row that does not carry both a slug-shaped `question`
 # and the versioned `selection` and `note` fields inside its `Context data:` block
