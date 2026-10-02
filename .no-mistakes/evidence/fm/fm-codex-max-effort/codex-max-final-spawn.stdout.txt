@@ -1,0 +1,1 @@
+spawned codexmaxlive harness=codex kind=scout window=fm-lab-codexmax-final-525420-20831:w1:p2 worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3YW1NJAFGA6XK0751N9NFXN/.test-codexmax-live/treehouse/.treehouse/project-22f6ee/1/project

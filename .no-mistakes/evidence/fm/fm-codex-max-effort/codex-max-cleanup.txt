@@ -1,0 +1,9 @@
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+teardown: reaping leaked worktree process(es) for codexmaxlive: 441970 445088
+teardown: force-killing leaked worktree process(es) for codexmaxlive: 441970
+A new version of treehouse is available: v2.3.0 → v3.1.1
+Run "treehouse update" to update
+
+🌳 Worktree returned to pool.
+teardown codexmaxlive complete (window fm-lab-codexmax-live-439388-20908:w1:p2, worktree /home/bohn/.treehouse/project-22f6ee/1/project)
+Backlog: codexmaxlive just finished (this home keeps no markdown backlog at /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3YW1NJAFGA6XK0751N9NFXN/.test-codexmax-live/home/data/backlog.md). Update /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3YW1NJAFGA6XK0751N9NFXN/.test-codexmax-live/home/data/backlog.md - move codexmaxlive to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.

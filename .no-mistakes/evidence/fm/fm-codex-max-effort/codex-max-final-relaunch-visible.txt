@@ -1,0 +1,40 @@
+  # Definition of done
+  Write your findings to `/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3YW1NJAFGA6XK0751N9NFXN/.test-codexmax-
+  live/home/data/codexmaxlive/report.md`.
+  The report must stand alone: what you did, what you found, the evidence (commands run, output, file:line references),
+  and what you recommend.
+  If your deliverable is a visual artifact the captain will review and iterate on, use the lavish-axi rule: arm your
+  board with bin/fm-procevent-lavish.sh arm <artifact.html> --for <task-id>; never run lavish-axi poll yourself. Re-arm
+  with the reply after each nonterminal round to acknowledge it, route the board feedback through your steering inbox,
+  write needs-decision [key=board-review] with the live board URL when the captain owes a decision, and stop at
+  session_ended or an empty End without re-arming - acknowledge that final round with bin/fm-procevent.sh handled
+  <source-id> <sequence> to conclude and retire your board.
+  Before reporting done, read and follow `/home/bohn/.no-mistakes/
+  worktrees/842a31c92d33/01M3YW1NJAFGA6XK0751N9NFXN/.agents/skills/captain-hold-lifecycle/SKILL.md` and pass its shared
+  completion gate for the report and any visual review.
+  When the report is complete, append `done [at=<epoch>]: {one-line conclusion}` to the status file and stop.
+  If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the report;
+  firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a follow-up
+  message.
+
+  ## Progress note (2026-10-02T18:43:55Z)
+
+  This task was relaunched. Continue from here; the local copy and every
+  uncommitted change are exactly as the previous worker left them.
+
+  First, check your instruction inbox: list /home/bohn/.no-mistakes/
+  worktrees/842a31c92d33/01M3YW1NJAFGA6XK0751N9NFXN/.test-codexmax-live/home/state/codexmaxlive.inbox/*.msg, act on
+  each message in numeric order, then mv each handled file into
+  /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3YW1NJAFGA6XK0751N9NFXN/.test-codexmax-live/home/state/
+  codexmaxlive.inbox/handled/. A steer sent before the relaunch survives there.
+
+  Live validation of the shared relaunch builder.
+
+
+• Starting MCP servers (0/2): codex_apps, higgsfield_blender (0s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  GPT-6-Astra max · ~/.no-mistakes/worktrees/842a31c92d33/01M3YW1NJAFGA6XK0751N9NFXN/.test-codexmax-live/treehouse/.tre…
+  ? for shortcuts                                                                              ⚠ 1 warning · f2 to view

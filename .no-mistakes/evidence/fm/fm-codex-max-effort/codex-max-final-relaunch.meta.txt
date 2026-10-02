@@ -1,0 +1,16 @@
+window=fm-lab-codexmax-final-525420-20831:w1:p2
+endpoint_task_id=codexmaxlive
+worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3YW1NJAFGA6XK0751N9NFXN/.test-codexmax-live/treehouse/.treehouse/project-22f6ee/1/project
+project=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3YW1NJAFGA6XK0751N9NFXN/.test-codexmax-live/project
+harness=codex
+kind=scout
+tasktmp=/tmp/fm-codexmaxlive
+model=gpt-6-astra
+effort=max
+spawn_gen=s1790966643.532438.21949
+backend=herdr
+herdr_session=fm-lab-codexmax-final-525420-20831
+herdr_workspace_id=w1
+herdr_tab_id=w1:t2
+herdr_pane_id=w1:p2
+control_relaunch_tx=528902.20261002T184402Z.24918

@@ -1,0 +1,4 @@
+missing: warning: dropped codex effort max for model gpt-6-astra; catalog does not advertise it; warning_count=1; effort_setting=omitted
+unreadable: warning: dropped codex effort max for model gpt-6-astra; catalog does not advertise it; warning_count=1; effort_setting=omitted
+unsupported: warning: dropped codex effort max for model gpt-6-astra; catalog does not advertise it; warning_count=1; effort_setting=omitted
+catalog downgrade guard: pass
