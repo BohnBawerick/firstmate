@@ -888,6 +888,40 @@ test_spawn_explicit_harness_does_not_inherit_secondmate_harness_tokens() {
   pass "C7 spawn: an explicit --harness starts with clean model/effort defaults"
 }
 
+test_codex_catalog_max_effort() {
+  local w sm launchlog codex_home launch w2 sm2 launchlog2 err
+  w="$TMP_ROOT/spawn-codex-catalog-max"
+  w2="$TMP_ROOT/spawn-codex-catalog-missing"
+  sm="$w/sm"
+  launchlog="$w/launch.log"
+  codex_home="$w/codex"
+  mkdir -p "$w/home/config" "$codex_home"
+  printf 'codex\n' > "$w/home/config/secondmate-harness"
+  printf '%s\n' '{"models":[{"slug":"gpt-6-astra","supported_reasoning_levels":[{"effort":"max"}]}]}' \
+    > "$codex_home/models_cache.json"
+  make_seeded_home "$sm" sm
+
+  CODEX_HOME="$codex_home" spawn_secondmate_capture \
+    "$w" sm "$sm" "$launchlog" --harness codex --model gpt-6-astra --effort max \
+    >/dev/null 2>&1
+
+  launch=$(cat "$launchlog")
+  assert_contains "$launch" "-c 'model_reasoning_effort=\"max\"'" \
+    "codex catalog max effort was not passed to the launch"
+
+  sm2="$w2/sm"
+  launchlog2="$w2/launch.log"
+  err="$w2/stderr"
+  mkdir -p "$w2/home/config"
+  make_seeded_home "$sm2" sm
+  CODEX_HOME="$w2/missing" spawn_secondmate_capture \
+    "$w2" sm "$sm2" "$launchlog2" --harness codex --model gpt-6-astra --effort max \
+    >/dev/null 2>"$err"
+  assert_contains "$(cat "$err")" "dropped codex effort max" \
+    "missing Codex catalog did not warn about the dropped effort"
+  pass "Codex max effort follows the selected model catalog and warns when absent"
+}
+
 test_spawn_explicit_harness_uses_explicit_profile_axes() {
   local w sm meta launchlog launch
   w="$TMP_ROOT/spawn-explicit-harness-explicit-axes"
@@ -2655,6 +2689,7 @@ test_spawn_secondmate_harness_model_and_effort_tokens
 test_spawn_explicit_model_overrides_secondmate_harness_token
 test_spawn_explicit_effort_overrides_secondmate_harness_token
 test_spawn_explicit_harness_does_not_inherit_secondmate_harness_tokens
+test_codex_catalog_max_effort
 test_spawn_explicit_harness_uses_explicit_profile_axes
 test_spawned_secondmate_uses_its_harness_supervision_model
 test_spawn_fallback_chain_and_crew_scout_unaffected
