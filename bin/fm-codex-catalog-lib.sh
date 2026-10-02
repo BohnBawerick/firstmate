@@ -11,22 +11,23 @@ fm_codex_catalog_supports_effort() {
   catalog=$(fm_codex_catalog_path)
   jq -e --arg model "$model" --arg effort "$effort" '
     any(.models[]?;
-      ((.slug? // .id? // .model?) == $model)
+      (.slug? == $model)
       and any(.supported_reasoning_levels[]?; .effort? == $effort)
     )
   ' "$catalog" >/dev/null 2>&1
 }
 
 fm_codex_catalog_models_supporting_effort() {
-  local effort=$1 catalog
+  local effort=$1 catalog models
   command -v jq >/dev/null 2>&1 || return 1
   catalog=$(fm_codex_catalog_path)
-  jq -r --arg effort "$effort" '
+  models=$(jq -r --arg effort "$effort" '
     .models[]?
     | select(any(.supported_reasoning_levels[]?; .effort? == $effort))
-    | (.slug? // .id? // .model?)
+    | .slug?
     | select(type == "string" and length > 0)
-  ' "$catalog" 2>/dev/null
+  ' "$catalog" 2>/dev/null) || return 1
+  [ -z "$models" ] || printf '%s\n' "$models"
 }
 
 fm_codex_catalog_warn_dropped_effort() {

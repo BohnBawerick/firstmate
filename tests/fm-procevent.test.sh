@@ -3174,6 +3174,98 @@ pass "Lavish table and list forms preserve Unicode comments, answers, and reconc
 cat > "$READ" <<'EOF'
 session:
   status: feedback
+prompts[6]:
+  - uid: "text-a"
+    prompt: "Change this phrase"
+    selector: "#intro"
+    tag: text
+    text: "Selected phrase"
+    target:
+      type: text-range
+      text: "Selected phrase"
+      selector: "#intro"
+      start:
+        selector: "#intro"
+        path[2]: 0,1
+        offset: 2
+      end:
+        selector: "#intro"
+        path[2]: 0,1
+        offset: 17
+  - uid: "cell-a"
+    prompt: "Update the value"
+    selector: "#plans td"
+    tag: td
+    text: "$20"
+    target:
+      type: table-cell
+      selector: "#plans td"
+      rowLabel: Pro
+      columnLabel: Price
+      text: "$20"
+  - uid: "node-a"
+    prompt: "Rename this node"
+    selector: "#flow g.node"
+    tag: mermaid-node
+    text: Queue
+    target:
+      type: mermaid-node
+      diagramId: flow
+      nodeId: queue
+      label: Queue
+      selector: "#flow g.node"
+  - uid: "whiteboard-a"
+    prompt: "Moved two nodes"
+    selector: ""
+    tag: whiteboard
+    text: "Diagram 1"
+    target:
+      type: excalidraw-scene
+      diagramIndex: 0
+      scenePath: /tmp/review/0.excalidraw
+      previewPath: /tmp/review/0.png
+      stats:
+        added: 0
+        moved: 2
+  - uid: "layout-a"
+    prompt: "Fix the overflow"
+    selector: ""
+    tag: layout-warnings
+    text: "Layout issue: 1 selected"
+    target:
+      type: layout-warnings
+      artifact_revision: 4
+      warnings[1]{id,rule,selector,component,axis,overflow_px,viewport_class,viewport_width,status,last_seen_at}:
+        warn-a,viewport-overflow,main,.card,horizontal,12,mobile,390,active,2030-01-01T00:00:00Z
+  - uid: ""
+    prompt: "See the attached reference"
+    selector: ""
+    tag: message
+    text: ""
+    attachments[1]{id,type,path,mime,bytes,width,height}:
+      image-a,image,/tmp/review/reference.png,image/png,1234,800,600
+EOF
+out=$(read_out) || fail "read rejected valid target and attachment metadata"
+assert_contains "$out" "presented_items: 6" "target-bearing prompts were dropped"
+assert_contains "$out" "malformed_items: 0" "valid nested target metadata was marked malformed"
+assert_contains "$out" "| path[2]: 0,1" "text-range path metadata was dropped"
+assert_contains "$out" "| rowLabel: Pro" "table-cell target metadata was dropped"
+assert_contains "$out" "| nodeId: queue" "Mermaid target metadata was dropped"
+assert_contains "$out" "| scenePath: /tmp/review/0.excalidraw" "whiteboard scene path was dropped"
+assert_contains "$out" "| previewPath: /tmp/review/0.png" "whiteboard preview path was dropped"
+assert_contains "$out" "| warnings[1]{id,rule,selector,component,axis,overflow_px,viewport_class,viewport_width,status,last_seen_at}:" \
+  "layout-warning target metadata was dropped"
+assert_contains "$out" "attachment_path:" "attachment path label was dropped"
+assert_contains "$out" "| /tmp/review/reference.png" "attachment path was dropped"
+assert_contains "$out" "attachment_mime:" "attachment MIME label was dropped"
+assert_contains "$out" "| image/png" "attachment MIME was dropped"
+assert_contains "$out" "attachment_width:" "attachment dimensions were dropped"
+assert_contains "$out" "| 800" "attachment width was dropped"
+pass "read preserves Lavish targets and message attachment metadata"
+
+cat > "$READ" <<'EOF'
+session:
+  status: feedback
 prompts[1]:
   - uid: "el-a"
     prompt "captain says stop"

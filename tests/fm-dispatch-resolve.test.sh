@@ -727,6 +727,31 @@ printf '%s\n' '{"rules":[' > "$RULES"
 TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
 expect_code 2 "$code" "non-JSON rules exits 2"
 assert_contains "$err" 'not JSON' "non-JSON rules is named"
+
+CODEX_CATALOG="$TMP_ROOT/codex-catalog"
+mkdir -p "$CODEX_CATALOG"
+printf '%s\n' '{"rules":[{"when":"x","use":{"harness":"codex","model":"gpt-6-astra","effort":"max"}}]}' > "$RULES"
+printf '%s\n' \
+  '{"models":[{"slug":"gpt-6-astra","supported_reasoning_levels":[{"effort":"max"}]}]}' \
+  '{' > "$CODEX_CATALOG/models_cache.json"
+reset_log
+CODEX_HOME="$CODEX_CATALOG" TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
+expect_code 2 "$code" "a partially malformed catalog rejects Codex max"
+assert_contains "$err" 'each use profile effort must be supported by its harness and model' \
+  "partial catalog output authorized Codex max"
+assert_absent "$LOG/argv" "a malformed catalog reached dispatch resolution"
+
+printf '%s\n' \
+  '{"models":[{"slug":"other-model","id":"gpt-6-astra","model":"gpt-6-astra","supported_reasoning_levels":[{"effort":"max"}]}]}' \
+  > "$CODEX_CATALOG/models_cache.json"
+reset_log
+CODEX_HOME="$CODEX_CATALOG" TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
+expect_code 2 "$code" "non-slug aliases reject Codex max"
+assert_contains "$err" 'each use profile effort must be supported by its harness and model' \
+  "a non-slug catalog alias authorized Codex max"
+assert_absent "$LOG/argv" "a non-slug catalog alias reached dispatch resolution"
+pass "dispatch validation accepts only complete slug-matched Codex catalogs"
+
 for bad in \
   '{"rules":[{"when":"x","use":{"harness":"claude"},"approval":"firstmate"}]}|approval must be "captain" when present' \
   '{"rules":[{"when":"x","use":{"harness":"claude"},"select":"mystery"}]}|unknown select: mystery' \

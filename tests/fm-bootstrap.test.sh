@@ -1193,6 +1193,33 @@ default profile floor without min_percent is flagged^{"default":[{"harness":"cod
 default profile floor provider override is flagged^{"default":{"harness":"codex","floor":{"scope":"all_models","min_percent":50,"provider":"claude"}}}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - default profile floor needs scope and min_percent 0..100
 ROWS
 
+  case_dir="$TMP_ROOT/dispatch-catalog-integrity"
+  mkdir -p "$case_dir/home/config" "$case_dir/codex"
+  printf '%s\n' manual > "$case_dir/home/config/backlog-backend"
+  printf '%s\n' '{"rules":[{"when":"big feature","use":{"harness":"codex","model":"gpt-6-astra","effort":"max"}}]}' \
+    > "$case_dir/home/config/crew-dispatch.json"
+  fakebin=$(make_fake_toolchain "$case_dir")
+  add_real_jq "$fakebin"
+
+  printf '%s\n' \
+    '{"models":[{"slug":"gpt-6-astra","supported_reasoning_levels":[{"effort":"max"}]}]}' \
+    '{' > "$case_dir/codex/models_cache.json"
+  out=$(PATH="$fakebin:$BASE_PATH" CODEX_HOME="$case_dir/codex" FM_HOME="$case_dir/home" \
+    FM_ROOT_OVERRIDE="$case_dir/home" TYPESAFE_API_KEY=test-key \
+    FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
+  [ "$out" = 'CREW_DISPATCH: invalid config/crew-dispatch.json - invalid effort: codex:max' ] \
+    || fail "malformed catalog data partially authorized Codex max, got: $out"
+
+  printf '%s\n' \
+    '{"models":[{"slug":"other-model","id":"gpt-6-astra","model":"gpt-6-astra","supported_reasoning_levels":[{"effort":"max"}]}]}' \
+    > "$case_dir/codex/models_cache.json"
+  out=$(PATH="$fakebin:$BASE_PATH" CODEX_HOME="$case_dir/codex" FM_HOME="$case_dir/home" \
+    FM_ROOT_OVERRIDE="$case_dir/home" TYPESAFE_API_KEY=test-key \
+    FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
+  [ "$out" = 'CREW_DISPATCH: invalid config/crew-dispatch.json - invalid effort: codex:max' ] \
+    || fail "non-slug catalog aliases authorized Codex max, got: $out"
+  pass "bootstrap accepts Codex max only from a complete slug-matched catalog"
+
   case_dir="$TMP_ROOT/dispatch-opt-in-gate"
   mkdir -p "$case_dir/home/config"
   printf '%s\n' manual > "$case_dir/home/config/backlog-backend"

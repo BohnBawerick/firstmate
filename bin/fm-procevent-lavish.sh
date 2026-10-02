@@ -561,7 +561,8 @@ prompt_rows_json() {  # <result-file>
       }
       return @values;
     }
-    my ($current, $line, $attachment_rows, $attachment_fields);
+    my ($current, $line, $target_lines, $attachment_rows);
+    my @attachment_fields;
     while (defined($line = <$fh>)) {
       if (!$header) {
         if ($line =~ /^(?:prompts|feedback)\[(\d+)\]\{([^}]*)\}:\s*$/) {
@@ -595,7 +596,17 @@ prompt_rows_json() {  # <result-file>
       if (defined($attachment_rows) && $line !~ /^      /) {
         $malformed++ if $attachment_rows;
         undef $attachment_rows;
-        undef $attachment_fields;
+        @attachment_fields = ();
+      }
+      if (defined($target_lines) && $line =~ /^      (.*)$/) {
+        my $target_line = $1;
+        chomp $target_line;
+        push @$target_lines, $target_line;
+        next;
+      }
+      if (defined($target_lines)) {
+        $malformed++ unless @$target_lines;
+        undef $target_lines;
       }
       if ($line =~ /^  -\s+(.+)$/) {
         push @rows, $current if defined $current;
@@ -605,28 +616,42 @@ prompt_rows_json() {  # <result-file>
         } else { $malformed++; }
         next;
       }
-      if ($line =~ /^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/) {
+      if ($line =~ /^    target:\s*$/) {
         if (defined $current) {
-          $current->{$1} = unquote($2);
+          $current->{target} = [];
+          $target_lines = $current->{target};
         } else { $malformed++; }
         next;
       }
       if ($line =~ /^    attachments\[(\d+)\]\{([A-Za-z_][A-Za-z0-9_]*(?:,[A-Za-z_][A-Za-z0-9_]*)*)\}:\s*$/) {
         if (defined $current) {
-          my @attachment_names = split /,/, $2;
-          ($attachment_rows, $attachment_fields) = ($1, scalar @attachment_names);
+          @attachment_fields = split /,/, $2;
+          $current->{attachments} = [];
+          $attachment_rows = $1;
           undef $attachment_rows if !$attachment_rows;
         } else { $malformed++; }
         next;
       }
       if ($line =~ /^      (.*)$/ && defined($attachment_rows)) {
         my @values = csv_values($1);
-        $malformed++ if @values != $attachment_fields;
+        if (@values == @attachment_fields) {
+          my %attachment;
+          $attachment{$attachment_fields[$_]} = $values[$_] for 0 .. $#attachment_fields;
+          push @{$current->{attachments}}, \%attachment;
+        } else {
+          $malformed++;
+        }
         $attachment_rows--;
         if (!$attachment_rows) {
           undef $attachment_rows;
-          undef $attachment_fields;
+          @attachment_fields = ();
         }
+        next;
+      }
+      if ($line =~ /^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/) {
+        if (defined $current) {
+          $current->{$1} = unquote($2);
+        } else { $malformed++; }
         next;
       }
       if ($line =~ /^\s*$/) { next; }
@@ -634,6 +659,7 @@ prompt_rows_json() {  # <result-file>
       last if $line =~ /^\S/;
     }
     $malformed++ if defined($attachment_rows) && $attachment_rows;
+    $malformed++ if defined($target_lines) && !@$target_lines;
     push @rows, $current if defined $current;
     close $fh;
     print encode_json({declared => $header ? 0 + $declared : 0,
@@ -790,6 +816,24 @@ cmd_read() {
       return if !@lines || (@lines == 1 && $lines[0] eq "");
       print "| $_\n" for @lines;
     }
+    sub emit_prompt_metadata {
+      my ($prompt) = @_;
+      if (ref($prompt->{target}) eq "ARRAY" && @{$prompt->{target}}) {
+        print "target:\n";
+        emit_body(join("\n", @{$prompt->{target}}));
+      }
+      if (ref($prompt->{attachments}) eq "ARRAY" && @{$prompt->{attachments}}) {
+        print "attachment_count: ", scalar(@{$prompt->{attachments}}), "\n";
+        for my $attachment_index (0 .. $#{$prompt->{attachments}}) {
+          my $attachment = $prompt->{attachments}[$attachment_index];
+          print "ATTACHMENT ", ($attachment_index + 1), " of ", scalar(@{$prompt->{attachments}}), "\n";
+          for my $key (sort keys %$attachment) {
+            print "attachment_$key:\n";
+            emit_body($attachment->{$key});
+          }
+        }
+      }
+    }
     if (@messages) {
       my $message_label = $session_ended =~ /^(?:true|True|TRUE)$/
         ? "SESSION-ENDING MESSAGE" : "CAPTAIN MESSAGE";
@@ -800,6 +844,7 @@ cmd_read() {
           ? $messages[$i]{prompt}
           : (defined $messages[$i]{text} ? $messages[$i]{text} : "");
         emit_body($body);
+        emit_prompt_metadata($messages[$i]);
       }
       print "END $message_label\n";
     } else {
@@ -836,6 +881,7 @@ cmd_read() {
           print "prompt:\n";
           emit_body($comment);
         }
+        emit_prompt_metadata($f);
       }
       print "END ANNOTATIONS\n";
     } else {
