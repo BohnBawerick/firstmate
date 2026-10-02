@@ -97,8 +97,16 @@ run_spawn() {
     FM_FAKE_LAUNCH_LOG="$launchlog" FM_FAKE_PI_VERSION="${FM_TEST_PI_VERSION:-0.84.0}" \
     FM_FAKE_CURSOR_MODELS="${FM_TEST_CURSOR_MODELS:-}" \
     FM_FAKE_CURSOR_LIST_STATUS="${FM_TEST_CURSOR_LIST_STATUS:-0}" \
+    CODEX_HOME="${FM_TEST_CODEX_HOME:-$home/user-home/.codex}" \
     GROK_HOME="$home/grok-home" \
     fm_test_run_spawn "$home" "$wt" "$fakebin" "$@"
+}
+
+seed_codex_catalog() {
+  local home=$1 contents=$2 codex_home
+  codex_home="$home/user-home/.codex"
+  mkdir -p "$codex_home"
+  printf '%s\n' "$contents" > "$codex_home/models_cache.json"
 }
 
 # Ship spawns carry an explicit delivery contract (AGENTS.md section 7); these
@@ -428,15 +436,17 @@ test_codex_threads_model_and_max_effort() {
   id=profile-codex-max-z4
   rec=$(make_spawn_case profile-codex-max codex "$id")
   read_case_record "$rec"
+  seed_codex_catalog "$HOME_DIR" \
+    '{"models":[{"slug":"gpt-6-astra","supported_reasoning_levels":[{"effort":"max"}]}]}'
 
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model gpt-5.6-luna --effort max)
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model gpt-6-astra --effort max)
   status=$?
-  expect_code 0 "$status" "codex Luna spawn with max effort should succeed"
-  assert_meta_profile "$HOME_DIR/state/$id.meta" codex gpt-5.6-luna max
+  expect_code 0 "$status" "codex Astra spawn with max effort should succeed"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" codex gpt-6-astra max
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "codex --model 'gpt-5.6-luna' -c 'model_reasoning_effort=\"max\"' --dangerously-bypass-approvals-and-sandbox" \
-    "codex launch did not thread Luna's max reasoning effort config"
-  pass "codex Luna receives --model and model_reasoning_effort max profile flags"
+  assert_contains "$launch" "codex --model 'gpt-6-astra' -c 'model_reasoning_effort=\"max\"' --dangerously-bypass-approvals-and-sandbox" \
+    "codex launch did not thread Astra's max reasoning effort config"
+  pass "codex Astra receives --model and model_reasoning_effort max profile flags"
 }
 
 test_codex_omits_max_effort_for_unsupported_model() {
@@ -444,6 +454,8 @@ test_codex_omits_max_effort_for_unsupported_model() {
   id=profile-codex-max-unsupported-z4b
   rec=$(make_spawn_case profile-codex-max-unsupported codex "$id")
   read_case_record "$rec"
+  seed_codex_catalog "$HOME_DIR" \
+    '{"models":[{"slug":"gpt-5","supported_reasoning_levels":[{"effort":"high"}]}]}'
 
   out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model gpt-5 --effort max)
   status=$?

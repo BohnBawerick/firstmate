@@ -3173,6 +3173,27 @@ pass "Lavish table and list forms preserve Unicode comments, answers, and reconc
 
 cat > "$READ" <<'EOF'
 session:
+  status: feedback
+prompts[1]:
+  - uid: "el-a"
+    prompt "captain says stop"
+    selector: "section#comment"
+    tag: note
+    text: "Element text"
+EOF
+read_status=0
+out=$(read_out 2>&1) || read_status=$?
+[ "$read_status" -ne 0 ] || fail "read certified a malformed list-form capture as complete"
+assert_contains "$out" "presented_items: 1" \
+  "a malformed list-form field hid the rest of its item"
+assert_contains "$out" "malformed_items: 1" \
+  "a malformed list-form field was not reported"
+assert_contains "$out" "complete: no" \
+  "a malformed list-form field was certified as complete"
+pass "read never certifies malformed list-form fields as complete"
+
+cat > "$READ" <<'EOF'
+session:
   file: /review.html
   status: feedback
   session_ended: true

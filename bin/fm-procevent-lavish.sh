@@ -561,7 +561,7 @@ prompt_rows_json() {  # <result-file>
       }
       return @values;
     }
-    my ($current, $line);
+    my ($current, $line, $attachment_rows, $attachment_fields);
     while (defined($line = <$fh>)) {
       if (!$header) {
         if ($line =~ /^(?:prompts|feedback)\[(\d+)\]\{([^}]*)\}:\s*$/) {
@@ -592,6 +592,11 @@ prompt_rows_json() {  # <result-file>
         push @rows, \%row;
         next;
       }
+      if (defined($attachment_rows) && $line !~ /^      /) {
+        $malformed++ if $attachment_rows;
+        undef $attachment_rows;
+        undef $attachment_fields;
+      }
       if ($line =~ /^  -\s+(.+)$/) {
         push @rows, $current if defined $current;
         $current = {};
@@ -601,11 +606,34 @@ prompt_rows_json() {  # <result-file>
         next;
       }
       if ($line =~ /^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/) {
-        $current->{$1} = unquote($2) if defined $current;
+        if (defined $current) {
+          $current->{$1} = unquote($2);
+        } else { $malformed++; }
         next;
       }
+      if ($line =~ /^    attachments\[(\d+)\]\{([A-Za-z_][A-Za-z0-9_]*(?:,[A-Za-z_][A-Za-z0-9_]*)*)\}:\s*$/) {
+        if (defined $current) {
+          my @attachment_names = split /,/, $2;
+          ($attachment_rows, $attachment_fields) = ($1, scalar @attachment_names);
+          undef $attachment_rows if !$attachment_rows;
+        } else { $malformed++; }
+        next;
+      }
+      if ($line =~ /^      (.*)$/ && defined($attachment_rows)) {
+        my @values = csv_values($1);
+        $malformed++ if @values != $attachment_fields;
+        $attachment_rows--;
+        if (!$attachment_rows) {
+          undef $attachment_rows;
+          undef $attachment_fields;
+        }
+        next;
+      }
+      if ($line =~ /^\s*$/) { next; }
+      if ($line =~ /^\s/) { $malformed++; next; }
       last if $line =~ /^\S/;
     }
+    $malformed++ if defined($attachment_rows) && $attachment_rows;
     push @rows, $current if defined $current;
     close $fh;
     print encode_json({declared => $header ? 0 + $declared : 0,
