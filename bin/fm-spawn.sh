@@ -2360,8 +2360,8 @@ effort_flag_for_harness() {
     esac
     ;;
   codex)
-    # Codex exposes model_reasoning_effort only for levels advertised by the
-    # selected model's installed catalog entry.
+    # Codex uses model_reasoning_effort for the verified shared levels.
+    # Max additionally requires support in the selected model's catalog entry.
     case "$effort" in
     low | medium | high | xhigh) printf -- '-c %s ' "$(shell_quote "model_reasoning_effort=\"$effort\"")" ;;
     max)
