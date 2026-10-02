@@ -378,6 +378,26 @@ test_sweep_respawns_confirmed_dead_secondmate() {
   pass "sweep: a confirmed-dead secondmate endpoint is killed and respawned"
 }
 
+test_sweep_relays_codex_max_downgrade_warning() {
+  local w fb tmuxfb log out warning count
+  w=$(new_world sweep-codex-max-warning)
+  printf '%s\n' 'codex gpt-6-astra max' > "$w/home/config/secondmate-harness"
+  add_sm_home "$w" sm1 firstmate:fm-sm1 codex
+  fb=$(make_toolchain "$w"); tmuxfb=$(make_liveness_tmux "$w")
+  log="$w/calls.log"; : > "$log"
+  warning='warning: dropped codex effort max for model gpt-6-astra; catalog does not advertise it'
+
+  out=$(run_bootstrap "$tmuxfb:$fb" "$w/home" missing "$log" CODEX_HOME="$w/missing-codex-home")
+
+  assert_contains "$out" "$warning" \
+    "a successful recovery should expose the Codex max downgrade warning"
+  count=$(printf '%s\n' "$out" | grep -Fxc "$warning")
+  [ "$count" -eq 1 ] || fail "the Codex max downgrade warning should appear once, got $count"
+  assert_contains "$(cat "$log")" "new-window" \
+    "the warning relay must not prevent the secondmate recovery"
+  pass "sweep: a successful Codex max downgrade warns once"
+}
+
 test_sweep_leaves_alive_secondmate_untouched() {
   local w fb tmuxfb log out
   w=$(new_world sweep-alive)
@@ -553,6 +573,7 @@ test_tmux_agent_state_rejects_malformed_targets_before_probe
 test_herdr_agent_state_preserves_husk_classifier
 test_agent_state_dispatcher_and_compatibility
 test_sweep_respawns_confirmed_dead_secondmate
+test_sweep_relays_codex_max_downgrade_warning
 test_sweep_leaves_alive_secondmate_untouched
 test_sweep_respawns_authoritatively_missing_pi_secondmate
 test_sweep_respawns_authoritatively_missing_pi_signed_secondmate

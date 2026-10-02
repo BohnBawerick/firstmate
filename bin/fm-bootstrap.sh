@@ -802,6 +802,7 @@ secondmate_liveness_one() {  # <meta> <id>
       dead|missing)
         cause="remote endpoint $agent_state on its configured host"
         if out=$(FM_SPAWN_NO_GUARD=1 "$FM_ROOT/bin/fm-spawn.sh" "$id" --secondmate 2>&1); then
+          fm_codex_catalog_relay_dropped_effort_warnings "$out"
           secondmate_note_respawned "$id"
           report_relaunch "$id" "$cause" "host=$remote_host"
         else
@@ -839,6 +840,7 @@ secondmate_liveness_one() {  # <meta> <id>
         cause="recorded endpoint confidently missing"
       fi
       if out=$(FM_SPAWN_NO_GUARD=1 "$FM_ROOT/bin/fm-spawn.sh" "$id" --secondmate 2>&1); then
+        fm_codex_catalog_relay_dropped_effort_warnings "$out"
         secondmate_note_respawned "$id"
         report_relaunch "$id" "$cause" "backend=$backend"
       else

@@ -965,6 +965,7 @@ spawn_remote_secondmate() {
     fi
     return "$rc"
   fi
+  fm_codex_catalog_relay_dropped_effort_warnings "$out"
   remote_backend=$(printf '%s\n' "$out" | sed -n 's/^backend=//p' | tail -1)
   remote_target=$(printf '%s\n' "$out" | sed -n 's/^target=//p' | tail -1)
   remote_harness=$(printf '%s\n' "$out" | sed -n 's/^harness=//p' | tail -1)

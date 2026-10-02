@@ -1342,6 +1342,37 @@ test_remote_launch_does_not_retarget_host_copy() {
   pass "R9 a remote launch leaves the home on the parent's commit while an ordinary spawn follows its own checkout"
 }
 
+test_remote_launch_relays_codex_max_downgrade_warning() {
+  local w c1 herdrbin fakebin launch_out warning count
+  w=$(new_remote_world remote-launch-codex-max-warning)
+  c1=$(head_of "$w/main")
+  add_remote_home "$w" launched "$w/forge.git" "$c1"
+  mkdir -p "$w/launched/data/.parent-route/launched"
+  printf '%s\n' '# brief' > "$w/launched/data/.parent-route/launched/brief.md"
+
+  fakebin=$(fm_fakebin "$w/launchfake")
+  herdrbin="$w/herdrhost"
+  mkdir -p "$herdrbin/bin"
+  install_remote_herdr_fixture "$herdrbin" "$w/herdr.state" "$w/herdr.log" \
+    "$w/herdr.sendfail" "$w/herdr.sock"
+  cp "$herdrbin/bin/herdr" "$fakebin/herdr"
+  fm_fake_exit0 "$fakebin" gh treehouse tmux node
+  warning='warning: dropped codex effort max for model gpt-6-astra; catalog does not advertise it'
+
+  launch_out=$(PATH="$fakebin:$BASE_PATH" CODEX_HOME="$w/missing-codex-home" \
+    FM_HOME="$w/launched" FM_ROOT_OVERRIDE="$w/coderoot" FM_SPAWN_NO_GUARD=1 \
+    "$ROOT/bin/fm-remote-secondmate-control.sh" launch launched codex gpt-6-astra max herdr 2>&1) \
+    || fail "remote Codex max launch failed: $launch_out"
+
+  assert_contains "$launch_out" "$warning" \
+    "a successful remote launch should expose the Codex max downgrade warning"
+  count=$(printf '%s\n' "$launch_out" | grep -Fxc "$warning")
+  [ "$count" -eq 1 ] || fail "the remote Codex max downgrade warning should appear once, got $count"
+  assert_contains "$launch_out" "schema=fm-remote-secondmate-control.v1" \
+    "the warning relay must preserve the remote launch route"
+  pass "remote launch: a successful Codex max downgrade warns once"
+}
+
 test_ff_updated
 test_ff_current
 test_ff_dirty
@@ -1374,5 +1405,6 @@ test_remote_sync_without_target_follows_host_copy
 test_bootstrap_syncs_remote_home_to_primary_commit
 test_bootstrap_reports_outdated_host_actionably
 test_remote_launch_does_not_retarget_host_copy
+test_remote_launch_relays_codex_max_downgrade_warning
 
 echo "# all fm-secondmate-sync tests passed"

@@ -34,3 +34,14 @@ fm_codex_catalog_warn_dropped_effort() {
   printf 'warning: dropped codex effort %s for model %s; catalog does not advertise it\n' \
     "$1" "${2:-default}" >&2
 }
+
+fm_codex_catalog_relay_dropped_effort_warnings() {
+  local output=$1 line
+  while IFS= read -r line; do
+    case "$line" in
+      warning:\ dropped\ codex\ effort\ max\ for\ model\ *\;\ catalog\ does\ not\ advertise\ it)
+        printf '%s\n' "$line" >&2
+        ;;
+    esac
+  done <<< "$output"
+}
