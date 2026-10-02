@@ -22,10 +22,10 @@
 #            own labeled field, printed first and distinct from per-element
 #            annotations; it is labeled SESSION-ENDING MESSAGE only when the
 #            session ended. It accepts both field-declared CSV tables and
-#            YAML-like item lists, including list items with nested attachment
-#            metadata. Declared and presented item counts, plus a completeness
-#            verdict, follow before all annotations so a partial read is
-#            obvious. A count mismatch or malformed row prints `complete: no`
+#            YAML-like item lists, including list items with nested target and
+#            attachment metadata. Declared and presented item counts, plus a
+#            completeness verdict, follow before all annotations so a partial
+#            read is obvious. A count mismatch or malformed row prints `complete: no`
 #            and exits nonzero. Each annotation retains its element uid,
 #            selector, tag, and text. A non-choice freeform comment (`prompt`)
 #            is printed as its own field even when a selector is also present
