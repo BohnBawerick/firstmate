@@ -1,0 +1,11 @@
+LAB session=fm-lab-codex-max-3301897-6067 herdr=herdr 0.9.1 codex=codex-cli 0.159.2
+SPAWN case=supported catalog=installed warning_count=0 max_arg_count=1 pane=w1:p2
+SPAWN_OUTPUT spawned codex-supported-3301885 harness=codex kind=ship mode=local-only yolo=off window=fm-lab-codex-max-3301897-6067:w1:p2 worktree=/home/bohn/.treehouse/project-68aab2/1/project 
+LAUNCH_CONTRACT codex --model 'gpt-6-astra' -c 'model_reasoning_effort="max"' --dangerously-bypass-approvals-and-sandbox --disable hooks -c "notify=[\"bash\",\"-c\",\"touch '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3Z7F248HP57A4ED3K1NM0R1/.live-codex-max.CUuLu1/home/state/codex-supported-3301885.turn-ended'\"]" "$('/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3Z7F248HP57A4ED3K1NM0R1/bin/fm-operational-input.sh' encode launch-brief < '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M3Z7F248HP57A4ED3K1NM0R1/.live-codex-max.CUuLu1/home/data/codex-supported-3301885/launch-brief.md')"
+RELAUNCH max_arg_count=1 output=relaunched codex-relaunch-3301885 harness=codex from=codex model=gpt-6-astra effort=max backend=herdr endpoint=fm-lab-codex-max-3301897-6067:w2:p2 worktree=/home/bohn/.treehouse/project-68aab2/1/project 
+SPAWN case=missing catalog=missing warning_count=1 max_arg_count=0 pane=w3:p2
+SPAWN case=unreadable catalog=unreadable warning_count=1 max_arg_count=0 pane=w4:p2
+SPAWN case=no-max catalog=no-max warning_count=1 max_arg_count=0 pane=w5:p2
+SPAWN case=malformed catalog=malformed warning_count=1 max_arg_count=0 pane=w6:p2
+SPAWN case=alias-only catalog=alias-only warning_count=1 max_arg_count=0 pane=w7:p2
+LIVE_PASS: supported spawn and relaunch kept max; every unsupported catalog warned once and omitted max; lab teardown preserved the default session

@@ -1,0 +1,6 @@
+BOOTSTRAP supported_astra_max=accepted
+BOOTSTRAP unsupported_codex_max=rejected
+BOOTSTRAP codex_ultra=rejected
+DISPATCH unsupported_codex_max=rejected_before_resolution
+DISPATCH malformed_trailing_catalog=rejected_atomically
+VALIDATOR_PASS: bootstrap and dispatch validation follow complete catalog slug support, and Codex ultra stays rejected
