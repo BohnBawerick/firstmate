@@ -2097,12 +2097,14 @@ ${context.command}
   };
 
   let stockOutcomesPreviewLines: number | null | undefined;
-  const getStockOutcomesPreviewLines = (): number | undefined => {
-    if (stockOutcomesPreviewLines !== undefined) return stockOutcomesPreviewLines ?? undefined;
+  let stockOutcomesCallShowsArgs: boolean | undefined;
+  const probeStockOutcomesRendering = (): void => {
+    if (stockOutcomesPreviewLines !== undefined && stockOutcomesCallShowsArgs !== undefined) return;
     const probeTokens = Array.from(
       { length: 64 },
       (_, index) => `FM_OUTCOMES_PREVIEW_PROBE_${String(index).padStart(2, "0")}`,
     );
+    const callArgProbe = "FM_OUTCOMES_CALL_ARGS_PROBE";
     try {
       const probeDefinition: ToolDefinition = {
         name: "fm_outcomes_preview_probe",
@@ -2114,7 +2116,7 @@ ${context.command}
       const probe = new ToolExecutionComponent(
         probeDefinition.name,
         "fm-outcomes-preview-probe",
-        {},
+        { probe: callArgProbe },
         { showImages: false },
         probeDefinition,
         { requestRender() {} } as ConstructorParameters<typeof ToolExecutionComponent>[5],
@@ -2127,9 +2129,14 @@ ${context.command}
       const rendered = probe.render(4096).join("\n");
       const visibleLines = probeTokens.filter((token) => rendered.includes(token)).length;
       stockOutcomesPreviewLines = visibleLines > 0 && visibleLines < probeTokens.length ? visibleLines : null;
+      stockOutcomesCallShowsArgs = rendered.includes(callArgProbe);
     } catch {
       stockOutcomesPreviewLines = null;
+      stockOutcomesCallShowsArgs = false;
     }
+  };
+  const getStockOutcomesPreviewLines = (): number | undefined => {
+    probeStockOutcomesRendering();
     return stockOutcomesPreviewLines ?? undefined;
   };
 
@@ -2167,11 +2174,19 @@ ${context.command}
       recent: Type.Optional(Type.Number({ description: "How many most-recent outcomes to read (default 20)" })),
     }),
     renderShell: "self",
-    renderCall: (_args, theme, context) => {
+    renderCall: (args, theme, context) => {
       if (calmPresentation.stockExportRendering) throw new Error("Use Pi stock export rendering");
       if (calmHides("assistant-tool-call")) return new Container();
       const shellState = context.state as OutcomesToolShellState;
-      shellState.call = new Text(theme.fg("toolTitle", theme.bold("fm_branch_outcomes")), 0, 0);
+      probeStockOutcomesRendering();
+      let call = theme.fg("toolTitle", theme.bold("fm_branch_outcomes"));
+      const recent = (args as { recent?: unknown }).recent;
+      if (stockOutcomesCallShowsArgs && recent !== undefined) {
+        call += context.expanded
+          ? `\n${theme.fg("muted", `  recent: ${JSON.stringify(recent)}`)}`
+          : ` ${theme.fg("muted", `recent=${JSON.stringify(recent)}`)}`;
+      }
+      shellState.call = new Text(call, 0, 0);
       return refreshOutcomesToolShell(shellState, theme, context);
     },
     renderResult: (result, options, theme, context) => {
