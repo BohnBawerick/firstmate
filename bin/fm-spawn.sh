@@ -475,6 +475,8 @@ PROJECTS="${FM_PROJECTS_OVERRIDE:-$FM_HOME/projects}"
 CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 # shellcheck source=bin/fm-config-inherit-lib.sh
 . "$SCRIPT_DIR/fm-config-inherit-lib.sh"
+# shellcheck source=bin/fm-codex-catalog-lib.sh
+. "$SCRIPT_DIR/fm-codex-catalog-lib.sh"
 if ! LAUNCH_ENV_ENABLED=$(fm_config_source_present "$CONFIG/launch-env-allowlist"); then
   exit 1
 fi
@@ -2338,18 +2340,6 @@ model_flag_for_harness() {
   esac
 }
 
-codex_catalog_supports_effort() {
-  local model=$1 effort=$2 catalog="${CODEX_HOME:-$HOME/.codex}/models_cache.json"
-  [ -n "$model" ] && [ "$model" != default ] || return 1
-  command -v jq >/dev/null 2>&1 || return 1
-  jq -e --arg model "$model" --arg effort "$effort" '
-    any(.models[]?;
-      ((.slug? // .id? // .model?) == $model)
-      and any(.supported_reasoning_levels[]?; .effort? == $effort)
-    )
-  ' "$catalog" >/dev/null 2>&1
-}
-
 effort_flag_for_harness() {
   local harness=$1 effort=$2 model=${3:-}
   [ -n "$effort" ] && [ "$effort" != default ] || return 0
@@ -2365,11 +2355,10 @@ effort_flag_for_harness() {
     case "$effort" in
     low | medium | high | xhigh) printf -- '-c %s ' "$(shell_quote "model_reasoning_effort=\"$effort\"")" ;;
     max)
-      if codex_catalog_supports_effort "$model" "$effort"; then
+      if fm_codex_catalog_supports_effort "$model" "$effort"; then
         printf -- '-c %s ' "$(shell_quote 'model_reasoning_effort="max"')"
       else
-        printf 'warning: dropped codex effort %s for model %s; catalog does not advertise it\n' \
-          "$effort" "${model:-default}" >&2
+        fm_codex_catalog_warn_dropped_effort "$effort" "$model"
       fi
       ;;
     esac
