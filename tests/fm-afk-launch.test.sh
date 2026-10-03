@@ -437,12 +437,12 @@ unit_mode_refresh_preserves_quiet() {
 # A live quiet daemon must follow the record when /afk turns it into away;
 # a refresh before that entry must not silently turn quiet into away.
 unit_mode_quiet_daemon_to_away() {
-  local command st sleep_pid lock mode rc
-  for command in start start-native; do
+  local launch_command st sleep_pid lock mode rc
+  for launch_command in start start-native; do
     st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-quiet-to-away.XXXXXX")
     mkdir -p "$st/state"
     FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" FM_AFK_MODE=quiet "$LAUNCH" enter >/dev/null 2>&1 \
-      || fail "$command: could not enter quiet mode"
+      || fail "$launch_command: could not enter quiet mode"
     printf 'quiet\n%s\n' "$(date '+%s')" > "$st/state/.afk"
     sleep 600 &
     # shellcheck disable=SC2031 # The background PID is captured immediately in this shell.
@@ -453,29 +453,29 @@ unit_mode_quiet_daemon_to_away() {
     ( . "$ROOT/bin/fm-wake-lib.sh"; fm_pid_identity "$sleep_pid" > "$lock/pid-identity" 2>/dev/null ) || true
 
     FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" FM_SUPERVISOR_TARGET=unused \
-      FM_SUPERVISOR_BACKEND=tmux "$LAUNCH" "$command" >/dev/null 2>&1
+      FM_SUPERVISOR_BACKEND=tmux "$LAUNCH" "$launch_command" >/dev/null 2>&1
     rc=$?
     mode=$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$CONTRACT" mode)
     if [ "$rc" -eq 0 ] && [ "$mode" = quiet ] && [ "$(head -n 1 "$st/state/.afk")" = quiet ]; then
-      pass "$command: an unset-mode quiet refresh preserves the quiet record and flag"
+      pass "$launch_command: an unset-mode quiet refresh preserves the quiet record and flag"
     else
-      fail "$command: quiet refresh changed the record or flag (rc=$rc, record=$mode)"
+      fail "$launch_command: quiet refresh changed the record or flag (rc=$rc, record=$mode)"
     fi
 
     FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" enter >/dev/null 2>&1
     rc=$?
     mode=$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$CONTRACT" mode)
     if [ "$rc" -ne 0 ] || [ "$mode" != away ]; then
-      fail "$command: /afk did not convert the live quiet record to away (rc=$rc, record=$mode)"
+      fail "$launch_command: /afk did not convert the live quiet record to away (rc=$rc, record=$mode)"
     fi
     FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" FM_SUPERVISOR_TARGET=unused \
-      FM_SUPERVISOR_BACKEND=tmux "$LAUNCH" "$command" >/dev/null 2>&1
+      FM_SUPERVISOR_BACKEND=tmux "$LAUNCH" "$launch_command" >/dev/null 2>&1
     rc=$?
     if [ "$rc" -eq 0 ] && [ "$(head -n 1 "$st/state/.afk")" = away ] \
       && [ "$(FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$CONTRACT" mode)" = away ]; then
-      pass "$command: /afk over a running quiet daemon refreshes the flag to away"
+      pass "$launch_command: /afk over a running quiet daemon refreshes the flag to away"
     else
-      fail "$command: /afk record and daemon flag disagree after refresh (rc=$rc)"
+      fail "$launch_command: /afk record and daemon flag disagree after refresh (rc=$rc)"
     fi
     kill "$sleep_pid" 2>/dev/null || true
     wait "$sleep_pid" 2>/dev/null || true
