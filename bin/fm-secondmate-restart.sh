@@ -87,6 +87,8 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 
 # shellcheck source=bin/fm-secondmate-restart-lib.sh
 . "$SCRIPT_DIR/fm-secondmate-restart-lib.sh"
+# shellcheck source=bin/fm-codex-catalog-lib.sh
+. "$SCRIPT_DIR/fm-codex-catalog-lib.sh"
 # shellcheck source=bin/fm-secondmate-nudge-lib.sh
 . "$SCRIPT_DIR/fm-secondmate-nudge-lib.sh"
 # shellcheck source=bin/fm-pending-reply-lib.sh
@@ -209,6 +211,7 @@ restart_mate() {  # <array-index>
     restart_rc=$?
   fi
   if [ "$restart_rc" -eq 0 ]; then
+    fm_codex_catalog_relay_dropped_effort_warnings "$restart_out"
     ran_on=$(printf '%s\n' "$restart_out" | sed -n 's/^relaunched .* harness=\([^ ]*\).*/\1/p' | tail -1)
     [ -n "$ran_on" ] || ran_on=${HARNESS[i]}
     if [ "${PLACEMENT[i]}" = remote ]; then

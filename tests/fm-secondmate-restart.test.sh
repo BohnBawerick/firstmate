@@ -521,6 +521,9 @@ case "${rargs[1]:-}" in
         /bin/sleep 2
         : > "$FM_FAKE_DIR/remote-relaunch-end"
         ;;
+      warning)
+        printf 'warning: dropped codex effort max for model gpt-6-astra; catalog does not advertise it\n'
+        ;;
     esac
     printf 'relaunched %s\n' "${rargs[2]}"
     ;;
@@ -592,6 +595,36 @@ test_local_restart_uses_the_home_pin_and_reports_what_ran() {
   [ "$(grep '^harness=' "$dir/home/state/sm1.meta" | tail -1)" = "harness=codex" ] \
     || fail "the durable record did not follow the replacement onto the pinned runtime"
   pass "T8 a local restart re-resolves this home's pin and reports the runtime that came up"
+}
+
+test_codex_max_warning_survives_local_and_remote_restarts() {
+  local dir out rc warning count
+  warning='warning: dropped codex effort max for model gpt-6-astra; catalog does not advertise it'
+
+  dir=$(new_case codex-warning-local)
+  add_local_mate "$dir" sm1
+  arm_answer "$dir" sm1
+  printf 'codex gpt-6-astra max\n' > "$dir/home/config/secondmate-harness"
+  printf 'codex' > "$dir/fake/becomes"
+  out=$(CODEX_HOME="$dir/missing-codex-home" run_restart "$dir" sm1); rc=$?
+
+  expect_code 0 "$rc" "a local Codex restart with a missing catalog should succeed: $out"
+  assert_contains "$out" "$warning" "the local restart swallowed the Codex max downgrade warning"
+  count=$(printf '%s\n' "$out" | grep -Fxc "$warning")
+  [ "$count" -eq 1 ] || fail "the local restart should relay one Codex max downgrade warning, got $count"
+
+  dir=$(new_case codex-warning-remote)
+  setup_remote_case "$dir" sm2 warning
+  export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm2.status"
+  printf 'codex gpt-6-astra max\n' > "$dir/home/config/secondmate-harness"
+  out=$(run_restart "$dir" sm2); rc=$?
+  unset FM_FAKE_ANSWER_STATUS
+
+  expect_code 0 "$rc" "a remote Codex restart with a missing catalog should succeed: $out"
+  assert_contains "$out" "$warning" "the remote restart swallowed the Codex max downgrade warning"
+  count=$(printf '%s\n' "$out" | grep -Fxc "$warning")
+  [ "$count" -eq 1 ] || fail "the remote restart should relay one Codex max downgrade warning, got $count"
+  pass "Codex max downgrade warnings survive local and remote restart capture"
 }
 
 test_native_ultra_restart_keeps_local_and_remote_profiles() {
@@ -982,6 +1015,7 @@ test_unprovable_runtime_falls_back
 test_unknown_mate_is_accounted_for
 test_refused_restart_falls_back_without_claiming_a_reload
 test_local_restart_uses_the_home_pin_and_reports_what_ran
+test_codex_max_warning_survives_local_and_remote_restarts
 test_native_ultra_restart_keeps_local_and_remote_profiles
 test_remote_mate_restarts_over_the_transport_hop
 test_unreachable_host_is_reported_unknown
