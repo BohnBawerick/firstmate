@@ -1,0 +1,34 @@
+Live target
+  URL: https://github.com/BohnBawerick/firstmate/pull/20
+  observed head: 72dbec0bbadb19d00052ec70f74f4a7bbc9f98fb
+  healthy baseline attempts: 1
+
+Scenario: slow healthy check-runs read exceeds the five-second cap
+  command: real bin/fm-contributions.sh poll with a gh wrapper that sleeps 6 seconds only for check-runs, then would exec the real gh
+  wrapper: slow wrapper: sleep 6 before real gh for repos/BohnBawerick/firstmate/commits/72dbec0bbadb19d00052ec70f74f4a7bbc9f98fb/check-runs?filter=all&per_page=100
+  elapsed: 7s
+  poll stdout: <empty>
+  prior record sha256: 723291ae33235609ecec2f3d2a15ec3d80c2f1fb4b033102945813e16e6b56cb
+  final record sha256: 723291ae33235609ecec2f3d2a15ec3d80c2f1fb4b033102945813e16e6b56cb
+  record unchanged: yes
+  unavailable line printed: no
+  wake queue rows: 0
+
+Scenario: genuine non-timeout check-runs failure
+  command: real bin/fm-contributions.sh poll with a gh wrapper that exits 1 only for check-runs
+  wrapper: failure wrapper: exit 1 for repos/BohnBawerick/firstmate/commits/72dbec0bbadb19d00052ec70f74f4a7bbc9f98fb/check-runs?filter=all&per_page=100
+  poll stdout: contributions: observation unavailable for https://github.com/BohnBawerick/firstmate/pull/20
+  persisted result: {"checked_at":"2026-10-03T12:40:00Z","error":"forge observation unavailable or changed during read","head":"72dbec0bbadb19d00052ec70f74f4a7bbc9f98fb"}
+
+Scenario: shasum absent, sha256sum available
+  command: real bin/fm-contributions.sh poll on a pruned PATH, plus fm_pending_reply_new_id on a SHA-256-only PATH
+  shasum reachable: no
+  sha256sum: /usr/bin/sha256sum
+  real poll attempts: 1
+  contribution wake key: 14d86f6d00cc132bf750047a2333808fedf161ced5bad16ae6d88a6a13ea07fd
+  pending-reply id: c96ecfe5f0d90650
+
+Scenario: no SHA-256 hasher available
+  command: fm_pending_reply_new_id with openssl, shasum, and sha256sum absent from PATH
+  exit status: 1
+  stderr: fm-pending-reply: no SHA-256 hasher available (need shasum or sha256sum)

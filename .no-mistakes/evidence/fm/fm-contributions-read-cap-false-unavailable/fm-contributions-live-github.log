@@ -1,0 +1,14 @@
+attempt=1 result=observed elapsed=6s output=<silent> record={"checked_at":"2026-10-03T12:17:53Z","error":null,"head":"72dbec0bbadb19d00052ec70f74f4a7bbc9f98fb","state":"open","check_count":19}
+attempt=2 result=observed elapsed=9s output=<silent> record={"checked_at":"2026-10-03T12:17:59Z","error":null,"head":"72dbec0bbadb19d00052ec70f74f4a7bbc9f98fb","state":"open","check_count":19}
+attempt=3 result=observed elapsed=5s output=<silent> record={"checked_at":"2026-10-03T12:18:08Z","error":null,"head":"72dbec0bbadb19d00052ec70f74f4a7bbc9f98fb","state":"open","check_count":19}
+attempt=4 result=observed elapsed=5s output=<silent> record={"checked_at":"2026-10-03T12:18:13Z","error":null,"head":"72dbec0bbadb19d00052ec70f74f4a7bbc9f98fb","state":"open","check_count":19}
+summary=PASS successful_observations=4 false_unavailable=0
+
+focused_live_scenarios_command=bash .tmp-live-contributions-validation.sh
+focused_live_scenarios_target=https://github.com/BohnBawerick/firstmate/pull/20
+focused_live_scenarios_head=72dbec0bbadb19d00052ec70f74f4a7bbc9f98fb
+scenario=slow-read baseline_attempts=1 rc=0 output=<empty> prior_sha=fb6607ed43fdabb018ea658b9adadaaadd1e62d1662fdc266ce9e2b86298f7cd after_sha=fb6607ed43fdabb018ea658b9adadaaadd1e62d1662fdc266ce9e2b86298f7cd wake_bytes=0 result=pass
+scenario=genuine-error baseline_attempts=1 rc=0 output=contributions:\ observation\ unavailable\ for\ https://github.com/BohnBawerick/firstmate/pull/20 record_error=forge\ observation\ unavailable\ or\ changed\ during\ read result=pass
+scenario=sha256sum-fallback baseline_attempts=1 rc=0 shasum=absent sha256sum=present wake_key=contribution-68779df1a191ca6f27c946590e3b72c5b08a9ba1e9ca800c5e91362d25b09cc4 pending_reply_id=a88237e40b2cedcb result=pass
+scenario=no-hasher live_poll_baseline_attempts=1 pending_reply_rc=1 error=fm-pending-reply:\ no\ SHA-256\ hasher\ available\ \(need\ shasum\ or\ sha256sum\) result=pass
+focused_live_scenarios_summary=PASS
