@@ -30,6 +30,14 @@ FAKEBIN=$(fm_fakebin "$TMP_ROOT/fakebin")
 ln -s /bin/bash "$FAKEBIN/claude"
 FAKE_CLAUDE="$FAKEBIN/claude"
 
+# Main's own turn and the hook-owned host belong to one Claude session. The
+# fleet-mutation gate (fm_require_session_lock, bin/fm-session-lock-lib.sh)
+# refuses a drain from any other live session, so the host records the trusted
+# session id beside its lock and every main-side drain declares that same
+# session, each naming its own Claude-shaped process as CLAUDE_PID.
+HOST_TEST_SESSION=fm-supervision-host-test
+MAIN_DRAIN='export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" 2>&1'
+
 # The stub engine. It records its environment and arguments, then acts like a
 # branch turn through the real scripts according to $FM_HOME/stub-mode:
 #   handle      drain, claim the task's lease, report, acknowledge, release
@@ -244,6 +252,8 @@ start_host() {  # <home> [park options...]
   FM_HOME="$home" FM_CREW_STATE_BIN="$home/fakebin/fm-crew-state.sh" PATH="$home/fakebin:$PATH" \
     MIRROR_ROOT="$MIRROR_ROOT" "$FAKE_CLAUDE" -c '
       printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+      printf "%s\n" fm-supervision-host-test > "$FM_HOME/state/.lock-session"
+      export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID=fm-supervision-host-test
       printf "%s\n" "$$" >> "$FM_HOME/claude-pids"
       rm -f "$FM_HOME/host.rc"
       for seed in "$FM_HOME"/mirror-seed.*; do
@@ -458,7 +468,7 @@ test_branch_outcomes_only_on_a_host_home_off_pi() {
   ln -sf /bin/bash "$fakes/codex"
 
   : > "$home/config/supervision-host-off"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_not_contains "$drained" "BRANCH OUTCOMES" "a Claude home opted out by config/supervision-host-off must not present branch outcomes"
   assert_absent "$home/state/.branch-outcomes-cursor" "a Claude home opted out by config/supervision-host-off must keep the store's read cursor untouched"
 
@@ -470,7 +480,7 @@ test_branch_outcomes_only_on_a_host_home_off_pi() {
   assert_not_contains "$drained" "BRANCH OUTCOMES" "a Pi primary's drain must leave captain outcomes to the branch extension"
   assert_absent "$home/state/.branch-outcomes-cursor" "a Pi primary's drain must not advance the store's read cursor"
 
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "[seq 1, recorded 0m ago] demo: PR ready for review" "a Claude home without config/supervision-host must present the captain outcome"
 
   : > "$home/config/supervision-host"
@@ -496,7 +506,7 @@ test_branch_outcomes_put_captain_first_and_collapse_routine_overflow() {
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append --task demo --verdict captain --summary 'PR ready for review' >/dev/null \
     || fail "fixture: could not record the captain outcome"
 
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "[seq 13, recorded 0m ago] demo: PR ready for review" "the captain outcome must be presented despite the routine backlog"
   assert_contains "$drained" "run bin/fm-branch-outcome.sh mark-processed --through 13" "the captain outcome must carry its acknowledgement"
   [ "$(printf '%s\n' "$drained" | grep -n 'PR ready for review' | cut -d: -f1)" -lt "$(printf '%s\n' "$drained" | grep -n 'routine 12' | cut -d: -f1)" ] \
@@ -508,7 +518,7 @@ test_branch_outcomes_put_captain_first_and_collapse_routine_overflow() {
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" mark-processed --through 13 >/dev/null 2>&1 \
     || fail "main's acknowledgement of the presented captain outcome was refused"
 
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_not_contains "$drained" "BRANCH OUTCOMES" "one drain must clear the routine backlog, and an acknowledged store must present nothing"
   pass "drain: captain outcomes come first, and routine overflow collapses into a count one drain clears"
 }
@@ -529,7 +539,7 @@ test_branch_outcomes_collapse_repeated_captain_outcomes_per_task() {
   done
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append --task beta --verdict captain --summary 'beta ready to merge' >/dev/null \
     || fail "fixture: could not record the beta outcome"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "[seq 3, newest of 3 for this task, recorded 0m ago] alpha: alpha still blocked 3" "repeated outcomes for one task must collapse to its newest"
   assert_not_contains "$drained" "alpha still blocked 1" "an older outcome for the same task must not be repeated"
   assert_contains "$drained" "[seq 4, recorded 0m ago] beta: beta ready to merge" "another task's outcome must keep its own line"
@@ -544,7 +554,7 @@ test_branch_outcomes_collapse_repeated_captain_outcomes_per_task() {
   done
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append --task task-1 --verdict captain --summary 'task-1 changed again' >/dev/null \
     || fail "fixture: could not record the later task-1 outcome"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "BRANCH OUTCOMES: 3 newer captain outcome(s) are held back (byte cap); they follow on the next drain once these are acknowledged" \
     "the section must count every held-back captain row"
   assert_contains "$drained" "[seq 5, recorded 0m ago] task-1: task-1 $pad" "the first task must show its newest outcome the acknowledgement covers"
@@ -552,13 +562,13 @@ test_branch_outcomes_collapse_repeated_captain_outcomes_per_task() {
   assert_not_contains "$drained" "task-7:" "the cap must hold back the rows past the contiguous run"
   assert_contains "$drained" "mark-processed --through 10;" "the acknowledgement must cover exactly the presented run"
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" mark-processed --through 10 >/dev/null 2>&1 || fail "the acknowledgement was refused"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "task-8: task-8" "a held-back task must follow once the shown tasks are acknowledged"
   assert_contains "$drained" "[seq 13, recorded 0m ago] task-1: task-1 changed again" "the held-back row of a shown task must follow once the run is acknowledged"
   assert_not_contains "$drained" "held back" "the rest must fit once the run is acknowledged"
   assert_contains "$drained" "mark-processed --through 13;" "the acknowledgement must cover the rest"
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" mark-processed --through 13 >/dev/null 2>&1 || fail "the acknowledgement was refused"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_not_contains "$drained" "BRANCH OUTCOMES" "an acknowledged situation must not be presented again"
   pass "drain: repeated captain outcomes collapse per task, and the byte cap presents only the run its acknowledgement covers"
 }
@@ -587,11 +597,11 @@ test_branch_outcomes_present_a_long_away_window_once() {
   done
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append --task beta --verdict captain --summary 'beta ready to merge' >/dev/null \
     || fail "fixture: could not record the beta outcome"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_not_contains "$drained" "BRANCH OUTCOMES" "a drain while away must leave the window's outcomes for the return"
   FM_HOME="$home" "$ROOT/bin/fm-afk-contract.sh" archive >/dev/null 2>&1 || fail "fixture: could not archive the away posture"
 
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "[seq 33, newest of 3 for this task, recorded 0m ago] alpha: alpha still needs review 30" "a task's repeated captain outcomes must collapse to its newest"
   [ "$(printf '%s\n' "$drained" | grep -c '] alpha: ')" -eq 1 ] || fail "a task's captain outcomes must take one line: $drained"
   assert_contains "$drained" "[seq 44, recorded 0m ago] beta: beta ready to merge" "another task's captain outcome must keep its own line"
@@ -604,7 +614,7 @@ test_branch_outcomes_present_a_long_away_window_once() {
   [ "$target" = 44 ] || fail "one acknowledgement must cover every captain outcome of the window, got '${target:-none}'"
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" mark-processed --through "$target" >/dev/null 2>&1 || fail "the acknowledgement was refused"
 
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_not_contains "$drained" "BRANCH OUTCOMES" "a second drain must show nothing from the window"
   pass "drain: a long away window costs one short drain, captain outcomes collapsed per task and routine overflow counted, and nothing from it is shown again"
 }
@@ -624,7 +634,7 @@ test_branch_outcomes_budgets_count_bytes() {
     done
     FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append --task wide-cap --verdict captain --summary "$wide" >/dev/null \
       || fail "fixture: could not record the captain outcome"
-    drained=$(LC_ALL=$locale FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+    drained=$(LC_ALL=$locale FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
     assert_contains "$drained" "wide-cap: " "the captain outcome must be presented (locale '$locale')"
     printf '%s\n' "$drained" | LC_ALL=C awk '/^\[seq [0-9]+[^]]*\] wide-/ && length($0) > 599 { bad = 1 } END { exit bad }' \
       || fail "an item exceeded its 599-byte cap (locale '$locale'): $drained"
@@ -655,11 +665,11 @@ test_branch_outcomes_stay_unread_when_a_projection_fails() {
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append --task cap --verdict captain --summary 'needs your merge call' >/dev/null \
     || fail "fixture: could not record the captain outcome"
   rc=0
-  drained=$(PATH="$home/bin:$PATH" FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh") || rc=$?
+  drained=$(PATH="$home/bin:$PATH" FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh") || rc=$?
   [ "$rc" -ne 0 ] || fail "a drain whose projection failed must exit nonzero: $drained"
   assert_contains "$drained" "BRANCH OUTCOMES SKIPPED: the outcome store could not be projected safely" \
     "a failed projection must be reported"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "[seq 1] demo: merged the docs fix" "a routine outcome behind a failed projection must follow on the next drain"
   assert_contains "$drained" "[seq 2, recorded 0m ago] cap: needs your merge call" "a captain outcome behind a failed projection must follow on the next drain"
   pass "drain: branch outcomes stay unread when a projection of the store fails"
@@ -689,10 +699,10 @@ $(printf '%s\n' "$PATH" | tr ':' '\n')
 DIRS
   PATH="$path" command -v jq >/dev/null 2>&1 && fail "fixture: jq is still reachable"
   rc=0
-  drained=$(PATH="$path" FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh") || rc=$?
+  drained=$(PATH="$path" FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh") || rc=$?
   [ "$rc" -ne 0 ] || fail "a drain without jq over a non-empty store must exit nonzero: $drained"
   assert_contains "$drained" "BRANCH OUTCOMES SKIPPED: jq is not installed" "a drain without jq must say it could not present the store"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "[seq 1] demo: merged the docs fix" "an outcome a drain without jq could not present must follow on the next drain"
   pass "drain: branch outcomes stay unread and the drain fails when jq is missing"
 }
@@ -706,10 +716,10 @@ test_branch_outcomes_stay_unread_when_the_drain_cannot_print() {
   : > "$home/config/supervision-host"
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append --task demo --verdict routine --summary 'merged the docs fix' >/dev/null \
     || fail "fixture: could not record the routine outcome"
-  FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" >&- 2>/dev/null' "$ROOT/bin/fm-wake-drain.sh" || true
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  FM_HOME="$home" "$FAKE_CLAUDE" -c 'export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" >&- 2>/dev/null' "$ROOT/bin/fm-wake-drain.sh" || true
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "[seq 1] demo: merged the docs fix" "a routine outcome a drain could not print must follow on the next drain"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_not_contains "$drained" "merged the docs fix" "a routine outcome a drain printed must not repeat"
   pass "drain: branch outcomes stay unread when the drain cannot print them"
 }
@@ -738,7 +748,7 @@ test_branch_outcomes_date_a_legacy_backlog_without_adopting_it() {
     outcome_row 2 $((now - 6 * 86400 + 60)) alpha routine 'alpha rebased'
     outcome_row 3 $((now - 3 * 86400)) beta captain 'beta PR https://github.com/example/repo/pull/102 is green and ready to merge'
   } > "$home/state/branch-outcomes.jsonl"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "[seq 1, recorded 6d ago] alpha: alpha PR https://github.com/example/repo/pull/101" \
     "a days-old captain outcome must say when it was recorded"
   assert_contains "$drained" "[seq 3, recorded 3d ago] beta: beta PR" "every captain outcome must say when it was recorded"
@@ -760,13 +770,13 @@ test_branch_ack_keeps_older_keyed_decision_open() {
   printf 'needs-decision [key=merge-153]: merge PR 153 now or hold?\n' > "$home/state/held.status"
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append --task held --verdict captain --summary 'needs merge decision' >/dev/null || fail "fixture: older outcome"
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append --task held --verdict captain --summary 'CI is now green' >/dev/null || fail "fixture: newer outcome"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" 'OPEN DECISIONS' "the status decision must appear in the first drain"
   assert_contains "$drained" 'held [key=merge-153] needs-decision: merge PR 153 now or hold?' "the older decision must remain open"
   assert_contains "$drained" '[seq 2, newest of 2 for this task' "the branch line must collapse to the newest outcome"
   assert_contains "$drained" "including its still-open decisions listed above under OPEN DECISIONS" "the check-first instruction must include the older keyed decision"
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" mark-processed --through 2 >/dev/null || fail "fixture: acknowledgement refused"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" 'held [key=merge-153] needs-decision: merge PR 153 now or hold?' "acknowledging the newer branch line closed the older keyed decision"
   assert_not_contains "$drained" 'CI is now green' "acknowledged branch outcome repeated"
   pass "drain: a keyed decision survives acknowledgement through a newer outcome for its task"
@@ -789,7 +799,7 @@ test_branch_outcomes_date_an_outcome_carried_across_a_switch_off_pi() {
     || fail "fixture: could not record the Pi branch's delivery"
   drained=$(FM_HOME="$home" "$fakepi/pi" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
   assert_not_contains "$drained" "BRANCH OUTCOMES" "a Pi primary's drain must leave the outcome to the branch extension"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "[seq 1, recorded 2d ago] gamma: gamma needs your decision" \
     "an outcome delivered on Pi but never acknowledged must come back with its age"
   [ -n "$(FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" unprocessed)" ] \
@@ -809,9 +819,9 @@ test_branch_outcomes_keep_an_unshown_outcome_until_acknowledged() {
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append --task delta --verdict captain --summary 'delta failed CI twice; needs a call' >/dev/null \
     || fail "fixture: could not record the captain outcome"
   assert_absent "$home/state/.branch-outcomes-cursor" "fixture: the read cursor must start absent"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "delta: delta failed CI twice; needs a call" "the first drain must present an outcome nothing has shown"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "delta: delta failed CI twice; needs a call" "an unacknowledged outcome must keep coming back"
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" mark-processed --through 1 >/dev/null 2>&1 \
     || fail "the acknowledgement was refused"
@@ -819,7 +829,7 @@ test_branch_outcomes_keep_an_unshown_outcome_until_acknowledged() {
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" mark-processed --through 1 >/dev/null 2>&1 || rc=$?
   [ "$rc" -ne 0 ] || fail "a repeated acknowledgement must be refused, not re-applied"
   [ "$(cat "$home/state/.branch-outcomes-processed")" = 1 ] || fail "a repeated acknowledgement moved the processed marker"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_not_contains "$drained" "BRANCH OUTCOMES" "an acknowledged outcome must not come back"
   pass "drain: an outcome nothing has shown is presented until acknowledged, and a repeated acknowledgement changes nothing"
 }
@@ -835,7 +845,7 @@ present_unacknowledged_outcome_twice() {  # <name>
   FM_HOME="$PRESENTED_HOME" "$ROOT/bin/fm-branch-outcome.sh" append --task epsilon --verdict captain \
     --summary 'epsilon PR is ready to merge' >/dev/null || fail "fixture: could not record the captain outcome"
   for _ in 1 2; do
-    drained=$(FM_HOME="$PRESENTED_HOME" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+    drained=$(FM_HOME="$PRESENTED_HOME" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
     assert_contains "$drained" "epsilon: epsilon PR is ready to merge" "fixture: the drain must present the captain outcome"
   done
   [ "$(cat "$PRESENTED_HOME/state/.branch-outcomes-cursor")" = 1 ] || fail "fixture: the drain did not advance the read cursor"
@@ -862,7 +872,7 @@ test_branch_outcomes_keep_a_drain_presented_outcome_across_an_index_repair() {
   present_unacknowledged_outcome_twice drain-index-repair
   rm -f "$PRESENTED_HOME/state/.branch-outcome-index-ready"
   printf 'working: rebasing onto main\n' > "$PRESENTED_HOME/state/epsilon.status"
-  drained=$(FM_HOME="$PRESENTED_HOME" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$PRESENTED_HOME" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   [ -f "$PRESENTED_HOME/state/.branch-outcome-index-ready" ] || fail "the drain's status backstop did not repair the outcome index"
   assert_contains "$drained" "epsilon: epsilon PR is ready to merge" \
     "an index repair adopted a drain-presented, unacknowledged outcome as processed"
@@ -892,12 +902,12 @@ test_attended_routine_wake_is_handled_on_the_engine_and_stays_off_main() {
   [ "$(grep -cv '^watcher: started pid=' "$home/host.out")" -eq 0 ] \
     || fail "a routine attended outcome printed more than the first cycle's status to main: $(cat "$home/host.out")"
   watcher_live "$home" || fail "the host is not parked on a live successor after an attended wake"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "BRANCH OUTCOMES, ROUTINE (handled by the supervision session since your last drain" \
     "main's next drain must list the routine outcome for awareness"
   assert_contains "$drained" "[seq 1] demo: stub handled demo" "the routine listing must carry the outcome"
   assert_not_contains "$drained" "mark-processed" "a routine outcome must ask for no acknowledgement"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_not_contains "$drained" "[seq 1]" "a routine outcome must be listed only once"
   pass "host: an attended wake the branch may take is handled on the engine, and its routine outcome never wakes main"
 }
@@ -919,16 +929,16 @@ test_attended_captain_outcome_reaches_main_through_branch_outcomes() {
   assert_no_grep 'supervision-host-return' "$home/state/.wake-queue" "an attended captain report must queue no return wake"
   watcher_live "$home" && fail "the host left its successor cycle running when it woke main"
 
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "BRANCH OUTCOMES (captain outcomes the supervision session recorded for you" "main's drain must present the captain outcome"
   assert_contains "$drained" "[seq 1, recorded " "the section must carry the outcome's row and when it was recorded"
   assert_contains "$drained" " ago] demo: stub escalated: " "the section must carry the outcome's task and summary"
   assert_contains "$drained" "run bin/fm-branch-outcome.sh mark-processed --through 1" "the section must print its exact acknowledgement"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" " ago] demo: stub escalated: " "an unacknowledged captain outcome must be presented again"
   FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" mark-processed --through 1 >/dev/null \
     || fail "main's acknowledgement of the presented outcome was refused"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_not_contains "$drained" "BRANCH OUTCOMES" "an acknowledged captain outcome must not be presented again"
   pass "host: an attended captain outcome wakes main once and stays in its drain until main acknowledges it"
 }
@@ -944,10 +954,10 @@ test_captain_leaving_mid_turn_keeps_its_captain_outcome_for_the_return() {
   [ -f "$home/state/.afk-contract" ] || fail "fixture: the stub did not record the away posture"
   [ ! -s "$home/host.rc" ] || fail "a captain outcome recorded after the captain left woke main: $(cat "$home/host.out")"
   assert_grep '"verdict":"captain"' "$home/state/branch-outcomes.jsonl" "fixture: the stub did not report a captain outcome"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_not_contains "$drained" "BRANCH OUTCOMES" "captain outcomes must wait for the return while the away record exists"
   FM_HOME="$home" "$CONTRACT" archive >/dev/null 2>&1 || fail "fixture: could not archive the away posture"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" " ago] demo: stub handled demo" "after the return the drain must present the away window's captain outcome"
   pass "host: a captain outcome recorded after the captain left waits for the return, then reaches main's drain"
 }
@@ -970,7 +980,7 @@ test_quiet_record_without_its_daemon_is_a_present_captain() {
   assert_grep 'MAIN processes it from its next drain' "$home/engine-report.log" "a captain report beside a quiet record must say main processes it"
   assert_re '^supervision-host: branch-outcome: .*\(store rows 1\); run bin/fm-wake-drain.sh' "$home/host.out" \
     "the exit must name the captain outcome's store row for the present captain"
-  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "BRANCH OUTCOMES (captain outcomes the supervision session recorded for you" "main's drain must present the captain outcome beside a quiet record"
   assert_contains "$drained" " ago] demo: stub escalated: " "the section must carry the outcome"
   [ -f "$home/state/.afk-contract" ] || fail "the host must leave quiet mode's record in place"
@@ -1057,6 +1067,8 @@ test_attended_close_with_unidentified_main_session_passes_to_main() {
   FM_HOME="$home" FM_CREW_STATE_BIN="$home/fakebin/fm-crew-state.sh" PATH="$home/fakebin:$PATH" \
     "$FAKE_CLAUDE" -c '
       printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+      printf "%s\n" fm-supervision-host-test > "$FM_HOME/state/.lock-session"
+      export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID=fm-supervision-host-test
       printf "%s\n" "$$" >> "$FM_HOME/claude-pids"
       mkdir -p "$FM_HOME/proc/$$"
       printf "%s (claude) S\n" "$$" > "$FM_HOME/proc/$$/stat"
@@ -1151,6 +1163,8 @@ start_hook_session() {  # <home>
   FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_CREW_STATE_BIN="$home/fakebin/fm-crew-state.sh" \
     PATH="$home/fakebin:$PATH" "$FAKE_CLAUDE" -c '
       printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+      printf "%s\n" fm-supervision-host-test > "$FM_HOME/state/.lock-session"
+      export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID=fm-supervision-host-test
       printf "%s\n" "$$" >> "$FM_HOME/claude-pids"
       for seed in "$FM_HOME"/mirror-seed.*; do
         [ -f "$seed" ] || continue
@@ -1174,7 +1188,7 @@ hook_exited() { [ -s "$1/hook.rc" ]; }
 # (MAIN_ACK) when that turn's handling is done.
 main_drain() {  # <home>; prints the drain and sets MAIN_ACK
   local out
-  out=$(FM_HOME="$1" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  out=$(FM_HOME="$1" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   MAIN_ACK=$(printf '%s\n' "$out" | sed -n 's/^WAKE_ACK_REQUIRED: after handling completes run bin\/fm-wake-drain.sh //p' | tail -1)
   printf '%s\n' "$out"
 }
@@ -1440,7 +1454,7 @@ test_successor_close_during_main_turn_is_delivered_at_the_next_turn_end() {
   append_status "$home" 'which region?' needs-decision
   wait_until 250 bash -c '! kill -0 "$1" 2>/dev/null' _ "$successor" || fail "fixture: the successor did not close on the later decision"
   # shellcheck disable=SC2086 # the printed acknowledgement arguments
-  [ -z "$MAIN_ACK" ] || FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
+  [ -z "$MAIN_ACK" ] || FM_HOME="$home" "$FAKE_CLAUDE" -c 'export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
     || fail "successor close: main's acknowledgement failed: $MAIN_ACK"
   turn_end "$home"
   wait_until 250 hook_exited "$home" || fail "successor close: the next turn end never closed: $(cat "$home/state/.supervision-host.log")"
@@ -1502,7 +1516,7 @@ leave_a_cycle_for_main_and_restart() {  # <home>
   [ -n "$LEFT_ARM" ] && [ "$LEFT_ARM" != 1 ] || fail "fixture: the successor watcher has no arm of its own"
   main_drain "$home" >/dev/null
   # shellcheck disable=SC2086 # the printed acknowledgement arguments
-  [ -z "$MAIN_ACK" ] || FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
+  [ -z "$MAIN_ACK" ] || FM_HOME="$home" "$FAKE_CLAUDE" -c 'export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
     || fail "takeover: main's acknowledgement failed: $MAIN_ACK"
   # The session restarts: the old one ends, and a new one holds the lock.
   first_session=$(tail -n 1 "$home/claude-pids")
@@ -1594,7 +1608,7 @@ test_unrecorded_successor_is_stopped_rather_than_left_for_main() {
     || fail "unrecorded successor: the record left inside the directory was not removed: $(ls -A "$home/state/.supervision-host-left")"
   main_drain "$home" >/dev/null
   # shellcheck disable=SC2086 # the printed acknowledgement arguments
-  [ -z "$MAIN_ACK" ] || FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
+  [ -z "$MAIN_ACK" ] || FM_HOME="$home" "$FAKE_CLAUDE" -c 'export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
     || fail "unrecorded successor: main's acknowledgement failed: $MAIN_ACK"
   turn_end "$home"
   wait_until 150 host_owns_the_only_cycle "$home" \
@@ -2605,6 +2619,8 @@ start_session() {  # <home>
   FM_HOME="$home" FM_CREW_STATE_BIN="$home/fakebin/fm-crew-state.sh" PATH="$home/fakebin:$PATH" \
     MIRROR_ROOT="$MIRROR_ROOT" "$FAKE_CLAUDE" -c '
       printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+      printf "%s\n" fm-supervision-host-test > "$FM_HOME/state/.lock-session"
+      export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID=fm-supervision-host-test
       printf "%s\n" "$$" >> "$FM_HOME/claude-pids"
       while [ ! -e "$FM_HOME/session.stop" ]; do
         if [ -e "$FM_HOME/park.go" ]; then
@@ -2857,6 +2873,8 @@ test_superseded_host_leaves_the_owner_untouched() {
   FM_HOME="$home" FM_CREW_STATE_BIN="$home/fakebin/fm-crew-state.sh" PATH="$home/fakebin:$PATH" \
     "$FAKE_CLAUDE" -c '
       printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+      printf "%s\n" fm-supervision-host-test > "$FM_HOME/state/.lock-session"
+      export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID=fm-supervision-host-test
       printf "%s\n" "$$" >> "$FM_HOME/claude-pids"
       "$0" park > "$FM_HOME/host.out" 2>&1 &
       while [ ! -e "$FM_HOME/go-second" ]; do sleep 0.1; done

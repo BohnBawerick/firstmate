@@ -91,7 +91,7 @@ The turn-end guard needs that strict check because it fires at the turn boundary
 At that boundary the auto-arm is bringing a fresh watcher up for the upcoming idle period.
 The guard cooperates with that arm rather than trusting a beacon left by the cycle that just ended.
 
-### Away-mode daemon check
+### Away and quiet mode daemon ownership
 
 Away mode is the one model whose healthy shape differs at that boundary.
 While `state/.afk` exists the away daemon owns supervision for every primary harness and runs the watcher as its own child, which exits on each wake so the daemon can handle it and is restarted afterwards, so between cycles the singleton lock is genuinely unheld by design and the PID-strict check would report a perfectly supervised fleet as blind.
