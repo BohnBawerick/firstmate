@@ -519,18 +519,18 @@ serial = json.load(open(sys.argv[2], encoding="utf-8"))
 expected = int(sys.argv[3])
 assert automatic["selection"].split(";")[-1] == f"jobs={expected}"
 assert serial["selection"].split(";")[-1] == "jobs=1"
-# The automatic 900s bound belongs to --changed itself, so the explicit --jobs 1
+# The automatic 1500s bound belongs to --changed itself, so the explicit --jobs 1
 # run carries it too. Pinning the resolved number here is what keeps the
-# enforcement check below fast: nothing has to wait 900s to prove the value.
-assert "timeout=900" in automatic["selection"].split(";"), automatic["selection"]
-assert "timeout=900" in serial["selection"].split(";"), serial["selection"]
+# enforcement check below fast: nothing has to wait 1500s to prove the value.
+assert "timeout=1500" in automatic["selection"].split(";"), automatic["selection"]
+assert "timeout=1500" in serial["selection"].split(";"), serial["selection"]
 PY
 
   # The bound is enforced by the runner's own containment path, which starts the
   # script and then kills it, so the proof is a script that really hangs and never
   # reaches the marker on the far side of its sleep. The environment supplies the
   # tighter number the automatic rule resolves against, because a test cannot wait
-  # out the 900s the unconfigured path resolves; that value is pinned above.
+  # out the 1500s the unconfigured path resolves; that value is pinned above.
   timeout_repo="$tmp/timeout-repo"
   timeout_script=tests/fm-calm-pi-extension.test.sh
   mkdir -p "$timeout_repo/bin" "$timeout_repo/tests"
@@ -750,7 +750,7 @@ assert doc["summary"]["skipped_gate"] == 0
 assert doc["summary"]["duration_ms"] >= 0
 assert doc["scripts"] == []
 assert doc["families"] == []
-assert doc["selection"] == "changed:base=HEAD;timeout=900;jobs=1"
+assert doc["selection"] == "changed:base=HEAD;timeout=1500;jobs=1"
 ' "$json" || { rm -rf "$tmp"; fail "empty selection JSON summary is wrong"; }
   fake_bin="$tmp/fake-bin"
   real_git=$(command -v git)
@@ -1048,11 +1048,11 @@ test_list_scheduled_non_lane_selections_use_serial_weights() {
     printf '\n' >>"$repo/$script"
   done
   printf '%s\n' \
+    tests/fm-kimi-harness.test.sh \
     tests/fm-muse-harness.test.sh \
     tests/fm-brief.test.sh \
     tests/fm-captain-hold-lifecycle.test.sh \
     tests/fm-lint.test.sh \
-    tests/fm-kimi-harness.test.sh \
     tests/fm-operational-input.test.sh >"$tmp/expected"
   for selection in family all changed scripts; do
     case "$selection" in
@@ -1177,7 +1177,7 @@ test_portable_serial_shards_partition_the_serial_lane() {
 }
 
 test_portable_serial_hint_coverage_is_reported_and_bounded() {
-  local out serial unhinted
+  local out serial unhinted max budget
   # Shards are packed from measured duration hints, so an unmeasured script is
   # placed on a guess. Enough of them and the partition still looks balanced by
   # script count while one shard carries far more real work than another and
@@ -1198,7 +1198,56 @@ test_portable_serial_hint_coverage_is_reported_and_bounded() {
   # this trips (docs/fm-test-portable-shards.md).
   [ "$((unhinted * 100))" -le "$((serial * 15))" ] \
     || fail "$unhinted of $serial portable serial scripts lack a measured hint; refresh them"
-  pass "coverage guard reports and bounds the unmeasured portable serial share"
+  # A complete partition can still overflow a CI job. Assert the runner's
+  # modeled packing target through its executable interface, not source hints.
+  max=$(printf '%s\n' "$out" | sed -n 's/.*serial_max_ms=\([0-9][0-9]*\).*/\1/p')
+  budget=$(printf '%s\n' "$out" | sed -n 's/.*serial_budget_ms=\([0-9][0-9]*\).*/\1/p')
+  [ -n "$max" ] && [ -n "$budget" ] \
+    || fail "coverage summary must carry serial packing and budget: $out"
+  [ "$budget" -eq 1200000 ] || fail "packing must leave ten minutes of the normal CI tier"
+  [ "$max" -gt 0 ] && [ "$max" -le "$budget" ] \
+    || fail "largest serial shard packs ${max}ms above the ${budget}ms target"
+  pass "coverage guard bounds the unmeasured share and serial packing within twenty minutes"
+}
+
+test_portable_serial_packing_budget_boundary() {
+  local tmp repo script weight out rc
+  tmp=$(fm_test_tmproot fm-test-run-packing-boundary)
+  repo="$tmp/repo"
+  mkdir -p "$repo/bin" "$repo/tests"
+  # Preserve the real inventory and packing policy without executing suites.
+  # Only the fixture's measured timing input changes at the boundary.
+  while IFS= read -r script; do
+    printf '#!/usr/bin/env bash\nexit 0\n' >"$repo/$script"
+  done < <("$RUNNER" --list --all)
+
+  for weight in 1200000 1200001; do
+    cp "$RUNNER" "$repo/bin/fm-test-run.sh"
+    python3 - "$repo/bin/fm-test-run.sh" "$weight" <<'PY' \
+      || fail "could not seed the fixture's measured timing input"
+from pathlib import Path
+import re, sys
+runner = Path(sys.argv[1])
+runner.write_text(re.sub(
+    r"(?m)^tests/fm-watch-triage\.test\.sh [0-9]+$",
+    f"tests/fm-watch-triage.test.sh {sys.argv[2]}",
+    runner.read_text(),
+))
+PY
+    out=$(bash "$repo/bin/fm-test-run.sh" --check-coverage 2>&1) && rc=0 || rc=$?
+    if [ "$weight" -eq 1200000 ]; then
+      expect_code 0 "$rc" "packing exactly at the budget must be accepted"
+      assert_contains "$out" "FM_TEST_COVERAGE ok" "boundary coverage did not pass"
+      assert_contains "$out" "serial_max_ms=1200000" "fixture did not pack exactly at the budget"
+      assert_contains "$out" "serial_budget_ms=1200000" "fixture changed the packing budget"
+    else
+      expect_code 1 "$rc" "packing one millisecond above the budget must be refused"
+      assert_contains "$out" "largest portable serial shard packs 1200001ms above the 1200000ms target" \
+        "over-budget refusal did not explain the modeled excess"
+      assert_not_contains "$out" "FM_TEST_COVERAGE ok" "over-budget packing reported success"
+    fi
+  done
+  pass "serial packing accepts the exact budget and refuses one millisecond above it"
 }
 
 test_portable_serial_shard_lane_refusals() {
@@ -1547,6 +1596,48 @@ PY
 # green but whose wall clock outgrew its caller's invocation budget. The caller
 # gets killed mid-run and retries invisibly, so an over-budget run has to be a
 # failure, not a note in the log.
+# tests/fm-watch-triage.test.sh finishes in about 434s alone and about 698s
+# under CI load, so the automatic --changed bound must leave a slow but healthy
+# watcher-wake-lock script room while still bounding a genuinely hung one
+# (upstream issue #3869). The stub records the bound the runner hands it.
+test_changed_bound_gives_slow_watcher_suites_headroom() {
+  local tmp repo script bound rc
+  tmp=$(mktemp -d)
+  repo="$tmp/repo"
+  script=tests/fm-watch-triage.test.sh
+  mkdir -p "$repo/bin" "$repo/tests"
+  cp "$RUNNER" "$repo/bin/fm-test-run.sh"
+  cp "$ROOT/tests/git-config-helpers.sh" "$repo/tests/"
+  cat >"$repo/$script" <<'SH'
+#!/usr/bin/env bash
+echo "ok - healthy but slow watcher suite"
+SH
+  chmod +x "$repo/bin/fm-test-run.sh" "$repo/$script"
+  git -C "$repo" init -q
+  git -C "$repo" add .
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm baseline
+  printf '\n' >>"$repo/$script"
+  set +e
+  (cd "$repo" && FM_TEST_SCRIPT_TIMEOUT='' bin/fm-test-run.sh --changed --base HEAD --json "$tmp/timing.json") >"$tmp/out" 2>"$tmp/err"
+  rc=$?
+  set -e
+  [ "$rc" -eq 0 ] || fail "healthy changed watcher script must pass, got $rc: $(cat "$tmp/out" "$tmp/err")"
+  # The runner enforces the bound through its own containment path, so the
+  # resolved number is read from the run's recorded selection.
+  bound=$(python3 -c '
+import json, sys
+fields = dict(f.split("=", 1) for f in json.load(open(sys.argv[1]))["selection"].split(";") if "=" in f)
+print(fields.get("timeout", ""))
+' "$tmp/timing.json") || bound=''
+  case "$bound" in
+    ''|*[!0-9]*) fail "changed watcher script did not run under the automatic bound: $(cat "$tmp/out")" ;;
+  esac
+  [ "$bound" -ge 1500 ] \
+    || fail "automatic --changed bound for $script must be at least 1500s, got ${bound}s"
+  rm -rf "$tmp"
+  pass "the automatic --changed bound gives the slow watcher suite at least 1500s"
+}
+
 test_max_wall_ms_is_a_result_not_advice() {
   local tmp repo runner fast rc summary_duration budget_duration
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-budget.XXXXXX")
@@ -2136,6 +2227,7 @@ test_portable_shard_union_and_coverage_guard
 test_portable_parallel_lanes_stay_duration_balanced
 test_portable_serial_shards_partition_the_serial_lane
 test_portable_serial_hint_coverage_is_reported_and_bounded
+test_portable_serial_packing_budget_boundary
 test_portable_serial_shard_lane_refusals
 test_jobs_requires_proven_isolated
 test_jobs_admits_a_concurrent_safe_family
@@ -2144,6 +2236,7 @@ test_changed_shared_fixture_selects_its_readers
 test_concurrent_runs_are_ordered_longest_first
 test_per_script_timeout_bounds_a_hang
 test_timeout_flags_only_tighten
+test_changed_bound_gives_slow_watcher_suites_headroom
 test_max_wall_ms_is_a_result_not_advice
 test_jobs_parallel_scheduler_and_failure_propagation
 test_herdr_ci_family_run_has_a_step_timeout

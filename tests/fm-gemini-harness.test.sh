@@ -124,8 +124,10 @@ test_gemini_node_bundle_uses_the_actual_interpreter_title() {
   # The supported interpreter names reach ancestry; MainThread needs the marker.
   comm=$(node -e 'const{execSync}=require("child_process");process.stdout.write(execSync("ps -o comm= -p "+process.pid).toString().trim())' 2>/dev/null)
   [ -n "$comm" ] || return 0
-  if [ "$comm" = node ] || [ "$comm" = node-MainThread ]; then
-    # Both measured node-prefixed titles reach the interpreter arm.
+  case "$(basename -- "$comm")" in node*)
+    # A platform whose comm basename matches production's `node*` interpreter
+    # arm, including a versioned name, reaches that arm, and there the gemini
+    # script path must win.
     cat > "$dir/gemini" <<'JS'
 const { spawnSync } = require('child_process');
 const env = { ...process.env };
@@ -139,9 +141,10 @@ JS
       || fail "where node reports comm=$comm, a gemini script path must detect gemini, got '$out'"
     pass "fm-harness.sh: this platform's node reports comm=$comm and ancestry reaches gemini"
     return 0
-  fi
-  # With another process title, ancestry cannot see the bundle and
-  # the marker is the only detection path.
+    ;;
+  esac
+  # The measured case: comm does not reach the interpreter arm, so ancestry
+  # cannot see the bundle and the marker is the only detection path.
   cat > "$dir/gemini" <<'JS'
 const { spawnSync } = require('child_process');
 const env = { ...process.env };

@@ -62,7 +62,7 @@ The same scoping covers multi-process launchers without a special case, so the P
 Direct executable identities `pi`, `pi-signed`, and `Pi` remain accepted exactly, and similar or prefixed process names are not accepted through those exact Pi-family entries.
 Muse is likewise anchored to the exact `muse` launcher identity or the installed `muse-bin-<version>` prefix, so unrelated names such as `musescore` and `amuse` remain ambiguous.
 omp is anchored to the exact `omp` identity for the same reason, so `ompd` and `comp` remain ambiguous.
-AGY is anchored to the exact `agy` identity for the same reason, so unrelated names containing that fragment remain ambiguous.
+AGY and Devin are anchored to the exact `agy` and `devin` identities for the same reason, so unrelated names containing either fragment remain ambiguous.
 Cursor is identified from its exact `cursor-agent` identity or versioned install tree in the foreground process path or structured argv[0]; a bare `node` or unrelated `agent` remains ambiguous.
 agy is accepted only as the exact `agy` command name or install-path component, so a longer name that merely contains it remains ambiguous.
 
