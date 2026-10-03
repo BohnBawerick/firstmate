@@ -1747,7 +1747,9 @@ SH
 # permission flag, and any other token refuses before endpoint or metadata.
 claude_settings_json_arg() {  # <launch>
   local command=$1
-  while [[ "$command" == export\ *\;* ]]; do
+  # Strip every leading statement (exports, the session-identity unset) so the
+  # eval below only splits the agent command and never runs it.
+  while [[ "$command" == export\ *\;* || "$command" == unset\ *\;* ]]; do
     command=${command#*; }
   done
   eval "set -- $command"
@@ -1764,11 +1766,13 @@ claude_settings_json_arg() {  # <launch>
 
 claude_launch_brief_arg() {  # <launch>
   local command=$1
-  while [[ "$command" == export\ *\;* ]]; do
+  # Strip every leading statement (exports, the session-identity unset) so the
+  # eval below only splits the agent command and never runs it.
+  while [[ "$command" == export\ *\;* || "$command" == unset\ *\;* ]]; do
     command=${command#*; }
   done
   (
-    eval "set -- ${command#*; }"
+    eval "set -- $command"
     eval "printf '%s' \"\${$#}\""
   )
 }

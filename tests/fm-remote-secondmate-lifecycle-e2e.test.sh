@@ -53,7 +53,7 @@ cleanup() {
   if [ -n "${REMOTE_ROOT:-}" ]; then
     fm_remote_job_stop_stray_linux_workers "$REMOTE_ROOT"
   fi
-  rm -rf -- "$TMP_ROOT"
+  fm_test_remove_tree "$TMP_ROOT"
   return 0
 }
 trap cleanup EXIT

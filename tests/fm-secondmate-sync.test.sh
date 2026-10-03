@@ -1349,6 +1349,10 @@ test_remote_launch_relays_codex_max_downgrade_warning() {
   add_remote_home "$w" launched "$w/forge.git" "$c1"
   mkdir -p "$w/launched/data/.parent-route/launched"
   printf '%s\n' '# brief' > "$w/launched/data/.parent-route/launched/brief.md"
+  # The synthetic code root carries no helper scripts, so this home keeps commit
+  # trailers and the launch installs no strip hooks from it.
+  mkdir -p "$w/launched/config"
+  : > "$w/launched/config/keep-ai-trailers"
 
   fakebin=$(fm_fakebin "$w/launchfake")
   herdrbin="$w/herdrhost"

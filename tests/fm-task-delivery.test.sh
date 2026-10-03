@@ -940,9 +940,10 @@ EOF
   [ "$(meta_value "$meta" worktree)" = "$wt" ] || fail "the recorded worktree changed"
   [ "$(meta_value "$meta" project)" = "$proj" ] || fail "the recorded project changed"
   [ "$(meta_value "$meta" harness)" = claude ] || fail "the recorded harness changed"
-  # ...and the only keys added are the two additive ones.
+  # ...and the only keys added are the two additive ones. The record also
+  # carries the ship branch the spawn selected.
   keys=$(cut -d= -f1 "$meta" | grep -vx -e quality -e base_sha | sort | tr '\n' ' ')
-  [ "$keys" = "busy_gen effort endpoint_task_id harness kind mode model project spawn_gen tasktmp window worktree yolo " ] \
+  [ "$keys" = "branch busy_gen effort endpoint_task_id harness kind mode model project spawn_gen tasktmp window worktree yolo " ] \
     || fail "the ship task record gained or lost a key beyond the additive quality= and base_sha=; this pin is deliberate, so change it only with the callers that read the record: '$keys'"
   # The success line three callers read is untouched too.
   assert_contains "$out" "spawned quality-meta-i1 harness=claude kind=ship mode=no-mistakes yolo=off window=" \
@@ -1947,7 +1948,9 @@ STUB
 
   # Both real generation paths must end in the same contract, as they do for every
   # mode: a promoted worker is never handed a weaker one than a briefed worker.
-  rm "$home/data/$id/brief.md"
+  # A task id whose data directory already exists is refused, so the promoted
+  # scout's directory is cleared before the same id is scaffolded as a ship.
+  rm -rf "$home/data/$id"
   FM_HOME="$home" "$BRIEF" "$id" proj --mode no-mistakes --forge gerrit >/dev/null 2>&1 \
     || fail "ordinary gerrit ship brief generation should succeed"
   awk '/^# Definition of done$/ { emit=1 } emit' "$home/data/$id/brief.md" > "$TMP_ROOT/forge-promote/brief-dod"
@@ -1983,7 +1986,7 @@ test_forge_gerrit_direct_pr_publishes_one_change() {
     "the direct-PR worker was given pipeline vocabulary for a pipeline it never runs"
   # shellcheck disable=SC2016 # Backticks are literal generated Markdown.
   assert_grep 'Never run `gerrit-axi submit`' "$brief" "the direct-PR worker was not kept from submitting"
-  assert_grep 'Do NOT run /no-mistakes.' "$brief" "the direct-PR worker was not kept off the pipeline"
+  assert_grep 'Do NOT run the no-mistakes pipeline.' "$brief" "the direct-PR worker was not kept off the pipeline"
   assert_no_grep 'pipeline changes:' "$brief" \
     "the direct-PR worker was asked to report pipeline fixes from a pipeline it never runs"
 

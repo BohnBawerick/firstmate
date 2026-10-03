@@ -4355,7 +4355,9 @@ test_missing_adapter_sibling_refuses_before_cleanup() {
   rm -f "$case_dir/test-root/bin/fm-session-lock-lib.sh"
   rc=0
   run_copied_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
-  assert_source_refusal_preserved_state "$case_dir" "missing-adapter-sibling" "required tmux source"
+  # Teardown's own fleet-mutation gate needs this library too, so its
+  # required-source check names it before the adapter's sibling check can.
+  assert_source_refusal_preserved_state "$case_dir" "missing-adapter-sibling" "required source fm-session-lock-lib.sh"
   pass "a missing adapter sibling refuses before cleanup"
 }
 

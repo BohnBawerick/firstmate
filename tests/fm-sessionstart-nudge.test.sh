@@ -1049,7 +1049,7 @@ test_run_creates_missing_state_on_a_fresh_primary() {
   assert_present "$root/state" "a fresh primary root did not get its state dir created"
   assert_contains "$out" "$FULL_BANNER$root" \
     "creating the state dir did not let a fresh primary's session start run"
-  assert_contains "$out" "lock acquired: harness pid" \
+  assert_contains "$out" "lock acquired: THIS session holds the fleet lock (harness pid" \
     "creating the state dir did not let a fresh primary take the fleet lock"
   assert_not_contains "$out" "$REEMIT_BANNER" \
     "a fresh primary's first session was misrouted to a context re-emit"

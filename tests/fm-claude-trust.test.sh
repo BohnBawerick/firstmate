@@ -629,7 +629,9 @@ test_refused_spawn_leaves_no_task_state() {
 # pane sees after the leading export statements.
 claude_launch_doorbell() {  # <launch command>
   local command=$1
-  while [[ "$command" == export\ *\;* ]]; do
+  # Strip every leading statement (exports, the session-identity unset) so the
+  # eval below only splits the agent command and never runs it.
+  while [[ "$command" == export\ *\;* || "$command" == unset\ *\;* ]]; do
     command=${command#*; }
   done
   (
