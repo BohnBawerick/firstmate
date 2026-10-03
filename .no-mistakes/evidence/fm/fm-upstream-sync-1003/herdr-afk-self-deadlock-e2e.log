@@ -1,0 +1,5 @@
+ok - reproduced: daemon hosted in its target pane defers forever on Herdr busy state
+ok - failed-run cleanup removes the lab session and its created workspace
+fm-afk-launch: Claude + Herdr native launch redirected to a non-visible daemon terminal
+fm-afk-launch: daemon launched in non-visible herdr workspace w2 (pane fm-lab-fm-afk-inject-se-2658260-21431:w2:p1), supervising fm-lab-fm-afk-inject-se-2658260-21431:w1:p1
+ok - fixed: digest delivered to idle Claude pane while a Herdr fleet worker stayed busy
