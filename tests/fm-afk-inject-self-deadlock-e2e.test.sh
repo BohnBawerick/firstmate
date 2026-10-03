@@ -77,7 +77,10 @@ $HERDR_LAB_HELPER provision "$HERDR_LAB_SESSION" >/dev/null \
 
 HOME_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-self-deadlock-home.XXXXXX")
 STATE_DIR="$HOME_DIR/state"
-mkdir -p "$STATE_DIR" "$HOME_DIR/fakebin"
+mkdir -p "$STATE_DIR" "$HOME_DIR/fakebin" "$HOME_DIR/config"
+# This case pins the away daemon's own Herdr topology. A Claude home runs the
+# supervision host by default and launches no daemon, so opt this home out.
+: > "$HOME_DIR/config/supervision-host-off"
 fm_fake_blind_ancestry "$HOME_DIR/fakebin"
 
 WORKSPACE_JSON=$($HERDR_LAB_HELPER run "$HERDR_LAB_SESSION" \
@@ -307,10 +310,16 @@ wait_for_log "backend=herdr" "$STATE_DIR/.supervise-daemon.log" \
 # Keep the heartbeat backstop from winning the race with the status signal.
 date +%s > "$STATE_DIR/.subsuper-last-scan"
 printf 'done: fleet worker remains busy while primary is idle\n' > "$STATE_DIR/repro.status"
-wait_for_log "Supervisor escalate" "$STATE_DIR/submitted.log" \
+# A Claude primary receives operational input as a durable record plus a
+# doorbell line naming it (bin/fm-operational-input.sh), so the digest itself
+# is in the record the submitted doorbell points at.
+wait_for_log ": Firstmate operational input waiting: read '" "$STATE_DIR/submitted.log" \
   || fail "digest was not delivered to the idle Claude pane"
-grep -F $'\tinjection' "$STATE_DIR/submitted.log" >/dev/null \
-  || fail "delivered digest was not classified as an injection"
+DIGEST_RECORD=$(sed -n "s/.*: Firstmate operational input waiting: read '\([^']*\)'.*/\1/p" \
+  "$STATE_DIR/submitted.log" | head -n 1)
+[ -f "$DIGEST_RECORD" ] || fail "the delivered doorbell named no readable record"
+grep -F "Supervisor escalate" "$DIGEST_RECORD" >/dev/null \
+  || fail "the delivered record did not carry the escalation digest"
 $HERDR_LAB_HELPER run "$HERDR_LAB_SESSION" agent get "$FLEET_PANE_ID" \
   | jq -e '.result.agent.agent_status == "working"' >/dev/null \
   || fail "fleet worker was no longer busy during delivery"
