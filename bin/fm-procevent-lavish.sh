@@ -561,8 +561,15 @@ prompt_rows_json() {  # <result-file>
       }
       return @values;
     }
-    my ($current, $line, $target_lines, $attachment_rows);
+    my ($current, $line, $target_lines, $attachment_rows, $malformed_at_start);
     my @attachment_fields;
+    my $finish_current = sub {
+      return unless defined $current;
+      my $missing = grep { !exists $current->{$_} } qw(uid prompt selector tag text);
+      $malformed++ if $missing && $malformed == $malformed_at_start;
+      push @rows, $current;
+      undef $current;
+    };
     while (defined($line = <$fh>)) {
       if (!$header) {
         if ($line =~ /^(?:prompts|feedback)\[(\d+)\]\{([^}]*)\}:\s*$/) {
@@ -609,8 +616,9 @@ prompt_rows_json() {  # <result-file>
         undef $target_lines;
       }
       if ($line =~ /^  -\s+(.+)$/) {
-        push @rows, $current if defined $current;
+        $finish_current->();
         $current = {};
+        $malformed_at_start = $malformed;
         if ($1 =~ /^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/) {
           $current->{$1} = unquote($2);
         } else { $malformed++; }
@@ -660,7 +668,7 @@ prompt_rows_json() {  # <result-file>
     }
     $malformed++ if defined($attachment_rows) && $attachment_rows;
     $malformed++ if defined($target_lines) && !@$target_lines;
-    push @rows, $current if defined $current;
+    $finish_current->();
     close $fh;
     print encode_json({declared => $header ? 0 + $declared : 0,
       rows => \@rows, malformed => 0 + $malformed, header => 0 + $header});

@@ -3286,6 +3286,21 @@ pass "read never certifies malformed list-form fields as complete"
 
 cat > "$READ" <<'EOF'
 session:
+  status: feedback
+prompts[1]:
+  - uid: "el-a"
+EOF
+read_status=0
+out=$(read_out 2>&1) || read_status=$?
+[ "$read_status" -ne 0 ] || fail "read certified a truncated list item as complete"
+assert_contains "$out" "declared_items: 1" "a truncated list item lost its declared count"
+assert_contains "$out" "presented_items: 1" "a truncated list item was not presented"
+assert_contains "$out" "malformed_items: 1" "a truncated list item was not marked malformed"
+assert_contains "$out" "complete: no" "a truncated list item was certified as complete"
+pass "read rejects list items missing required fields"
+
+cat > "$READ" <<'EOF'
+session:
   file: /review.html
   status: feedback
   session_ended: true
