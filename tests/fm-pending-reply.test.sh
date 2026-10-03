@@ -91,6 +91,18 @@ setup_parent() {  # <name> -> home
   printf '%s\n' "$home"
 }
 
+make_pending_reply_hash_path() {  # <name> [hasher] -> path
+  local path="$TMP_ROOT/$1-$RANDOM" command_name
+  mkdir -p "$path"
+  for command_name in date cksum awk tr cut; do
+    ln -s "$(command -v "$command_name")" "$path/$command_name"
+  done
+  if [ "${2:-}" = sha256sum ]; then
+    ln -s "$(command -v sha256sum)" "$path/sha256sum"
+  fi
+  printf '%s\n' "$path"
+}
+
 # Seed a local secondmate home bound to <parent> with identity <id>.
 bind_local_mate() {  # <parent-home> <id> -> mate-home
   local parent=$1 id=$2 mate
@@ -129,6 +141,27 @@ latest_record_body() {  # <home> <task>
 }
 
 # --- tests ------------------------------------------------------------------
+
+test_new_id_uses_sha256sum_only_path() {
+  local hash_path corr
+  hash_path=$(make_pending_reply_hash_path pending-reply-sha256sum sha256sum)
+  corr=$(PATH="$hash_path" fm_pending_reply_new_id) \
+    || fail "correlation ID generation failed with sha256sum as the only hasher"
+  [[ "$corr" =~ ^[0-9a-f]{16}$ ]] \
+    || fail "sha256sum fallback produced an invalid correlation ID: '$corr'"
+  pass "correlation ID generation supports a sha256sum-only PATH"
+}
+
+test_new_id_fails_when_no_hasher_exists() {
+  local hash_path error
+  hash_path=$(make_pending_reply_hash_path pending-reply-no-hasher)
+  if error=$(PATH="$hash_path" fm_pending_reply_new_id 2>&1); then
+    fail "correlation ID generation succeeded without a SHA-256 hasher"
+  fi
+  [ "$error" = 'fm-pending-reply: no SHA-256 hasher available (need shasum or sha256sum)' ] \
+    || fail "missing hasher returned the wrong error: '$error'"
+  pass "correlation ID generation names the missing SHA-256 hasher"
+}
 
 test_normal_correlated_reply_resolves_once() {
   local home state corr status rec
@@ -1602,6 +1635,8 @@ test_escalated_undelivered_correlation_stays_retryable() {
 
 # --- run --------------------------------------------------------------------
 
+test_new_id_uses_sha256sum_only_path
+test_new_id_fails_when_no_hasher_exists
 test_normal_correlated_reply_resolves_once
 test_completed_turn_no_report_triggers_one_recovery
 test_recovery_attempt_is_never_reinjected
