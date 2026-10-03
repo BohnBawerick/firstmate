@@ -1662,8 +1662,12 @@ for (const { name, actual } of rows) {
 async function assertStockHtmlRendering(command, submitData) {
   editorText = command;
   terminalInputHandler(submitData);
+  const getToolRendering = (name) => tools.find((tool) => tool.name === name);
   const htmlRenderer = createToolHtmlRenderer({
-    getToolDefinition: (name) => tools.find((tool) => tool.name === name),
+    // Pi 1.0 renamed this callback. Supplying both names keeps the executable
+    // export check valid against the older supported packages too.
+    getToolDefinition: getToolRendering,
+    getToolRenderers: getToolRendering,
     theme,
     cwd: process.cwd(),
   });
@@ -1695,6 +1699,7 @@ editorText = "/export remapped.html";
 terminalInputHandler("\r");
 const unmatchedRenderer = createToolHtmlRenderer({
   getToolDefinition: (name) => tools.find((tool) => tool.name === name),
+  getToolRenderers: (name) => tools.find((tool) => tool.name === name),
   theme,
   cwd: process.cwd(),
 });

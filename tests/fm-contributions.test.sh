@@ -654,6 +654,7 @@ case "$fault:$*" in
   fail:'api repos/o/r/pulls/8/reviews?'*) printf 'HTTP 502\n' >&2; exit 1 ;;
   down:*) printf 'HTTP 502\n' >&2; exit 1 ;;
   hang:'api repos/o/r/pulls/8') sleep 4 ;;
+  slow:'api repos/o/r/pulls/8/reviews?'*) sleep 7 ;;
   head:'pr view '*) printf '{"headRefOid":"%s","reviewDecision":"APPROVED"}\n' "$(printf 'b%.0s' $(seq 40))"; exit 0 ;;
 esac
 exec "$(dirname "$0")/gh-fixture" "$@"
@@ -690,6 +691,63 @@ test_budget_exhaustion_keeps_prior_record() { # exhaust|hang
 
 test_budget_refusal_between_calls() { test_budget_exhaustion_keeps_prior_record exhaust; }
 test_budget_bounded_call_timeout() { test_budget_exhaustion_keeps_prior_record hang; }
+
+test_slow_parallel_read_keeps_prior_record_without_a_wake() { # cap-cut read is unmeasured, not unavailable
+  local home out
+  home=$(new_home slow-parallel-read)
+  forge_home "$home"
+  wrap_forge "$home"
+  mutate_record "$home" delivery '.records[0].checked_at="2026-09-15T08:00:00Z"'
+  cp "$home/data/delivery/contributions.json" "$home/prior.json"
+  # Both modes freeze the clock so the parallel read's five-second cap, not the
+  # budget's own deadline, is what cuts it.
+  /bin/date +%s > "$home/forge/clock"
+  printf 'slow\n' > "$home/forge/fault"
+  out=$(with_home "$home" env FM_CONTRIBUTIONS_BUDGET=20 "$ROOT/bin/fm-contributions.sh" poll) \
+    || fail 'poll failed when one parallel read hit its per-read cap'
+  [ -z "$out" ] || fail "a slow-but-healthy parallel read printed an unavailable wake: $out"
+  grep -F 'api repos/o/r/pulls/8/reviews?' "$home/forge/calls" >/dev/null \
+    || fail 'the capped parallel read never started'
+  cmp -s "$home/prior.json" "$home/data/delivery/contributions.json" \
+    || fail "a cap-cut read rewrote the prior record: $(cat "$home/data/delivery/contributions.json")"
+  [ ! -s "$home/state/.wake-queue" ] || fail 'a cap-cut read enqueued a wake'
+  pass 'a slow parallel read cut by its per-read cap keeps the prior record and stays silent'
+}
+
+test_missing_shasum_keeps_a_usable_wake_key() { # this host may not carry shasum on the watcher PATH
+  local home path_without_core_perl token
+  home=$(new_home shasum-fallback)
+  forge_home "$home"
+  wrap_forge "$home"
+  jq -n --arg head "$HEAD_A" '[{id:12,user:{login:"maintainer"},author_association:"OWNER",
+    body:"Please clarify the contract",html_url:"https://github.com/o/r/pull/8#issuecomment-12",
+    updated_at:"2026-09-16T08:01:00Z",submitted_at:"2026-09-16T08:01:00Z"}]' > "$home/forge/comments.json"
+  path_without_core_perl=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v core_perl | paste -sd: -)
+  poll_without_core_perl() {
+    PATH="$home/fakebin:$path_without_core_perl" FORGE="$home/forge" HEAD_A="$HEAD_A" \
+      FM_HOME="$home" FM_ROOT_OVERRIDE="$home/root" FM_STATE_OVERRIDE="$home/state" \
+      FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" \
+      FM_CONTRIBUTIONS_NOW="$NOW" "$ROOT/bin/fm-contributions.sh" poll >/dev/null \
+      || fail 'poll failed without core_perl on PATH'
+  }
+  # Reproduce only where the pruned PATH really hides shasum; elsewhere the
+  # healthy hashing path is exercised and this still guards the wake contract.
+  if ! PATH="$path_without_core_perl" command -v shasum >/dev/null 2>&1; then
+    poll_without_core_perl
+    grep -Eq $'\tcontribution-[0-9a-f]{64}\t' "$home/state/.wake-queue" \
+      || fail 'publishing without shasum produced an unusable contribution wake key'
+    poll_without_core_perl
+    [ "$(awk -F '\t' '$3 == "check" { count++ } END { print count + 0 }' "$home/state/.wake-queue")" = 1 ] \
+      || fail 'an empty wake key broke the dedup and re-rang the wake'
+    token=$(with_home "$home" "$ROOT/bin/fm-contributions.sh" pending | jq -er '.[0].token') \
+      || fail 'the pending signal was not published'
+    [ -n "$token" ] || fail 'the pending signal token was empty'
+  fi
+  poll_without_core_perl
+  [ "$(awk -F '\t' '$3 == "check" { count++ } END { print count + 0 }' "$home/state/.wake-queue")" = 1 ] \
+    || fail 'the contribution signal was not published exactly once'
+  pass 'the contribution wake key hashes with shasum or its sha256sum fallback'
+}
 
 test_genuine_failure_near_deadline_is_unavailable() {
   local home out
@@ -849,7 +907,7 @@ test_interrupted_multi_owner_poll_settles_every_owner() {
   jq -e --slurpfile terminal "$home/data/delivery/contributions.json" '.records[0] | .observation.state == "merged"
     and .observation == $terminal[0].records[0].observation
     and .error == null and .checked_at == $terminal[0].records[0].checked_at
-    and .pending == [{token:"evt-1"}] and .notified == ["evt-0"]' \
+    and .pending == [{token:"evt-1"}] and .notified == ["evt-0","evt-1"]' \
     "$home/data/duplicate/contributions.json" >/dev/null \
     || fail "an owner whose saved row stayed open did not converge on the known terminal observation: $(cat "$home/data/duplicate/contributions.json")"
 
@@ -867,7 +925,7 @@ test_interrupted_multi_owner_poll_settles_every_owner() {
     and .observation == $terminal[0].records[0].observation and .error == null' \
     "$home/data/duplicate/contributions.json" >/dev/null \
     || fail "an errored owner did not converge on the known terminal observation: $(cat "$home/data/duplicate/contributions.json")"
-  pass 'a retry converges every owner whose saved row is not terminal, keeping its own acknowledgement state'
+  pass 'a retry converges every owner whose saved row is not terminal, keeping its pending signal and replaying it once'
 }
 
 test_done_task_open_pr_still_observed() {
@@ -1028,9 +1086,11 @@ test_unmeasured_url_does_not_starve_the_tail() {
   record "$home" second 9 open mergeable
   record "$home" third 10 open mergeable
   record "$home" merged-one 90 merged mergeable
-  record "$home" closed-one 91 closed mergeable
+  # Only a merged contribution is final here; a closed one is still re-read so a
+  # reopen is seen. These retained terminal rows are therefore merged ones.
+  record "$home" closed-one 91 merged mergeable
   record "$home" merged-two 92 merged mergeable
-  record "$home" closed-two 93 closed mergeable
+  record "$home" closed-two 93 merged mergeable
   mutate_record "$home" closed-two '.records[0].error="forge observation unavailable or changed during read"'
   cp "$home/data/closed-two/contributions.json" "$home/terminal.json"
   printf -- '- [ ] late-owner - Shared https://github.com/o/r/pull/93 (repo: sample) (kind: ship)\n' >> "$home/data/backlog.md"
@@ -1269,7 +1329,7 @@ SH
 }
 
 failures=0
-for test_name in test_large_backlog_poll_observes_owned_contribution test_poll_stops_when_contribution_input_is_unavailable test_settled_history_does_not_starve_open_contributions test_merged_observation_reaches_existing_owners test_merged_pending_signal_replays_once test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_verdict_actor_values_are_discoverable test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_record_task_identity_matches_dirname_basename test_read_only_views_create_no_state test_budget_refusal_between_calls test_budget_bounded_call_timeout test_genuine_failure_near_deadline_is_unavailable test_shared_url_observed_once test_merged_contribution_settles test_closed_contributions_expire_and_reopen test_late_owner_inherits_terminal_observation test_interrupted_multi_owner_poll_settles_every_owner test_done_task_open_pr_still_observed test_unavailable_forge_records_error_and_wakes_once_per_episode test_late_owner_keeps_failure_episode_suppressed test_reservation_defers_later_url_when_fifteen_seconds_do_not_remain test_three_second_pr_reads_complete_fresh_in_one_cycle test_slow_read_deadline_kill_is_budget_refusal test_unmeasured_url_does_not_starve_the_tail test_budget_is_cut_down_to_the_watcher_check_bound test_arm_plumbs_a_configured_budget_into_the_check_shim; do
+for test_name in test_large_backlog_poll_observes_owned_contribution test_poll_stops_when_contribution_input_is_unavailable test_settled_history_does_not_starve_open_contributions test_merged_observation_reaches_existing_owners test_merged_pending_signal_replays_once test_actor_coverage test_stale_verdict test_unchecked_is_not_silence test_newest_check_has_no_verdict test_comment_wake test_review_wake test_inline_wake test_ready_issue_wake test_fresh_issue_requires_maintainer test_missing_lane_remains_missing test_partial_freshness_keeps_measured_rows test_malformed_record_cannot_prove_silence test_issue_timeline_and_exact_ack test_verdict_retains_judged_head test_verdict_actor_values_are_discoverable test_observed_replacement_refreshes_verdict test_unobserved_head_leaves_verdict_unknown test_away_yolo_is_fleet_work test_away_yolo_cross_home_is_fleet_work test_retired_and_unsupported_coverage test_unsupported_forge_is_not_fleet_work test_held_unsupported_forge_is_not_captain_work test_shared_contribution_signal_wakes_once test_watcher_keeps_diagnostics_separate_from_contribution_wakes test_expired_child_unsupported_forge_stays_unmeasured test_watcher_surfaces_new_contribution_once test_home_summary_coverage test_unreadable_pending_is_not_empty test_record_task_identity_matches_dirname_basename test_read_only_views_create_no_state test_budget_refusal_between_calls test_budget_bounded_call_timeout test_slow_parallel_read_keeps_prior_record_without_a_wake test_missing_shasum_keeps_a_usable_wake_key test_genuine_failure_near_deadline_is_unavailable test_shared_url_observed_once test_merged_contribution_settles test_closed_contributions_expire_and_reopen test_late_owner_inherits_terminal_observation test_interrupted_multi_owner_poll_settles_every_owner test_done_task_open_pr_still_observed test_unavailable_forge_records_error_and_wakes_once_per_episode test_late_owner_keeps_failure_episode_suppressed test_reservation_defers_later_url_when_fifteen_seconds_do_not_remain test_three_second_pr_reads_complete_fresh_in_one_cycle test_slow_read_deadline_kill_is_budget_refusal test_unmeasured_url_does_not_starve_the_tail test_budget_is_cut_down_to_the_watcher_check_bound test_arm_plumbs_a_configured_budget_into_the_check_shim; do
   ( "$test_name" ) || failures=$((failures + 1))
 done
 [ "$failures" -eq 0 ] || fail "$failures contribution regressions"

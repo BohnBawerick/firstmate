@@ -306,13 +306,26 @@ observe() { # canonical GitHub URL -> normalized JSON
     | valid_record' >/dev/null
 }
 
+wake_key_hash() { # stdin -> sha256 digest line; shasum and sha256sum are both optional
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum
+  else
+    fail 'shasum or sha256sum is required for the contribution wake key'
+  fi
+}
+
 publish_pending() { # task canonical-url record-file
   local task=$1 url=$2 record=$3 token key count emitted status
   count=$(jq '.pending | length' "$record")
   [ "$count" -gt 0 ] || return 0
   while IFS= read -r token; do
     [ -n "$token" ] || continue
-    key=$(printf '%s\n%s\n' "$url" "$token" | shasum -a 256 | awk '{print $1}')
+    key=$(printf '%s\n%s\n' "$url" "$token" | wake_key_hash | awk '{print $1}')
+    case "$key" in
+      *[!0-9a-f]*|'') fail 'could not hash the contribution wake key' ;;
+    esac
     emitted=0
     status=0
     fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK" || return 1

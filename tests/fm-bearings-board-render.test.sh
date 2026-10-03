@@ -105,6 +105,7 @@ render_board() {  # <home> <underway-json> <charted-json> [charted_more] [charte
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
     LAVISH_AXI_STATE_DIR="$home/lavish-state" \
+    FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=10 \
     "$BOARD" build "$data" >/dev/null || fail "the board did not build"
   require_listener_reached_poll "$home"
   node "$HARNESS" "$home/.lavish/bearings-board.html" \

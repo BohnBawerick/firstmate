@@ -167,13 +167,20 @@ fm_pending_reply_path() {  # <state-dir> <corr_id>
 
 # Privacy-safe correlation id: 16 lowercase hex chars (64 bits of entropy).
 fm_pending_reply_new_id() {
-  local raw hex
+  local raw='' hex=''
   if command -v openssl >/dev/null 2>&1; then
     raw=$(openssl rand -hex 8 2>/dev/null || true)
   fi
   if [ -z "$raw" ]; then
     raw=$(printf '%s' "$$-$(date +%s%N 2>/dev/null || date +%s)-$RANDOM$RANDOM" | cksum 2>/dev/null | awk '{print $1}')
-    hex=$(printf '%s' "$raw$RANDOM$RANDOM" | shasum -a 256 2>/dev/null | awk '{print $1}')
+    if command -v shasum >/dev/null 2>&1; then
+      hex=$(printf '%s' "$raw$RANDOM$RANDOM" | shasum -a 256 2>/dev/null | awk '{print $1}')
+    elif command -v sha256sum >/dev/null 2>&1; then
+      hex=$(printf '%s' "$raw$RANDOM$RANDOM" | sha256sum 2>/dev/null | awk '{print $1}')
+    else
+      printf 'fm-pending-reply: no SHA-256 hasher available (need shasum or sha256sum)\n' >&2
+      return 1
+    fi
     raw=${hex:0:16}
   fi
   printf '%s' "$(printf '%s' "$raw" | tr 'A-F' 'a-f' | tr -cd 'a-f0-9' | cut -c1-16)"
