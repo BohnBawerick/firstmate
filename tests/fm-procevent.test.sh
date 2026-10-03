@@ -3248,7 +3248,7 @@ EOF
 out=$(read_out) || fail "read rejected valid target and attachment metadata"
 assert_contains "$out" "presented_items: 6" "target-bearing prompts were dropped"
 assert_contains "$out" "malformed_items: 0" "valid nested target metadata was marked malformed"
-assert_contains "$out" "| path[2]: 0,1" "text-range path metadata was dropped"
+assert_contains "$out" "|   path[2]: 0,1" "text-range path metadata was dropped"
 assert_contains "$out" "| rowLabel: Pro" "table-cell target metadata was dropped"
 assert_contains "$out" "| nodeId: queue" "Mermaid target metadata was dropped"
 assert_contains "$out" "| scenePath: /tmp/review/0.excalidraw" "whiteboard scene path was dropped"
