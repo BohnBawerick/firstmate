@@ -1294,8 +1294,9 @@ teardown_task "$CROSS_RESTART_ID" "$SECOND_HOME_A" > "$TMP_ROOT/cross-restart-te
 "$REAL_TREEHOUSE" return --force "$CROSS_NEW_WT" >/dev/null 2>&1 || true
 pass "real Herdr lab: secondmate restart binding and reclaim stay isolated to the exact child home and parent"
 
-# Two homes recovering concurrently serialize on the named session lock and
-# each replace only their own exact husk.
+# Two homes recovering concurrently either serialize within the bounded named
+# session lock wait or fail closed until the first recovery releases the lock.
+# Each must then replace only its own exact husk.
 PRIMARY_WAVE_ID=resume-wave-primary
 BRAVO_WAVE_ID=resume-wave-bravo
 mkdir -p "$HOME_DIR/data/$PRIMARY_WAVE_ID" "$SECOND_HOME_B/data/$BRAVO_WAVE_ID"
@@ -1322,8 +1323,35 @@ spawn_task "$PRIMARY_WAVE_ID" "$HOME_DIR" "$RECOVERY_PROJECT_DIR" > "$TMP_ROOT/p
 PRIMARY_WAVE_PID=$!
 spawn_task "$BRAVO_WAVE_ID" "$SECOND_HOME_B" "$RECOVERY_PROJECT_DIR" > "$TMP_ROOT/bravo-wave-resume.out" 2> "$TMP_ROOT/bravo-wave-resume.err" &
 BRAVO_WAVE_PID=$!
-wait "$PRIMARY_WAVE_PID" || fail "concurrent primary recovery failed: $(cat "$TMP_ROOT/primary-wave-resume.err")"
-wait "$BRAVO_WAVE_PID" || fail "concurrent secondmate recovery failed: $(cat "$TMP_ROOT/bravo-wave-resume.err")"
+if wait "$PRIMARY_WAVE_PID"; then
+  PRIMARY_WAVE_STATUS=0
+else
+  PRIMARY_WAVE_STATUS=$?
+fi
+if wait "$BRAVO_WAVE_PID"; then
+  BRAVO_WAVE_STATUS=0
+else
+  BRAVO_WAVE_STATUS=$?
+fi
+[ "$PRIMARY_WAVE_STATUS" -eq 0 ] ||
+  grep -F "herdr presentation recovery could not acquire its session lock; refusing a concurrent resume" \
+    "$TMP_ROOT/primary-wave-resume.err" >/dev/null 2>&1 \
+  || fail "concurrent primary recovery failed unexpectedly: $(cat "$TMP_ROOT/primary-wave-resume.err")"
+[ "$BRAVO_WAVE_STATUS" -eq 0 ] ||
+  grep -F "herdr presentation recovery could not acquire its session lock; refusing a concurrent resume" \
+    "$TMP_ROOT/bravo-wave-resume.err" >/dev/null 2>&1 \
+  || fail "concurrent secondmate recovery failed unexpectedly: $(cat "$TMP_ROOT/bravo-wave-resume.err")"
+if [ "$PRIMARY_WAVE_STATUS" -ne 0 ] && [ "$BRAVO_WAVE_STATUS" -ne 0 ]; then
+  fail "both concurrent recoveries refused the isolated session lock"
+fi
+if [ "$PRIMARY_WAVE_STATUS" -ne 0 ]; then
+  spawn_task "$PRIMARY_WAVE_ID" "$HOME_DIR" "$RECOVERY_PROJECT_DIR" > "$TMP_ROOT/primary-wave-resume.out" 2> "$TMP_ROOT/primary-wave-resume.err" \
+    || fail "primary recovery retry failed after contention cleared: $(cat "$TMP_ROOT/primary-wave-resume.err")"
+fi
+if [ "$BRAVO_WAVE_STATUS" -ne 0 ]; then
+  spawn_task "$BRAVO_WAVE_ID" "$SECOND_HOME_B" "$RECOVERY_PROJECT_DIR" > "$TMP_ROOT/bravo-wave-resume.out" 2> "$TMP_ROOT/bravo-wave-resume.err" \
+    || fail "secondmate recovery retry failed after contention cleared: $(cat "$TMP_ROOT/bravo-wave-resume.err")"
+fi
 PRIMARY_WAVE_NEW_WT=$(remember_meta_worktree "$PRIMARY_WAVE_META")
 BRAVO_WAVE_NEW_WT=$(remember_meta_worktree "$BRAVO_WAVE_META")
 PRIMARY_WAVE_NEW_PANE=$(grep '^herdr_pane_id=' "$PRIMARY_WAVE_META" | cut -d= -f2-)
@@ -1347,7 +1375,7 @@ teardown_task "$BRAVO_WAVE_ID" "$SECOND_HOME_B" > "$TMP_ROOT/bravo-wave-teardown
 "$REAL_TREEHOUSE" return --force "$BRAVO_WAVE_OLD_WT" >/dev/null 2>&1 || true
 "$REAL_TREEHOUSE" return --force "$PRIMARY_WAVE_NEW_WT" >/dev/null 2>&1 || true
 "$REAL_TREEHOUSE" return --force "$BRAVO_WAVE_NEW_WT" >/dev/null 2>&1 || true
-pass "real Herdr lab: concurrent cross-home recoveries replace exact husks under one session lock with no focus drift"
+pass "real Herdr lab: concurrent cross-home recovery honors bounded lock refusal and replaces exact husks with no focus drift"
 
 # Seed a legacy old-format primary projection and a flat secondmate tab; correction must not migrate them.
 LEGACY_OUT=$(lab workspace create --cwd "$PROJECT_DIR" --label "firstmate/legacy-seed · p:AbCdEfGhIjKlMnOpQrStUv" --no-focus) \
