@@ -550,7 +550,9 @@ An absent or unknown named row also makes the candidate unrankable and is report
 `ultra` is native-only: the model-aware validation contract and launch mapping are owned by `bin/fm-harness.sh validate-native-effort` and `bin/fm-spawn.sh` respectively.
 Bootstrap and typed dispatch validation accept Codex `max` only when the selected model's entry in `${CODEX_HOME:-~/.codex}/models_cache.json` advertises that reasoning level.
 The launch path applies the same check and passes the setting when supported.
-For direct and recovery launches, it warns once and omits the setting when support is absent.
+A missing, unreadable, or malformed catalog cannot authorize `max`, including a catalog that is not one JSON object with a `models` array whose model entries each contain a `supported_reasoning_levels` array.
+Bootstrap and typed dispatch validation reject the profile in those cases.
+Direct and recovery launches warn once and omit the setting when the catalog cannot authorize it.
 An omitted model or effort means the selected harness uses its own default for that axis.
 Every profile array is an implicit quota-aware choice resolved through `quota-array-dispatch`.
 If no dispatch rule fits, firstmate resolves `default` through the same object-or-array path before falling back to `config/crew-harness`.
