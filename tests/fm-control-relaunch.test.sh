@@ -2045,7 +2045,10 @@ case "${1:-} ${2:-}" in
     # A retained registration with a shell-only pane models an exited agent
     # whose Herdr status authority still belongs to its previous session.
     if [ -f "$D/herdr-agent-registration" ]; then
-      printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"%s","shell_pid":4242,"foreground_processes":[]}}}\n' \
+      # The fork's exited-agent proof (fm_backend_herdr_departed_pi_sample)
+      # accepts only what real Herdr reports for such a pane: the pane shell
+      # itself as the one foreground process, leading its own group.
+      printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"%s","shell_pid":4242,"foreground_process_group_id":4242,"foreground_processes":[{"pid":4242,"name":"bash","argv":["bash"],"argv0":"bash","cmdline":"bash"}]}}}\n' \
         "$(cat "$D/herdr-pane")"
     else
       printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"%s","shell_pid":4242,"foreground_processes":[{"pid":4243,"name":"claude","argv":["claude"],"cmdline":"claude"}]}}}\n' \
@@ -2099,7 +2102,9 @@ SH
 if [ -f "$FM_FAKE_DIR/herdr-agent-registration" ]; then
   case "$*" in
     '-axo pid=,ppid=,comm=') printf '4242 1 bash\n' ;;
-    '-p 4242 -o args=') printf 'bash\n' ;;
+    '-axo pid=,ppid=,stat=,comm=') printf '4242 1 S bash\n' ;;
+    '-p 4242 -o args=' | '-p 4242 -o comm=') printf 'bash\n' ;;
+    '-p 4242 -o stat=') printf 'S\n' ;;
     *) exec /bin/ps "$@" ;;
   esac
 else

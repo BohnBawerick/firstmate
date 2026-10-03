@@ -488,7 +488,7 @@ for helper_mode in noted pointer-only; do
   FM_HOME="$REMOTE" "$ROOT/bin/fm-secondmate-report.sh" --doc 'done' "$helper_corr" "$helper_doc" "$helper_note" \
     || fail "the remote helper could not publish its report"
   GEN=$((GEN + 1))
-  remote_env "$ROOT/bin/fm-procevent.sh" start "$SID" >/dev/null 2>&1 \
+  await_reply_result "$PARENT/state/procevent-inbox/$SID.$GEN.result" \
     || fail "the helper report was not captured"
   [ "$(fm_pending_reply_get "$PARENT/state/pending-replies/$helper_corr" phase)" = resolved ] \
     || fail "the helper report did not resolve its pending request"

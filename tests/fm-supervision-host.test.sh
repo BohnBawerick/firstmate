@@ -2603,10 +2603,10 @@ test_first_cycle_status_streams_and_owner_options_reach_it() {
 # Main's side of a handed-back wake: drain, then run the printed acknowledgement.
 main_drain_and_ack() {  # <home>
   local out ack
-  out=$(FM_HOME="$1" "$ROOT/bin/fm-wake-drain.sh" 2>&1)
+  out=$(FM_HOME="$1" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   ack=$(printf '%s\n' "$out" | sed -n 's/^WAKE_ACK_REQUIRED: after handling completes run bin\/fm-wake-drain.sh //p' | tail -1)
   # shellcheck disable=SC2086 # the printed acknowledgement arguments
-  [ -z "$ack" ] || FM_HOME="$1" "$ROOT/bin/fm-wake-drain.sh" $ack >/dev/null 2>&1 || fail "main's acknowledgement failed: $ack"
+  [ -z "$ack" ] || FM_HOME="$1" "$FAKE_CLAUDE" -c 'export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $ack || fail "main's acknowledgement failed: $ack"
 }
 
 # One main session across several parks, as a primary's arm owner runs the host
