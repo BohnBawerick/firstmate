@@ -742,6 +742,27 @@ assert_contains "$err" 'each use profile effort must be supported by its harness
 assert_absent "$LOG/argv" "a malformed catalog reached dispatch resolution"
 
 printf '%s\n' \
+  '{"models":{"entry":{"slug":"gpt-6-astra","supported_reasoning_levels":{"level":{"effort":"max"}}}}}' \
+  > "$CODEX_CATALOG/models_cache.json"
+reset_log
+CODEX_HOME="$CODEX_CATALOG" TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
+expect_code 2 "$code" "an object-shaped catalog rejects Codex max"
+assert_contains "$err" 'each use profile effort must be supported by its harness and model' \
+  "object-shaped catalog containers authorized Codex max"
+assert_absent "$LOG/argv" "an object-shaped catalog reached dispatch resolution"
+
+printf '%s\n' \
+  '{"models":[{"slug":"gpt-6-astra","supported_reasoning_levels":[{"effort":"max"}]}]}' \
+  '{"models":[{"slug":"gpt-6-astra","supported_reasoning_levels":[{"effort":"max"}]}]}' \
+  > "$CODEX_CATALOG/models_cache.json"
+reset_log
+CODEX_HOME="$CODEX_CATALOG" TYPESAFE_API_KEY=$KEY run code out err "$BRIEF"
+expect_code 2 "$code" "multiple catalog documents reject Codex max"
+assert_contains "$err" 'each use profile effort must be supported by its harness and model' \
+  "multiple catalog documents authorized Codex max"
+assert_absent "$LOG/argv" "multiple catalog documents reached dispatch resolution"
+
+printf '%s\n' \
   '{"models":[{"slug":"other-model","id":"gpt-6-astra","model":"gpt-6-astra","supported_reasoning_levels":[{"effort":"max"}]}]}' \
   > "$CODEX_CATALOG/models_cache.json"
 reset_log

@@ -468,6 +468,26 @@ test_codex_omits_max_effort_for_unsupported_model() {
   pass "codex omits max for models without the catalog capability"
 }
 
+test_codex_warns_and_omits_max_for_malformed_catalog() {
+  local rec id out status launch warning
+  id=profile-codex-max-malformed-z4c
+  rec=$(make_spawn_case profile-codex-max-malformed codex "$id")
+  read_case_record "$rec"
+  seed_codex_catalog "$HOME_DIR" \
+    '{"models":{"entry":{"slug":"gpt-6-astra","supported_reasoning_levels":{"level":{"effort":"max"}}}}}'
+  warning='warning: dropped codex effort max for model gpt-6-astra; catalog does not advertise it'
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model gpt-6-astra --effort max 2>&1)
+  status=$?
+  expect_code 0 "$status" "codex spawn with a malformed catalog should omit max effort"
+  assert_contains "$out" "$warning" "codex spawn silently downgraded max for a malformed catalog"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "codex --model 'gpt-6-astra' --dangerously-bypass-approvals-and-sandbox" \
+    "codex launch did not preserve the model when a malformed catalog rejected max"
+  assert_not_contains "$launch" "model_reasoning_effort" "a malformed catalog authorized Codex max"
+  pass "codex warns and omits max for malformed catalogs"
+}
+
 # Codex parks a crewmate launch forever on its unanswerable hook-trust modal
 # unless the launch turns the hook layer off. These two cases pin the split:
 # a crewmate runs hook-free, a secondmate keeps the project hooks that carry its
@@ -1510,6 +1530,7 @@ test_claude_threads_model_and_effort
 test_codex_threads_model_and_effort
 test_codex_threads_model_and_max_effort
 test_codex_omits_max_effort_for_unsupported_model
+test_codex_warns_and_omits_max_for_malformed_catalog
 test_codex_crewmate_launch_disables_the_hook_layer
 test_codex_secondmate_launch_keeps_the_hook_layer
 test_grok_threads_model_and_reasoning_effort
