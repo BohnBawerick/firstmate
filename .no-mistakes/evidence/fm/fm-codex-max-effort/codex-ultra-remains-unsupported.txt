@@ -1,0 +1,6 @@
+$ installed catalog entry for gpt-6-astra
+{"slug":"gpt-6-astra","supported_reasoning_levels":["low","medium","high","xhigh","max","ultra"]}
+
+$ bootstrap rejects Codex ultra even when the catalog advertises it
+CREW_DISPATCH: invalid config/crew-dispatch.json - invalid effort: codex:ultra
+bootstrap exit: 0
