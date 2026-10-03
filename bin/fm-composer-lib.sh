@@ -1552,16 +1552,19 @@ _fm_composer_select_cursorless() {
   if [ "$FM_COMPOSER_SCAN_PI_PAIR_FOUND" = 0 ] \
      && [ "$FM_COMPOSER_SCAN_PI_LAST_SEPARATOR" -gt "$generic" ]; then
     # A lone separator below the candidate usually means a clipped Pi pair, so
-    # fail closed. Two shapes are spared. Claude's idle composer is a bare agent
-    # glyph with its closing ─ on the very next row; a short herdr tail can drop
-    # the matching opening rule and used to classify that idle pane unknown for
-    # the whole away run. A bare glyph inside its own titled composer rules is
-    # the same composer with a titled top rule; see
-    # _fm_composer_bare_rule_sandwich for why that shape is not scrollback.
+    # fail closed. Two bare-glyph shapes are spared. One is a glyph inside its
+    # own titled composer rules; see _fm_composer_bare_rule_sandwich for why
+    # that shape is not scrollback. The other is Claude's idle composer whose
+    # opening rule was clipped off the top of the capture: the glyph is the
+    # first captured row and its closing ─ is the very next one. That used to
+    # classify an idle pane unknown for a whole away run. A glyph with any row
+    # above it gets no such benefit, so a rule that is not this composer's top
+    # edge still refuses.
     if ! { [ "$FM_COMPOSER_SELECTED_KIND" = bare ] \
-           && { [ "$FM_COMPOSER_SCAN_PI_LAST_SEPARATOR" -eq $((generic + 1)) ] \
-                || { [ "$generic" = "$FM_COMPOSER_SCAN_BARE_ROW" ] \
-                     && _fm_composer_bare_rule_sandwich "$plain" "$FM_COMPOSER_SCAN_BARE_ROW"; }; }; }; then
+           && [ "$generic" = "$FM_COMPOSER_SCAN_BARE_ROW" ] \
+           && { _fm_composer_bare_rule_sandwich "$plain" "$FM_COMPOSER_SCAN_BARE_ROW" \
+                || { [ "$FM_COMPOSER_SCAN_BARE_ROW" -eq 0 ] \
+                     && [ "$FM_COMPOSER_SCAN_PI_LAST_SEPARATOR" -eq 1 ]; }; }; }; then
       FM_COMPOSER_SELECTED_KIND=
       return 1
     fi

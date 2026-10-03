@@ -3383,7 +3383,10 @@ test_wedge_threshold_keeps_a_wait_past_a_default_key_answer() {
   dir=$(wedge_threshold_fixture keyless-retraction \
     "$(printf 'paused: waiting on the vendor release\nresolved: the vendor shipped')" 0)
   state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"; capture="$dir/pane.txt"
-  wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$working" exit \
+  # A provably working crew suppresses a wedge escalation, so the retraction is
+  # shown on a verdict that is working by the status log alone.
+  wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" \
+    'state: working · source: status-log · working: compiling' exit \
     || fail "a worker's own keyless resolved line did not retract its wait: $(cat "$out")"
   grep -F "possible wedge, escalation 1" "$out" >/dev/null \
     || fail "a retracted wait did not return to the wedge ladder: $(cat "$out")"
