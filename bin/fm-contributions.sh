@@ -32,7 +32,9 @@
 #
 # poll consumes fm-fleet-snapshot.sh --contribution-input, a local-only read,
 # and spends at most FM_CONTRIBUTIONS_BUDGET seconds on forge reads (default 20,
-# 1..25). Every read is capped at five seconds. A pull observation has three
+# 1..25). Every read is capped at five seconds; a read a deadline cuts short -
+# the budget's own or a read's cap - is unmeasured, never unavailable, because
+# a slow forge is not a failed forge. A pull observation has three
 # dependent waves: core, six independent reads, then the closing head read;
 # an issue has two waves. Parallelizing each independent wave bounds either
 # observation to 3 * 5 = 15 seconds. poll reserves min(the configured budget,
@@ -44,8 +46,9 @@
 # before any forge read or record write; it is never read as an empty input.
 # Each distinct URL is observed once per poll and applied to every owner. A
 # final observation applies to every owner without another forge read. When
-# the budget runs out mid-observation, the poll ends with that URL's records
-# untouched; only a genuine forge failure or head change records an error.
+# the budget or a per-read cap cuts an observation short, the poll ends with
+# that URL's records untouched; only a genuine forge failure or head change
+# records an error.
 # API failure leaves error evidence; an expired or absent observation is not
 # silence. FM_CONTRIBUTIONS_MAX_AGE (default 900 seconds) bounds freshness.
 # A URL whose last good observation is merged is final: it is never re-read,
@@ -187,15 +190,17 @@ write_record() { # task record-json-file
 }
 
 forge() {
-  local remaining bounded=0 rc=0 forge_err=${FORGE_ERR:-$TMP/forge.err}
+  local remaining rc=0 forge_err=${FORGE_ERR:-$TMP/forge.err}
   remaining=$((DEADLINE - $(date +%s)))
   # The budget, not the forge, refused this read.
   [ "$remaining" -gt 0 ] || { BUDGET_EXHAUSTED=1; : > "$TMP/budget-exhausted"; return 1; }
-  if [ "$remaining" -le 5 ]; then bounded=1; else remaining=5; fi
+  if [ "$remaining" -gt 5 ]; then remaining=5; fi
   fm_run_timed "$remaining" env GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 \
     gh "$@" 2> "$forge_err" || rc=$?
-  # A read killed at the budget's own deadline is budget exhaustion too.
-  if [ "$rc" -eq 124 ] && [ "$bounded" -eq 1 ]; then
+  # A read killed at any deadline - the budget's own or this read's five-second
+  # cap - was cut by a bound, not refused by the forge. A slow forge read is
+  # unmeasured, never unavailable.
+  if [ "$rc" -eq 124 ]; then
     BUDGET_EXHAUSTED=1
     : > "$TMP/budget-exhausted"
   elif [ "$rc" -ne 0 ]; then
@@ -285,13 +290,26 @@ observe() { # canonical GitHub URL -> normalized JSON
     | valid_record' >/dev/null
 }
 
+wake_key_hash() { # stdin -> sha256 digest line; shasum and sha256sum are both optional
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum
+  else
+    fail 'shasum or sha256sum is required for the contribution wake key'
+  fi
+}
+
 publish_pending() { # task canonical-url record-file
   local task=$1 url=$2 record=$3 token key count emitted status
   count=$(jq '.pending | length' "$record")
   [ "$count" -gt 0 ] || return 0
   while IFS= read -r token; do
     [ -n "$token" ] || continue
-    key=$(printf '%s\n%s\n' "$url" "$token" | shasum -a 256 | awk '{print $1}')
+    key=$(printf '%s\n%s\n' "$url" "$token" | wake_key_hash | awk '{print $1}')
+    case "$key" in
+      *[!0-9a-f]*|'') fail 'could not hash the contribution wake key' ;;
+    esac
     emitted=0
     status=0
     fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK" || return 1
