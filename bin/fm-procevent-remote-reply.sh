@@ -95,6 +95,10 @@ DOCUMENT_LOCAL_FAILURE=2
 . "$SCRIPT_DIR/fm-secondmate-registry-lib.sh"
 # shellcheck source=bin/fm-pending-reply-lib.sh
 . "$SCRIPT_DIR/fm-pending-reply-lib.sh"
+# shellcheck source=bin/fm-pr-lib.sh
+. "$SCRIPT_DIR/fm-pr-lib.sh"
+# shellcheck source=bin/fm-procevent-lib.sh
+. "$SCRIPT_DIR/fm-procevent-lib.sh"
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 usage() { sed -n '2,66p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
@@ -639,12 +643,13 @@ EOF
 }
 
 cmd_handle_locked() {
-  local id=${1:-} seq=${2:-} result=${3:-} sid class rc=0 to
+  local id=${1:-} seq=${2:-} result=${3:-} sid class rc=0 to already_handled=0
   validate_id "$id"
   case "$seq" in ''|*[!0-9]*) die "sequence must be a nonnegative integer" ;; esac
   sid=$(source_id "$id")
   class=$(classify_result "$result")
   [ "$class" != malformed ] || die "remote reply result is malformed"
+  fm_procevent_is_handled "$STATE" "$sid" "$seq" && already_handled=1
   if ingest_receipt_matches "$id" "$seq" "$result"; then
     to=$(result_field "$result" to_offset) || die "result end offset is ambiguous"
     printf 'ingested: %s appended=0 offset=%s\n' "$id" "$to"
@@ -654,7 +659,7 @@ cmd_handle_locked() {
   if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
     return "$rc"
   fi
-  if [ "$class" = delta ]; then
+  if [ "$class" = delta ] && [ "$already_handled" -eq 0 ]; then
     cmd_arm_locked "$id" || return 1
   fi
   "$SCRIPT_DIR/fm-procevent.sh" handled "$sid" "$seq" || return 1

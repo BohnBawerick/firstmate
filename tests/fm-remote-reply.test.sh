@@ -16,6 +16,8 @@ CLAIMS="$TMP_ROOT/claims"
 mkdir -p "$PARENT/data" "$PARENT/state" "$REMOTE/state" "$REMOTE/data/reply" "$CLAIMS"
 # shellcheck source=bin/fm-remote-job-lib.sh
 . "$ROOT/bin/fm-remote-job-lib.sh"
+# shellcheck source=bin/fm-pr-lib.sh
+. "$ROOT/bin/fm-pr-lib.sh"
 # The recorded worker pid is the serving child, not its restart supervisor, so
 # stopping that pid alone leaves the supervisor to respawn - the leak
 # tests/fm-remote-job-orphan-reap.test.sh pins. Stop the whole worker tree.
@@ -364,8 +366,12 @@ printf 'blocked [key=ctl]: escape \033[31mhere\033[0m bell \007 caf\xc3\xa9 end\
 await_reply_result "$PARENT/state/procevent-inbox/$SID.5.result" \
   || fail "the control-character line was not captured"
 RESULT_FIVE="$PARENT/state/procevent-inbox/$SID.5.result"
+registration_before_replay=$(fm_pr_file_identity "$PARENT/state/procevent/$SID.source") \
+  || fail "the listener registration was unavailable before replay"
 remote_env "$ADAPTER" handle ios 5 "$RESULT_FIVE" >/dev/null 2>&1 \
   || fail "a control character stopped the stream"
+[ "$(fm_pr_file_identity "$PARENT/state/procevent/$SID.source")" = "$registration_before_replay" ] \
+  || fail "replaying an already-handled delta replaced the live listener registration"
 assert_grep 'blocked [key=ctl]: escape ?[31mhere' "$PARENT/state/ios.status" \
   "the control-character line was not mirrored in normalized form"
 [ -z "$(LC_ALL=C tr -d '\11\12\40-\176\200-\377' < "$PARENT/state/ios.status")" ] \
