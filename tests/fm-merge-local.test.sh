@@ -23,7 +23,9 @@
 #       push the remote rejects
 #   (o) Firstmate's own repository reads a recorded PR back as merged, and
 #       reports, exit 3, one that does not read back merged
-#   (p) Firstmate's own repository never pushes when origin may be the parent
+#   (p) Firstmate's own repository skips a checkout with no configured fork
+#   (q) Firstmate's own repository refuses an incomplete or unsafe fork remap
+#   (r) Firstmate's own repository does not read back a non-GitHub PR
 #
 # "Firstmate's own repository" is one shared predicate, bin/fm-self-repo-lib.sh,
 # used identically by fm-merge-local.sh, fm-pr-merge.sh, fm-fleet-sync.sh, and
@@ -505,13 +507,18 @@ test_refuses_diverged_branch() {
   pass "fm-merge-local refuses when branch has diverged (not a fast-forward)"
 }
 
-# A firstmate repository whose origin is a local bare clone, plus one ship branch
-# ahead of main. Prints the bare remote's path.
+# A remapped firstmate repository whose origin and upstream are local bare
+# clones, plus one ship branch ahead of main. Prints origin's path.
 make_fm_repo_with_origin() {
-  local case_dir=$1 id=$2 fm_root="$1/firstmate" remote="$1/origin.git"
+  local case_dir=$1 id=$2 fm_root="$1/firstmate" remote="$1/origin.git" upstream="$1/upstream.git"
   mkdir -p "$case_dir/state"
   make_repo "$fm_root" main
   fm_git_add_origin "$fm_root" "$remote"
+  git clone --quiet --bare "$fm_root" "$upstream"
+  git -C "$fm_root" remote add upstream "file://$upstream"
+  git -C "$fm_root" config checkout.defaultRemote origin
+  git -C "$fm_root" config remote.pushDefault origin
+  git -C "$fm_root" config remote.origin.gh-resolved base
   git -C "$fm_root" checkout -b "fm/$id" --quiet
   echo "firstmate feature $id" >> "$fm_root/file.txt"
   git -C "$fm_root" commit --quiet -am "firstmate fix $id"
@@ -532,6 +539,7 @@ case "${FAKE_GH_STATE:-MERGED}" in
 esac
 SH
   chmod +x "$fakebin/gh"
+  fm_fake_exit0 "$fakebin" sleep
   printf '%s\n' "$fakebin"
 }
 
@@ -540,7 +548,6 @@ run_fm_merge_local() {  # <case-dir> <id>
   FM_ROOT_OVERRIDE="$fm_root" \
   FM_HOME="$fm_root" \
   FM_STATE_OVERRIDE="$case_dir/state" \
-  FM_MERGE_LOCAL_READBACK_DELAY=0 \
     run_merge_local "$2" > "$case_dir/stdout" 2> "$case_dir/stderr"
 }
 
@@ -687,12 +694,71 @@ test_firstmate_repo_reports_pr_not_merged() {
   pass "fm-merge-local reports a recorded PR that does not read back merged"
 }
 
+test_firstmate_repo_skips_single_origin_without_fork() {
+  local case_dir fm_root remote rc remote_before
+  case_dir="$TMP_ROOT/fm-no-configured-fork"
+  fm_root="$case_dir/firstmate"
+  remote="$case_dir/origin.git"
+  mkdir -p "$case_dir/state"
+  make_repo "$fm_root" main
+  fm_git_add_origin "$fm_root" "$remote"
+  git -C "$fm_root" checkout -b fm/task-no-fork --quiet
+  echo "firstmate feature" >> "$fm_root/file.txt"
+  git -C "$fm_root" commit --quiet -am "firstmate fix"
+  git -C "$fm_root" checkout main --quiet
+  remote_before=$(git -C "$remote" rev-parse main)
+  fm_write_meta "$case_dir/state/task-no-fork.meta" \
+    "window=fm-task-no-fork" "worktree=$case_dir/wt" "project=$fm_root" \
+    "kind=ship" "mode=no-mistakes"
+
+  set +e
+  run_fm_merge_local "$case_dir" task-no-fork
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "no-configured-fork: a single-origin checkout should succeed"
+  assert_equals "$remote_before" "$(git -C "$remote" rev-parse main)" \
+    "no-configured-fork: origin was pushed"
+  assert_grep "no fork is configured" "$case_dir/stdout" \
+    "no-configured-fork: the skipped push was not explained"
+  assert_grep "nothing was pushed" "$case_dir/stdout" \
+    "no-configured-fork: the output did not say that nothing was pushed"
+  pass "fm-merge-local skips a checkout with no configured fork"
+}
+
+test_firstmate_repo_refuses_missing_origin_after_remap() {
+  local case_dir fm_root upstream rc upstream_before
+  case_dir="$TMP_ROOT/fm-remap-missing-origin"
+  make_fm_repo_with_origin "$case_dir" task-missing-origin >/dev/null
+  fm_root="$case_dir/firstmate"
+  upstream="$case_dir/upstream.git"
+  upstream_before=$(git -C "$upstream" rev-parse main)
+  git -C "$fm_root" remote remove origin
+  fm_write_meta "$case_dir/state/task-missing-origin.meta" \
+    "window=fm-task-missing-origin" "worktree=$case_dir/wt" "project=$fm_root" \
+    "kind=ship" "mode=no-mistakes"
+
+  set +e
+  run_fm_merge_local "$case_dir" task-missing-origin
+  rc=$?
+  set -e
+
+  expect_code 3 "$rc" "missing-origin: an incomplete remap must exit 3"
+  assert_equals "$upstream_before" "$(git -C "$upstream" rev-parse main)" \
+    "missing-origin: upstream main moved"
+  assert_grep "fork not updated" "$case_dir/stderr" \
+    "missing-origin: the unsynced fork was not reported"
+  assert_grep "origin is absent" "$case_dir/stderr" \
+    "missing-origin: the incomplete remap was not explained"
+  pass "fm-merge-local reports a remapped checkout whose origin is missing"
+}
+
 test_firstmate_repo_never_pushes_unproven_origin() {
   local case_dir fm_root remote rc remote_before
   case_dir="$TMP_ROOT/fm-push-unproven"
   remote=$(make_fm_repo_with_origin "$case_dir" task-unp)
   fm_root="$case_dir/firstmate"
-  # A leftover fork remote is the pre-remap shape: origin may still be the parent.
+  # A leftover fork remote means the remap is incomplete.
   git -C "$fm_root" remote add fork "file://$case_dir/elsewhere.git"
   remote_before=$(git -C "$remote" rev-parse main)
   fm_write_meta "$case_dir/state/task-unp.meta" \
@@ -710,6 +776,60 @@ test_firstmate_repo_never_pushes_unproven_origin() {
   assert_grep "origin is not proven to be our fork" "$case_dir/stderr" \
     "push-unproven: the refusal was not explained"
   pass "fm-merge-local never pushes to an origin that may be the parent"
+}
+
+test_firstmate_repo_never_uses_mismatched_push_url() {
+  local case_dir fm_root remote upstream rc remote_before upstream_before origin_url upstream_url
+  case_dir="$TMP_ROOT/fm-mismatched-push-url"
+  remote=$(make_fm_repo_with_origin "$case_dir" task-push-url)
+  fm_root="$case_dir/firstmate"
+  upstream="$case_dir/upstream.git"
+  origin_url=$(git -C "$fm_root" remote get-url origin)
+  upstream_url=$(git -C "$fm_root" remote get-url upstream)
+  git -C "$fm_root" remote set-url --add --push origin "$origin_url"
+  git -C "$fm_root" remote set-url --add --push origin "$upstream_url"
+  remote_before=$(git -C "$remote" rev-parse main)
+  upstream_before=$(git -C "$upstream" rev-parse main)
+  fm_write_meta "$case_dir/state/task-push-url.meta" \
+    "window=fm-task-push-url" "worktree=$case_dir/wt" "project=$fm_root" \
+    "kind=ship" "mode=no-mistakes"
+
+  set +e
+  run_fm_merge_local "$case_dir" task-push-url
+  rc=$?
+  set -e
+
+  expect_code 3 "$rc" "push-url: a mismatched push URL must exit 3"
+  assert_equals "$remote_before" "$(git -C "$remote" rev-parse main)" \
+    "push-url: origin main moved"
+  assert_equals "$upstream_before" "$(git -C "$upstream" rev-parse main)" \
+    "push-url: upstream main moved"
+  assert_grep "would push to $upstream_url rather than its verified fetch URL" "$case_dir/stderr" \
+    "push-url: the unsafe destination was not explained"
+  pass "fm-merge-local checks every configured origin push URL before pushing"
+}
+
+test_firstmate_repo_skips_non_github_pr_readback() {
+  local case_dir fm_root remote rc
+  case_dir="$TMP_ROOT/fm-non-github-pr"
+  remote=$(make_fm_repo_with_origin "$case_dir" task-non-github)
+  fm_root="$case_dir/firstmate"
+  fm_write_meta "$case_dir/state/task-non-github.meta" \
+    "window=fm-task-non-github" "worktree=$case_dir/wt" "project=$fm_root" \
+    "kind=ship" "mode=no-mistakes" \
+    "pr=https://gitlab.example.com/group/firstmate/-/merge_requests/9"
+
+  set +e
+  run_fm_merge_local "$case_dir" task-non-github
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "non-github-pr: a proved fork push should succeed"
+  assert_equals "$(git -C "$fm_root" rev-parse main)" "$(git -C "$remote" rev-parse main)" \
+    "non-github-pr: the fork was not updated"
+  assert_grep "PR state was not checked" "$case_dir/stdout" \
+    "non-github-pr: the skipped provider read-back was not reported"
+  pass "fm-merge-local stops after branch proof for a non-GitHub PR"
 }
 
 test_shared_firstmate_repo_predicate_contract
@@ -730,4 +850,8 @@ test_firstmate_repo_refuses_non_fast_forward_push
 test_firstmate_repo_reports_push_failure
 test_firstmate_repo_reads_pr_back_merged
 test_firstmate_repo_reports_pr_not_merged
+test_firstmate_repo_skips_single_origin_without_fork
+test_firstmate_repo_refuses_missing_origin_after_remap
 test_firstmate_repo_never_pushes_unproven_origin
+test_firstmate_repo_never_uses_mismatched_push_url
+test_firstmate_repo_skips_non_github_pr_readback

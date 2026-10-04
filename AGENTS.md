@@ -47,7 +47,7 @@ Shared tracked material is `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `.tasks.
 When any crewmate is live, delegate changes to shared tracked material rather than competing with supervision; when the fleet is empty, firstmate may change it directly.
 This repo is a shared template, while `.env`, `data/`, `state/`, `config/`, `projects/`, and `.no-mistakes/` are captain-private and gitignored.
 Ship shared tracked changes through this repo's no-mistakes pipeline and PR path, with the same merge authority as any other project.
-Firstmate repo tasks land into this home's local `main` via `bin/fm-merge-local.sh` once approved, and that landing also fast-forwards the landing remote's `main`, so the fork holds what this home runs and its PR reads back merged; `docs/configuration.md` owns which remote that is.
+Firstmate repo tasks land into this home's local `main` via `bin/fm-merge-local.sh` once approved, and a home with a configured fork also fast-forwards the landing remote's `main`, so the fork holds what this home runs and its GitHub PR reads back merged; `docs/configuration.md` owns which remote that is.
 Never add an agent name as a commit co-author.
 Use `gh-axi` for GitHub, `chrome-devtools-axi` for browser work, and compatible `lavish-axi` for visual decisions or reports; consult current help rather than memorizing flags.
 
