@@ -2358,9 +2358,9 @@ test_secondmate_without_parent_binding_is_loud() {
   pass "a secondmate home that cannot report upward says so instead of merging in silence"
 }
 
-test_merges_firstmate_repo_locally() {
+test_refuses_firstmate_repo_before_forge_merge() {
   local case_dir fm_root state_dir rc before after
-  case_dir=$(make_case fm-pr-merge-local)
+  case_dir=$(make_case fm-pr-merge-refuses-local-authority)
   fm_root="$case_dir/firstmate"
   state_dir="$case_dir/state"
   mkdir -p "$state_dir" "$case_dir/fakebin" "$fm_root/data"
@@ -2391,12 +2391,17 @@ test_merges_firstmate_repo_locally() {
   rc=$?
   set -e
 
-  expect_code 0 "$rc" "fm-pr-merge-local: fm-pr-merge should succeed: $(cat "$case_dir/stderr")"
+  expect_code 1 "$rc" "fm-pr-merge-local: fm-pr-merge should refuse Firstmate's repository"
   after=$(git -C "$fm_root" rev-parse HEAD)
-  [ "$before" != "$after" ] || fail "fm-pr-merge-local: local main was not advanced after remote merge"
-  assert_grep "merged fm/task-fmpr into local main" "$case_dir/stdout" \
-    "fm-pr-merge-local: local fast-forward output was not printed"
-  pass "fm-pr-merge fast-forwards local main when project is Firstmate's own repository"
+  assert_equals "$before" "$after" \
+    "fm-pr-merge-local: local main changed despite the refusal"
+  [ ! -s "$case_dir/gh.log" ] && [ ! -s "$case_dir/gh-axi.log" ] \
+    || fail "fm-pr-merge-local: a forge command ran for the local-authoritative repository"
+  assert_no_grep '^pr=' "$state_dir/task-fmpr.meta" \
+    "fm-pr-merge-local: PR metadata was recorded before the refusal"
+  assert_grep "use bin/fm-merge-local.sh task-fmpr after approval" "$case_dir/stderr" \
+    "fm-pr-merge-local: the refusal did not point at the local landing command"
+  pass "fm-pr-merge refuses Firstmate's repository before any forge merge"
 }
 
 test_github_zero_exit_queue_required_refuses_with_exact_retry
@@ -3885,7 +3890,7 @@ test_queued_github_merge_leaves_the_poll_armed
 test_distinct_merged_prs_keep_distinct_wakes
 test_uncommitted_marker_retry_is_never_silent
 test_secondmate_without_parent_binding_is_loud
-test_merges_firstmate_repo_locally
+test_refuses_firstmate_repo_before_forge_merge
 test_absent_backlog_still_merges
 test_unreadable_backlog_refuses_the_merge
 test_unreadable_backend_config_refuses_the_merge

@@ -7,7 +7,7 @@
 # decisions branch on that fact and must agree exactly:
 #   bin/fm-merge-local.sh   accepts a PR-mode task for the local fast-forward,
 #                           then pushes that landing to the fork
-#   bin/fm-pr-merge.sh      follows a merged PR with that same local landing
+#   bin/fm-pr-merge.sh      refuses a forge merge for the local-authoritative repo
 #   bin/fm-fleet-sync.sh    leaves the checkout alone (upstream sync is manual)
 #   bin/fm-spawn.sh         refreshes a task worktree from the LOCAL default
 #                           branch instead of fetching origin

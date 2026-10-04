@@ -7,6 +7,8 @@
 # host and path, so any instance works and no host is hardcoded. A Gerrit change
 # is refused outright: that adapter is read-only, and the refusal at the parse
 # below owns why.
+# Firstmate's own repository is local-authoritative, so this script refuses its
+# tasks before any forge read or write and directs them to bin/fm-merge-local.sh.
 #
 # Merge method on GitHub defaults to --squash when the caller passes none of
 # --squash, --merge, --rebase, or --method after the optional -- separator.
@@ -419,6 +421,11 @@ if ! fm_backlog_meta_spawn_gen_optional "$META" "$STATE"; then
 fi
 if [ "$FM_BACKLOG_META_SPAWN_GEN" != "$MERGE_EXPECTED_SPAWN_GEN" ]; then
   echo "error: task $ID changed incarnation while waiting to merge; refusing" >&2
+  exit 1
+fi
+PROJ=$(grep '^project=' "$META" | cut -d= -f2- || true)
+if [ -n "$PROJ" ] && [ -d "$PROJ" ] && fm_is_firstmate_repo "$PROJ" "$FM_ROOT" "$FM_HOME"; then
+  echo "error: task $ID is Firstmate's local-authoritative repository; use bin/fm-merge-local.sh $ID after approval instead of merging its PR" >&2
   exit 1
 fi
 
@@ -1489,12 +1496,3 @@ case "$outcome_rc" in
     printf 'actionable: merged %s but could not record the outcome for supervision\n' "$URL" >&2
     ;;
 esac
-
-# Firstmate's own repository is local-authoritative: the proved merge above is
-# followed by the guarded landing into this home's local main, which also pushes
-# that main to the fork (bin/fm-merge-local.sh owns both). Reached only after the
-# forge confirmed the merge landed.
-PROJ=$(grep '^project=' "$META" | cut -d= -f2- || true)
-if [ -n "$PROJ" ] && [ -d "$PROJ" ] && fm_is_firstmate_repo "$PROJ" "$FM_ROOT" "$FM_HOME"; then
-  "$SCRIPT_DIR/fm-merge-local.sh" "$ID"
-fi
