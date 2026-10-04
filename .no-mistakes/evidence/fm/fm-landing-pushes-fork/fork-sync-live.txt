@@ -1,0 +1,143 @@
+Firstmate fork-sync live validation
+target=44276faef2b3dbeed3291d9594122f731fe56596
+merged_pr=https://github.com/BohnBawerick/firstmate/pull/32
+
+[approved landing pushes the fork and reads a real GitHub PR as merged]
+exit=0
+stdout:
+merged fm/task-happy into local main (8036fa1 -> f168826) in /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/happy/firstmate
+pushed local main to origin/main (8036fa14 -> f168826e)
+verified: https://github.com/BohnBawerick/firstmate/pull/32 is merged
+stderr:
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+local_main=f168826e8ed174d49c8635bc439dd1d5279f2715
+origin_main=f168826e8ed174d49c8635bc439dd1d5279f2715
+task_head=f168826e8ed174d49c8635bc439dd1d5279f2715
+
+[diverged fork is refused after preserving the local landing]
+exit=3
+stdout:
+merged fm/task-diverged into local main (48a27a5 -> 1abef74) in /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/diverged/firstmate
+stderr:
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fork not updated: local main landed at 1abef74, but origin/main was not updated: it is not a fast-forward: origin/main is at 17d3f96e, which local main does not contain
+See the missing commits with: git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/diverged/firstmate log --oneline 1abef7472f5dea0b12f5e3f3f6874bf413c68da5..17d3f96e0cf6dfc2cc0db602b223c3dd2049424d
+Bring them into local main through a reviewed task, then finish with: git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/diverged/firstmate push origin refs/heads/main:refs/heads/main
+local_main=1abef7472f5dea0b12f5e3f3f6874bf413c68da5
+origin_main=17d3f96e0cf6dfc2cc0db602b223c3dd2049424d
+task_head=1abef7472f5dea0b12f5e3f3f6874bf413c68da5
+
+[remote rejection is reported and the local landing remains]
+exit=3
+stdout:
+merged fm/task-rejected into local main (48a27a5 -> c0ec5e0) in /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/rejected/firstmate
+stderr:
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fork not updated: local main landed at c0ec5e0, but origin/main was not updated: the push failed: remote: remote policy rejected this push        
+To file:///home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/rejected/origin.git
+ ! [remote rejected] main -> main (pre-receive hook declined)
+error: failed to push some refs to 'file:///home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/rejected/origin.git'
+Finish with: git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/rejected/firstmate push origin refs/heads/main:refs/heads/main
+local_main=c0ec5e0fc4b2cbd1a0524d1833440f8781272a00
+origin_main=48a27a540f5fea5983fd59e0b8a179aa61c20a13
+task_head=c0ec5e0fc4b2cbd1a0524d1833440f8781272a00
+
+[mismatched push URL is refused before either remote moves]
+exit=3
+stdout:
+merged fm/task-unsafe into local main (4272319 -> 6182513) in /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/unsafe/firstmate
+stderr:
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fork not updated: local main landed at 6182513, but origin/main was not updated: origin would push to file:///home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/unsafe/upstream.git rather than its verified fetch URL: origin is file:///home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/unsafe/origin.git, not the landing remote file:///home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/unsafe/upstream.git
+Remove or correct remote.origin.pushurl, then finish with: git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/unsafe/firstmate push origin refs/heads/main:refs/heads/main
+local_main=618251315e7349ea0075ba303a16c976801c87e1
+origin_main=427231927bb786a81a218005dfd40ca8e69cd8f8
+task_head=618251315e7349ea0075ba303a16c976801c87e1
+
+[checkout without an upstream remote skips fork sync plainly]
+exit=0
+stdout:
+merged fm/task-nofork into local main (4272319 -> fe66579) in /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/nofork/firstmate
+no fork is configured in /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/nofork/firstmate because there is no upstream remote; nothing was pushed
+stderr:
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+local_main=fe66579fa82b9f464e9dcc3938f6941e4fd480f0
+origin_main=427231927bb786a81a218005dfd40ca8e69cd8f8
+task_head=fe66579fa82b9f464e9dcc3938f6941e4fd480f0
+
+[non-GitHub PR still gets branch proof and an explicit read-back skip]
+exit=0
+stdout:
+merged fm/task-nongithub into local main (cd2b11d -> 318c3ac) in /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/nongithub/firstmate
+pushed local main to origin/main (cd2b11df -> 318c3ac5)
+origin/main now holds local main; PR state was not checked because 'https://gitlab.example.com/group/firstmate/-/merge_requests/9' is not a GitHub pull request
+stderr:
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+local_main=318c3ac511b9bd867954bd7cee939038fcd858fe
+origin_main=318c3ac511b9bd867954bd7cee939038fcd858fe
+task_head=318c3ac511b9bd867954bd7cee939038fcd858fe
+
+[forge merge path refuses the local-authoritative repository before gh]
+exit=1
+stdout:
+stderr:
+error: task task-prguard is Firstmate's local-authoritative repository; use bin/fm-merge-local.sh task-prguard after approval instead of merging its PR
+local_main=cd2b11dfc657115950ab72b0d8506c95d1fd84ab
+origin_main=cd2b11dfc657115950ab72b0d8506c95d1fd84ab
+task_head=eb129b280552a534324b4e986f8900a81369b094
+
+[task reuse during fork sync cannot replace the locked PR snapshot]
+exit=0
+stdout:
+merged fm/task-snapshot into local main (cd2b11d -> 4a0f692) in /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M42A65ET1EDVWST0EP8R8HGB/.live-fork-validation.2200351/snapshot/firstmate
+pushed local main to origin/main (cd2b11df -> 4a0f6921)
+verified: https://github.com/BohnBawerick/firstmate/pull/32 is merged
+stderr:
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+local_main=4a0f692116d0d1817d6b39e8c5105a72cbd6e95a
+origin_main=4a0f692116d0d1817d6b39e8c5105a72cbd6e95a
+task_head=4a0f692116d0d1817d6b39e8c5105a72cbd6e95a
+
+RESULT: all live scenarios passed
