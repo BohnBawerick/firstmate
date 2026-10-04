@@ -99,6 +99,7 @@ fi
 
 PROJ=$(grep '^project=' "$META" | cut -d= -f2-)
 MODE=$(grep '^mode=' "$META" | cut -d= -f2- || true)
+PR_URL=$(grep '^pr=' "$META" | tail -n 1 | cut -d= -f2- || true)
 
 if [ "$MODE" != "local-only" ] && ! fm_is_firstmate_repo "$PROJ" "$FM_ROOT" "$FM_HOME"; then
   echo "error: task $ID is mode=$MODE on $PROJ, not local-only; merge PR tasks with bin/fm-pr-merge.sh <id> <PR url> after approval" >&2
@@ -196,9 +197,14 @@ fork_not_synced() {  # <why> [<next-step line>...]
   exit 3
 }
 
-if ! git -C "$PROJ" remote get-url upstream >/dev/null 2>&1; then
+if ! git -C "$PROJ" remote | grep -Fx upstream >/dev/null 2>&1; then
   echo "no fork is configured in $PROJ because there is no upstream remote; nothing was pushed"
   exit 0
+fi
+if ! upstream_url=$(git -C "$PROJ" config --local --get remote.upstream.url 2>&1) \
+  || [ -z "$upstream_url" ]; then
+  fork_not_synced "upstream is present but has no configured URL" \
+    "Repair the remotes, then finish with: $FINISH"
 fi
 if ! git -C "$PROJ" remote get-url "$FORK_REMOTE" >/dev/null 2>&1; then
   fork_not_synced "$FORK_REMOTE is absent from this remapped checkout" \
@@ -258,7 +264,6 @@ else
 fi
 
 # A recorded PR is proved merged by the same forge read the merge path uses.
-PR_URL=$(grep '^pr=' "$META" | tail -n 1 | cut -d= -f2- || true)
 [ -n "$PR_URL" ] || exit 0
 if ! fm_pr_url_parse "$PR_URL" || [ "$FM_PR_PROVIDER" != github ]; then
   echo "$FORK_REMOTE/$DEFAULT now holds local $DEFAULT; PR state was not checked because '$PR_URL' is not a GitHub pull request"

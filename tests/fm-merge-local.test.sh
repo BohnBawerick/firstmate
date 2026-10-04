@@ -753,6 +753,35 @@ test_firstmate_repo_refuses_missing_origin_after_remap() {
   pass "fm-merge-local reports a remapped checkout whose origin is missing"
 }
 
+test_firstmate_repo_refuses_upstream_without_url() {
+  local case_dir fm_root remote rc remote_before
+  case_dir="$TMP_ROOT/fm-remap-upstream-without-url"
+  remote=$(make_fm_repo_with_origin "$case_dir" task-upstream-url)
+  fm_root="$case_dir/firstmate"
+  remote_before=$(git -C "$remote" rev-parse main)
+  git -C "$fm_root" config --unset-all remote.upstream.url
+  fm_write_meta "$case_dir/state/task-upstream-url.meta" \
+    "window=fm-task-upstream-url" "worktree=$case_dir/wt" "project=$fm_root" \
+    "kind=ship" "mode=no-mistakes"
+
+  set +e
+  run_fm_merge_local "$case_dir" task-upstream-url
+  rc=$?
+  set -e
+
+  expect_code 3 "$rc" "upstream-without-url: an incomplete remap must exit 3"
+  assert_equals "$remote_before" "$(git -C "$remote" rev-parse main)" \
+    "upstream-without-url: origin main moved"
+  assert_equals "$(git -C "$fm_root" rev-parse fm/task-upstream-url)" \
+    "$(git -C "$fm_root" rev-parse main)" \
+    "upstream-without-url: local main was not landed"
+  assert_grep "fork not updated" "$case_dir/stderr" \
+    "upstream-without-url: the unsynced fork was not reported"
+  assert_grep "upstream is present but has no configured URL" "$case_dir/stderr" \
+    "upstream-without-url: the malformed remap was not explained"
+  pass "fm-merge-local refuses a named upstream remote without a URL"
+}
+
 test_firstmate_repo_never_pushes_unproven_origin() {
   local case_dir fm_root remote rc remote_before
   case_dir="$TMP_ROOT/fm-push-unproven"
@@ -832,6 +861,84 @@ test_firstmate_repo_skips_non_github_pr_readback() {
   pass "fm-merge-local stops after branch proof for a non-GitHub PR"
 }
 
+test_firstmate_repo_uses_locked_pr_snapshot() {
+  local case_dir fm_root remote fakebin real_git real_sleep ready release pid i rc
+  case_dir="$TMP_ROOT/fm-locked-pr-snapshot"
+  remote=$(make_fm_repo_with_origin "$case_dir" task-pr-snapshot)
+  fm_root="$case_dir/firstmate"
+  fakebin=$(make_fake_gh "$case_dir")
+  real_git=$(command -v git)
+  real_sleep=$(command -v sleep)
+  ready="$case_dir/post-lock.ready"
+  release="$case_dir/post-lock.release"
+  fm_write_meta "$case_dir/state/task-pr-snapshot.meta" \
+    "window=fm-task-pr-snapshot" "worktree=$case_dir/wt" "project=$fm_root" \
+    "kind=ship" "mode=no-mistakes" "spawn_gen=original" \
+    "pr=https://github.com/BohnBawerick/firstmate/pull/7"
+  cat > "$fakebin/git" <<'SH'
+#!/usr/bin/env bash
+if [ "$*" = "-C ${FM_TEST_RACE_REPO} rev-parse refs/heads/main" ]; then
+  output=$("$FM_TEST_REAL_GIT" "$@") || exit $?
+  : > "$FM_TEST_RACE_READY"
+  while [ ! -e "$FM_TEST_RACE_RELEASE" ]; do
+    "$FM_TEST_REAL_SLEEP" 0.01
+  done
+  printf '%s\n' "$output"
+  exit 0
+fi
+exec "$FM_TEST_REAL_GIT" "$@"
+SH
+  chmod +x "$fakebin/git"
+
+  PATH="$fakebin:$PATH" \
+  FAKE_GH_LOG="$case_dir/gh.log" \
+  FAKE_GH_STATE=MERGED \
+  FM_TEST_RACE_REPO="$fm_root" \
+  FM_TEST_RACE_READY="$ready" \
+  FM_TEST_RACE_RELEASE="$release" \
+  FM_TEST_REAL_GIT="$real_git" \
+  FM_TEST_REAL_SLEEP="$real_sleep" \
+    run_fm_merge_local "$case_dir" task-pr-snapshot &
+  pid=$!
+
+  i=0
+  while [ ! -e "$ready" ] && kill -0 "$pid" 2>/dev/null && [ "$i" -lt 500 ]; do
+    "$real_sleep" 0.01
+    i=$((i + 1))
+  done
+  if [ ! -e "$ready" ]; then
+    : > "$release"
+    wait "$pid" || true
+    fail "locked-pr-snapshot: merge did not reach the post-lock fork read: $(cat "$case_dir/stderr")"
+  fi
+  if [ -e "$case_dir/state/.control-task-pr-snapshot.lock" ]; then
+    : > "$release"
+    wait "$pid" || true
+    fail "locked-pr-snapshot: fork read began before the task control lock was released"
+  fi
+
+  fm_write_meta "$case_dir/state/task-pr-snapshot.meta" \
+    "window=fm-task-pr-snapshot-reused" "worktree=$case_dir/reused-wt" "project=$fm_root" \
+    "kind=ship" "mode=no-mistakes" "spawn_gen=replacement" \
+    "pr=https://github.com/BohnBawerick/firstmate/pull/99"
+  : > "$release"
+  set +e
+  wait "$pid"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "locked-pr-snapshot: proved fork sync should succeed: $(cat "$case_dir/stderr")"
+  assert_equals "$(git -C "$fm_root" rev-parse main)" "$(git -C "$remote" rev-parse main)" \
+    "locked-pr-snapshot: the fork was not updated"
+  assert_grep "number=7" "$case_dir/gh.log" \
+    "locked-pr-snapshot: the original task PR was not read back"
+  assert_no_grep "number=99" "$case_dir/gh.log" \
+    "locked-pr-snapshot: the replacement task PR was read back"
+  assert_grep "verified: https://github.com/BohnBawerick/firstmate/pull/7 is merged" "$case_dir/stdout" \
+    "locked-pr-snapshot: the original task PR was not reported"
+  pass "fm-merge-local keeps the locked task PR through fork sync"
+}
+
 test_shared_firstmate_repo_predicate_contract
 test_fast_forward_local_only_project
 test_fast_forward_no_mistakes_firstmate_repo
@@ -852,6 +959,8 @@ test_firstmate_repo_reads_pr_back_merged
 test_firstmate_repo_reports_pr_not_merged
 test_firstmate_repo_skips_single_origin_without_fork
 test_firstmate_repo_refuses_missing_origin_after_remap
+test_firstmate_repo_refuses_upstream_without_url
 test_firstmate_repo_never_pushes_unproven_origin
 test_firstmate_repo_never_uses_mismatched_push_url
 test_firstmate_repo_skips_non_github_pr_readback
+test_firstmate_repo_uses_locked_pr_snapshot
