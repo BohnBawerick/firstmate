@@ -5,7 +5,8 @@
 # Firstmate ships work on itself, so its tracked code root (FM_ROOT) and its
 # operational home (FM_HOME) both turn up as a task's project directory. Four
 # decisions branch on that fact and must agree exactly:
-#   bin/fm-merge-local.sh   accepts a PR-mode task for the local fast-forward
+#   bin/fm-merge-local.sh   accepts a PR-mode task for the local fast-forward,
+#                           then pushes that landing to the fork
 #   bin/fm-pr-merge.sh      follows a merged PR with that same local landing
 #   bin/fm-fleet-sync.sh    leaves the checkout alone (upstream sync is manual)
 #   bin/fm-spawn.sh         refreshes a task worktree from the LOCAL default

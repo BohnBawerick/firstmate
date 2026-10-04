@@ -15,6 +15,21 @@
 # merge, so a captain approval must be recorded as an `answer --release` before
 # this entrypoint is invoked. The lock ends when the fast-forward returns;
 # docs/captain-hold-lifecycle.md owns the accepted merge-to-cleanup residual.
+#
+# For firstmate's own repository (bin/fm-self-repo-lib.sh), the landing also
+# updates the fork: after the local fast-forward it pushes local default to the
+# landing remote `origin` (bin/fm-landing-remote.sh owns that `origin` is ours,
+# and its drift check must pass first) as a plain fast-forward, never forced and
+# never anywhere else, then reads the remote branch back. When the task records
+# a pr=, that PR must then read back merged through the same forge read
+# bin/fm-pr-merge.sh uses, retried a bounded number of times while the forge
+# catches up (FM_MERGE_LOCAL_READBACK_DELAY seconds apart, 0-10, default 3).
+# A home whose checkout has no `origin` remote has no fork and says so.
+# Exit status: 0 landed (and, for firstmate's own repository, synced and proved);
+# 3 landed locally but the fork sync or PR read-back was not proved - the local
+# landing stays, and the message names why and the exact command to finish;
+# any other non-zero value means nothing was landed.
+# Project landings never push: local-only projects have no remote by design.
 # Usage: fm-merge-local.sh <task-id>
 set -eu
 
@@ -159,3 +174,101 @@ after=$(git -C "$PROJ" rev-parse --short "$DEFAULT")
 # Opt-in fleet activity ledger (docs/fleet-ledger.md); off costs one file test.
 [ ! -e "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}/fleet-ledger" ] || FM_HOME=$FM_HOME FM_STATE_OVERRIDE=$STATE "$SCRIPT_DIR/fm-fleet-ledger.sh" merged "$ID" local || true
 echo "merged $BRANCH into local $DEFAULT ($before -> $after) in $PROJ"
+
+# Firstmate's own repository also updates its landing remote, so the fork on
+# the forge holds exactly what this home runs. Project landings stop here.
+fm_is_firstmate_repo "$PROJ" "$FM_ROOT" "$FM_HOME" || exit 0
+
+FORK_REMOTE=origin
+LOCAL_SHA=$(git -C "$PROJ" rev-parse "refs/heads/$DEFAULT")
+FINISH=$(printf 'git -C %q push %s refs/heads/%s:refs/heads/%s' "$PROJ" "$FORK_REMOTE" "$DEFAULT" "$DEFAULT")
+# Never wait on a credential prompt nobody will answer.
+export GIT_TERMINAL_PROMPT=0
+
+# Report an unsynced fork and exit 3. The local landing above stays as it is.
+fork_not_synced() {  # <why> [<next-step line>...]
+  echo "fork not updated: local $DEFAULT landed at $after, but $FORK_REMOTE/$DEFAULT was not updated: $1" >&2
+  shift
+  local line
+  for line in "$@"; do
+    echo "$line" >&2
+  done
+  exit 3
+}
+
+if ! git -C "$PROJ" remote get-url "$FORK_REMOTE" >/dev/null 2>&1; then
+  echo "no $FORK_REMOTE remote in $PROJ: this home has no fork to update"
+  exit 0
+fi
+# bin/fm-landing-remote.sh owns whether origin is the landing remote rather
+# than the parent we forked from; any doubt keeps the push from happening.
+if ! verify_output=$("$SCRIPT_DIR/fm-landing-remote.sh" verify --repo "$PROJ" 2>&1); then
+  fork_not_synced "$FORK_REMOTE is not proven to be our fork: $verify_output" \
+    "Repair the remotes as described, then finish with: $FINISH"
+fi
+if ! remote_line=$(git -C "$PROJ" ls-remote "$FORK_REMOTE" "refs/heads/$DEFAULT" 2>&1); then
+  fork_not_synced "could not read $FORK_REMOTE/$DEFAULT: $remote_line" \
+    "Finish with: $FINISH"
+fi
+REMOTE_SHA=${remote_line%%[[:space:]]*}
+if [ -n "$REMOTE_SHA" ] && [ "$REMOTE_SHA" != "$LOCAL_SHA" ]; then
+  if ! git -C "$PROJ" cat-file -e "$REMOTE_SHA^{commit}" 2>/dev/null \
+    && ! fetch_output=$(git -C "$PROJ" fetch --quiet "$FORK_REMOTE" "refs/heads/$DEFAULT" 2>&1); then
+    fork_not_synced "could not fetch $FORK_REMOTE/$DEFAULT: $fetch_output" \
+      "Finish with: $FINISH"
+  fi
+  if ! git -C "$PROJ" merge-base --is-ancestor "$REMOTE_SHA" "$LOCAL_SHA" 2>/dev/null; then
+    fork_not_synced "it is not a fast-forward: $FORK_REMOTE/$DEFAULT is at ${REMOTE_SHA:0:8}, which local $DEFAULT does not contain" \
+      "See the missing commits with: git -C $(printf '%q' "$PROJ") log --oneline $LOCAL_SHA..$REMOTE_SHA" \
+      "Bring them into local $DEFAULT through a reviewed task, then finish with: $FINISH"
+  fi
+fi
+if [ "$REMOTE_SHA" != "$LOCAL_SHA" ]; then
+  # A plain refspec without "+": the remote itself refuses anything but a
+  # fast-forward, even if its branch moved after the check above.
+  if ! push_output=$(git -C "$PROJ" push --quiet "$FORK_REMOTE" "refs/heads/$DEFAULT:refs/heads/$DEFAULT" 2>&1); then
+    fork_not_synced "the push failed: $push_output" \
+      "Finish with: $FINISH"
+  fi
+  if ! remote_line=$(git -C "$PROJ" ls-remote "$FORK_REMOTE" "refs/heads/$DEFAULT" 2>&1) \
+    || [ "${remote_line%%[[:space:]]*}" != "$LOCAL_SHA" ]; then
+    fork_not_synced "the push returned, but $FORK_REMOTE/$DEFAULT does not read back as ${LOCAL_SHA:0:8}: $remote_line" \
+      "Check it, and if needed finish with: $FINISH"
+  fi
+  echo "pushed local $DEFAULT to $FORK_REMOTE/$DEFAULT (${REMOTE_SHA:0:8} -> ${LOCAL_SHA:0:8})"
+else
+  echo "$FORK_REMOTE/$DEFAULT already at ${LOCAL_SHA:0:8}"
+fi
+
+# A recorded PR is proved merged by the same forge read the merge path uses.
+PR_URL=$(grep '^pr=' "$META" | tail -n 1 | cut -d= -f2- || true)
+[ -n "$PR_URL" ] || exit 0
+if ! fm_pr_url_parse "$PR_URL"; then
+  echo "error: $FORK_REMOTE/$DEFAULT now holds local $DEFAULT, but the recorded PR '$PR_URL' is not a URL this script can read back" >&2
+  exit 3
+fi
+# The forge marks a PR merged shortly after its head reaches the base branch,
+# so the read is retried a bounded number of times.
+readback_delay=${FM_MERGE_LOCAL_READBACK_DELAY:-3}
+case "$readback_delay" in
+  [0-9] | 10) ;;
+  *) readback_delay=3 ;;
+esac
+readback_attempt=1
+while :; do
+  FM_PR_RECORD_STATE=
+  FM_PR_RECORD_MERGED=
+  case "$FM_PR_PROVIDER" in
+    github) fm_pr_github_read_record "$FM_PR_OWNER" "$FM_PR_REPO" "$FM_PR_NUMBER" || true ;;
+    gitlab) fm_pr_gitlab_read_record "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER" || true ;;
+  esac
+  [ "$FM_PR_RECORD_MERGED" != true ] || break
+  if [ "$readback_attempt" -ge 5 ]; then
+    echo "error: $FORK_REMOTE/$DEFAULT now holds local $DEFAULT, but $PR_URL does not read back as merged (state=${FM_PR_RECORD_STATE:-unreadable})" >&2
+    echo "Re-check that PR on the forge; the fork itself is up to date." >&2
+    exit 3
+  fi
+  sleep "$readback_delay"
+  readback_attempt=$((readback_attempt + 1))
+done
+echo "verified: $PR_URL is merged"

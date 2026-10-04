@@ -80,7 +80,7 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-forge-detect.sh`     | Propose a clone's forge binding from its origin remote for project-add intake, never recording it |
 | `fm-quality.sh`          | Run a project's quality phase under its own bounds, write its receipt, report one outcome |
 | `fm-quality-receipt.sh`  | Validate a quality-gate receipt against the D2 schema, or print that schema           |
-| `fm-merge-local.sh`      | Fast-forward a `local-only` project or Firstmate's own repository local default branch after approval |
+| `fm-merge-local.sh`      | Fast-forward a `local-only` project or Firstmate's own repository local default branch after approval, then push Firstmate's own landing to its fork |
 | `fm-review-diff.sh`      | Review a crewmate branch or resolved PR head against the authoritative base          |
 | `fm-marker-lib.sh`       | Compatibility entry point for the from-firstmate carrier owned by `fm-operational-input.sh` |
 | `fm-task-inbox-lib.sh`   | Single owner of durable steering-inbox records, acknowledgement, doorbells, and the delivery-attempt ladder |

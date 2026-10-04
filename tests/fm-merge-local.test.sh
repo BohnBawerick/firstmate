@@ -16,6 +16,14 @@
 #   (i) refuses when project checkout is not on its default branch
 #   (j) refuses when project checkout is dirty
 #   (k) refuses when branch has diverged (not a fast-forward)
+#   (l) Firstmate's own repository pushes the landing to origin as a fast-forward
+#   (m) Firstmate's own repository keeps the landing but reports, exit 3, an
+#       origin that local main does not contain, and leaves origin untouched
+#   (n) Firstmate's own repository keeps the landing but reports, exit 3, a
+#       push the remote rejects
+#   (o) Firstmate's own repository reads a recorded PR back as merged, and
+#       reports, exit 3, one that does not read back merged
+#   (p) Firstmate's own repository never pushes when origin may be the parent
 #
 # "Firstmate's own repository" is one shared predicate, bin/fm-self-repo-lib.sh,
 # used identically by fm-merge-local.sh, fm-pr-merge.sh, fm-fleet-sync.sh, and
@@ -497,6 +505,213 @@ test_refuses_diverged_branch() {
   pass "fm-merge-local refuses when branch has diverged (not a fast-forward)"
 }
 
+# A firstmate repository whose origin is a local bare clone, plus one ship branch
+# ahead of main. Prints the bare remote's path.
+make_fm_repo_with_origin() {
+  local case_dir=$1 id=$2 fm_root="$1/firstmate" remote="$1/origin.git"
+  mkdir -p "$case_dir/state"
+  make_repo "$fm_root" main
+  fm_git_add_origin "$fm_root" "$remote"
+  git -C "$fm_root" checkout -b "fm/$id" --quiet
+  echo "firstmate feature $id" >> "$fm_root/file.txt"
+  git -C "$fm_root" commit --quiet -am "firstmate fix $id"
+  git -C "$fm_root" checkout main --quiet
+  printf '%s\n' "$remote"
+}
+
+# A gh stand-in that answers the PR read-back with FAKE_GH_STATE.
+make_fake_gh() {
+  local fakebin
+  fakebin=$(fm_fakebin "$1")
+  cat > "$fakebin/gh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FAKE_GH_LOG"
+case "${FAKE_GH_STATE:-MERGED}" in
+  MERGED) printf 'state=MERGED\nmerged=true\n' ;;
+  *) printf 'state=%s\nmerged=false\n' "$FAKE_GH_STATE" ;;
+esac
+SH
+  chmod +x "$fakebin/gh"
+  printf '%s\n' "$fakebin"
+}
+
+run_fm_merge_local() {  # <case-dir> <id>
+  local case_dir=$1 fm_root="$1/firstmate"
+  FM_ROOT_OVERRIDE="$fm_root" \
+  FM_HOME="$fm_root" \
+  FM_STATE_OVERRIDE="$case_dir/state" \
+  FM_MERGE_LOCAL_READBACK_DELAY=0 \
+    run_merge_local "$2" > "$case_dir/stdout" 2> "$case_dir/stderr"
+}
+
+test_firstmate_repo_pushes_fork() {
+  local case_dir fm_root remote rc local_sha
+  case_dir="$TMP_ROOT/fm-push-fork"
+  remote=$(make_fm_repo_with_origin "$case_dir" task-push)
+  fm_root="$case_dir/firstmate"
+  fm_write_meta "$case_dir/state/task-push.meta" \
+    "window=fm-task-push" "worktree=$case_dir/wt" "project=$fm_root" \
+    "kind=ship" "mode=no-mistakes"
+
+  set +e
+  run_fm_merge_local "$case_dir" task-push
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "push-fork: fm-merge-local should succeed: $(cat "$case_dir/stderr")"
+  local_sha=$(git -C "$fm_root" rev-parse main)
+  assert_equals "$(git -C "$fm_root" rev-parse fm/task-push)" "$local_sha" \
+    "push-fork: local main was not fast-forwarded"
+  assert_equals "$local_sha" "$(git -C "$remote" rev-parse main)" \
+    "push-fork: origin main does not hold local main"
+  assert_grep "pushed local main to origin/main" "$case_dir/stdout" \
+    "push-fork: the push was not reported"
+  pass "fm-merge-local pushes Firstmate's own landing to origin as a fast-forward"
+}
+
+test_firstmate_repo_refuses_non_fast_forward_push() {
+  local case_dir fm_root remote other rc remote_before
+  case_dir="$TMP_ROOT/fm-push-diverged"
+  remote=$(make_fm_repo_with_origin "$case_dir" task-div2)
+  fm_root="$case_dir/firstmate"
+  other="$case_dir/other"
+  git clone --quiet "$remote" "$other"
+  echo "landed elsewhere" > "$other/elsewhere.txt"
+  git -C "$other" add elsewhere.txt
+  git -C "$other" commit --quiet -m "commit only the fork has"
+  git -C "$other" push --quiet origin main
+  remote_before=$(git -C "$remote" rev-parse main)
+  fm_write_meta "$case_dir/state/task-div2.meta" \
+    "window=fm-task-div2" "worktree=$case_dir/wt" "project=$fm_root" \
+    "kind=ship" "mode=no-mistakes"
+
+  set +e
+  run_fm_merge_local "$case_dir" task-div2
+  rc=$?
+  set -e
+
+  expect_code 3 "$rc" "push-diverged: an unsynced fork must exit 3"
+  assert_equals "$(git -C "$fm_root" rev-parse fm/task-div2)" "$(git -C "$fm_root" rev-parse main)" \
+    "push-diverged: the local landing was not kept"
+  assert_equals "$remote_before" "$(git -C "$remote" rev-parse main)" \
+    "push-diverged: origin main moved"
+  assert_grep "fork not updated" "$case_dir/stderr" \
+    "push-diverged: the unsynced fork was not reported"
+  assert_grep "not a fast-forward" "$case_dir/stderr" \
+    "push-diverged: the reason was not given"
+  assert_grep "push origin refs/heads/main:refs/heads/main" "$case_dir/stderr" \
+    "push-diverged: the finishing command was not given"
+  assert_no_grep "pushed local main" "$case_dir/stdout" \
+    "push-diverged: a push was claimed"
+  pass "fm-merge-local keeps the landing and reports a fork it cannot fast-forward"
+}
+
+test_firstmate_repo_reports_push_failure() {
+  local case_dir fm_root remote rc remote_before
+  case_dir="$TMP_ROOT/fm-push-rejected"
+  remote=$(make_fm_repo_with_origin "$case_dir" task-rej)
+  fm_root="$case_dir/firstmate"
+  printf '#!/bin/sh\necho "fork refuses pushes"\nexit 1\n' > "$remote/hooks/pre-receive"
+  chmod +x "$remote/hooks/pre-receive"
+  remote_before=$(git -C "$remote" rev-parse main)
+  fm_write_meta "$case_dir/state/task-rej.meta" \
+    "window=fm-task-rej" "worktree=$case_dir/wt" "project=$fm_root" \
+    "kind=ship" "mode=direct-PR"
+
+  set +e
+  run_fm_merge_local "$case_dir" task-rej
+  rc=$?
+  set -e
+
+  expect_code 3 "$rc" "push-rejected: a failed push must exit 3"
+  assert_equals "$(git -C "$fm_root" rev-parse fm/task-rej)" "$(git -C "$fm_root" rev-parse main)" \
+    "push-rejected: the local landing was not kept"
+  assert_equals "$remote_before" "$(git -C "$remote" rev-parse main)" \
+    "push-rejected: origin main moved"
+  assert_grep "the push failed" "$case_dir/stderr" \
+    "push-rejected: the failed push was not reported"
+  assert_grep "fork refuses pushes" "$case_dir/stderr" \
+    "push-rejected: the remote's reason was not passed on"
+  assert_grep "push origin refs/heads/main:refs/heads/main" "$case_dir/stderr" \
+    "push-rejected: the finishing command was not given"
+  pass "fm-merge-local keeps the landing and reports a push the fork rejects"
+}
+
+test_firstmate_repo_reads_pr_back_merged() {
+  local case_dir fm_root fakebin rc
+  case_dir="$TMP_ROOT/fm-pr-readback"
+  make_fm_repo_with_origin "$case_dir" task-prm >/dev/null
+  fm_root="$case_dir/firstmate"
+  fakebin=$(make_fake_gh "$case_dir")
+  fm_write_meta "$case_dir/state/task-prm.meta" \
+    "window=fm-task-prm" "worktree=$case_dir/wt" "project=$fm_root" \
+    "kind=ship" "mode=no-mistakes" "pr=https://github.com/example/firstmate/pull/7"
+
+  set +e
+  PATH="$fakebin:$PATH" FAKE_GH_STATE=MERGED FAKE_GH_LOG="$case_dir/gh.log" \
+    run_fm_merge_local "$case_dir" task-prm
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "pr-readback: a merged PR should succeed: $(cat "$case_dir/stderr")"
+  assert_grep "verified: https://github.com/example/firstmate/pull/7 is merged" "$case_dir/stdout" \
+    "pr-readback: the merged PR was not verified"
+  assert_grep "number=7" "$case_dir/gh.log" \
+    "pr-readback: the recorded PR was not the one read"
+  pass "fm-merge-local reads a recorded PR back as merged after the push"
+}
+
+test_firstmate_repo_reports_pr_not_merged() {
+  local case_dir fm_root remote fakebin rc
+  case_dir="$TMP_ROOT/fm-pr-open"
+  remote=$(make_fm_repo_with_origin "$case_dir" task-pro)
+  fm_root="$case_dir/firstmate"
+  fakebin=$(make_fake_gh "$case_dir")
+  fm_write_meta "$case_dir/state/task-pro.meta" \
+    "window=fm-task-pro" "worktree=$case_dir/wt" "project=$fm_root" \
+    "kind=ship" "mode=no-mistakes" "pr=https://github.com/example/firstmate/pull/8"
+
+  set +e
+  PATH="$fakebin:$PATH" FAKE_GH_STATE=OPEN FAKE_GH_LOG="$case_dir/gh.log" \
+    run_fm_merge_local "$case_dir" task-pro
+  rc=$?
+  set -e
+
+  expect_code 3 "$rc" "pr-open: a PR that does not read back merged must exit 3"
+  assert_equals "$(git -C "$fm_root" rev-parse main)" "$(git -C "$remote" rev-parse main)" \
+    "pr-open: the fork was not updated"
+  assert_grep "does not read back as merged (state=OPEN)" "$case_dir/stderr" \
+    "pr-open: the unproved merge was not reported"
+  assert_no_grep "verified:" "$case_dir/stdout" \
+    "pr-open: an unproved merge was claimed"
+  pass "fm-merge-local reports a recorded PR that does not read back merged"
+}
+
+test_firstmate_repo_never_pushes_unproven_origin() {
+  local case_dir fm_root remote rc remote_before
+  case_dir="$TMP_ROOT/fm-push-unproven"
+  remote=$(make_fm_repo_with_origin "$case_dir" task-unp)
+  fm_root="$case_dir/firstmate"
+  # A leftover fork remote is the pre-remap shape: origin may still be the parent.
+  git -C "$fm_root" remote add fork "file://$case_dir/elsewhere.git"
+  remote_before=$(git -C "$remote" rev-parse main)
+  fm_write_meta "$case_dir/state/task-unp.meta" \
+    "window=fm-task-unp" "worktree=$case_dir/wt" "project=$fm_root" \
+    "kind=ship" "mode=no-mistakes"
+
+  set +e
+  run_fm_merge_local "$case_dir" task-unp
+  rc=$?
+  set -e
+
+  expect_code 3 "$rc" "push-unproven: an unproven origin must exit 3"
+  assert_equals "$remote_before" "$(git -C "$remote" rev-parse main)" \
+    "push-unproven: origin main moved"
+  assert_grep "origin is not proven to be our fork" "$case_dir/stderr" \
+    "push-unproven: the refusal was not explained"
+  pass "fm-merge-local never pushes to an origin that may be the parent"
+}
+
 test_shared_firstmate_repo_predicate_contract
 test_fast_forward_local_only_project
 test_fast_forward_no_mistakes_firstmate_repo
@@ -510,3 +725,9 @@ test_refuses_missing_branch
 test_refuses_dirty_project
 test_refuses_off_default_project
 test_refuses_diverged_branch
+test_firstmate_repo_pushes_fork
+test_firstmate_repo_refuses_non_fast_forward_push
+test_firstmate_repo_reports_push_failure
+test_firstmate_repo_reads_pr_back_merged
+test_firstmate_repo_reports_pr_not_merged
+test_firstmate_repo_never_pushes_unproven_origin

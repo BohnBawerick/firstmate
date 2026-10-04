@@ -1490,9 +1490,10 @@ case "$outcome_rc" in
     ;;
 esac
 
-# Firstmate's own repository is local-authoritative: the outward PR stays open on
-# origin, and the proved merge above is followed by the guarded fast-forward into
-# this home's local main. Reached only after the forge confirmed the merge landed.
+# Firstmate's own repository is local-authoritative: the proved merge above is
+# followed by the guarded landing into this home's local main, which also pushes
+# that main to the fork (bin/fm-merge-local.sh owns both). Reached only after the
+# forge confirmed the merge landed.
 PROJ=$(grep '^project=' "$META" | cut -d= -f2- || true)
 if [ -n "$PROJ" ] && [ -d "$PROJ" ] && fm_is_firstmate_repo "$PROJ" "$FM_ROOT" "$FM_HOME"; then
   "$SCRIPT_DIR/fm-merge-local.sh" "$ID"

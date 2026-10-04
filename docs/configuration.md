@@ -151,6 +151,8 @@ Given `--ours` it is an identity check on `origin`; with no `--ours` it asserts 
 `bin/fm-bootstrap.sh` runs the second form against the firstmate primary at every session start and relays a refusal as one `LANDING_REMOTE:` line, so a checkout that drifted back toward the parent - or that was never remapped at all - is surfaced there rather than discovered by a branch, a push, or a PR that went to the wrong repository.
 A clone with neither an `upstream` nor a `fork` remote never had a parent to be remapped away from, so the check passes silently for it.
 
+Every approved Firstmate landing updates this remote: `bin/fm-merge-local.sh` pushes local `main` to `origin`'s `main` as a fast-forward once that `verify` passes, and its header owns the push, the PR read-back, and how an unsynced fork is reported.
+
 ## Calm preference (config/calm)
 
 The Pi Calm extension and the Claude Code Calm mod share the local, gitignored `config/calm` preference under the effective Firstmate home.
