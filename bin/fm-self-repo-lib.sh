@@ -6,14 +6,14 @@
 # operational home (FM_HOME) both turn up as a task's project directory. Four
 # decisions branch on that fact and must agree exactly:
 #   bin/fm-merge-local.sh   accepts a PR-mode task for the local fast-forward,
-#                           then pushes that landing to the fork
+#                           then syncs any configured fork
 #   bin/fm-pr-merge.sh      refuses a forge merge for the local-authoritative repo
 #   bin/fm-fleet-sync.sh    leaves the checkout alone (upstream sync is manual)
 #   bin/fm-spawn.sh         refreshes a task worktree from the LOCAL default
 #                           branch instead of fetching origin
 # A project that counts as firstmate for one of them and not another is how a
-# worker gets reset onto a remote tip the fleet never reviewed, or how a merged
-# firstmate PR silently fails to reach the running tree. One predicate here
+# worker gets reset onto a remote tip the fleet never reviewed, or how a
+# Firstmate landing silently fails to reach its fork. One predicate here
 # keeps a later fix from reaching three call sites and missing the fourth.
 #
 # Comparison is by resolved PHYSICAL path, so a symlinked home, a trailing

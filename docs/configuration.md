@@ -151,7 +151,12 @@ Given `--ours` it is an identity check on `origin`; with no `--ours` it asserts 
 `bin/fm-bootstrap.sh` runs the second form against the firstmate primary at every session start and relays a refusal as one `LANDING_REMOTE:` line, so a checkout that drifted back toward the parent - or that was never remapped at all - is surfaced there rather than discovered by a branch, a push, or a PR that went to the wrong repository.
 A clone with neither an `upstream` nor a `fork` remote never had a parent to be remapped away from, so the check passes silently for it.
 
-In a remapped checkout, every approved Firstmate landing updates this remote: `bin/fm-merge-local.sh` pushes local `main` to `origin`'s `main` as a fast-forward once that `verify` passes and every effective push URL matches `origin`, and its header owns the push, the PR read-back, and how an unsynced fork is reported.
+In a remapped checkout, every approved Firstmate landing updates this remote.
+`bin/fm-merge-local.sh` pushes the local default branch to the same branch on `origin` as a plain fast-forward only after `verify` passes and every effective push URL identifies `origin`'s verified fetch URL.
+A checkout without an `upstream` remote has no configured fork, so the local landing succeeds without a push.
+If a configured fork cannot be proved or synchronized, the local landing remains and the command exits non-zero with the reason and the exact push command to finish after repairing the remote.
+When the task records a GitHub PR, the command also confirms that GitHub reads it as merged.
+The script header owns the exact checks, read-back retries, messages, and exit statuses.
 
 ## Calm preference (config/calm)
 
