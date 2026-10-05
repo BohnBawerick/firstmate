@@ -3068,6 +3068,23 @@ SH
     printf 'v1 gen=%s seq=4 state=idle source=claude-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
       > "$state/terminal-ticking-$kind.busy-state"
     terminal_tick_round wake "going quiet again after a busy turn"
+
+    # The record turns busy after the pane verdict but before the bound check:
+    # a turn is underway, so the quiet-again alarm must not fire.
+    mv "$fakebin/fm-crew-state.sh" "$fakebin/fm-crew-state.real.sh"
+    cat > "$fakebin/fm-crew-state.sh" <<'SH'
+#!/usr/bin/env bash
+[ -z "${FM_FAKE_RACE_RECORD:-}" ] || cp "$FM_FAKE_RACE_RECORD" "$FM_FAKE_RACE_TARGET"
+exec "$(dirname "$0")/fm-crew-state.real.sh" "$@"
+SH
+    chmod +x "$fakebin/fm-crew-state.sh"
+    printf 'v1 gen=%s seq=5 state=busy source=claude-hook event=UserPromptSubmit ts=%s\n' "$gen_token" "$(date +%s)" \
+      > "$dir/race-record"
+    printf 'v1 gen=%s seq=5 state=idle source=claude-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
+      > "$state/terminal-ticking-$kind.busy-state"
+    export FM_FAKE_RACE_RECORD="$dir/race-record" FM_FAKE_RACE_TARGET="$state/terminal-ticking-$kind.busy-state"
+    terminal_tick_round quiet "a turn that began after the pane verdict"
+    unset FM_FAKE_RACE_RECORD FM_FAKE_RACE_TARGET
   done
   unset -f terminal_tick_round
   pass "a live Claude worker idling behind a done or needs-decision line alarms once per idle stretch while its footer ticks, and an undeclared idle worker still alarms"

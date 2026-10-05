@@ -1914,7 +1914,7 @@ captain_call_stale_bound() {  # <window-key> <task>
 # such valid record is never bound and keeps the per-hash alarm.
 # Same return and recording contract as captain_call_stale_bound.
 terminal_stale_bound() {  # <window> <task>
-  local win=$1 task=$2 key record source gen seq verb
+  local win=$1 task=$2 key record bstate source gen seq verb
   key=$(window_key "$win")
   captain_call_stale_bound "$key" "$task" && return 0
   [ -z "$STALE_WAIT_DECLARATION" ] || return 1
@@ -1924,8 +1924,9 @@ terminal_stale_bound() {  # <window> <task>
   [ "$(fm_backend_agent_alive "$(window_backend "$win")" "$win" 2>/dev/null)" = alive ] \
     || { STALE_WAIT_DECLARATION=; return 1; }
   record=$(fm_busy_record_read "$STATE" "$task") || { STALE_WAIT_DECLARATION=; return 1; }
-  read -r _ source _ seq <<< "$record"
-  fm_busy_source_trusted claude "$source" && gen=$(fm_busy_current_gen "$STATE" "$task") \
+  read -r bstate source _ seq <<< "$record"
+  [ "$bstate" = busy ] && return 0
+  [ "$bstate" = idle ] && fm_busy_source_trusted claude "$source" && gen=$(fm_busy_current_gen "$STATE" "$task") \
     || { STALE_WAIT_DECLARATION=; return 1; }
   STALE_WAIT_DECLARATION="terminal:$gen:$seq:$(fm_wake_signal_sig "$STATE/$task.status" || true)"
   stale_wait_throttled "$key" "$STALE_WAIT_DECLARATION"
