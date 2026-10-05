@@ -1906,27 +1906,22 @@ captain_call_stale_bound() {  # <window-key> <task>
 # keyed on the hash therefore re-alarmed the same line about once a minute for
 # as long as the worker sat parked behind it.
 # An open captain call keeps its own scope (captain_call_stale_bound). Otherwise
-# the bound belongs to the status log's signature, tagged `terminal:` so a busy
-# turn can end it (clear_terminal_stale_bound): any new status event starts a
-# fresh window, and the line re-surfaces once per PAUSE_RESURFACE_SECS.
+# the bound belongs to the status log's signature plus the worker's durable
+# busy-state record (gen and seq), so any new status event or any turn the
+# harness hooks recorded, whether or not a poll saw it busy, starts a fresh
+# window; the line re-surfaces once per PAUSE_RESURFACE_SECS. A worker with no
+# such record is never bound and keeps the per-hash alarm.
 # Same return and recording contract as captain_call_stale_bound.
 terminal_stale_bound() {  # <window-key> <task>
-  local key=$1 task=$2
+  local key=$1 task=$2 record gen seq
   captain_call_stale_bound "$key" "$task" && return 0
   [ -z "$STALE_WAIT_DECLARATION" ] || return 1
-  STALE_WAIT_DECLARATION="terminal:$(fm_wake_signal_sig "$STATE/$task.status" || true)"
+  record=$(cat "$STATE/$task.busy-state" 2>/dev/null || true)
+  gen=${record#* gen=}; gen=${gen%% *}
+  seq=${record#* seq=}; seq=${seq%% *}
+  case "$record" in "v1 gen="*" seq="*) ;; *) STALE_WAIT_DECLARATION=; return 1 ;; esac
+  STALE_WAIT_DECLARATION="terminal:$gen:$seq:$(fm_wake_signal_sig "$STATE/$task.status" || true)"
   stale_wait_throttled "$key" "$STALE_WAIT_DECLARATION"
-}
-
-# A turn the harness proves busy ends the idle stretch terminal_stale_bound
-# covers: the worker was steered or woken and did new work behind its old line,
-# so the next time it goes quiet is news and must alarm on first sight again.
-# Only a terminal-line bound is dropped; the declared-wait and captain-call
-# bounds keep their own reset rules.
-clear_terminal_stale_bound() {  # <window-key>
-  case "$(cat "$STATE/.paused-resurfaced-$1" 2>/dev/null || true)" in
-    terminal:*) rm -f "$STATE/.paused-resurfaced-$1" ;;
-  esac
 }
 
 # Surface a stale pane no classifier could resolve, so firstmate inspects it: it
@@ -3216,7 +3211,6 @@ EOF
         # then route it through busy_turn_bound_check, which hands the crossed
         # bound to the same wedge timer unless the crew declared the wait itself.
         paused_bound=1
-        [ "$busy_now" -ne 0 ] || clear_terminal_stale_bound "$key"
         if [ "$busy_now" -eq 0 ] && busy_turn_over_age "$task"; then
           busy_turn_bound_check "$w" "$task" "$h" "$ssf" "$ewf" && paused_bound=0
         else
@@ -3235,7 +3229,6 @@ EOF
       printf '%s' "$h" > "$hf"
       echo 0 > "$cf"
       paused_bound=1
-      [ "$busy_now" -ne 0 ] || clear_terminal_stale_bound "$key"
       if [ "$busy_now" -eq 0 ] && busy_turn_over_age "$task"; then
         busy_turn_bound_check "$w" "$task" "$h" "$ssf" "$ewf" && paused_bound=0
       else

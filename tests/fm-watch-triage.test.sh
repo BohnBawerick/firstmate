@@ -3036,12 +3036,19 @@ SH
     wakes=$(awk -F '\t' -v w="$window" '$3 == "stale" && $4 == w { n++ } END { print n + 0 }' "$state/.wake-queue" 2>/dev/null || echo 0)
     [ "$wakes" -eq 0 ] || fail "$kind: footer ticks queued $wakes stale wakes for an already-surfaced line"
 
+    # A turn that started and ended between two polls leaves only a newer hook
+    # record; the worker going quiet after it is news.
+    printf 'v1 gen=%s seq=2 state=idle source=claude-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
+      > "$state/terminal-ticking-$kind.busy-state"
+    terminal_tick_round wake "going quiet after a turn no poll saw busy"
+    terminal_tick_round quiet "footer tick after the unobserved turn"
+
     # A steer starts a turn the Claude hook record proves busy; once that turn
     # ends, the worker going quiet again is news.
-    printf 'v1 gen=%s seq=2 state=busy source=claude-hook event=UserPromptSubmit ts=%s\n' "$gen_token" "$(date +%s)" \
+    printf 'v1 gen=%s seq=3 state=busy source=claude-hook event=UserPromptSubmit ts=%s\n' "$gen_token" "$(date +%s)" \
       > "$state/terminal-ticking-$kind.busy-state"
     terminal_tick_round quiet "a busy turn"
-    printf 'v1 gen=%s seq=3 state=idle source=claude-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
+    printf 'v1 gen=%s seq=4 state=idle source=claude-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
       > "$state/terminal-ticking-$kind.busy-state"
     terminal_tick_round wake "going quiet again after a busy turn"
   done
