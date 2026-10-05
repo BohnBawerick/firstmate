@@ -2990,7 +2990,7 @@ test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch() {
     round=$((round + 1))
   }
 
-  for kind in 'done' needs-decision working blocked failed unrecognized legacy-regex codex-done dead-done stale-gen untrusted-source; do
+  for kind in 'done' needs-decision working blocked failed unrecognized legacy-regex codex-done dead-done stale-gen untrusted-source busy-source-mismatch; do
     harness=claude; comm=claude
     case "$kind" in
       blocked) line='blocked [at=1791100000]: waiting on credentials' ;;
@@ -2998,7 +2998,7 @@ test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch() {
       legacy-regex) line='PR ready for review' ;;
       unrecognized) line='shrug [at=1791100000]: no idea' ;;
       codex-done) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; harness=codex ;;
-      stale-gen|untrusted-source) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green' ;;
+      stale-gen|untrusted-source|busy-source-mismatch) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green' ;;
       dead-done) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; comm=bash ;;
     esac
     case "$kind" in
@@ -3033,6 +3033,9 @@ SH
       > "$state/terminal-ticking-$kind.busy-state"
     case "$kind" in
       stale-gen) printf 'g2\n' > "$state/terminal-ticking-$kind.busy-gen" ;;
+      busy-source-mismatch)
+        printf 'v1 gen=%s seq=1 state=busy source=codex-hook event=UserPromptSubmit ts=%s\n' "$gen_token" "$(date +%s)" \
+          > "$state/terminal-ticking-$kind.busy-state" ;;
       untrusted-source)
         printf 'v1 gen=%s seq=1 state=idle source=codex-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
           > "$state/terminal-ticking-$kind.busy-state" ;;
