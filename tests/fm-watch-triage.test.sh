@@ -2990,11 +2990,12 @@ test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch() {
     round=$((round + 1))
   }
 
-  for kind in 'done' needs-decision working blocked failed unrecognized codex-done dead-done; do
+  for kind in 'done' needs-decision working blocked failed unrecognized legacy-regex codex-done dead-done; do
     harness=claude; comm=claude
     case "$kind" in
       blocked) line='blocked [at=1791100000]: waiting on credentials' ;;
       failed) line='failed [at=1791100000]: build broke' ;;
+      legacy-regex) line='PR ready for review' ;;
       unrecognized) line='shrug [at=1791100000]: no idea' ;;
       codex-done) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; harness=codex ;;
       dead-done) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; comm=bash ;;
