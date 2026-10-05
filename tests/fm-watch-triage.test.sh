@@ -2935,6 +2935,120 @@ SH
   pass "a live declared pause keeps its bounded cadence while its harness footer ticks, and still rechecks on schedule"
 }
 
+# --- captain-relevant status + LIVE Claude agent + a TICKING footer, in NORMAL mode
+# The live 2026-10-05 case: Claude workers whose last line was `done: PR <url>`
+# (waiting on checks, or on the captain's merge) or `needs-decision` (waiting on a
+# board) idled with their status bar's "idle Nm" counter ticking. Each tick is a
+# fresh pane hash, and the terminal-status branch keyed its one-shot on the hash,
+# so the same line re-alarmed as a bare `stale: <window>` about once a minute.
+# The bound belongs to the status line: its first sight alarms, later footer ticks
+# on the same line are absorbed, and a turn the Claude hook record proves busy
+# ends that idle stretch, so going quiet again after a steer still alarms.
+# The control keeps the wedge detectable: a worker that stops mid-task with no
+# declared state still alarms on a later footer tick.
+# The fake tmux renders a footer the TEST advances between rounds, and every quiet
+# round asserts the pane really moved and became stably stale, so silence cannot
+# pass vacuously.
+test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch() {
+  local kind line dir state fakebin out window key statusf gen ticks gen_token
+  local round prev_hash cur_hash prev_ticks cycles wakes
+
+  # <dir-vars set> <expect: wake|quiet> <label>
+  terminal_tick_round() {
+    local expect=$1 label=$2 pid
+    prev_hash=$(cat "$state/.hash-$key" 2>/dev/null || true)
+    prev_ticks=$(cat "$ticks" 2>/dev/null || echo 0)
+    echo "$round" > "$gen"
+    : > "$out"
+    PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_TICKS="$ticks" \
+      FM_FAKE_TMUX_GEN="$gen" FM_FAKE_CREW_STATE="state: $kind · source: status-log · $kind" \
+      FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
+      FM_STALE_ESCALATE_SECS=240 FM_PAUSE_RESURFACE_SECS=86400 FM_POLL=0.2 FM_SIGNAL_GRACE=1 \
+      FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+    pid=$!
+    if [ "$expect" = wake ]; then
+      wait_for_exit "$pid" 150 || { reap "$pid"; fail "$kind: $label did not alarm"; }
+      [ "$(cat "$out")" = "stale: $window" ] || fail "$kind: $label woke with the wrong reason: $(cat "$out")"
+    else
+      cycles=0
+      while [ "$cycles" -lt 4 ]; do
+        wait_poll_cycle "$state" "$pid" \
+          || { reap "$pid"; fail "$kind: $label re-alarmed an already-surfaced line: $(cat "$out")"; }
+        cycles=$((cycles + 1))
+      done
+      reap "$pid"
+      cur_hash=$(cat "$state/.hash-$key" 2>/dev/null || true)
+      [ "$(cat "$ticks" 2>/dev/null || echo 0)" -gt "$prev_ticks" ] \
+        || fail "$kind: $label never captured the pane, so its silence proves nothing"
+      [ -n "$cur_hash" ] && [ "$cur_hash" != "$prev_hash" ] \
+        || fail "$kind: $label saw no footer tick, so it cannot tell a hash-keyed one-shot from a line-keyed one"
+      [ "$(cat "$state/.count-$key" 2>/dev/null || echo missing)" -ge 2 ] \
+        || fail "$kind: $label never became stably stale, so the stale path it targets never ran"
+      [ ! -s "$out" ] || fail "$kind: $label printed a wake reason: $(cat "$out")"
+    fi
+    ack_stopped_cycle "$state" || fail "$kind: could not acknowledge $label"
+    round=$((round + 1))
+  }
+
+  for kind in 'done' needs-decision working; do
+    case "$kind" in
+      done) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green' ;;
+      needs-decision) line='needs-decision [key=board-review] [at=1791100000]: pick a board option' ;;
+      working) line='working [at=1791100000]: implementing the change' ;;
+    esac
+    dir=$(make_case "live-terminal-ticking-$kind"); state="$dir/state"; fakebin="$dir/fakebin"
+    out="$dir/watch.out"; window="test:fm-terminal-ticking-$kind"
+    statusf="$state/terminal-ticking-$kind.status"; gen="$dir/footer-gen"; ticks="$dir/ticks"
+    cat > "$fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+set -u
+case "${1:-}" in
+  list-windows) printf '%s\n' "${FM_FAKE_TMUX_WINDOW#*:}"; exit 0 ;;
+  capture-pane)
+    n=$(( $(cat "$FM_FAKE_TMUX_TICKS" 2>/dev/null || echo 0) + 1 ))
+    echo "$n" > "$FM_FAKE_TMUX_TICKS"
+    printf 'Waiting for the next step.\n\n> \n  opus · idle %sm · Update available\n' \
+      "$(cat "$FM_FAKE_TMUX_GEN" 2>/dev/null || echo 0)"
+    exit 0 ;;
+  display-message) case "$*" in *pane_current_command*) echo claude; exit 0 ;; esac ;;
+esac
+exit 1
+SH
+    chmod +x "$fakebin/tmux"
+    printf 'window=%s\nkind=ship\nharness=claude\nbackend=tmux\n' "$window" > "$state/terminal-ticking-$kind.meta"
+    gen_token=g1
+    printf '%s\n' "$gen_token" > "$state/terminal-ticking-$kind.busy-gen"
+    printf 'v1 gen=%s seq=1 state=idle source=claude-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
+      > "$state/terminal-ticking-$kind.busy-state"
+    printf '%s\n' "$line" > "$statusf"
+    printf '%s' "$(seen_sig "$statusf")" > "$state/.seen-terminal-ticking-${kind}_status"
+    key=$(printf '%s' "$window" | tr ':/.' '___')
+    round=1
+
+    terminal_tick_round wake "first sight"
+    if [ "$kind" = working ]; then
+      # No declared state: the next idle tick must still raise stale.
+      terminal_tick_round wake "an undeclared idle worker's later footer tick"
+      continue
+    fi
+    terminal_tick_round quiet "footer tick 2"
+    terminal_tick_round quiet "footer tick 3"
+    wakes=$(awk -F '\t' -v w="$window" '$3 == "stale" && $4 == w { n++ } END { print n + 0 }' "$state/.wake-queue" 2>/dev/null || echo 0)
+    [ "$wakes" -eq 0 ] || fail "$kind: footer ticks queued $wakes stale wakes for an already-surfaced line"
+
+    # A steer starts a turn the Claude hook record proves busy; once that turn
+    # ends, the worker going quiet again is news.
+    printf 'v1 gen=%s seq=2 state=busy source=claude-hook event=UserPromptSubmit ts=%s\n' "$gen_token" "$(date +%s)" \
+      > "$state/terminal-ticking-$kind.busy-state"
+    terminal_tick_round quiet "a busy turn"
+    printf 'v1 gen=%s seq=3 state=idle source=claude-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
+      > "$state/terminal-ticking-$kind.busy-state"
+    terminal_tick_round wake "going quiet again after a busy turn"
+  done
+  unset -f terminal_tick_round
+  pass "a live Claude worker idling behind a done or needs-decision line alarms once per idle stretch while its footer ticks, and an undeclared idle worker still alarms"
+}
+
 # A dead worker reaches handle_paused_stale rather than the live fallback above.
 # When one declared wait directly replaces another, the existing
 # throttle belongs to the old declaration and must not suppress the new wait's
@@ -4323,34 +4437,49 @@ test_open_captain_call_bounds_stale_churn() {
 
 
 
-# The other half of the same bound, and the one that decides whether widening the
-# wait was safe: the identical fixtures with NO hold must keep alarming on every
-# new hash, on both branches.
+# The other half of the same bound: the identical fixtures with NO hold. A
+# captain-relevant line (a delivery, a blocker) is bounded by the line itself, so
+# its first sight alarms and pane churn on the same line is absorbed. A worker
+# line declares nothing, so it must keep alarming on every new hash - that is
+# what keeps a worker that stopped mid-task detectable.
 test_stale_churn_without_a_captain_call_still_alarms() {
   local spec name line dir state out capture round wakes
   command -v tasks-axi >/dev/null 2>&1 \
     || { echo "skip: tasks-axi not found (unheld stale alarm)"; return 0; }
   for spec in \
     'unheld-delivery|done: PR https://example.invalid/pull/1 checks green' \
-    'unheld-blocker|blocked: cannot reach the release host' \
-    'unheld-worker-line|working: still tidying the branch'
+    'unheld-blocker|blocked: cannot reach the release host'
   do
     name=${spec%%|*}; line=${spec#*|}
     dir=$(make_hold_home "$name" "$line" nohold) \
       || fail "[$name] could not build an unheld backlog fixture"
     state="$dir/state"; out="$dir/watch.out"; capture="$dir/pane.txt"
-    round=1
-    while [ "$round" -le 2 ]; do
-      hold_watch_surface "$dir" "$out" "$capture" "idle, elapsed ${round}s" \
-        || fail "[$name] an unheld stale window stopped alarming on round $round"
-      wakes=$(hold_stale_wakes "$state")
-      [ "$wakes" -eq 1 ] \
-        || fail "[$name] round $round produced $wakes wakes instead of one"
-      ack_stopped_cycle "$state" || fail "[$name] could not acknowledge round $round"
-      round=$((round + 1))
-    done
+    hold_watch_surface "$dir" "$out" "$capture" 'idle, elapsed 1s' \
+      || fail "[$name] first sight of an unheld captain-relevant line did not surface"
+    wakes=$(hold_stale_wakes "$state")
+    [ "$wakes" -eq 1 ] || fail "[$name] first sight produced $wakes wakes instead of one"
+    ack_stopped_cycle "$state" || fail "[$name] could not acknowledge the first surface"
+    hold_watch_churn "$dir" "$out" "$capture" 'idle, tick' 2 \
+      || fail "[$name] pane churn re-alarmed an already-surfaced captain-relevant line"
+    wakes=$(hold_stale_wakes "$state")
+    [ "$wakes" -eq 0 ] \
+      || fail "[$name] pane churn queued $wakes wakes for an already-surfaced captain-relevant line"
   done
-  pass "a stale window with no open captain call keeps alarming on every new hash"
+  name=unheld-worker-line
+  dir=$(make_hold_home "$name" 'working: still tidying the branch' nohold) \
+    || fail "[$name] could not build an unheld backlog fixture"
+  state="$dir/state"; out="$dir/watch.out"; capture="$dir/pane.txt"
+  round=1
+  while [ "$round" -le 2 ]; do
+    hold_watch_surface "$dir" "$out" "$capture" "idle, elapsed ${round}s" \
+      || fail "[$name] an unheld stale window stopped alarming on round $round"
+    wakes=$(hold_stale_wakes "$state")
+    [ "$wakes" -eq 1 ] \
+      || fail "[$name] round $round produced $wakes wakes instead of one"
+    ack_stopped_cycle "$state" || fail "[$name] could not acknowledge round $round"
+    round=$((round + 1))
+  done
+  pass "with no open captain call, a captain-relevant line surfaces once and absorbs churn, while an undeclared worker line alarms on every new hash"
 }
 
 
@@ -6955,6 +7084,7 @@ test_nonterminal_stale_not_working_surfaced
 test_nonterminal_stale_paused_absorbed_then_resurfaced
 test_exited_declared_pause_is_bounded_but_live_gate_surfaces
 test_live_declared_pause_ticking_footer_keeps_the_bounded_cadence
+test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch
 test_own_work_wait_keeps_first_alert_then_long_cadence
 test_absorbed_replacement_wait_does_not_inherit_the_old_throttle
 test_live_declared_wait_churn_honors_the_resurface_throttle

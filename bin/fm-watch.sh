@@ -1898,6 +1898,37 @@ captain_call_stale_bound() {  # <window-key> <task>
   stale_wait_throttled "$key" "$STALE_WAIT_DECLARATION"
 }
 
+# Bound a due stale alarm for a crew whose latest status line is captain-relevant
+# (stale_is_terminal): a `done:` delivery, a `needs-decision`, a blocker, or a
+# failure. That line's first sight must reach firstmate, but a live agent idling
+# behind it still renders a ticking harness footer (an idle counter, a clock),
+# so every tick is a pane hash the stale path has never classified. A one-shot
+# keyed on the hash therefore re-alarmed the same line about once a minute for
+# as long as the worker sat parked behind it.
+# An open captain call keeps its own scope (captain_call_stale_bound). Otherwise
+# the bound belongs to the status log's signature, tagged `terminal:` so a busy
+# turn can end it (clear_terminal_stale_bound): any new status event starts a
+# fresh window, and the line re-surfaces once per PAUSE_RESURFACE_SECS.
+# Same return and recording contract as captain_call_stale_bound.
+terminal_stale_bound() {  # <window-key> <task>
+  local key=$1 task=$2
+  captain_call_stale_bound "$key" "$task" && return 0
+  [ -z "$STALE_WAIT_DECLARATION" ] || return 1
+  STALE_WAIT_DECLARATION="terminal:$(fm_wake_signal_sig "$STATE/$task.status" || true)"
+  stale_wait_throttled "$key" "$STALE_WAIT_DECLARATION"
+}
+
+# A turn the harness proves busy ends the idle stretch terminal_stale_bound
+# covers: the worker was steered or woken and did new work behind its old line,
+# so the next time it goes quiet is news and must alarm on first sight again.
+# Only a terminal-line bound is dropped; the declared-wait and captain-call
+# bounds keep their own reset rules.
+clear_terminal_stale_bound() {  # <window-key>
+  case "$(cat "$STATE/.paused-resurfaced-$1" 2>/dev/null || true)" in
+    terminal:*) rm -f "$STATE/.paused-resurfaced-$1" ;;
+  esac
+}
+
 # Surface a stale pane no classifier could resolve, so firstmate inspects it: it
 # may have finished through an interactive menu that wrote no status, be waiting on
 # a decision, or be wedged. pause_state_class deliberately answers `none` for a
@@ -3094,18 +3125,19 @@ EOF
               date +%s > "$ssf"
               clear_write_tracking "$key"
               triage_log "absorbed stale (provably working, overriding a stale captain-relevant status): $w"
-            elif captain_call_stale_bound "$key" "$task"; then
-              # The line is captain-relevant and stays so, but the backlog says
-              # the captain already holds this work: further NEW pane hashes with
-              # the same status-log state have nothing to add while they are
-              # deciding. Only that new-hash repetition is bounded - the first
-              # sight already alarmed, a new hash inside the window is absorbed,
-              # and a new hash after it alarms again. A stable hash stays as inert
-              # here as it already was after a first terminal alarm.
+            elif terminal_stale_bound "$key" "$task"; then
+              # The line is captain-relevant and stays so, but this same
+              # status-log state already alarmed (terminal_stale_bound owns the
+              # scope): a NEW pane hash with nothing new on the log, such as a
+              # ticking harness footer, has nothing to add. Only that new-hash
+              # repetition is bounded - the first sight already alarmed, a new
+              # hash inside the window is absorbed, and a new hash after it
+              # alarms again. A stable hash stays as inert here as it already was
+              # after a first terminal alarm.
               printf '%s' "$h" > "$sf"
               rm -f "$ssf"
               clear_write_tracking "$key"
-              triage_log "absorbed stale (open captain call already surfaced for this status): $w"
+              triage_log "absorbed stale (captain-relevant status already surfaced): $w"
             else
               fm_wake_append stale "$w" "stale: $w" || exit 1
               stale_wait_record "$key"
@@ -3184,6 +3216,7 @@ EOF
         # then route it through busy_turn_bound_check, which hands the crossed
         # bound to the same wedge timer unless the crew declared the wait itself.
         paused_bound=1
+        [ "$busy_now" -ne 0 ] || clear_terminal_stale_bound "$key"
         if [ "$busy_now" -eq 0 ] && busy_turn_over_age "$task"; then
           busy_turn_bound_check "$w" "$task" "$h" "$ssf" "$ewf" && paused_bound=0
         else
@@ -3202,6 +3235,7 @@ EOF
       printf '%s' "$h" > "$hf"
       echo 0 > "$cf"
       paused_bound=1
+      [ "$busy_now" -ne 0 ] || clear_terminal_stale_bound "$key"
       if [ "$busy_now" -eq 0 ] && busy_turn_over_age "$task"; then
         busy_turn_bound_check "$w" "$task" "$h" "$ssf" "$ewf" && paused_bound=0
       else
