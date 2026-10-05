@@ -1898,10 +1898,11 @@ captain_call_stale_bound() {  # <window-key> <task>
   stale_wait_throttled "$key" "$STALE_WAIT_DECLARATION"
 }
 
-# Bound a due stale alarm for a crew whose latest status line is captain-relevant
-# (stale_is_terminal): a `done:` delivery, a `needs-decision`, a blocker, or a
-# failure. That line's first sight must reach firstmate, but a live agent idling
-# behind it still renders a ticking harness footer (an idle counter, a clock),
+# Bound a due stale alarm for a LIVE CLAUDE crew whose latest status line is
+# exactly `done:` or `needs-decision`. Blockers, failures, unrecognized
+# prefixes, legacy regex matches, dead workers and other harnesses never reach
+# the bound and alarm per new hash as before. That line's first sight must
+# reach firstmate, but a live agent idling behind it still renders a ticking harness footer (an idle counter, a clock),
 # so every tick is a pane hash the stale path has never classified. A one-shot
 # keyed on the hash therefore re-alarmed the same line about once a minute for
 # as long as the worker sat parked behind it.
@@ -1912,10 +1913,16 @@ captain_call_stale_bound() {  # <window-key> <task>
 # window; the line re-surfaces once per PAUSE_RESURFACE_SECS. A worker with no
 # such record is never bound and keeps the per-hash alarm.
 # Same return and recording contract as captain_call_stale_bound.
-terminal_stale_bound() {  # <window-key> <task>
-  local key=$1 task=$2 record gen seq
+terminal_stale_bound() {  # <window> <task>
+  local win=$1 task=$2 key record gen seq verb
+  key=$(window_key "$win")
   captain_call_stale_bound "$key" "$task" && return 0
   [ -z "$STALE_WAIT_DECLARATION" ] || return 1
+  [ "$(window_harness "$win")" = claude ] || { STALE_WAIT_DECLARATION=; return 1; }
+  status_line_verb "$(last_status_line "$STATE/$task.status")" verb
+  case "$verb" in done|needs-decision) ;; *) STALE_WAIT_DECLARATION=; return 1 ;; esac
+  [ "$(fm_backend_agent_alive "$(window_backend "$win")" "$win" 2>/dev/null)" = alive ] \
+    || { STALE_WAIT_DECLARATION=; return 1; }
   record=$(cat "$STATE/$task.busy-state" 2>/dev/null || true)
   gen=${record#* gen=}; gen=${gen%% *}
   seq=${record#* seq=}; seq=${seq%% *}
@@ -3120,7 +3127,7 @@ EOF
               date +%s > "$ssf"
               clear_write_tracking "$key"
               triage_log "absorbed stale (provably working, overriding a stale captain-relevant status): $w"
-            elif terminal_stale_bound "$key" "$task"; then
+            elif terminal_stale_bound "$w" "$task"; then
               # The line is captain-relevant and stays so, but this same
               # status-log state already alarmed (terminal_stale_bound owns the
               # scope): a NEW pane hash with nothing new on the log, such as a

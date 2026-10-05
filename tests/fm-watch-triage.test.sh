@@ -2950,7 +2950,7 @@ SH
 # round asserts the pane really moved and became stably stale, so silence cannot
 # pass vacuously.
 test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch() {
-  local kind line dir state fakebin out window key statusf gen ticks gen_token
+  local kind line dir state fakebin out window key statusf gen ticks gen_token harness comm
   local round prev_hash cur_hash prev_ticks cycles wakes
 
   # <dir-vars set> <expect: wake|quiet> <label>
@@ -2990,7 +2990,15 @@ test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch() {
     round=$((round + 1))
   }
 
-  for kind in 'done' needs-decision working; do
+  for kind in 'done' needs-decision working blocked failed unrecognized codex-done dead-done; do
+    harness=claude; comm=claude
+    case "$kind" in
+      blocked) line='blocked [at=1791100000]: waiting on credentials' ;;
+      failed) line='failed [at=1791100000]: build broke' ;;
+      unrecognized) line='shrug [at=1791100000]: no idea' ;;
+      codex-done) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; harness=codex ;;
+      dead-done) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; comm=bash ;;
+    esac
     case "$kind" in
       done) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green' ;;
       needs-decision) line='needs-decision [key=board-review] [at=1791100000]: pick a board option' ;;
@@ -3010,12 +3018,13 @@ case "${1:-}" in
     printf 'Waiting for the next step.\n\n> \n  opus · idle %sm · Update available\n' \
       "$(cat "$FM_FAKE_TMUX_GEN" 2>/dev/null || echo 0)"
     exit 0 ;;
-  display-message) case "$*" in *pane_current_command*) echo claude; exit 0 ;; esac ;;
+  display-message) case "$*" in *pane_current_command*) echo "${FM_FAKE_TMUX_COMM:-claude}"; exit 0 ;; esac ;;
 esac
 exit 1
 SH
     chmod +x "$fakebin/tmux"
-    printf 'window=%s\nkind=ship\nharness=claude\nbackend=tmux\n' "$window" > "$state/terminal-ticking-$kind.meta"
+    export FM_FAKE_TMUX_COMM=$comm
+    printf 'window=%s\nkind=ship\nharness=%s\nbackend=tmux\n' "$window" "$harness" > "$state/terminal-ticking-$kind.meta"
     gen_token=g1
     printf '%s\n' "$gen_token" > "$state/terminal-ticking-$kind.busy-gen"
     printf 'v1 gen=%s seq=1 state=idle source=claude-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
@@ -3026,8 +3035,8 @@ SH
     round=1
 
     terminal_tick_round wake "first sight"
-    if [ "$kind" = working ]; then
-      # No declared state: the next idle tick must still raise stale.
+    if [ "$kind" != done ] && [ "$kind" != needs-decision ]; then
+      # No declared state, or a line the bound does not cover: the next idle tick must still raise stale.
       terminal_tick_round wake "an undeclared idle worker's later footer tick"
       continue
     fi
