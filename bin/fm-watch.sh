@@ -1908,13 +1908,13 @@ captain_call_stale_bound() {  # <window-key> <task>
 # as long as the worker sat parked behind it.
 # An open captain call keeps its own scope (captain_call_stale_bound). Otherwise
 # the bound belongs to the status log's signature plus the worker's durable
-# busy-state record (gen and seq), so any new status event or any turn the
+# valid, trusted busy-state record (gen and seq), so any new status event or any turn the
 # harness hooks recorded, whether or not a poll saw it busy, starts a fresh
 # window; the line re-surfaces once per PAUSE_RESURFACE_SECS. A worker with no
-# such record is never bound and keeps the per-hash alarm.
+# such valid record is never bound and keeps the per-hash alarm.
 # Same return and recording contract as captain_call_stale_bound.
 terminal_stale_bound() {  # <window> <task>
-  local win=$1 task=$2 key record gen seq verb
+  local win=$1 task=$2 key record source gen seq verb
   key=$(window_key "$win")
   captain_call_stale_bound "$key" "$task" && return 0
   [ -z "$STALE_WAIT_DECLARATION" ] || return 1
@@ -1923,10 +1923,10 @@ terminal_stale_bound() {  # <window> <task>
   case "$verb" in done|needs-decision) ;; *) STALE_WAIT_DECLARATION=; return 1 ;; esac
   [ "$(fm_backend_agent_alive "$(window_backend "$win")" "$win" 2>/dev/null)" = alive ] \
     || { STALE_WAIT_DECLARATION=; return 1; }
-  record=$(cat "$STATE/$task.busy-state" 2>/dev/null || true)
-  gen=${record#* gen=}; gen=${gen%% *}
-  seq=${record#* seq=}; seq=${seq%% *}
-  case "$record" in "v1 gen="*" seq="*) ;; *) STALE_WAIT_DECLARATION=; return 1 ;; esac
+  record=$(fm_busy_record_read "$STATE" "$task") || { STALE_WAIT_DECLARATION=; return 1; }
+  read -r _ source _ seq <<< "$record"
+  fm_busy_source_trusted claude "$source" && gen=$(fm_busy_current_gen "$STATE" "$task") \
+    || { STALE_WAIT_DECLARATION=; return 1; }
   STALE_WAIT_DECLARATION="terminal:$gen:$seq:$(fm_wake_signal_sig "$STATE/$task.status" || true)"
   stale_wait_throttled "$key" "$STALE_WAIT_DECLARATION"
 }

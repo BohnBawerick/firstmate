@@ -2990,7 +2990,7 @@ test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch() {
     round=$((round + 1))
   }
 
-  for kind in 'done' needs-decision working blocked failed unrecognized legacy-regex codex-done dead-done; do
+  for kind in 'done' needs-decision working blocked failed unrecognized legacy-regex codex-done dead-done stale-gen untrusted-source; do
     harness=claude; comm=claude
     case "$kind" in
       blocked) line='blocked [at=1791100000]: waiting on credentials' ;;
@@ -2998,6 +2998,7 @@ test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch() {
       legacy-regex) line='PR ready for review' ;;
       unrecognized) line='shrug [at=1791100000]: no idea' ;;
       codex-done) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; harness=codex ;;
+      stale-gen|untrusted-source) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green' ;;
       dead-done) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; comm=bash ;;
     esac
     case "$kind" in
@@ -3030,6 +3031,12 @@ SH
     printf '%s\n' "$gen_token" > "$state/terminal-ticking-$kind.busy-gen"
     printf 'v1 gen=%s seq=1 state=idle source=claude-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
       > "$state/terminal-ticking-$kind.busy-state"
+    case "$kind" in
+      stale-gen) printf 'g2\n' > "$state/terminal-ticking-$kind.busy-gen" ;;
+      untrusted-source)
+        printf 'v1 gen=%s seq=1 state=idle source=codex-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
+          > "$state/terminal-ticking-$kind.busy-state" ;;
+    esac
     printf '%s\n' "$line" > "$statusf"
     printf '%s' "$(seen_sig "$statusf")" > "$state/.seen-terminal-ticking-${kind}_status"
     key=$(printf '%s' "$window" | tr ':/.' '___')
@@ -4454,49 +4461,34 @@ test_open_captain_call_bounds_stale_churn() {
 
 
 
-# The other half of the same bound: the identical fixtures with NO hold. A
-# captain-relevant line (a delivery, a blocker) is bounded by the line itself, so
-# its first sight alarms and pane churn on the same line is absorbed. A worker
-# line declares nothing, so it must keep alarming on every new hash - that is
-# what keeps a worker that stopped mid-task detectable.
+# The other half of the same bound, and the one that decides whether widening the
+# wait was safe: the identical fixtures with NO hold must keep alarming on every
+# new hash, on both branches.
 test_stale_churn_without_a_captain_call_still_alarms() {
   local spec name line dir state out capture round wakes
   command -v tasks-axi >/dev/null 2>&1 \
     || { echo "skip: tasks-axi not found (unheld stale alarm)"; return 0; }
   for spec in \
     'unheld-delivery|done: PR https://example.invalid/pull/1 checks green' \
-    'unheld-blocker|blocked: cannot reach the release host'
+    'unheld-blocker|blocked: cannot reach the release host' \
+    'unheld-worker-line|working: still tidying the branch'
   do
     name=${spec%%|*}; line=${spec#*|}
     dir=$(make_hold_home "$name" "$line" nohold) \
       || fail "[$name] could not build an unheld backlog fixture"
     state="$dir/state"; out="$dir/watch.out"; capture="$dir/pane.txt"
-    hold_watch_surface "$dir" "$out" "$capture" 'idle, elapsed 1s' \
-      || fail "[$name] first sight of an unheld captain-relevant line did not surface"
-    wakes=$(hold_stale_wakes "$state")
-    [ "$wakes" -eq 1 ] || fail "[$name] first sight produced $wakes wakes instead of one"
-    ack_stopped_cycle "$state" || fail "[$name] could not acknowledge the first surface"
-    hold_watch_churn "$dir" "$out" "$capture" 'idle, tick' 2 \
-      || fail "[$name] pane churn re-alarmed an already-surfaced captain-relevant line"
-    wakes=$(hold_stale_wakes "$state")
-    [ "$wakes" -eq 0 ] \
-      || fail "[$name] pane churn queued $wakes wakes for an already-surfaced captain-relevant line"
+    round=1
+    while [ "$round" -le 2 ]; do
+      hold_watch_surface "$dir" "$out" "$capture" "idle, elapsed ${round}s" \
+        || fail "[$name] an unheld stale window stopped alarming on round $round"
+      wakes=$(hold_stale_wakes "$state")
+      [ "$wakes" -eq 1 ] \
+        || fail "[$name] round $round produced $wakes wakes instead of one"
+      ack_stopped_cycle "$state" || fail "[$name] could not acknowledge round $round"
+      round=$((round + 1))
+    done
   done
-  name=unheld-worker-line
-  dir=$(make_hold_home "$name" 'working: still tidying the branch' nohold) \
-    || fail "[$name] could not build an unheld backlog fixture"
-  state="$dir/state"; out="$dir/watch.out"; capture="$dir/pane.txt"
-  round=1
-  while [ "$round" -le 2 ]; do
-    hold_watch_surface "$dir" "$out" "$capture" "idle, elapsed ${round}s" \
-      || fail "[$name] an unheld stale window stopped alarming on round $round"
-    wakes=$(hold_stale_wakes "$state")
-    [ "$wakes" -eq 1 ] \
-      || fail "[$name] round $round produced $wakes wakes instead of one"
-    ack_stopped_cycle "$state" || fail "[$name] could not acknowledge round $round"
-    round=$((round + 1))
-  done
-  pass "with no open captain call, a captain-relevant line surfaces once and absorbs churn, while an undeclared worker line alarms on every new hash"
+  pass "a stale window with no open captain call keeps alarming on every new hash"
 }
 
 
