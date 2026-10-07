@@ -1898,10 +1898,11 @@ captain_call_stale_bound() {  # <window-key> <task>
   stale_wait_throttled "$key" "$STALE_WAIT_DECLARATION"
 }
 
-# Bound a due stale alarm for a LIVE CLAUDE crew whose latest status line is
-# exactly `done:` or `needs-decision`. Blockers, failures, unrecognized
-# prefixes, legacy regex matches, dead workers and other harnesses never reach
-# the bound and alarm per new hash as before. That line's first sight must
+# Bound a due stale alarm for a LIVE crew whose recorded harness is exactly
+# `claude` and whose latest status line has the `done` or `needs-decision` verb.
+# The bound rejects every other verb, unrecognized prefix, legacy regex match,
+# dead worker and other harness, so they continue to alarm per new hash.
+# That line's first sight must
 # reach firstmate, but a live agent idling behind it still renders a ticking
 # harness footer (an idle counter, a clock),
 # so every tick is a pane hash the stale path has never classified. A one-shot
