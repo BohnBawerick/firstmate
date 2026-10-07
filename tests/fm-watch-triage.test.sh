@@ -3038,7 +3038,7 @@ SH
     round=1
 
     terminal_tick_round wake "first sight"
-    if [ "$kind" != done ] && [ "$kind" != needs-decision ]; then
+    if [ "$kind" != "done" ] && [ "$kind" != needs-decision ]; then
       # No declared state, or a line the bound does not cover: the next idle tick must still raise stale.
       terminal_tick_round wake "an undeclared idle worker's later footer tick"
       continue
