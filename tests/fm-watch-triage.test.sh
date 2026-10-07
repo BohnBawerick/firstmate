@@ -2990,7 +2990,7 @@ test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch() {
     round=$((round + 1))
   }
 
-  for kind in 'done' needs-decision working blocked failed unrecognized legacy-regex codex-done dead-done stale-gen untrusted-source busy-source-mismatch claude-family dead-busy-race; do
+  for kind in 'done' needs-decision working blocked failed unrecognized legacy-regex codex-done dead-done; do
     harness=claude; comm=claude
     case "$kind" in
       blocked) line='blocked [at=1791100000]: waiting on credentials' ;;
@@ -2998,9 +2998,6 @@ test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch() {
       legacy-regex) line='PR ready for review' ;;
       unrecognized) line='shrug [at=1791100000]: no idea' ;;
       codex-done) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; harness=codex ;;
-      stale-gen|untrusted-source|busy-source-mismatch) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green' ;;
-      claude-family) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; harness=claude-nightly ;;
-      dead-busy-race) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; comm=bash ;;
       dead-done) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; comm=bash ;;
     esac
     case "$kind" in
@@ -3033,37 +3030,13 @@ SH
     printf '%s\n' "$gen_token" > "$state/terminal-ticking-$kind.busy-gen"
     printf 'v1 gen=%s seq=1 state=idle source=claude-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
       > "$state/terminal-ticking-$kind.busy-state"
-    case "$kind" in
-      stale-gen) printf 'g2\n' > "$state/terminal-ticking-$kind.busy-gen" ;;
-      busy-source-mismatch)
-        printf 'v1 gen=%s seq=1 state=busy source=codex-hook event=UserPromptSubmit ts=%s\n' "$gen_token" "$(date +%s)" \
-          > "$state/terminal-ticking-$kind.busy-state" ;;
-      untrusted-source)
-        printf 'v1 gen=%s seq=1 state=idle source=codex-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
-          > "$state/terminal-ticking-$kind.busy-state" ;;
-    esac
     printf '%s\n' "$line" > "$statusf"
     printf '%s' "$(seen_sig "$statusf")" > "$state/.seen-terminal-ticking-${kind}_status"
     key=$(printf '%s' "$window" | tr ':/.' '___')
     round=1
 
-    if [ "$kind" = dead-busy-race ]; then
-      mv "$fakebin/fm-crew-state.sh" "$fakebin/fm-crew-state.real.sh"
-      cat > "$fakebin/fm-crew-state.sh" <<'SH'
-#!/usr/bin/env bash
-cp "$FM_FAKE_RACE_RECORD" "$FM_FAKE_RACE_TARGET"
-exec "$(dirname "$0")/fm-crew-state.real.sh" "$@"
-SH
-      chmod +x "$fakebin/fm-crew-state.sh"
-      printf 'v1 gen=%s seq=2 state=busy source=claude-hook event=UserPromptSubmit ts=%s\n' "$gen_token" "$(date +%s)" \
-        > "$dir/race-record"
-      export FM_FAKE_RACE_RECORD="$dir/race-record" FM_FAKE_RACE_TARGET="$state/terminal-ticking-$kind.busy-state"
-      terminal_tick_round wake "a worker that began a turn and died mid-poll"
-      unset FM_FAKE_RACE_RECORD FM_FAKE_RACE_TARGET
-      continue
-    fi
     terminal_tick_round wake "first sight"
-    if [ "$kind" != done ] && [ "$kind" != needs-decision ] && [ "$kind" != claude-family ]; then
+    if [ "$kind" != done ] && [ "$kind" != needs-decision ]; then
       # No declared state, or a line the bound does not cover: the next idle tick must still raise stale.
       terminal_tick_round wake "an undeclared idle worker's later footer tick"
       continue
@@ -3073,38 +3046,14 @@ SH
     wakes=$(awk -F '\t' -v w="$window" '$3 == "stale" && $4 == w { n++ } END { print n + 0 }' "$state/.wake-queue" 2>/dev/null || echo 0)
     [ "$wakes" -eq 0 ] || fail "$kind: footer ticks queued $wakes stale wakes for an already-surfaced line"
 
-    # A turn that started and ended between two polls leaves only a newer hook
-    # record; the worker going quiet after it is news.
-    printf 'v1 gen=%s seq=2 state=idle source=claude-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
-      > "$state/terminal-ticking-$kind.busy-state"
-    terminal_tick_round wake "going quiet after a turn no poll saw busy"
-    terminal_tick_round quiet "footer tick after the unobserved turn"
-
-    # A steer starts a turn the Claude hook record proves busy; once that turn
-    # ends, the worker going quiet again is news.
-    printf 'v1 gen=%s seq=3 state=busy source=claude-hook event=UserPromptSubmit ts=%s\n' "$gen_token" "$(date +%s)" \
-      > "$state/terminal-ticking-$kind.busy-state"
-    terminal_tick_round quiet "a busy turn"
-    printf 'v1 gen=%s seq=4 state=idle source=claude-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
-      > "$state/terminal-ticking-$kind.busy-state"
-    terminal_tick_round wake "going quiet again after a busy turn"
-
-    # The record turns busy after the pane verdict but before the bound check:
-    # a turn is underway, so the quiet-again alarm must not fire.
-    mv "$fakebin/fm-crew-state.sh" "$fakebin/fm-crew-state.real.sh"
-    cat > "$fakebin/fm-crew-state.sh" <<'SH'
-#!/usr/bin/env bash
-[ -z "${FM_FAKE_RACE_RECORD:-}" ] || cp "$FM_FAKE_RACE_RECORD" "$FM_FAKE_RACE_TARGET"
-exec "$(dirname "$0")/fm-crew-state.real.sh" "$@"
-SH
-    chmod +x "$fakebin/fm-crew-state.sh"
-    printf 'v1 gen=%s seq=5 state=busy source=claude-hook event=UserPromptSubmit ts=%s\n' "$gen_token" "$(date +%s)" \
-      > "$dir/race-record"
-    printf 'v1 gen=%s seq=5 state=idle source=claude-hook event=Stop ts=%s\n' "$gen_token" "$(date +%s)" \
-      > "$state/terminal-ticking-$kind.busy-state"
-    export FM_FAKE_RACE_RECORD="$dir/race-record" FM_FAKE_RACE_TARGET="$state/terminal-ticking-$kind.busy-state"
-    terminal_tick_round quiet "a turn that began after the pane verdict"
-    unset FM_FAKE_RACE_RECORD FM_FAKE_RACE_TARGET
+    # Any new status line starts a fresh window: the next idle tick alarms once.
+    case "$kind" in
+      needs-decision) printf 'needs-decision [key=board-review-2] [at=1791100100]: pick another board option\n' > "$statusf" ;;
+      *) printf 'done [at=1791100100]: PR https://github.com/example/repo/pull/1 merged\n' > "$statusf" ;;
+    esac
+    printf '%s' "$(seen_sig "$statusf")" > "$state/.seen-terminal-ticking-${kind}_status"
+    terminal_tick_round wake "a new status line"
+    terminal_tick_round quiet "footer tick after the new status line"
   done
   unset -f terminal_tick_round
   pass "a live Claude worker idling behind a done or needs-decision line alarms once per idle stretch while its footer ticks, and an undeclared idle worker still alarms"

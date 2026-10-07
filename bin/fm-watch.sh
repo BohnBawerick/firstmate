@@ -1908,30 +1908,19 @@ captain_call_stale_bound() {  # <window-key> <task>
 # keyed on the hash therefore re-alarmed the same line about once a minute for
 # as long as the worker sat parked behind it.
 # An open captain call keeps its own scope (captain_call_stale_bound). Otherwise
-# the bound belongs to the status log's signature plus the worker's durable
-# canonical idle verdict's busy-state generation and sequence, so any new status
-# event or any turn the harness hooks recorded, whether or not a poll saw it busy, starts a fresh
-# window; the line re-surfaces once per PAUSE_RESURFACE_SECS. A worker with no
-# such valid record is never bound and keeps the per-hash alarm.
+# the bound belongs to the status log's signature: any new status event starts a
+# fresh window, and the line re-surfaces once per PAUSE_RESURFACE_SECS.
 # Same return and recording contract as captain_call_stale_bound.
-terminal_stale_bound() {  # <window> <task> <tail40>
-  local win=$1 task=$2 tail40=$3 key verdict= identity verb
+terminal_stale_bound() {  # <window> <task>
+  local win=$1 task=$2 key verb
   key=$(window_key "$win")
-  case "$(window_harness "$win")" in
-    claude*)
-      if [ "$(fm_backend_agent_alive "$(window_backend "$win")" "$win" 2>/dev/null)" = alive ]; then
-        verdict=$(FM_BUSY_WITH_IDENTITY=1 fm_busy_classify_meta "$STATE/$task.meta" "$task" "$STATE" "$tail40")
-        case "$verdict" in "busy claude-hook"*) return 0 ;; esac
-      fi
-      ;;
-  esac
   captain_call_stale_bound "$key" "$task" && return 0
   [ -z "$STALE_WAIT_DECLARATION" ] || return 1
-  STALE_WAIT_DECLARATION=
-  case "$verdict" in "idle claude-hook gen="*" seq="*) identity=${verdict#idle claude-hook } ;; *) return 1 ;; esac
+  [ "$(window_harness "$win")" = claude ] || return 1
+  [ "$(fm_backend_agent_alive "$(window_backend "$win")" "$win" 2>/dev/null)" = alive ] || return 1
   status_line_verb "$(last_status_line "$STATE/$task.status")" verb
   case "$verb" in done|needs-decision) ;; *) return 1 ;; esac
-  STALE_WAIT_DECLARATION="terminal:$identity:$(fm_wake_signal_sig "$STATE/$task.status" || true)"
+  STALE_WAIT_DECLARATION="terminal:$(fm_wake_signal_sig "$STATE/$task.status" || true)"
   stale_wait_throttled "$key" "$STALE_WAIT_DECLARATION"
 }
 
@@ -3131,7 +3120,7 @@ EOF
               date +%s > "$ssf"
               clear_write_tracking "$key"
               triage_log "absorbed stale (provably working, overriding a stale captain-relevant status): $w"
-            elif terminal_stale_bound "$w" "$task" "$tail40"; then
+            elif terminal_stale_bound "$w" "$task"; then
               # The line is captain-relevant and stays so, but this same
               # status-log state already alarmed (terminal_stale_bound owns the
               # scope): a NEW pane hash with nothing new on the log, such as a
