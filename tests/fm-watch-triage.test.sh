@@ -2951,7 +2951,7 @@ SH
 # The fake tmux renders a footer the TEST advances between rounds, and every quiet
 # round asserts the pane really moved and became stably stale, so silence cannot
 # pass vacuously.
-test_live_terminal_status_ticking_footer_alarms_once_per_status_line() {
+test_live_terminal_status_ticking_footer_alarms_once_per_resurface_interval() {
   local kind line dir state fakebin out window key statusf gen ticks gen_token harness comm
   local round prev_hash cur_hash prev_ticks cycles wakes
 
@@ -3058,7 +3058,7 @@ SH
     terminal_tick_round quiet "footer tick after the new status line"
   done
   unset -f terminal_tick_round
-  pass "a live Claude worker idling behind a done or needs-decision line alarms once per status line while its footer ticks, a new status line alarms again, and blocked, failed, unrecognized, legacy, other-harness, dead and undeclared workers still alarm on every tick"
+  pass "a live Claude worker idling behind a done or needs-decision line alarms at most once per resurface interval for an unchanged status line while its footer ticks, a new status line alarms again, and blocked, failed, unrecognized, legacy, other-harness, dead and undeclared workers still alarm on every tick"
 }
 
 # A dead worker reaches handle_paused_stale rather than the live fallback above.
@@ -7081,7 +7081,7 @@ test_nonterminal_stale_not_working_surfaced
 test_nonterminal_stale_paused_absorbed_then_resurfaced
 test_exited_declared_pause_is_bounded_but_live_gate_surfaces
 test_live_declared_pause_ticking_footer_keeps_the_bounded_cadence
-test_live_terminal_status_ticking_footer_alarms_once_per_status_line
+test_live_terminal_status_ticking_footer_alarms_once_per_resurface_interval
 test_own_work_wait_keeps_first_alert_then_long_cadence
 test_absorbed_replacement_wait_does_not_inherit_the_old_throttle
 test_live_declared_wait_churn_honors_the_resurface_throttle
