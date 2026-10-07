@@ -1,0 +1,1 @@
+ok - a live Claude worker idling behind a done or needs-decision line alarms at most once per resurface interval for an unchanged status line while its footer ticks, a new status line alarms again, and blocked, failed, unrecognized, legacy, other-harness, dead and undeclared workers still alarm on every tick
