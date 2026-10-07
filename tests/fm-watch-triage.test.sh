@@ -2941,15 +2941,17 @@ SH
 # board) idled with their status bar's "idle Nm" counter ticking. Each tick is a
 # fresh pane hash, and the terminal-status branch keyed its one-shot on the hash,
 # so the same line re-alarmed as a bare `stale: <window>` about once a minute.
-# The bound belongs to the status line: its first sight alarms, later footer ticks
-# on the same line are absorbed, and a turn the Claude hook record proves busy
-# ends that idle stretch, so going quiet again after a steer still alarms.
+# The bound belongs to the status line's signature: for a live exact-claude worker
+# whose latest line is done or needs-decision, its first sight alarms, later footer
+# ticks are absorbed for up to PAUSE_RESURFACE_SECS, and any new status line starts
+# a fresh window. Accepted cost: a steered worker that works and then hangs without
+# writing a new status line may wait up to PAUSE_RESURFACE_SECS to re-alarm.
 # The control keeps the wedge detectable: a worker that stops mid-task with no
 # declared state still alarms on a later footer tick.
 # The fake tmux renders a footer the TEST advances between rounds, and every quiet
 # round asserts the pane really moved and became stably stale, so silence cannot
 # pass vacuously.
-test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch() {
+test_live_terminal_status_ticking_footer_alarms_once_per_status_line() {
   local kind line dir state fakebin out window key statusf gen ticks gen_token harness comm
   local round prev_hash cur_hash prev_ticks cycles wakes
 
@@ -3056,7 +3058,7 @@ SH
     terminal_tick_round quiet "footer tick after the new status line"
   done
   unset -f terminal_tick_round
-  pass "a live Claude worker idling behind a done or needs-decision line alarms once per idle stretch while its footer ticks, and an undeclared idle worker still alarms"
+  pass "a live Claude worker idling behind a done or needs-decision line alarms once per status line while its footer ticks, a new status line alarms again, and blocked, failed, unrecognized, legacy, other-harness, dead and undeclared workers still alarm on every tick"
 }
 
 # A dead worker reaches handle_paused_stale rather than the live fallback above.
@@ -7079,7 +7081,7 @@ test_nonterminal_stale_not_working_surfaced
 test_nonterminal_stale_paused_absorbed_then_resurfaced
 test_exited_declared_pause_is_bounded_but_live_gate_surfaces
 test_live_declared_pause_ticking_footer_keeps_the_bounded_cadence
-test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch
+test_live_terminal_status_ticking_footer_alarms_once_per_status_line
 test_own_work_wait_keeps_first_alert_then_long_cadence
 test_absorbed_replacement_wait_does_not_inherit_the_old_throttle
 test_live_declared_wait_churn_honors_the_resurface_throttle
