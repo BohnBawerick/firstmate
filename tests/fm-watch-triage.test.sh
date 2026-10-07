@@ -2990,7 +2990,7 @@ test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch() {
     round=$((round + 1))
   }
 
-  for kind in 'done' needs-decision working blocked failed unrecognized legacy-regex codex-done dead-done stale-gen untrusted-source busy-source-mismatch; do
+  for kind in 'done' needs-decision working blocked failed unrecognized legacy-regex codex-done dead-done stale-gen untrusted-source busy-source-mismatch claude-family dead-busy-race; do
     harness=claude; comm=claude
     case "$kind" in
       blocked) line='blocked [at=1791100000]: waiting on credentials' ;;
@@ -2999,6 +2999,8 @@ test_live_terminal_status_ticking_footer_alarms_once_per_idle_stretch() {
       unrecognized) line='shrug [at=1791100000]: no idea' ;;
       codex-done) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; harness=codex ;;
       stale-gen|untrusted-source|busy-source-mismatch) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green' ;;
+      claude-family) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; harness=claude-nightly ;;
+      dead-busy-race) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; comm=bash ;;
       dead-done) line='done [at=1791100000]: PR https://github.com/example/repo/pull/1 checks green'; comm=bash ;;
     esac
     case "$kind" in
@@ -3045,8 +3047,23 @@ SH
     key=$(printf '%s' "$window" | tr ':/.' '___')
     round=1
 
+    if [ "$kind" = dead-busy-race ]; then
+      mv "$fakebin/fm-crew-state.sh" "$fakebin/fm-crew-state.real.sh"
+      cat > "$fakebin/fm-crew-state.sh" <<'SH'
+#!/usr/bin/env bash
+cp "$FM_FAKE_RACE_RECORD" "$FM_FAKE_RACE_TARGET"
+exec "$(dirname "$0")/fm-crew-state.real.sh" "$@"
+SH
+      chmod +x "$fakebin/fm-crew-state.sh"
+      printf 'v1 gen=%s seq=2 state=busy source=claude-hook event=UserPromptSubmit ts=%s\n' "$gen_token" "$(date +%s)" \
+        > "$dir/race-record"
+      export FM_FAKE_RACE_RECORD="$dir/race-record" FM_FAKE_RACE_TARGET="$state/terminal-ticking-$kind.busy-state"
+      terminal_tick_round wake "a worker that began a turn and died mid-poll"
+      unset FM_FAKE_RACE_RECORD FM_FAKE_RACE_TARGET
+      continue
+    fi
     terminal_tick_round wake "first sight"
-    if [ "$kind" != done ] && [ "$kind" != needs-decision ]; then
+    if [ "$kind" != done ] && [ "$kind" != needs-decision ] && [ "$kind" != claude-family ]; then
       # No declared state, or a line the bound does not cover: the next idle tick must still raise stale.
       terminal_tick_round wake "an undeclared idle worker's later footer tick"
       continue

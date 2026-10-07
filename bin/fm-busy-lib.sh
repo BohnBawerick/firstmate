@@ -1065,6 +1065,7 @@ fm_busy_classify() {  # <backend> <target> <harness> <id> <state-dir> [tail40]
         printf 'unknown launch-prompt'
       else
         printf '%s %s' "$r_state" "$r_source"
+        [ -z "${FM_BUSY_WITH_IDENTITY:-}" ] || printf ' gen=%s seq=%s' "$(fm_busy_current_gen "$state" "$id")" "${out##* }"
       fi
     else
       printf 'unknown source-mismatch'

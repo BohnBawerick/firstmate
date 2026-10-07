@@ -1915,22 +1915,23 @@ captain_call_stale_bound() {  # <window-key> <task>
 # such valid record is never bound and keeps the per-hash alarm.
 # Same return and recording contract as captain_call_stale_bound.
 terminal_stale_bound() {  # <window> <task> <tail40>
-  local win=$1 task=$2 tail40=$3 key verdict record seq verb
+  local win=$1 task=$2 tail40=$3 key verdict= identity verb
   key=$(window_key "$win")
-  if [ "$(window_harness "$win")" = claude ]; then
-    verdict=$(fm_busy_classify_meta "$STATE/$task.meta" "$task" "$STATE" "$tail40")
-    [ "$verdict" = "busy claude-hook" ] && return 0
-  fi
+  case "$(window_harness "$win")" in
+    claude*)
+      if [ "$(fm_backend_agent_alive "$(window_backend "$win")" "$win" 2>/dev/null)" = alive ]; then
+        verdict=$(FM_BUSY_WITH_IDENTITY=1 fm_busy_classify_meta "$STATE/$task.meta" "$task" "$STATE" "$tail40")
+        case "$verdict" in "busy claude-hook"*) return 0 ;; esac
+      fi
+      ;;
+  esac
   captain_call_stale_bound "$key" "$task" && return 0
   [ -z "$STALE_WAIT_DECLARATION" ] || return 1
   STALE_WAIT_DECLARATION=
-  [ "${verdict-}" = "idle claude-hook" ] || return 1
+  case "$verdict" in "idle claude-hook gen="*" seq="*) identity=${verdict#idle claude-hook } ;; *) return 1 ;; esac
   status_line_verb "$(last_status_line "$STATE/$task.status")" verb
   case "$verb" in done|needs-decision) ;; *) return 1 ;; esac
-  [ "$(fm_backend_agent_alive "$(window_backend "$win")" "$win" 2>/dev/null)" = alive ] || return 1
-  record=$(fm_busy_record_read "$STATE" "$task") || return 1
-  seq=${record##* }
-  STALE_WAIT_DECLARATION="terminal:$(fm_busy_current_gen "$STATE" "$task" || true):$seq:$(fm_wake_signal_sig "$STATE/$task.status" || true)"
+  STALE_WAIT_DECLARATION="terminal:$identity:$(fm_wake_signal_sig "$STATE/$task.status" || true)"
   stale_wait_throttled "$key" "$STALE_WAIT_DECLARATION"
 }
 
