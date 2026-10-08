@@ -1,0 +1,16 @@
+target_commit=a74babd5a92ff26a606cb9e591042c708b83489b
+scenario=real GPT Sol detailed persistence reply enters relaunch
+harness=pi
+model=openai-codex/gpt-6-sol
+spawn_gen=s1791465970.959100.12466
+
+[real agent reply]
+done [corr=8788182a5f3d2b19] [at=1791466027]: open records written down; no open work existed only in this conversation (via-helper)
+done [corr=1213eb734fb8ac03] [at=1791466102]: open records written down; no open work existed only in this conversation (via-helper)
+done [corr=1633f8ff8c933807] [at=1791466108]: re-read AGENTS.md; current instructions loaded (via-helper)
+
+[restart result]
+unreached: smpi19488: the restart outcome is unknown: task smpi19488's composer state is 'unknown', not proven empty; refusing to type the /quit exit command because it could concatenate onto existing text. Clear the composer, then retry 'relaunch'
+summary: 0 of 1 restarted, 0 nudged, 1 unreached
+
+observation=the detailed done reply entered relaunch and was not routed to the persistence nudge path

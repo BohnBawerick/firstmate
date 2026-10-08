@@ -1,0 +1,23 @@
+target_commit=a74babd5a92ff26a606cb9e591042c708b83489b
+product=firstmate persistence gate
+live_agent=openai-codex/gpt-6-sol through Pi
+isolation=disposable named Herdr lab plus private tmux lab
+teardown=confirmed lab root absent, task temp absent, named Herdr session absent
+
+[live-detailed-reply-and-gate-result]
+done [corr=5999b0f4604a7db6] [at=1791462956]: open records written down; no open work existed only in this conversation (via-helper)
+done [corr=d55bd9e7d01e93f6] [at=1791462997]: open records written down; no open work existed only in this conversation (via-helper)
+done [corr=5d7909c0ce1449f7] [at=1791463071]: open records written down; no open work existed only in this conversation (via-helper)
+done [corr=439c02109e004687] [at=1791463106]: open records written down; no open work existed only in this conversation (via-helper)
+blocked [corr=9f93349175646130] [at=1791463140]: one open record remains unsaved for validation (via-helper)
+restart_result_after_done_reply:
+unreached: smtmux3168: the restart outcome is unknown: task smtmux3168's composer state is 'unknown', not proven empty; refusing to type the /quit exit command because it could concatenate onto existing text. Clear the composer, then retry 'relaunch'
+summary: 0 of 1 restarted, 0 nudged, 1 unreached
+gate_observation=the detailed done reply entered relaunch; it was not sent to the persistence nudge path
+
+[live-blocked-result]
+nudged: smtmux3168: it did not confirm that all open work is written down, so its conversation was not spent: blocked [corr=9f93349175646130] [at=1791463140]: one open record remains unsaved for validation (via-helper)
+summary: 0 of 1 restarted, 1 nudged, 0 unreached
+agent_pid_before=3432752
+agent_pid_after=3432752
+blocked_observation=the blocked reply preserved the same running conversation and used the nudge path

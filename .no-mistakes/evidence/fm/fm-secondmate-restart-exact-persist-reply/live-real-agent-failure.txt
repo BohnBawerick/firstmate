@@ -1,0 +1,16 @@
+target_commit=1bffb7098a4da6958f361cdfb372a42ccf51e574
+primary_model=gpt-6.1-sol
+secondmate_model=openai-codex/gpt-6-sol
+scenario=real-agent-persistence-confirmation
+
+actual_parent_status:
+done [at=1791461815]: corr=0c7a748f87a98989 done: open records written down; no open work existed only in this conversation.
+done [at=1791461819]: done: open records written down; no open work existed only in this conversation. corr=0c7a748f87a98989
+
+restart_output:
+nudged: smgate: it did not confirm that all open work is written down, so its conversation was not spent: done [at=1791461815]: corr=0c7a748f87a98989 done: open records written down; no open work existed only in this conversation.
+summary: 0 of 1 restarted, 1 nudged, 0 unreached
+
+agent_identity:
+before_pid=2774856
+after_pid=2774856

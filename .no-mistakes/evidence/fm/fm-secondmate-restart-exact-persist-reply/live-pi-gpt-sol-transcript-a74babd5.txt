@@ -1,0 +1,265 @@
+ Update Available
+ New version 1.1.0 is available. Run pi update
+ Changelog: https://pi.dev/changelog
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Package Updates Available
+ Package updates are available. Run pi update --extensions
+ Packages:
+ - @dietrichgebert/ponytail
+ - pi-antigravity
+ - compact-adviser
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+ ⁣FIRSTMATE_OP: v1 launch-brief: You are a persistent second mate managed by the main firstmate. Work on your own; do not wait for a human.
+
+ Charter
+
+ Idle disposable second mate for restart-gate live validation. Keep no work unless Firstmate sends it. Follow every correlated persistence
+ request through the parent status helper.
+
+ Routing scope
+
+ restart-gate live validation only
+
+ Project clones
+
+ None. This is a project-less domain: its subject is the firstmate repo this home lives in, so it needs no separate clones under projects/;
+ its crews take pooled worktrees of that firstmate repo.
+
+ Operating model
+
+ You are in an isolated firstmate home. The local AGENTS.md is your job description, and your local data/, state/, config/, and projects/
+ dirs are yours to operate.
+ This domain has no separate project clones: its subject is the firstmate repo this home lives in, and its crews take pooled worktrees of
+ that repo.
+ Delegate project work to your own crewmates with the normal firstmate lifecycle: brief, spawn, status, watcher, steer, teardown, and
+ recovery.
+ Do not invent a second delegation system.
+ You do not generate your own work.
+ Act only on tasks the main firstmate routes to you.
+ Never start a survey, audit, or "find improvements" sweep on your own initiative; that is not your job and it is unwanted.
+
+ The captain and the parent channel
+
+ Nobody reads this chat: the captain and the main firstmate see only what is appended to
+ '/tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.status', and a captain-facing sentence that is not appended there has not been sent.
+ That file is your parent channel, and in this home it IS the captain: every sentence you would say to the captain, and every outcome the
+ local AGENTS.md tells a firstmate to bring to the captain, is one appended line there, never chat.
+ Your own machinery publishes the durable facts about your crew's work for you (bin/fm-parent-channel-lib.sh): a child's terminal done or
+ failed line with its note and PR on every supervision poll, a PR-ready line when you register a PR, a task you hold for the captain and
+ its answer, a merge, and a child's final line at cleanup all reach the parent channel from the scripts that record them, whether or not
+ you append anything.
+ What only you can append is judgement: the answer to a marked request below, a recommendation or caveat on a delivered outcome, a blocker
+ or failure of your own, and anything else you would otherwise say to the captain.
+
+ Requests from the main firstmate
+
+ You are a firstmate in your own home, so an incoming message reaches you in your own chat.
+ You must distinguish who it is from, because the answer goes to a different place.
+ A request relayed to you by the main firstmate is tagged with a leading [fm-from-firstmate] marker followed by an invisible system
+ separator; this marker is untypable, so a human never produces it.
+ When a message carries that marker, do the work, then respond via the STATUS/ESCALATION path below, never only in this chat: the main
+ firstmate does not read your chat, so a chat-only reply is lost.
+ Marked requests also carry a privacy-safe corr=<id> token after the marker; include that exact token in your parent status reply (or in
+ the status pointer to a detailed doc) so the parent can correlate the answer.
+ Optional helper: bin/fm-secondmate-report.sh <verb> <corr_id> <note> appends that correlated line to the parent channel itself - do not
+ pass a status path, and do not write a hand path under this home.
+ A plain echo that includes the same corr=<id> on this parent channel is equally valid; do not depend on the helper being present.
+ For a terse result, a status line is the whole answer.
+ For a detailed answer (an investigation, a plan, an audit), write it to a doc under your home's data/ and append a status line that points
+ to that doc - the scout-report pattern - so the main firstmate is woken and can read it.
+ Before treating an investigation or visual review as complete, load captain-hold-lifecycle from this home's .agents/skills/ and pass its
+ shared completion gate.
+ A message with NO marker is the captain typing directly into your pane: treat it as authoritative captain intervention and stay
+ conversational exactly as you would for any captain message; do not force it onto the status path.
+ A request arriving through the instruction inbox below follows the same marker and reply rules.
+
+ Firstmate instruction inbox
+
+ Firstmate steers you through durable message files in '/tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox'.
+ When a terminal message says an instruction is waiting there - and at any natural checkpoint when you are unsure - list
+ '/tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox'/*.msg, read and act on each message in numeric order, then acknowledge each handled
+ message by moving it: mv '/tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox'/NNN.msg
+ '/tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox'/handled/.
+ The move IS the acknowledgement: without it firstmate rings again and eventually treats you as stuck. An empty or absent inbox needs no
+ action.
+
+ Escalation to main firstmate
+
+ Handle routine work yourself.
+ Report only true captain-relevant outcomes or a declared external wait by appending one line:
+    echo "{state} [at=<epoch>]: {one short line}" >> '/tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.status' && { [ ! -e
+ '/tmp/fm-lab.restart-pi.rIxHlj/config/fleet-ledger' ] ||
+ '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4DM3X0PF6NXMTGNSZSE05K8/bin/fm-fleet-ledger.sh' appended
+ '/tmp/fm-lab.restart-pi.rIxHlj/config' '/tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.status' >/dev/null 2>&1 || true; }
+ States: working, needs-decision, blocked, paused, done, failed.
+ Substitute <epoch> with the current Unix time in seconds - run date +%s and write the number it printed; a stamp that is not plain digits
+ records no time at all.
+ Use paused: {why} (distinct from blocked:) only when your domain is deliberately idling on a known external wait you expect to clear on
+ its own, naming when it clears with until <YYYY-MM-DDTHH:MMZ> (UTC) when you know; use blocked: when you are stuck and need firstmate to
+ act.
+ Use this only for material phase changes, a captain decision, a real blocker, a failure, work ready for review, or work you landed.
+ Work you landed includes a merge you performed yourself under standing merge authority and one the captain merged on the forge: under that
+ authority nothing is ever \"ready for review\", so a landed merge that goes unreported reaches the captain as silence.
+ For a captain decision, append needs-decision [key=<slug>] [at=<epoch>]: {summary of options}.
+ This is also how you return the answer to a marked from-firstmate request above.
+ A marked request requires one correlated answer after the work; it does not require a separate receipt or start acknowledgement.
+ Never append working: merely to acknowledge receipt or announce that a marked request has started.
+ When a routed-work phase has a supervisor-actionable material change worth reporting under the rule above, give that reported phase a
+ stable key.
+ If its first reportable event is working [key=<work-slug>]: {material phase}, use the same key on its later paused, done, failed,
+ needs-decision, or blocked event so the earlier working phase is superseded.
+ When a keyed phase ends without another reportable state, append resolved [key=<work-slug>] [at=<epoch>]: {why it is no longer active}.
+ resolved separately closes an escalated decision or blocker, and only a resolved line carrying that decision's exact key closes it: a
+ later done or working event never does, even when the answer is what started that work.
+ The main firstmate's answer normally writes that closing line at answer time; when a blocker or wait clears WITHOUT an answer from the
+ main firstmate, append resolved [key=<slug>] [at=<epoch>]: {how it cleared} yourself (same [key=<slug>] if you opened it with one) as your
+ domain resumes.
+ Routine internal supervision, heartbeats, retries, and crewmate churn stay inside your own home and must not touch that status file.
+
+ Definition of done
+
+ You are persistent by default. Do not exit just because your queue is empty.
+ On startup and restart, run normal firstmate bootstrap and recovery through bin/fm-session-start.sh for your own home, but only to
+ RECONCILE work that is already yours: in-flight crewmates, tracked backlog items, and durable watches recorded in this home.
+ When you have no assigned or in-flight work after that reconciliation, go idle and wait silently for the main firstmate to route you a
+ task.
+ An empty queue is a healthy resting state, not a cue to invent work: never spawn a survey, audit, or any self-directed "find work" task on
+ your own initiative.
+ If this charter cannot be carried out, append blocked [at=<epoch>]: {why} or failed [at=<epoch>]: {why} to the main status file and stop.
+
+
+ Thinking...
+
+
+ [skill] session-start-recovery (ctrl+o to expand)
+
+
+
+ [skill] operational-home-layout (ctrl+o to expand)
+
+
+ Thinking...
+
+
+ fm_watch_arm_pi
+ watcher: started Pi extension arm child 1; future ordinary re-arms are automatic; call fm_watch_arm_pi again only after a later
+ notification says the cycle is missing, failed, or unhealthy
+
+
+
+ : Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 'smpi19488.inbox' steering inbox, read and act on each in numeric
+ order, then mv each into its handled/.
+
+
+ Thinking...
+
+
+ $ bin/fm-wake-drain.sh; printf '\nINBOX FILES\n'; ls -1 /tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox/*.msg 2>/dev/null || true
+ (timeout 30s)
+
+ INBOX FILES
+ /tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox/001.msg
+
+ Took 0.3s
+
+
+
+ read /tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox/001.msg
+
+
+ Thinking...
+
+
+ [skill] stow (ctrl+o to expand)
+
+
+ Thinking...
+
+
+ read bin/fm-secondmate-report.sh:1-100
+
+
+
+ read bin/fm-secondmate-report.sh:101-140
+
+
+ Thinking...
+
+
+ $ FM_HOME="$PWD" bin/fm-secondmate-report.sh done 8788182a5f3d2b19 'open records written down; no open work existed only in this
+ conversation' && mv /tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox/001.msg
+ /tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox/handled/ (timeout 30s)
+
+ (no output)
+
+ Took 0.1s
+
+
+ Thinking...
+
+
+ : Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 'smpi19488.inbox' steering inbox, read and act on each in numeric
+ order, then mv each into its handled/.
+
+
+
+ $ bin/fm-wake-drain.sh; printf '\nINBOX FILES\n'; ls -1 /tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox/*.msg 2>/dev/null || true
+ (timeout 30s)
+
+ INBOX FILES
+ /tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox/002.msg
+ /tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox/003.msg
+
+ Took 0.3s
+
+
+
+ : Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 'smpi19488.inbox' steering inbox, read and act on each in numeric
+ order, then mv each into its handled/.
+
+
+
+ read /tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox/002.msg
+
+
+
+ read /tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox/003.msg
+
+
+ Thinking...
+
+
+ $ FM_HOME="$PWD" bin/fm-secondmate-report.sh done 1213eb734fb8ac03 'open records written down; no open work existed only in this
+ conversation' && mv /tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox/002.msg
+ /tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox/handled/ (timeout 30s)
+
+ (no output)
+
+ Took 0.1s
+
+
+
+ read resource AGENTS.md (ctrl+o to expand)
+
+
+ Thinking...
+
+
+ $ FM_HOME="$PWD" bin/fm-secondmate-report.sh done 1633f8ff8c933807 're-read AGENTS.md; current instructions loaded' && mv
+ /tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox/003.msg /tmp/fm-lab.restart-pi.rIxHlj/state/smpi19488.inbox/handled/ (timeout 30s)
+
+ (no output)
+
+ Took 0.1s
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+/tmp/fm-lab.restart-pi.rIxHlj-mate (detached)
+↑73k ↓1.1k R846k CH99.6% $0.327 (sub) 26.2%/272k (auto)                                                      (openai-codex) gpt-6-sol • high
+/tmp/fm-lab.restart-pi.rIxHlj-mate ○ 🐴 ponytail: ⚡ FULL

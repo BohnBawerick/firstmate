@@ -1,0 +1,11 @@
+target_commit=a74babd5a92ff26a606cb9e591042c708b83489b
+scenario=blocked persistence reply preserves live second mate
+harness=pi
+model=openai-codex/gpt-6-sol
+spawn_gen_before=s1791465970.959100.12466
+spawn_gen_after=s1791465970.959100.12466
+agent_state_before=alive
+agent_state_after=alive
+blocked [corr=1213eb734fb8ac03] [at=1791466090]: one open record remains unsaved for validation (via-helper)
+nudged: smpi19488: it did not confirm that all open work is written down, so its conversation was not spent: blocked [corr=1213eb734fb8ac03] [at=1791466090]: one open record remains unsaved for validation (via-helper)
+summary: 0 of 1 restarted, 1 nudged, 0 unreached

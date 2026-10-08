@@ -1,0 +1,9 @@
+scenario=public-helper-production-answer-shape
+actual_status_tail:
+done [at=1791461815]: corr=0c7a748f87a98989 done: open records written down; no open work existed only in this conversation.
+done [at=1791461819]: done: open records written down; no open work existed only in this conversation. corr=0c7a748f87a98989
+done [corr=a6449c3584c4afb3] [at=1791461907]: Open records written down (persisted earlier this session, nothing new since): data/tasks.md; Safe to reset - nothing this session knew is lost. (via-helper)
+
+restart_output:
+unreached: smgate: the restart outcome is unknown: task smgate's endpoint reads 'unreadable' rather than a positively classified state; refusing to send a lifecycle command into an unattributed endpoint
+summary: 0 of 1 restarted, 0 nudged, 1 unreached
