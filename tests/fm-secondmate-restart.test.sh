@@ -33,7 +33,7 @@ fm_git_identity fmtest fmtest@example.com
 TMP_ROOT=$(fm_test_tmproot fm-secondmate-restart)
 mkdir -p "$TMP_ROOT"
 TMP_ROOT=$(cd "$TMP_ROOT" && pwd -P)
-trap 'find "$TMP_ROOT" -type d -name "*.git-hooks" -exec chmod u+w {} +; rm -rf -- "$TMP_ROOT"' EXIT
+trap 'find "$TMP_ROOT" -type d -name "*.git-hooks" -exec chmod -R u+w {} +; rm -rf -- "$TMP_ROOT"' EXIT
 
 # A session-provider stub that models the two things this pass depends on: the
 # harness exit command stops the agent, a launch brief starts the replacement,
@@ -129,7 +129,16 @@ case "${1:-}" in
       prev=$a
     done
     printf 'fakepane\n'; exit 0 ;;
-  capture-pane) printf '╭────╮\n│    │\n╰────╯\n'; exit 0 ;;
+  capture-pane)
+    if [ -f "$D/composer-unknown-count" ]; then
+      count=$(cat "$D/composer-unknown-count")
+      if [ "$count" -gt 0 ]; then
+        printf '%s\n' "$((count - 1))" > "$D/composer-unknown-count"
+        printf '── ⠇ Working ──\n'; exit 0
+      fi
+    fi
+    if [ -f "$D/composer-draft" ]; then printf '╭────╮\n│draft│\n╰────╯\n'; exit 0; fi
+    printf '╭────╮\n│    │\n╰────╯\n'; exit 0 ;;
   list-windows) [ -f "$D/windows" ] && cat "$D/windows"; exit 0 ;;
 esac
 exit 0
@@ -259,6 +268,7 @@ run_restart() {  # <case-dir> <args...>
   env PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" FM_FAKE_DIR="$dir/fake" \
     FM_SPAWN_NO_GUARD=1 FM_SECONDMATE_PERSIST_POLL=1 \
     FM_SECONDMATE_PERSIST_WAIT="${FM_TEST_PERSIST_WAIT:-30}" \
+    FM_SECONDMATE_SETTLE_WAIT="${FM_TEST_SETTLE_WAIT:-4}" FM_SECONDMATE_SETTLE_POLL=1 \
     FM_CONTROL_POLL=0.01 FM_CONTROL_EXIT_WAIT=0.05 FM_CONTROL_LAUNCH_WAIT=0.05 \
     FM_SSH_BIN="${FM_TEST_SSH_BIN:-ssh}" \
     "$RESTART" "$@" 2>&1
@@ -403,6 +413,44 @@ test_answer_between_resolution_and_timeout_wins() {
   pass "T2c a reply between the preliminary scan and timeout decision wins"
 }
 
+# --- Pi: a done reply can precede the end of the same turn ------------------
+test_pi_waits_for_settled_input() {
+  local dir out rc
+  dir=$(new_case pi-settle)
+  add_local_mate "$dir" sm1 pi
+  printf 'pi' > "$dir/fake/command"
+  printf 'pi' > "$dir/fake/becomes"
+  arm_answer "$dir" sm1
+  # The correlated answer has arrived, but a captured working Pi screen has
+  # no readable input. Wait for the real tmux composer path to read empty.
+  printf '3\n' > "$dir/fake/composer-unknown-count"
+  out=$(run_restart "$dir" sm1); rc=$?
+  expect_code 0 "$rc" "Pi should restart after its turn leaves the composer readable"$'\n'"$out"
+  assert_contains "$out" 'restarted: sm1' 'Pi never restarted after settling'
+  [ "$(cat "$dir/fake/composer-unknown-count")" = 0 ] \
+    || fail 'Pi restarted before its composer became readable'
+
+  dir=$(new_case pi-stays-busy)
+  add_local_mate "$dir" sm1 pi
+  printf 'pi' > "$dir/fake/command"
+  arm_answer "$dir" sm1
+  printf '1000\n' > "$dir/fake/composer-unknown-count"
+  out=$(FM_TEST_SETTLE_WAIT=0 run_restart "$dir" sm1); rc=$?
+  expect_code 3 "$rc" "an unreadable Pi input must never be overwritten"$'\n'"$out"
+  assert_contains "$out" 'unreached: sm1:' 'unsettled Pi must be reported honestly'
+  assert_no_grep '^/quit$' "$dir/fake/literal" 'an unsettled Pi was sent /quit'
+
+  dir=$(new_case pi-typed-draft)
+  add_local_mate "$dir" sm1 pi
+  printf 'pi' > "$dir/fake/command"
+  arm_answer "$dir" sm1
+  : > "$dir/fake/composer-draft"
+  out=$(FM_TEST_SETTLE_WAIT=0 run_restart "$dir" sm1); rc=$?
+  expect_code 3 "$rc" "typed Pi text must remain untouched"$'\n'"$out"
+  assert_no_grep '^/quit$' "$dir/fake/literal" 'typed Pi text was overwritten'
+  pass 'Pi confirmation waits for a readable empty input; busy and typed panes keep their conversation'
+}
+
 # --- T3: a runtime that cannot prove a restart never gets one ----------------
 test_unprovable_runtime_falls_back() {
   local dir out rc
@@ -511,6 +559,8 @@ case "${FM_FAKE_SSH_MODE:-ok}" in
   unreachable) exit 255 ;;
 esac
 case "${rargs[1]:-}" in
+  observe) printf 'idle\n'; exit 0 ;;
+  composer) printf 'empty\n'; exit 0 ;;
   send)
     # Model the live remote mate: act on the instruction and report back on the
     # parent channel, carrying the correlation token the request embedded.
@@ -1058,6 +1108,7 @@ test_persist_gates_and_asks_only_for_open_records
 test_persist_precedes_restart
 test_arrived_answer_precedes_deadline_check
 test_answer_between_resolution_and_timeout_wins
+test_pi_waits_for_settled_input
 test_unprovable_runtime_falls_back
 test_unknown_mate_is_accounted_for
 test_refused_restart_falls_back_without_claiming_a_reload

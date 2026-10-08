@@ -67,6 +67,8 @@
 # Environment knobs:
 #   FM_SECONDMATE_PERSIST_WAIT  seconds to wait for one mate's persist answer (900)
 #   FM_SECONDMATE_PERSIST_POLL  seconds between checks of that answer (5)
+#   FM_SECONDMATE_SETTLE_WAIT   seconds to wait for a confirmed Pi mate to finish its turn (120)
+#   FM_SECONDMATE_SETTLE_POLL   seconds between Pi composer reads (2)
 #
 # Exit status: 0 every named mate restarted; 3 at least one was nudged or left
 # unreached and every mate was still accounted for; 1 the input itself is
@@ -104,8 +106,12 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 
 PERSIST_WAIT=${FM_SECONDMATE_PERSIST_WAIT:-900}
 PERSIST_POLL=${FM_SECONDMATE_PERSIST_POLL:-5}
+SETTLE_WAIT=${FM_SECONDMATE_SETTLE_WAIT:-120}
+SETTLE_POLL=${FM_SECONDMATE_SETTLE_POLL:-2}
 case "$PERSIST_WAIT" in ''|*[!0-9]*) echo "error: FM_SECONDMATE_PERSIST_WAIT must be a non-negative integer: $PERSIST_WAIT" >&2; exit 2 ;; esac
 case "$PERSIST_POLL" in ''|*[!0-9]*|0) echo "error: FM_SECONDMATE_PERSIST_POLL must be a positive integer: $PERSIST_POLL" >&2; exit 2 ;; esac
+case "$SETTLE_WAIT" in ''|*[!0-9]*) echo "error: FM_SECONDMATE_SETTLE_WAIT must be a non-negative integer: $SETTLE_WAIT" >&2; exit 2 ;; esac
+case "$SETTLE_POLL" in ''|*[!0-9]*|0) echo "error: FM_SECONDMATE_SETTLE_POLL must be a positive integer: $SETTLE_POLL" >&2; exit 2 ;; esac
 
 IDS=()
 for arg in "$@"; do
@@ -207,9 +213,50 @@ resolve_persist_reply() {
   return 0
 }
 
+# A persistence reply can arrive while Pi is still finishing the same turn.
+# Second mates do not have the per-task agent_settled busy marker installed by
+# fm-spawn, so use the adapter's guarded composer read plus its activity probe.
+# Two separated empty reads reject a brief redraw between tools. The control
+# plane repeats the composer guard before /quit.
+wait_for_pi_settle() {  # <array-index>
+  local i=$1 id backend target observation composer deadline stable=0
+  id=${IDS[$i]}
+  deadline=$(($(date +%s) + SETTLE_WAIT))
+  while :; do
+    if [ "${PLACEMENT[i]}" = remote ]; then
+      observation=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+        "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh observe "$id" 2>/dev/null) || observation=unknown
+      composer=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+        "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh composer "$id" 2>/dev/null) || composer=unknown
+    else
+      backend=$(fm_backend_of_meta "$STATE/$id.meta")
+      target=$(fm_backend_target_of_meta "$STATE/$id.meta")
+      observation=$(fm_pending_reply_backend_observation "$backend" "$target" "fm-$id" "${HARNESS[i]}" 2>/dev/null) || observation=unknown
+      composer=$(fm_backend_composer_state "$backend" "$target" "fm-$id" 2>/dev/null) || composer=unknown
+    fi
+    if [ "$composer" = empty ] \
+       && { [ "$observation" = idle ] || [ "$observation" = fallback-idle ]; }; then
+      stable=$((stable + 1))
+      [ "$stable" -ge 2 ] && return 0
+    else
+      stable=0
+    fi
+    [ "$(date +%s)" -lt "$deadline" ] || return 1
+    sleep "$SETTLE_POLL"
+  done
+}
+
 restart_mate() {  # <array-index>
   local i=$1 id restart_out restart_rc restart_reason ran_on
   id=${IDS[$i]}
+  case "${HARNESS[i]}" in
+    pi|pi-signed)
+      if ! wait_for_pi_settle "$i"; then
+        report_unreached "$id" "the confirmed mate did not settle to a readable empty input within ${SETTLE_WAIT}s; its conversation was preserved"
+        return
+      fi
+      ;;
+  esac
   if [ "${PLACEMENT[i]}" = remote ]; then
     restart_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
       "$SCRIPT_DIR/fm-remote-secondmate-relaunch.sh" \

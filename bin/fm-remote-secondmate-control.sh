@@ -10,6 +10,7 @@
 #   fm-remote-secondmate-control.sh key <id> <key>
 #   fm-remote-secondmate-control.sh capture <id> [lines]
 #   fm-remote-secondmate-control.sh observe <id>
+#   fm-remote-secondmate-control.sh composer <id>
 #   fm-remote-secondmate-control.sh sync <id> [<parent-commit>]
 #   fm-remote-secondmate-control.sh update <id>
 #   fm-remote-secondmate-control.sh retire <id> [--force]
@@ -343,6 +344,15 @@ cmd_observe() {
   printf '\n'
 }
 
+cmd_composer() {
+  local id=$1
+  validate_id "$id"
+  validate_home "$id"
+  remote_endpoint_require "$id"
+  fm_backend_composer_state "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" "fm-$id"
+  printf '\n'
+}
+
 # Make <commit> readable in this home's own object store without moving any other
 # checkout. Ordered by cost: already present, then this host's Firstmate copy (a
 # read-only fetch of that one commit, which never advances that copy's HEAD), then
@@ -446,6 +456,7 @@ case "${1:-}" in
   key) shift; [ "$#" -eq 2 ] || usage; cmd_key "$@" ;;
   capture) shift; [ "$#" -ge 1 ] && [ "$#" -le 2 ] || usage; cmd_capture "$@" ;;
   observe) shift; [ "$#" -eq 1 ] || usage; cmd_observe "$@" ;;
+  composer) shift; [ "$#" -eq 1 ] || usage; cmd_composer "$@" ;;
   sync) shift; [ "$#" -ge 1 ] && [ "$#" -le 2 ] || usage; cmd_sync "$@" ;;
   update) shift; [ "$#" -eq 1 ] || usage; cmd_update "$@" ;;
   retire) shift; [ "$#" -ge 1 ] && [ "$#" -le 2 ] || usage; cmd_retire "$@" ;;
