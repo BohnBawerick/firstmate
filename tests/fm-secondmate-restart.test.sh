@@ -293,9 +293,11 @@ test_persist_gates_and_asks_only_for_open_records() {
     "the request must flush an unregistered captain call"
   assert_contains "$request" "Do NOT run the memory, learnings, or captain-preference sweeps" \
     "the request must exclude the memory curation half of stow"
-  assert_contains "$request" 'reply beginning exactly done: open records written down, with any detail after it' \
-    'the request must make the accepted reply prefix clear'
-  assert_contains "$request" 'never reply done: with a caveat' \
+  assert_contains "$request" 'using the done status verb and a payload beginning exactly open records written down' \
+    'the request must separate the status verb from the accepted payload prefix'
+  assert_not_contains "$request" 'beginning exactly done: open records written down' \
+    'the request must not repeat the status verb inside the payload'
+  assert_contains "$request" 'never use the done status verb with a caveat' \
     'the request must reserve blocked replies for unsaved work'
   pass "T1 persist is a gate, and asks for open records and task status only"
 }
