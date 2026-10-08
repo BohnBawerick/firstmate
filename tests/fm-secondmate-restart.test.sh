@@ -619,7 +619,18 @@ if [ "${FM_FAKE_SSH_HANG:-}" = "${rargs[1]:-}" ]; then
   /bin/sleep 30
 fi
 case "${rargs[1]:-}" in
-  observe) printf 'idle\n'; exit 0 ;;
+  observe)
+    observation=idle
+    if [ -f "$FM_FAKE_DIR/remote-observe-busy-count" ]; then
+      count=$(cat "$FM_FAKE_DIR/remote-observe-busy-count")
+      if [ "$count" -gt 0 ]; then
+        observation=busy
+        printf '%s\n' "$((count - 1))" > "$FM_FAKE_DIR/remote-observe-busy-count"
+      fi
+    fi
+    printf 'observe-result=%s\n' "$observation" >> "$FM_FAKE_SSH_LOG"
+    printf '%s\n' "$observation"
+    exit 0 ;;
   composer) printf 'empty\n'; exit 0 ;;
   send)
     # Model the live remote mate: act on the instruction and report back on the
@@ -688,27 +699,39 @@ test_remote_mate_restarts_over_the_transport_hop() {
 }
 
 test_remote_running_pi_settles_before_harness_change() {
-  local running dir out rc observe_line relaunch_line
-  for running in pi pi-signed; do
-    dir=$(new_case "remote-$running-to-codex")
-    setup_remote_case "$dir" sm2 ok "$running"
-    export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm2.status"
-    printf 'codex big-model high\n' > "$dir/home/config/secondmate-harness"
+  local start running dir out rc expected_samples expected_observations last_observe_line relaunch_line
+  for start in idle busy; do
+    for running in pi pi-signed; do
+      dir=$(new_case "remote-$running-$start-to-codex")
+      setup_remote_case "$dir" sm2 ok "$running"
+      export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm2.status"
+      printf 'codex big-model high\n' > "$dir/home/config/secondmate-harness"
+      if [ "$start" = busy ]; then
+        printf '1\n' > "$dir/fake/remote-observe-busy-count"
+        expected_samples=3
+        expected_observations=$'observe-result=busy\nobserve-result=idle\nobserve-result=idle'
+      else
+        expected_samples=2
+        expected_observations=$'observe-result=idle\nobserve-result=idle'
+      fi
 
-    out=$(run_restart "$dir" sm2); rc=$?
-    unset FM_FAKE_ANSWER_STATUS
+      out=$(run_restart "$dir" sm2); rc=$?
+      unset FM_FAKE_ANSWER_STATUS
 
-    expect_code 0 "$rc" "a remote running $running mate should settle before changing harness"$'\n'"$out"
-    observe_line=$(grep -n '^fm-remote-secondmate-control.sh observe sm2$' "$dir/ssh.log" | head -1 | cut -d: -f1)
-    relaunch_line=$(grep -n '^fm-remote-secondmate-control.sh relaunch sm2 codex big-model high$' "$dir/ssh.log" | head -1 | cut -d: -f1)
-    [ -n "$observe_line" ] && [ -n "$relaunch_line" ] && [ "$observe_line" -lt "$relaunch_line" ] \
-      || fail "remote $running did not settle before its Codex relaunch"$'\n'"$(cat "$dir/ssh.log")"
-    [ "$(grep -c '^fm-remote-secondmate-control.sh observe sm2$' "$dir/ssh.log")" -eq 2 ] \
-      || fail "remote $running did not require two native idle samples"
-    [ "$(grep -c '^fm-remote-secondmate-control.sh composer sm2$' "$dir/ssh.log")" -eq 2 ] \
-      || fail "remote $running did not require two empty composer samples"
+      expect_code 0 "$rc" "a remote running $running mate should settle from $start before changing harness"$'\n'"$out"
+      last_observe_line=$(grep -n '^fm-remote-secondmate-control.sh observe sm2$' "$dir/ssh.log" | tail -1 | cut -d: -f1)
+      relaunch_line=$(grep -n '^fm-remote-secondmate-control.sh relaunch sm2 codex big-model high$' "$dir/ssh.log" | head -1 | cut -d: -f1)
+      [ -n "$last_observe_line" ] && [ -n "$relaunch_line" ] && [ "$last_observe_line" -lt "$relaunch_line" ] \
+        || fail "remote $running relaunched before its $start transition completed"$'\n'"$(cat "$dir/ssh.log")"
+      [ "$(grep -c '^fm-remote-secondmate-control.sh observe sm2$' "$dir/ssh.log")" -eq "$expected_samples" ] \
+        || fail "remote $running took the wrong number of $start native observations"
+      [ "$(grep -c '^fm-remote-secondmate-control.sh composer sm2$' "$dir/ssh.log")" -eq "$expected_samples" ] \
+        || fail "remote $running took the wrong number of $start composer observations"
+      [ "$(grep '^observe-result=' "$dir/ssh.log")" = "$expected_observations" ] \
+        || fail "remote $running did not observe the expected $start transition"$'\n'"$(cat "$dir/ssh.log")"
+    done
   done
-  pass 'Remote Pi and Pi-signed mates settle under their running harness before profile changes'
+  pass 'Remote Pi and Pi-signed mates settle from native idle or busy before profile changes'
 }
 
 test_pi_settle_bounds_local_and_remote_probes() {
