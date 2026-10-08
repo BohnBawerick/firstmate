@@ -29,9 +29,11 @@
 #      All requests go out before any restart, so a slow mate delays only its own
 #      restart instead of serializing the fleet behind it.
 #   B. RESTART. Only after that mate's own correlated answer lands on the parent
-#      channel as `done: open records written down`; any other answer settles
-#      the request but falls back to the nudge. The gate is that answer, never a
-#      wall clock, so a mate that is mid-turn queues the request behind that
+#      channel with `done:` and a payload beginning `open records written down`
+#      (case-insensitive), alone or separated from further detail; negations
+#      and any other answer settle the request but fall back to the nudge.
+#      The gate is that answer, never a wall clock, so a mate that is mid-turn
+#      queues the request behind that
 #      turn; the bound below exists to end the wait, not to authorize a restart
 #      without the answer. A timeout deliberately leaves that expectation open:
 #      a genuine open loop owned by the pending-reply ladder, not this pass.
@@ -165,7 +167,7 @@ report_unreached() {  # <id> <reason>
 }
 
 resolve_persist_reply() {
-  local i=$1 line verb payload j depth
+  local i=$1 line verb payload normalized j depth
   fm_pending_reply_try_resolve "$STATE" "${CORR[i]}" || return 1
   line=$(fm_pending_reply_find_resolve_line "$STATE/${IDS[i]}.status" "${CORR[i]}")
   status_line_verb "$line" verb
@@ -190,7 +192,10 @@ resolve_persist_reply() {
       ;;
   esac
   pending_count=$((pending_count - 1))
-  if [ "$verb" = 'done' ] && [ "$payload" = 'open records written down' ]; then
+  normalized=$(printf '%s' "$payload" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+  if [ "$verb" = 'done' ] \
+    && [[ "$normalized" =~ ^open\ records\ written\ down($|[[:space:]:.;,]) ]] \
+    && ! [[ "${normalized#open records written down}" =~ (^|[^[:alpha:]])(except|unsaved|not)([^[:alpha:]]|$) ]]; then
     launch_restart "$i"
   else
     fall_back_to_nudge "${IDS[i]}" \

@@ -33,7 +33,7 @@ fm_git_identity fmtest fmtest@example.com
 TMP_ROOT=$(fm_test_tmproot fm-secondmate-restart)
 mkdir -p "$TMP_ROOT"
 TMP_ROOT=$(cd "$TMP_ROOT" && pwd -P)
-trap 'rm -rf -- "$TMP_ROOT"' EXIT
+trap 'find "$TMP_ROOT" -type d -name "*.git-hooks" -exec chmod u+w {} +; rm -rf -- "$TMP_ROOT"' EXIT
 
 # A session-provider stub that models the two things this pass depends on: the
 # harness exit command stops the agent, a launch brief starts the replacement,
@@ -293,6 +293,8 @@ test_persist_gates_and_asks_only_for_open_records() {
     "the request must flush an unregistered captain call"
   assert_contains "$request" "Do NOT run the memory, learnings, or captain-preference sweeps" \
     "the request must exclude the memory curation half of stow"
+  assert_contains "$request" 'reply beginning exactly done: open records written down, with any detail after it' \
+    'the request must make the accepted reply prefix clear'
   pass "T1 persist is a gate, and asks for open records and task status only"
 }
 
@@ -979,6 +981,39 @@ test_unsaved_work_keeps_the_conversation() {
   pass "unsaved or incomplete replies retain the conversation at both restart decisions"
 }
 
+test_detailed_persist_replies() {
+  local reply verb answer expected dir out rc
+  for reply in \
+    'done|open records written down|0' \
+    'done|Open records written down (persisted earlier this session, nothing new since): data/tasks.md; Safe to reset - nothing this session knew is lost.|0' \
+    'done|open records written down: data/tasks.md filed|0' \
+    'done|open records written down - data/tasks.md filed|0' \
+    'blocked|open records written down|3' \
+    'done|the open records written down|3' \
+    'done|not all open records written down|3' \
+    'done|open records written downstairs|3'; do
+    verb=${reply%%|*}
+    reply=${reply#*|}
+    answer=${reply%|*}
+    expected=${reply##*|}
+    dir=$(new_case "detail-$verb")
+    add_local_mate "$dir" sm1
+    printf '%s' "$verb" > "$dir/fake/answer-verb"
+    printf '%s' "$answer" > "$dir/fake/answer-payload"
+    arm_answer "$dir" sm1
+    rc=0
+    out=$(FM_TEST_PERSIST_WAIT=0 run_restart "$dir" sm1) || rc=$?
+    expect_code "$expected" "$rc" "$verb: $answer: $out"
+    if [ "$expected" = 0 ]; then
+      assert_contains "$out" 'restarted: sm1' "$answer did not restart the mate"
+    else
+      assert_contains "$out" 'nudged: sm1' "$answer did not preserve the conversation"
+      assert_no_grep '/exit' "$dir/fake/literal" "$answer stopped the mate"
+    fi
+  done
+  pass 'detailed confirmations restart; other replies preserve the conversation'
+}
+
 test_plain_correlated_persistence_replies() {
   local timing suffix reply dir verb answer out rc
   for timing in delivered timeout; do
@@ -1012,6 +1047,7 @@ test_plain_correlated_persistence_replies() {
   pass 'plain correlated replies release the persist gate only after affirmative acknowledgment'
 }
 
+test_detailed_persist_replies
 test_plain_correlated_persistence_replies
 test_documented_report_releases_persist_gate
 test_unsaved_work_keeps_the_conversation
