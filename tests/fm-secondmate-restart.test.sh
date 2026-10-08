@@ -988,9 +988,12 @@ test_detailed_persist_replies() {
     'done|Open records written down (persisted earlier this session, nothing new since): data/tasks.md; Safe to reset - nothing this session knew is lost.|0' \
     'done|open records written down: data/tasks.md filed|0' \
     'done|open records written down - data/tasks.md filed|0' \
+    'done|open records written down! Safe to restart.|0' \
+    'done|open records written down; not holding any unrecorded work|0' \
     'blocked|open records written down|3' \
     'done|the open records written down|3' \
     'done|not all open records written down|3' \
+    'done|open records written down, but one record remains to be filed|3' \
     'done|open records written downstairs|3'; do
     verb=${reply%%|*}
     reply=${reply#*|}

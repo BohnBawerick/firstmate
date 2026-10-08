@@ -167,7 +167,7 @@ report_unreached() {  # <id> <reason>
 }
 
 resolve_persist_reply() {
-  local i=$1 line verb payload normalized j depth
+  local i=$1 line verb payload normalized detail contradicts j depth
   fm_pending_reply_try_resolve "$STATE" "${CORR[i]}" || return 1
   line=$(fm_pending_reply_find_resolve_line "$STATE/${IDS[i]}.status" "${CORR[i]}")
   status_line_verb "$line" verb
@@ -193,9 +193,14 @@ resolve_persist_reply() {
   esac
   pending_count=$((pending_count - 1))
   normalized=$(printf '%s' "$payload" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+  detail=${normalized#open records written down}
+  contradicts=0
+  if [[ "$detail" =~ (^|[^[:alnum:]])(except[[:space:]]+[^.;:]*(record|records|task|tasks|work)([^[:alnum:]]|$)|(remaining[[:space:]]+(open[[:space:]]+)?(record|records|task|tasks|work)([^[:alnum:]]|$))|((open[[:space:]]+)?(record|records|task|tasks|work)[[:space:]]+(remain|remains)([^[:alnum:]]|$))|((open[[:space:]]+)?(record|records|task|tasks|work)[[:space:]]+(is|are)[[:space:]]+(still[[:space:]]+)?(unfiled|unsaved|unrecorded)([^[:alnum:]]|$))|(not[[:space:]]+(all|every)[[:space:]][^.;:]*(written[[:space:]]+down|filed|saved|recorded|persisted)([^[:alnum:]]|$))) ]]; then
+    contradicts=1
+  fi
   if [ "$verb" = 'done' ] \
-    && [[ "$normalized" =~ ^open\ records\ written\ down($|[[:space:]:.;,]) ]] \
-    && ! [[ "${normalized#open records written down}" =~ (^|[^[:alpha:]])(except|unsaved|not)([^[:alpha:]]|$) ]]; then
+    && [[ "$normalized" =~ ^open\ records\ written\ down($|[^[:alnum:]]) ]] \
+    && [ "$contradicts" -eq 0 ]; then
     launch_restart "$i"
   else
     fall_back_to_nudge "${IDS[i]}" \
