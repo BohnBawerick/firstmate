@@ -469,7 +469,7 @@ test_pi_settle_requires_semantic_idle() {
   arm_answer "$dir" sm1
   printf '1000\n' > "$dir/fake/composer-unknown-count"
   printf '100\n' > "$dir/fake/fake-epoch"
-  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=1 run_restart "$dir" sm1); rc=$?
+  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=2 run_restart "$dir" sm1); rc=$?
   expect_code 3 "$rc" "an unreadable Pi input must never be overwritten"$'\n'"$out"
   assert_contains "$out" 'unreached: sm1:' 'unsettled Pi must be reported honestly'
   assert_present "$dir/fake/settle-observe-probed" 'the busy Pi activity probe never ran'
@@ -482,7 +482,7 @@ test_pi_settle_requires_semantic_idle() {
   arm_answer "$dir" sm1
   : > "$dir/fake/composer-draft"
   printf '100\n' > "$dir/fake/fake-epoch"
-  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=1 run_restart "$dir" sm1); rc=$?
+  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=2 run_restart "$dir" sm1); rc=$?
   expect_code 3 "$rc" "typed Pi text must remain untouched"$'\n'"$out"
   assert_present "$dir/fake/settle-observe-probed" 'the typed Pi activity probe never ran'
   assert_present "$dir/fake/settle-composer-probed" 'the typed Pi composer probe never ran'
@@ -497,12 +497,12 @@ test_pi_settle_deadline_bounds_success_and_sleep() {
   export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm1.status"
   printf '100\n' > "$dir/fake/fake-epoch"
 
-  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=1 FM_TEST_SETTLE_POLL=2 run_restart "$dir" sm1); rc=$?
+  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=2 FM_TEST_SETTLE_POLL=3 run_restart "$dir" sm1); rc=$?
   unset FM_FAKE_ANSWER_STATUS
 
   expect_code 3 "$rc" "Pi must not accept a second sample at the settle deadline"$'\n'"$out"
-  assert_grep '1' "$dir/fake/sleep-args" 'the settle loop did not sleep for its one-second remainder'
-  assert_no_grep '2' "$dir/fake/sleep-args" 'the settle sleep exceeded the remaining one-second budget'
+  assert_grep '2' "$dir/fake/sleep-args" 'the settle loop did not sleep for its two-second remainder'
+  assert_no_grep '3' "$dir/fake/sleep-args" 'the settle sleep exceeded the remaining two-second budget'
   assert_no_grep 'fm-remote-secondmate-control.sh relaunch' "$dir/ssh.log" \
     'a remote Pi mate was stopped after its settle deadline'
   pass 'Pi settle samples and sleeps stay inside the configured deadline'
