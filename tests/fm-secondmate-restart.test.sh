@@ -156,6 +156,9 @@ SH
   chmod +x "$fb/date"
 cat > "$fb/sleep" <<'SH'
 #!/usr/bin/env bash
+if [ "${FM_TEST_REAL_SLEEP:-0}" = 1 ]; then
+  exec /bin/sleep "$@"
+fi
 case "${1:-}" in
   1|2)
     printf '%s\n' "$1" >> "$FM_FAKE_DIR/sleep-args"
@@ -319,7 +322,7 @@ run_restart() {  # <case-dir> <args...>
   env PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" FM_FAKE_DIR="$dir/fake" \
     FM_SPAWN_NO_GUARD=1 FM_SECONDMATE_PERSIST_POLL="${FM_TEST_PERSIST_POLL:-1}" \
     FM_SECONDMATE_PERSIST_WAIT="${FM_TEST_PERSIST_WAIT:-30}" \
-    FM_SECONDMATE_SETTLE_WAIT="${FM_TEST_SETTLE_WAIT:-4}" \
+    FM_SECONDMATE_SETTLE_WAIT="${FM_TEST_SETTLE_WAIT:-8}" \
     FM_SECONDMATE_SETTLE_POLL="${FM_TEST_SETTLE_POLL:-1}" \
     FM_CONTROL_POLL=0.01 FM_CONTROL_EXIT_WAIT=0.05 FM_CONTROL_LAUNCH_WAIT=0.05 \
     FM_SSH_BIN="${FM_TEST_SSH_BIN:-ssh}" \
@@ -477,9 +480,9 @@ test_pi_settle_wait_configuration() {
   done
 
   dir=$(new_case pi-settle-below-minimum)
-  out=$(FM_TEST_SETTLE_WAIT=4 FM_TEST_SETTLE_POLL=2 run_restart "$dir" sm1); rc=$?
+  out=$(FM_TEST_SETTLE_WAIT=8 FM_TEST_SETTLE_POLL=2 run_restart "$dir" sm1); rc=$?
   expect_code 2 "$rc" "a Pi settle wait one second below the derived minimum must be rejected"$'\n'"$out"
-  assert_contains "$out" 'must be 0 or at least 5 seconds when FM_SECONDMATE_SETTLE_POLL is 2' \
+  assert_contains "$out" 'must be 0 or at least 9 seconds when FM_SECONDMATE_SETTLE_POLL is 2' \
     "a short Pi settle wait did not name its derived minimum"
 
   dir=$(new_case pi-settle-poll-noncanonical)
@@ -503,7 +506,7 @@ test_pi_settle_wait_configuration() {
 }
 
 test_pi_settle_minimum_allows_local_herdr() {
-  local dir out rc idle_reads composer_reads
+  local dir out rc started elapsed idle_reads composer_reads
   dir=$(new_case pi-settle-local-minimum)
   add_local_mate "$dir" sm1 pi herdr
   sed -i 's|^window=.*|window=default:w1:p1|' "$dir/home/state/sm1.meta"
@@ -512,7 +515,9 @@ test_pi_settle_minimum_allows_local_herdr() {
   printf 'pi' > "$dir/fake/command"
   arm_answer "$dir" sm1
 
-  out=$(FM_TEST_SETTLE_WAIT=4 FM_TEST_SETTLE_POLL=1 run_restart "$dir" sm1); rc=$?
+  started=$SECONDS
+  out=$(FM_TEST_REAL_SLEEP=1 FM_TEST_SETTLE_WAIT=8 FM_TEST_SETTLE_POLL=1 run_restart "$dir" sm1); rc=$?
+  elapsed=$((SECONDS - started))
 
   case "$rc" in 0|3) ;; *) fail "a local Herdr Pi failed before or during relaunch at the derived minimum"$'\n'"$out" ;; esac
   assert_not_contains "$out" 'could not be proven settled at a readable empty input' \
@@ -521,7 +526,7 @@ test_pi_settle_minimum_allows_local_herdr() {
   composer_reads=$(grep -c '^composer:pane read .*--source visible --format ansi' "$dir/fake/herdr.log" || true)
   [ "$idle_reads" -eq 2 ] || fail "local Herdr did not take two native idle samples at the derived minimum"
   [ "$composer_reads" -eq 2 ] || fail "local Herdr did not read two composers at the derived minimum"
-  assert_grep '1' "$dir/fake/sleep-args" 'local Herdr did not separate its stable samples by the configured poll'
+  [ "$elapsed" -ge 1 ] || fail 'local Herdr shortened the configured one-second settle poll'
   pass 'The derived minimum permits two stable local Herdr samples'
 }
 
@@ -552,12 +557,12 @@ test_pi_settle_deadline_bounds_success_and_sleep() {
   printf '99\n' > "$dir/fake/remote-observe-busy-count"
   printf '100\n' > "$dir/fake/fake-epoch"
 
-  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=5 FM_TEST_SETTLE_POLL=2 run_restart "$dir" sm1); rc=$?
+  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=9 FM_TEST_SETTLE_POLL=2 run_restart "$dir" sm1); rc=$?
   unset FM_FAKE_ANSWER_STATUS
 
   expect_code 3 "$rc" "Pi must not accept a second sample at the settle deadline"$'\n'"$out"
-  [ "$(grep -c '^2$' "$dir/fake/sleep-args")" -eq 2 ] \
-    || fail 'the settle loop did not cap both sleeps to the available two-second intervals'
+  [ "$(grep -c '^2$' "$dir/fake/sleep-args")" -eq 4 ] \
+    || fail 'the settle loop did not cap all sleeps to the available two-second intervals'
   assert_no_grep 'fm-remote-secondmate-control.sh relaunch' "$dir/ssh.log" \
     'a remote Pi mate was stopped after its settle deadline'
   pass 'Pi settle samples and sleeps stay inside the configured deadline'
@@ -675,6 +680,11 @@ if [ "${FM_FAKE_SSH_HANG:-}" = "${rargs[1]:-}" ]; then
   /bin/sleep 30
 fi
 case "${rargs[1]:-}" in
+  route|observe|composer)
+    [ -z "${FM_FAKE_SSH_DELAY:-}" ] || /bin/sleep "$FM_FAKE_SSH_DELAY"
+    ;;
+esac
+case "${rargs[1]:-}" in
   route)
     harness=$(cat "$FM_FAKE_DIR/remote-running-harness")
     printf 'schema=fm-remote-secondmate-control.v1\n'
@@ -764,6 +774,64 @@ test_remote_mate_restarts_over_the_transport_hop() {
   pass "T6 a remote mate restarts through the host-local control plane over the fm-on hop"
 }
 
+test_zero_settle_wait_only_contains_remote_pi() {
+  local running dir out rc
+  for running in claude codex pi pi-signed; do
+    dir=$(new_case "remote-zero-settle-$running")
+    setup_remote_case "$dir" sm2 ok "$running"
+    export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm2.status"
+    printf 'codex big-model high\n' > "$dir/home/config/secondmate-harness"
+
+    out=$(FM_TEST_SETTLE_WAIT=0 run_restart "$dir" sm2); rc=$?
+    unset FM_FAKE_ANSWER_STATUS
+
+    assert_grep 'fm-remote-secondmate-control.sh route sm2' "$dir/ssh.log" \
+      "zero settle wait did not verify the remote $running harness"
+    case "$running" in
+      pi|pi-signed)
+        expect_code 3 "$rc" "zero settle wait must contain remote $running"$'\n'"$out"
+        assert_contains "$out" 'unreached: sm2:' "zero settle wait did not report remote $running as unreached"
+        assert_no_grep 'fm-remote-secondmate-control.sh observe sm2' "$dir/ssh.log" \
+          "zero settle wait observed remote $running"
+        assert_no_grep 'fm-remote-secondmate-control.sh composer sm2' "$dir/ssh.log" \
+          "zero settle wait read the remote $running composer"
+        assert_no_grep 'fm-remote-secondmate-control.sh relaunch sm2' "$dir/ssh.log" \
+          "zero settle wait relaunched remote $running"
+        ;;
+      *)
+        expect_code 0 "$rc" "zero settle wait must not block remote $running"$'\n'"$out"
+        assert_grep 'fm-remote-secondmate-control.sh relaunch sm2 codex big-model high' "$dir/ssh.log" \
+          "zero settle wait blocked the remote $running relaunch"
+        ;;
+    esac
+  done
+  pass 'Zero settle wait contains only host-verified remote Pi harnesses'
+}
+
+test_pi_settle_minimum_covers_real_remote_timing() {
+  local dir out rc started elapsed
+  dir=$(new_case remote-pi-real-timing-minimum)
+  setup_remote_case "$dir" sm2 ok pi
+  export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm2.status"
+  export FM_FAKE_SSH_DELAY=0.6
+  printf 'codex big-model high\n' > "$dir/home/config/secondmate-harness"
+
+  started=$SECONDS
+  out=$(FM_TEST_REAL_SLEEP=1 FM_TEST_SETTLE_WAIT=8 FM_TEST_SETTLE_POLL=1 run_restart "$dir" sm2); rc=$?
+  elapsed=$((SECONDS - started))
+  unset FM_FAKE_ANSWER_STATUS FM_FAKE_SSH_DELAY
+
+  expect_code 0 "$rc" "the derived minimum must cover real remote route, probe, and poll timing"$'\n'"$out"$'\n'"$(cat "$dir/ssh.log")"
+  [ "$elapsed" -ge 4 ] || fail "the real-timing minimum test completed in ${elapsed}s and did not exercise its delays"
+  [ "$(grep -c '^fm-remote-secondmate-control.sh observe sm2$' "$dir/ssh.log")" -eq 2 ] \
+    || fail 'the real-timing minimum did not collect two remote idle observations'
+  [ "$(grep -c '^fm-remote-secondmate-control.sh composer sm2$' "$dir/ssh.log")" -eq 2 ] \
+    || fail 'the real-timing minimum did not collect two remote composer observations'
+  assert_grep 'fm-remote-secondmate-control.sh relaunch sm2 codex big-model high' "$dir/ssh.log" \
+    'the real-timing minimum did not reach remote relaunch'
+  pass 'The derived minimum covers real remote route, probe, and poll timing'
+}
+
 test_remote_running_pi_settles_before_harness_change() {
   local start running dir out rc expected_samples expected_observations settle_wait route_line first_observe_line last_observe_line relaunch_line
   for start in idle busy; do
@@ -777,11 +845,11 @@ test_remote_running_pi_settles_before_harness_change() {
         printf '1\n' > "$dir/fake/remote-observe-busy-count"
         expected_samples=3
         expected_observations=$'observe-result=busy\nobserve-result=idle\nobserve-result=idle'
-        settle_wait=5
+        settle_wait=9
       else
         expected_samples=2
         expected_observations=$'observe-result=idle\nobserve-result=idle'
-        settle_wait=4
+        settle_wait=8
       fi
       out=$(FM_TEST_SETTLE_WAIT=$settle_wait FM_TEST_SETTLE_POLL=1 run_restart "$dir" sm2); rc=$?
       unset FM_FAKE_ANSWER_STATUS
@@ -815,12 +883,12 @@ test_pi_settle_bounds_remote_probes() {
     export FM_FAKE_SSH_HANG=$probe
 
     started=$SECONDS
-    out=$(FM_TEST_SETTLE_WAIT=4 run_restart "$dir" sm1); rc=$?
+    out=$(FM_TEST_SETTLE_WAIT=8 run_restart "$dir" sm1); rc=$?
     elapsed=$((SECONDS - started))
     unset FM_FAKE_ANSWER_STATUS FM_FAKE_SSH_HANG
 
     expect_code 3 "$rc" "a hung remote $probe probe must leave Pi unreached"$'\n'"$out"
-    [ "$elapsed" -le 4 ] || fail "a hung remote $probe probe exceeded the settle deadline (${elapsed}s)"
+    [ "$elapsed" -le 8 ] || fail "a hung remote $probe probe exceeded the settle deadline (${elapsed}s)"
     assert_contains "$out" 'unreached: sm1:' "a hung remote $probe probe was not reported as unreached"
     assert_contains "$(cat "$dir/ssh.log")" "fm-remote-secondmate-control.sh $probe sm1" \
       "the hung remote $probe probe did not run"
@@ -1327,6 +1395,8 @@ test_local_restart_uses_the_home_pin_and_reports_what_ran
 test_codex_max_warning_survives_local_and_remote_restarts
 test_native_ultra_restart_keeps_local_and_remote_profiles
 test_remote_mate_restarts_over_the_transport_hop
+test_zero_settle_wait_only_contains_remote_pi
+test_pi_settle_minimum_covers_real_remote_timing
 test_remote_running_pi_settles_before_harness_change
 test_pi_settle_bounds_remote_probes
 test_unreachable_host_is_reported_unknown
