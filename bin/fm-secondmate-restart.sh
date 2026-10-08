@@ -279,6 +279,7 @@ wait_for_pi_settle() {  # <array-index>
       observation=$( (fm_exec_timed "$probe_timeout" "$probe_grace" env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
         "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh observe "$id") 2>/dev/null) || observation=unknown
     else
+      # shellcheck disable=SC2016 # Positional parameters expand in the child shell.
       observation=$( (fm_exec_timed "$probe_timeout" "$probe_grace" env FM_SECONDMATE_SETTLE_PROBE=observe \
         FM_HOME="$FM_HOME" FM_ROOT_OVERRIDE="$FM_ROOT" \
         FM_STATE_OVERRIDE="$STATE" bash -c '. "$1"; fm_pending_reply_backend_observation "$2" "$3" "$4" "$5"' \
@@ -293,6 +294,7 @@ wait_for_pi_settle() {  # <array-index>
       composer=$( (fm_exec_timed "$probe_timeout" "$probe_grace" env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
         "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh composer "$id") 2>/dev/null) || composer=unknown
     else
+      # shellcheck disable=SC2016 # Positional parameters expand in the child shell.
       composer=$( (fm_exec_timed "$probe_timeout" "$probe_grace" env FM_SECONDMATE_SETTLE_PROBE=composer \
         FM_HOME="$FM_HOME" FM_ROOT_OVERRIDE="$FM_ROOT" \
         FM_STATE_OVERRIDE="$STATE" bash -c '. "$1"; fm_backend_composer_state "$2" "$3" "$4"' \
