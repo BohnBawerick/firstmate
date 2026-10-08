@@ -120,7 +120,9 @@ case "${1:-}" in
     for a in "$@"; do
       if [ "$prev" = -t ]; then target=$a; fi
       case "$a" in
-        *cursor_y*) printf '1\n'; exit 0 ;;
+        *cursor_y*)
+          if [ -f "$D/calm-hidden-working" ]; then printf '3\n'; else printf '1\n'; fi
+          exit 0 ;;
         *pane_current_command*)
           if [ -f "$D/command.$target" ]; then cat "$D/command.$target"; else cat "$D/command"; fi
           printf '\n'; exit 0 ;;
@@ -144,6 +146,9 @@ case "${1:-}" in
         printf '%s\n' "$((count - 1))" > "$D/composer-unknown-count"
         printf '── ⠇ Working ──\n'; exit 0
       fi
+    fi
+    if [ -f "$D/calm-hidden-working" ]; then
+      printf '     ◿│◣\n▁▂▃▂▁╲▁▁▁╱▁▂▃▂▁\n╭────╮\n│    │\n╰────╯\n'; exit 0
     fi
     if [ -f "$D/composer-draft" ]; then printf '╭────╮\n│draft│\n╰────╯\n'; exit 0; fi
     printf '╭────╮\n│    │\n╰────╯\n'; exit 0 ;;
@@ -443,21 +448,20 @@ test_answer_between_resolution_and_timeout_wins() {
 }
 
 # --- Pi: a done reply can precede the end of the same turn ------------------
-test_pi_waits_for_settled_input() {
+test_pi_settle_requires_semantic_idle() {
   local dir out rc
-  dir=$(new_case pi-settle)
+  dir=$(new_case pi-calm-hidden-busy)
   add_local_mate "$dir" sm1 pi
   printf 'pi' > "$dir/fake/command"
-  printf 'pi' > "$dir/fake/becomes"
   arm_answer "$dir" sm1
-  # The correlated answer has arrived, but a captured working Pi screen has
-  # no readable input. Wait for the real tmux composer path to read empty.
-  printf '3\n' > "$dir/fake/composer-unknown-count"
-  out=$(run_restart "$dir" sm1); rc=$?
-  expect_code 0 "$rc" "Pi should restart after its turn leaves the composer readable"$'\n'"$out"
-  assert_contains "$out" 'restarted: sm1' 'Pi never restarted after settling'
-  [ "$(cat "$dir/fake/composer-unknown-count")" = 0 ] \
-    || fail 'Pi restarted before its composer became readable'
+  : > "$dir/fake/calm-hidden-working"
+  printf '100\n' > "$dir/fake/fake-epoch"
+  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=2 run_restart "$dir" sm1); rc=$?
+  expect_code 3 "$rc" "a Calm-hidden Pi turn needs semantic idle proof"$'\n'"$out"
+  assert_contains "$out" 'unreached: sm1:' 'Calm-hidden Pi must be reported honestly'
+  assert_present "$dir/fake/settle-observe-probed" 'the Calm-hidden Pi activity probe never ran'
+  assert_present "$dir/fake/settle-composer-probed" 'the Calm-hidden Pi composer probe never ran'
+  assert_no_grep '/quit' "$dir/fake/literal" 'a Calm-hidden Pi turn was sent /quit'
 
   dir=$(new_case pi-stays-busy)
   add_local_mate "$dir" sm1 pi
@@ -483,23 +487,24 @@ test_pi_waits_for_settled_input() {
   assert_present "$dir/fake/settle-observe-probed" 'the typed Pi activity probe never ran'
   assert_present "$dir/fake/settle-composer-probed" 'the typed Pi composer probe never ran'
   assert_no_grep '/quit' "$dir/fake/literal" 'typed Pi text was overwritten'
-  pass 'Pi confirmation waits for a readable empty input; busy and typed panes keep their conversation'
+  pass 'Local tmux Pi requires semantic idle; Calm-hidden, busy, and typed panes keep their conversation'
 }
 
 test_pi_settle_deadline_bounds_success_and_sleep() {
   local dir out rc
   dir=$(new_case pi-settle-deadline)
-  add_local_mate "$dir" sm1 pi
-  printf 'pi' > "$dir/fake/command"
-  arm_answer "$dir" sm1
+  setup_remote_case "$dir" sm1 ok pi
+  export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm1.status"
   printf '100\n' > "$dir/fake/fake-epoch"
 
   out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=1 FM_TEST_SETTLE_POLL=2 run_restart "$dir" sm1); rc=$?
+  unset FM_FAKE_ANSWER_STATUS
 
   expect_code 3 "$rc" "Pi must not accept a second sample at the settle deadline"$'\n'"$out"
   assert_grep '1' "$dir/fake/sleep-args" 'the settle loop did not sleep for its one-second remainder'
   assert_no_grep '2' "$dir/fake/sleep-args" 'the settle sleep exceeded the remaining one-second budget'
-  assert_no_grep '/quit' "$dir/fake/literal" 'a Pi mate was stopped after its settle deadline'
+  assert_no_grep 'fm-remote-secondmate-control.sh relaunch' "$dir/ssh.log" \
+    'a remote Pi mate was stopped after its settle deadline'
   pass 'Pi settle samples and sleeps stay inside the configured deadline'
 }
 
@@ -698,6 +703,10 @@ test_remote_running_pi_settles_before_harness_change() {
     relaunch_line=$(grep -n '^fm-remote-secondmate-control.sh relaunch sm2 codex big-model high$' "$dir/ssh.log" | head -1 | cut -d: -f1)
     [ -n "$observe_line" ] && [ -n "$relaunch_line" ] && [ "$observe_line" -lt "$relaunch_line" ] \
       || fail "remote $running did not settle before its Codex relaunch"$'\n'"$(cat "$dir/ssh.log")"
+    [ "$(grep -c '^fm-remote-secondmate-control.sh observe sm2$' "$dir/ssh.log")" -eq 2 ] \
+      || fail "remote $running did not require two native idle samples"
+    [ "$(grep -c '^fm-remote-secondmate-control.sh composer sm2$' "$dir/ssh.log")" -eq 2 ] \
+      || fail "remote $running did not require two empty composer samples"
   done
   pass 'Remote Pi and Pi-signed mates settle under their running harness before profile changes'
 }
@@ -1223,7 +1232,7 @@ test_persist_gates_and_asks_only_for_open_records
 test_persist_precedes_restart
 test_arrived_answer_precedes_deadline_check
 test_answer_between_resolution_and_timeout_wins
-test_pi_waits_for_settled_input
+test_pi_settle_requires_semantic_idle
 test_pi_settle_deadline_bounds_success_and_sleep
 test_unprovable_runtime_falls_back
 test_unknown_mate_is_accounted_for

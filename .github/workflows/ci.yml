@@ -493,7 +493,7 @@ jobs:
             exit 1
           }
 
-          restart_output=$(FM_TEST_ONLY=test_pi_waits_for_settled_input \
+          restart_output=$(FM_TEST_ONLY=test_pi_settle_requires_semantic_idle \
             /bin/bash tests/fm-secondmate-restart.test.sh)
           printf '%s\n' "$restart_output"
           restart_count=$(printf '%s\n' "$restart_output" | grep -c '^ok - ')

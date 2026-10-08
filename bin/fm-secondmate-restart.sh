@@ -257,8 +257,7 @@ wait_for_pi_settle() {  # <array-index>
     if [ "$stable" -gt 0 ] && [ "$now" -ge "$deadline" ]; then
       return 1
     fi
-    if [ "$composer" = empty ] \
-       && { [ "$observation" = idle ] || [ "$observation" = fallback-idle ]; }; then
+    if [ "$composer" = empty ] && [ "$observation" = idle ]; then
       stable=$((stable + 1))
       [ "$stable" -ge 2 ] && return 0
     else
