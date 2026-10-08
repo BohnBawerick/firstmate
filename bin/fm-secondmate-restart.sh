@@ -103,6 +103,8 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 . "$SCRIPT_DIR/fm-secondmate-nudge-lib.sh"
 # shellcheck source=bin/fm-pending-reply-lib.sh
 . "$SCRIPT_DIR/fm-pending-reply-lib.sh"
+# shellcheck source=bin/fm-timeout-lib.sh
+. "$SCRIPT_DIR/fm-timeout-lib.sh"
 
 PERSIST_WAIT=${FM_SECONDMATE_PERSIST_WAIT:-900}
 PERSIST_POLL=${FM_SECONDMATE_PERSIST_POLL:-5}
@@ -224,16 +226,32 @@ wait_for_pi_settle() {  # <array-index>
   id=${IDS[$i]}
   deadline=$(($(date +%s) + SETTLE_WAIT))
   while :; do
+    now=$(date +%s)
+    remaining=$((deadline - now))
+    [ "$remaining" -gt 0 ] || return 1
     if [ "${PLACEMENT[i]}" = remote ]; then
-      observation=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-        "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh observe "$id" 2>/dev/null) || observation=unknown
-      composer=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-        "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh composer "$id" 2>/dev/null) || composer=unknown
+      observation=$( (fm_exec_timed "$remaining" 1 env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+        "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh observe "$id") 2>/dev/null) || observation=unknown
+      now=$(date +%s)
+      remaining=$((deadline - now))
+      [ "$remaining" -gt 0 ] || return 1
+      composer=$( (fm_exec_timed "$remaining" 1 env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+        "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh composer "$id") 2>/dev/null) || composer=unknown
     else
       backend=$(fm_backend_of_meta "$STATE/$id.meta")
       target=$(fm_backend_target_of_meta "$STATE/$id.meta")
-      observation=$(fm_pending_reply_backend_observation "$backend" "$target" "fm-$id" "${RUNNING_HARNESS[i]}" 2>/dev/null) || observation=unknown
-      composer=$(fm_backend_composer_state "$backend" "$target" "fm-$id" 2>/dev/null) || composer=unknown
+      observation=$( (fm_exec_timed "$remaining" 1 env FM_SECONDMATE_SETTLE_PROBE=observe \
+        FM_HOME="$FM_HOME" FM_ROOT_OVERRIDE="$FM_ROOT" \
+        FM_STATE_OVERRIDE="$STATE" bash -c '. "$1"; fm_pending_reply_backend_observation "$2" "$3" "$4" "$5"' \
+        _ "$SCRIPT_DIR/fm-pending-reply-lib.sh" "$backend" "$target" "fm-$id" "${RUNNING_HARNESS[i]}") 2>/dev/null) \
+        || observation=unknown
+      now=$(date +%s)
+      remaining=$((deadline - now))
+      [ "$remaining" -gt 0 ] || return 1
+      composer=$( (fm_exec_timed "$remaining" 1 env FM_SECONDMATE_SETTLE_PROBE=composer \
+        FM_HOME="$FM_HOME" FM_ROOT_OVERRIDE="$FM_ROOT" \
+        FM_STATE_OVERRIDE="$STATE" bash -c '. "$1"; fm_backend_composer_state "$2" "$3" "$4"' \
+        _ "$SCRIPT_DIR/fm-backend.sh" "$backend" "$target" "fm-$id") 2>/dev/null) || composer=unknown
     fi
     now=$(date +%s)
     if [ "$stable" -gt 0 ] && [ "$now" -ge "$deadline" ]; then

@@ -130,6 +130,10 @@ case "${1:-}" in
     done
     printf 'fakepane\n'; exit 0 ;;
   capture-pane)
+    if [ -f "$D/hang-capture-probe" ] \
+       && [ "${FM_SECONDMATE_SETTLE_PROBE:-}" = "$(cat "$D/hang-capture-probe")" ]; then
+      /bin/sleep 30
+    fi
     if [ -f "$D/composer-unknown-count" ]; then
       count=$(cat "$D/composer-unknown-count")
       if [ "$count" -gt 0 ]; then
@@ -309,7 +313,7 @@ test_persist_gates_and_asks_only_for_open_records() {
   assert_not_contains "$out" "restarted: sm1" "a mate that never confirmed must not be restarted"
   assert_contains "$out" "summary: 0 of 1 restarted" "the summary must not claim a reload"
   # The agent is untouched: nothing exited, nothing relaunched.
-  assert_no_grep '^/exit$' "$dir/fake/literal" "the agent was stopped without a confirmed persist"
+  assert_no_grep '/exit' "$dir/fake/literal" "the agent was stopped without a confirmed persist"
   assert_absent "$dir/home/state/sm1.control-relaunch" \
     "a restart transaction was opened without a confirmed persist"
   grep -h '^phase=' "$dir/home/state/pending-replies"/* | grep -q '^phase=awaiting_report$' \
@@ -459,7 +463,7 @@ test_pi_waits_for_settled_input() {
   out=$(FM_TEST_SETTLE_WAIT=0 run_restart "$dir" sm1); rc=$?
   expect_code 3 "$rc" "an unreadable Pi input must never be overwritten"$'\n'"$out"
   assert_contains "$out" 'unreached: sm1:' 'unsettled Pi must be reported honestly'
-  assert_no_grep '^/quit$' "$dir/fake/literal" 'an unsettled Pi was sent /quit'
+  assert_no_grep '/quit' "$dir/fake/literal" 'an unsettled Pi was sent /quit'
 
   dir=$(new_case pi-typed-draft)
   add_local_mate "$dir" sm1 pi
@@ -468,7 +472,7 @@ test_pi_waits_for_settled_input() {
   : > "$dir/fake/composer-draft"
   out=$(FM_TEST_SETTLE_WAIT=0 run_restart "$dir" sm1); rc=$?
   expect_code 3 "$rc" "typed Pi text must remain untouched"$'\n'"$out"
-  assert_no_grep '^/quit$' "$dir/fake/literal" 'typed Pi text was overwritten'
+  assert_no_grep '/quit' "$dir/fake/literal" 'typed Pi text was overwritten'
   pass 'Pi confirmation waits for a readable empty input; busy and typed panes keep their conversation'
 }
 
@@ -485,7 +489,7 @@ test_pi_settle_deadline_bounds_success_and_sleep() {
   expect_code 3 "$rc" "Pi must not accept a second sample at the settle deadline"$'\n'"$out"
   assert_grep '1' "$dir/fake/sleep-args" 'the settle loop did not sleep for its one-second remainder'
   assert_no_grep '2' "$dir/fake/sleep-args" 'the settle sleep exceeded the remaining one-second budget'
-  assert_no_grep '^/quit$' "$dir/fake/literal" 'a Pi mate was stopped after its settle deadline'
+  assert_no_grep '/quit' "$dir/fake/literal" 'a Pi mate was stopped after its settle deadline'
   pass 'Pi settle samples and sleeps stay inside the configured deadline'
 }
 
@@ -549,7 +553,7 @@ test_refused_restart_falls_back_without_claiming_a_reload() {
   assert_not_contains "$out" "restarted: sm1" "a refused restart must not be reported as restarted"
   [ "$(cat "$dir/fake/command")" = "$before" ] \
     || fail "a refusal before the stop should leave the running agent exactly as it was"
-  assert_no_grep '^/exit$' "$dir/fake/literal" "a pre-stop refusal must not have stopped the agent"
+  assert_no_grep '/exit' "$dir/fake/literal" "a pre-stop refusal must not have stopped the agent"
   pass "T5 a refused restart leaves the mate running and reports an unknown outcome"
 }
 
@@ -596,6 +600,9 @@ printf '%s\n' "${rargs[*]}" >> "$FM_FAKE_SSH_LOG"
 case "${FM_FAKE_SSH_MODE:-ok}" in
   unreachable) exit 255 ;;
 esac
+if [ "${FM_FAKE_SSH_HANG:-}" = "${rargs[1]:-}" ]; then
+  /bin/sleep 30
+fi
 case "${rargs[1]:-}" in
   observe) printf 'idle\n'; exit 0 ;;
   composer) printf 'empty\n'; exit 0 ;;
@@ -683,6 +690,41 @@ test_remote_running_pi_settles_before_harness_change() {
       || fail "remote $running did not settle before its Codex relaunch"$'\n'"$(cat "$dir/ssh.log")"
   done
   pass 'Remote Pi and Pi-signed mates settle under their running harness before profile changes'
+}
+
+test_pi_settle_bounds_local_and_remote_probes() {
+  local placement probe dir out rc started elapsed
+  for placement in local remote; do
+    for probe in observe composer; do
+      dir=$(new_case "settle-$placement-$probe-timeout")
+      if [ "$placement" = local ]; then
+        add_local_mate "$dir" sm1 pi
+        printf 'pi' > "$dir/fake/command"
+        arm_answer "$dir" sm1
+        printf '%s\n' "$probe" > "$dir/fake/hang-capture-probe"
+      else
+        setup_remote_case "$dir" sm1 ok pi
+        export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm1.status"
+        export FM_FAKE_SSH_HANG=$probe
+      fi
+
+      started=$SECONDS
+      out=$(FM_TEST_SETTLE_WAIT=1 run_restart "$dir" sm1); rc=$?
+      elapsed=$((SECONDS - started))
+      unset FM_FAKE_ANSWER_STATUS FM_FAKE_SSH_HANG
+
+      expect_code 3 "$rc" "a hung $placement $probe probe must leave Pi unreached"$'\n'"$out"
+      [ "$elapsed" -lt 5 ] || fail "a hung $placement $probe probe exceeded the settle deadline (${elapsed}s)"
+      assert_contains "$out" 'unreached: sm1:' "a hung $placement $probe probe was not reported as unreached"
+      if [ "$placement" = local ]; then
+        assert_no_grep '/quit' "$dir/fake/literal" "a hung local $probe probe allowed /quit"
+      else
+        assert_no_grep 'fm-remote-secondmate-control.sh relaunch' "$dir/ssh.log" \
+          "a hung remote $probe probe reached relaunch"
+      fi
+    done
+  done
+  pass 'Local and remote Pi settle probes obey one deadline'
 }
 
 # --- T7: an unreachable host is unknown, never a claimed reload --------------
@@ -807,7 +849,7 @@ SH
 
   expect_code 3 "$rc" "an unrelated concurrent answer must not release the persist gate"$'\n'"$out"
   assert_not_contains "$out" "restarted: sm1" "the unrelated answer authorized a restart"
-  assert_no_grep '^/exit$' "$dir/fake/literal" "the unrelated answer stopped the mate"
+  assert_no_grep '/exit' "$dir/fake/literal" "the unrelated answer stopped the mate"
   pass "T9 the persist gate retains its explicitly allocated correlation"
 }
 
@@ -1027,7 +1069,7 @@ test_already_current_unprovable_mate_stays_on_the_nudge_path() {
   assert_not_contains "$out" "restarted: sm1" "an unprovable mate must never be reported as reloaded"
   [ "$(cat "$dir/fake/command")" = "$before" ] \
     || fail "the unprovable mate's agent was stopped anyway"
-  assert_no_grep '^/exit$' "$dir/fake/literal" "nothing may be stopped on the nudge path"
+  assert_no_grep '/exit' "$dir/fake/literal" "nothing may be stopped on the nudge path"
   pass "T16 an already-current mate with an unprovable runtime keeps the honest nudge path"
 }
 
@@ -1176,6 +1218,7 @@ test_codex_max_warning_survives_local_and_remote_restarts
 test_native_ultra_restart_keeps_local_and_remote_profiles
 test_remote_mate_restarts_over_the_transport_hop
 test_remote_running_pi_settles_before_harness_change
+test_pi_settle_bounds_local_and_remote_probes
 test_unreachable_host_is_reported_unknown
 test_concurrent_reply_cannot_release_persist_gate
 test_persist_waits_are_polled_together
