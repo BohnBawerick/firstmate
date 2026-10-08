@@ -3,7 +3,7 @@ name: updatefirstmate
 description: >-
   Self-update a running firstmate and its secondmates to the latest from origin.
   Use when the captain invokes /updatefirstmate (e.g. "/updatefirstmate", "update firstmate", "pull the latest firstmate").
-  Updates this firstmate repo's default branch and every local or remote secondmate through its guarded convergence path (never forced, never disruptive), then re-reads AGENTS.md and restarts every live second mate through the persist-gated restart, with a fallback re-read nudge only where a restart cannot be proven.
+  Updates this firstmate repo's default branch and every local or remote secondmate through its guarded convergence path (never forced, never disruptive), then re-reads AGENTS.md and restarts every live second mate through the persistence and settle gates, reporting a re-read nudge or unreached mate when a restart cannot be proven.
 user-invocable: true
 metadata:
   internal: true
@@ -67,9 +67,10 @@ This touches only the firstmate repo and its own worktrees, never anything under
    Local and remote mates go in the same list; the command owns the transport, the profile each replacement runs on, and the wait.
 
    It asks every listed mate first to write down the open work it holds only in its conversation, and restarts one only after that mate's own answer confirms the work is written down.
-   A mate that is mid-turn queues the request behind that turn.
+   Delivery can queue behind an active turn, and Pi can publish the affirmative answer before that logical turn reaches idle.
+   The restart command therefore applies its Pi settle gate before relaunch.
    That is the whole point of the step, so do not work around it: it is what keeps a captain call the mate had formed but never registered from being lost with the conversation.
-   Its header owns the request, the bound, and the two knobs that change them.
+   Its header owns the persistence and settle proof requirements, failure handling, and timing settings.
 
    Read its per-mate lines and its closing `summary:` line as the outcome:
    - `restarted: <id>` - that mate is now genuinely running the current instructions and launch-time settings.
@@ -104,4 +105,6 @@ This touches only the firstmate repo and its own worktrees, never anything under
   A local or remote second mate gets a tracked-files fast-forward only when its own checkout is safe to advance, and a mate whose home was skipped is not restarted either.
   A restart replaces that mate's agent in the same home and endpoint after its open work is written down; it is never a teardown and never forced.
   Its crewmates keep running in their own endpoints, and every durable record - backlog, held captain calls, unread status, unhandled instructions - is re-presented to the replacement at startup.
-  A restart refused before it is attempted leaves that mate on the re-read path; once a relaunch is attempted, any failed or ambiguous result is reported as unknown rather than attributed to either incarnation.
+  A mate rejected before the persistence request stays on the re-read path.
+  A Pi mate that confirms persistence but cannot prove it has settled is reported as unreached without receiving lifecycle input.
+  Once a relaunch is attempted, any failed or ambiguous result is reported as unknown rather than attributed to either incarnation.

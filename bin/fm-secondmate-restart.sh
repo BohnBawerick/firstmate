@@ -35,11 +35,11 @@
 #      ignores trailing detail by design. A mate with any unsaved work must
 #      answer 'blocked:'. Any other answer settles the request but falls back to
 #      the nudge.
-#      The gate is that answer, never a wall clock, so a mate that is mid-turn
-#      queues the request behind that
-#      turn; the bound below exists to end the wait, not to authorize a restart
-#      without the answer. A timeout deliberately leaves that expectation open:
-#      a genuine open loop owned by the pending-reply ladder, not this pass.
+#      The persistence gate is that answer, never a wall clock.
+#      Pi can publish it before the same logical turn reaches idle, so restart
+#      requires two separated Herdr semantic-idle and empty-composer samples.
+#      Failure within the settle bound leaves the mate unreached without lifecycle
+#      input. A persistence timeout leaves its expectation to the pending-reply loop.
 #
 # A mate that did not confirm in time that its open work is written down, or
 # whose runtime cannot prove a restart, gets the ordinary re-read nudge and is
