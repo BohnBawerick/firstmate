@@ -144,8 +144,28 @@ esac
 exit 0
 SH
   chmod +x "$fb/tmux"
+  cat > "$fb/date" <<'SH'
+#!/usr/bin/env bash
+if [ -f "$FM_FAKE_DIR/fake-epoch" ]; then
+  cat "$FM_FAKE_DIR/fake-epoch"
+  exit 0
+fi
+exec /bin/date "$@"
+SH
+  chmod +x "$fb/date"
   cat > "$fb/sleep" <<'SH'
 #!/usr/bin/env bash
+if [ -f "$FM_FAKE_DIR/fake-epoch" ]; then
+  case "${1:-}" in
+    1|2)
+      epoch=$(cat "$FM_FAKE_DIR/fake-epoch")
+      printf '%s\n' "$1" >> "$FM_FAKE_DIR/sleep-args"
+      printf '%s\n' "$((epoch + $1))" > "$FM_FAKE_DIR/fake-epoch"
+      exit 0
+      ;;
+    *) ;;
+  esac
+fi
 case "${1:-}" in
   ''|*[!0-9]*) ;;
   *) /bin/sleep 0.01 ;;
@@ -266,9 +286,10 @@ arm_answer() {
 run_restart() {  # <case-dir> <args...>
   local dir=$1; shift
   env PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" FM_FAKE_DIR="$dir/fake" \
-    FM_SPAWN_NO_GUARD=1 FM_SECONDMATE_PERSIST_POLL=1 \
+    FM_SPAWN_NO_GUARD=1 FM_SECONDMATE_PERSIST_POLL="${FM_TEST_PERSIST_POLL:-1}" \
     FM_SECONDMATE_PERSIST_WAIT="${FM_TEST_PERSIST_WAIT:-30}" \
-    FM_SECONDMATE_SETTLE_WAIT="${FM_TEST_SETTLE_WAIT:-4}" FM_SECONDMATE_SETTLE_POLL=1 \
+    FM_SECONDMATE_SETTLE_WAIT="${FM_TEST_SETTLE_WAIT:-4}" \
+    FM_SECONDMATE_SETTLE_POLL="${FM_TEST_SETTLE_POLL:-1}" \
     FM_CONTROL_POLL=0.01 FM_CONTROL_EXIT_WAIT=0.05 FM_CONTROL_LAUNCH_WAIT=0.05 \
     FM_SSH_BIN="${FM_TEST_SSH_BIN:-ssh}" \
     "$RESTART" "$@" 2>&1
@@ -451,6 +472,23 @@ test_pi_waits_for_settled_input() {
   pass 'Pi confirmation waits for a readable empty input; busy and typed panes keep their conversation'
 }
 
+test_pi_settle_deadline_bounds_success_and_sleep() {
+  local dir out rc
+  dir=$(new_case pi-settle-deadline)
+  add_local_mate "$dir" sm1 pi
+  printf 'pi' > "$dir/fake/command"
+  arm_answer "$dir" sm1
+  printf '100\n' > "$dir/fake/fake-epoch"
+
+  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=1 FM_TEST_SETTLE_POLL=2 run_restart "$dir" sm1); rc=$?
+
+  expect_code 3 "$rc" "Pi must not accept a second sample at the settle deadline"$'\n'"$out"
+  assert_grep '1' "$dir/fake/sleep-args" 'the settle loop did not sleep for its one-second remainder'
+  assert_no_grep '2' "$dir/fake/sleep-args" 'the settle sleep exceeded the remaining one-second budget'
+  assert_no_grep '^/quit$' "$dir/fake/literal" 'a Pi mate was stopped after its settle deadline'
+  pass 'Pi settle samples and sleeps stay inside the configured deadline'
+}
+
 # --- T3: a runtime that cannot prove a restart never gets one ----------------
 test_unprovable_runtime_falls_back() {
   local dir out rc
@@ -520,8 +558,8 @@ test_refused_restart_falls_back_without_claiming_a_reload() {
 # host-local command and the profile the PARENT resolved, not a local shortcut.
 # The far side also models the live mate: it answers the persist request that
 # crossed the same hop, on the parent channel, with that request's own token.
-setup_remote_case() {  # <case-dir> <id> <ssh-mode>
-  local dir=$1 id=$2 mode=$3
+setup_remote_case() {  # <case-dir> <id> <ssh-mode> [running-harness]
+  local dir=$1 id=$2 mode=$3 running_harness=${4:-claude}
   local fb="$dir/fakebin"
   mkdir -p "$dir/$id-home"
   {
@@ -529,7 +567,7 @@ setup_remote_case() {  # <case-dir> <id> <ssh-mode>
     echo "endpoint_task_id=$id"
     echo "worktree=$dir/$id-home"
     echo "project=$dir/$id-home"
-    echo "harness=claude"
+    echo "harness=$running_harness"
     echo "kind=secondmate"
     echo "mode=secondmate"
     echo "yolo=off"
@@ -625,6 +663,26 @@ test_remote_mate_restarts_over_the_transport_hop() {
      -lt "$(grep -n '^fm-remote-secondmate-control.sh relaunch' "$dir/ssh.log" | head -1 | cut -d: -f1)" ] \
     || fail "the remote mate was restarted before it was asked to persist"$'\n'"$(cat "$dir/ssh.log")"
   pass "T6 a remote mate restarts through the host-local control plane over the fm-on hop"
+}
+
+test_remote_running_pi_settles_before_harness_change() {
+  local running dir out rc observe_line relaunch_line
+  for running in pi pi-signed; do
+    dir=$(new_case "remote-$running-to-codex")
+    setup_remote_case "$dir" sm2 ok "$running"
+    export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm2.status"
+    printf 'codex big-model high\n' > "$dir/home/config/secondmate-harness"
+
+    out=$(run_restart "$dir" sm2); rc=$?
+    unset FM_FAKE_ANSWER_STATUS
+
+    expect_code 0 "$rc" "a remote running $running mate should settle before changing harness"$'\n'"$out"
+    observe_line=$(grep -n '^fm-remote-secondmate-control.sh observe sm2$' "$dir/ssh.log" | head -1 | cut -d: -f1)
+    relaunch_line=$(grep -n '^fm-remote-secondmate-control.sh relaunch sm2 codex big-model high$' "$dir/ssh.log" | head -1 | cut -d: -f1)
+    [ -n "$observe_line" ] && [ -n "$relaunch_line" ] && [ "$observe_line" -lt "$relaunch_line" ] \
+      || fail "remote $running did not settle before its Codex relaunch"$'\n'"$(cat "$dir/ssh.log")"
+  done
+  pass 'Remote Pi and Pi-signed mates settle under their running harness before profile changes'
 }
 
 # --- T7: an unreachable host is unknown, never a claimed reload --------------
@@ -1109,6 +1167,7 @@ test_persist_precedes_restart
 test_arrived_answer_precedes_deadline_check
 test_answer_between_resolution_and_timeout_wins
 test_pi_waits_for_settled_input
+test_pi_settle_deadline_bounds_success_and_sleep
 test_unprovable_runtime_falls_back
 test_unknown_mate_is_accounted_for
 test_refused_restart_falls_back_without_claiming_a_reload
@@ -1116,6 +1175,7 @@ test_local_restart_uses_the_home_pin_and_reports_what_ran
 test_codex_max_warning_survives_local_and_remote_restarts
 test_native_ultra_restart_keeps_local_and_remote_profiles
 test_remote_mate_restarts_over_the_transport_hop
+test_remote_running_pi_settles_before_harness_change
 test_unreachable_host_is_reported_unknown
 test_concurrent_reply_cannot_release_persist_gate
 test_persist_waits_are_polled_together

@@ -138,6 +138,7 @@ CORR=()
 DEADLINE=()
 PLACEMENT=()
 HOST=()
+RUNNING_HARNESS=()
 HARNESS=()
 MODEL=()
 EFFORT=()
@@ -219,7 +220,7 @@ resolve_persist_reply() {
 # Two separated empty reads reject a brief redraw between tools. The control
 # plane repeats the composer guard before /quit.
 wait_for_pi_settle() {  # <array-index>
-  local i=$1 id backend target observation composer deadline stable=0
+  local i=$1 id backend target observation composer deadline stable=0 now remaining sleep_for
   id=${IDS[$i]}
   deadline=$(($(date +%s) + SETTLE_WAIT))
   while :; do
@@ -231,8 +232,12 @@ wait_for_pi_settle() {  # <array-index>
     else
       backend=$(fm_backend_of_meta "$STATE/$id.meta")
       target=$(fm_backend_target_of_meta "$STATE/$id.meta")
-      observation=$(fm_pending_reply_backend_observation "$backend" "$target" "fm-$id" "${HARNESS[i]}" 2>/dev/null) || observation=unknown
+      observation=$(fm_pending_reply_backend_observation "$backend" "$target" "fm-$id" "${RUNNING_HARNESS[i]}" 2>/dev/null) || observation=unknown
       composer=$(fm_backend_composer_state "$backend" "$target" "fm-$id" 2>/dev/null) || composer=unknown
+    fi
+    now=$(date +%s)
+    if [ "$stable" -gt 0 ] && [ "$now" -ge "$deadline" ]; then
+      return 1
     fi
     if [ "$composer" = empty ] \
        && { [ "$observation" = idle ] || [ "$observation" = fallback-idle ]; }; then
@@ -241,15 +246,18 @@ wait_for_pi_settle() {  # <array-index>
     else
       stable=0
     fi
-    [ "$(date +%s)" -lt "$deadline" ] || return 1
-    sleep "$SETTLE_POLL"
+    remaining=$((deadline - now))
+    [ "$remaining" -gt 0 ] || return 1
+    sleep_for=$SETTLE_POLL
+    [ "$sleep_for" -le "$remaining" ] || sleep_for=$remaining
+    sleep "$sleep_for"
   done
 }
 
 restart_mate() {  # <array-index>
   local i=$1 id restart_out restart_rc restart_reason ran_on
   id=${IDS[$i]}
-  case "${HARNESS[i]}" in
+  case "${RUNNING_HARNESS[i]}" in
     pi|pi-signed)
       if ! wait_for_pi_settle "$i"; then
         report_unreached "$id" "the confirmed mate did not settle to a readable empty input within ${SETTLE_WAIT}s; its conversation was preserved"
@@ -349,6 +357,7 @@ while [ "$i" -lt "${#IDS[@]}" ]; do
   DEADLINE[i]=""
   PLACEMENT[i]=""
   HOST[i]=""
+  RUNNING_HARNESS[i]=""
   HARNESS[i]=""
   MODEL[i]=""
   EFFORT[i]=""
@@ -359,6 +368,7 @@ while [ "$i" -lt "${#IDS[@]}" ]; do
   fi
   PLACEMENT[i]=$FM_SECONDMATE_RESTART_PLACEMENT
   HOST[i]=$FM_SECONDMATE_RESTART_HOST
+  RUNNING_HARNESS[i]=$FM_SECONDMATE_RESTART_HARNESS
   HARNESS[i]=$FM_SECONDMATE_RESTART_HARNESS
   if [ "${PLACEMENT[i]}" = remote ]; then
     # A local relaunch re-resolves this home's durable secondmate pin on its own,
