@@ -295,6 +295,8 @@ test_persist_gates_and_asks_only_for_open_records() {
     "the request must exclude the memory curation half of stow"
   assert_contains "$request" 'reply beginning exactly done: open records written down, with any detail after it' \
     'the request must make the accepted reply prefix clear'
+  assert_contains "$request" 'never reply done: with a caveat' \
+    'the request must reserve blocked replies for unsaved work'
   pass "T1 persist is a gate, and asks for open records and task status only"
 }
 
@@ -953,9 +955,7 @@ test_unsaved_work_keeps_the_conversation() {
       'blocked|open work could not be saved' \
       'failed|open work could not be saved' \
       'working|still saving open work' \
-      'done|some open work could not be saved' \
-      'done|open records written down except one unsaved task' \
-      'done|open records written down (except one unsaved task)'; do
+      'done|some open work could not be saved'; do
       verb=${reply%%|*}
       answer=${reply#*|}
       dir=$(new_case "unsaved-$timing-$verb")
@@ -989,13 +989,10 @@ test_detailed_persist_replies() {
     'done|open records written down: data/tasks.md filed|0' \
     'done|open records written down - data/tasks.md filed|0' \
     'done|open records written down! Safe to restart.|0' \
-    'done|open records written down; not holding any unrecorded work|0' \
-    'done|open records written down; no open work remains unrecorded|0' \
+    'done|open records written down, but one captain call remains unregistered|0' \
     'blocked|open records written down|3' \
     'done|the open records written down|3' \
     'done|not all open records written down|3' \
-    'done|open records written down, but one record remains to be filed|3' \
-    'done|open records written down, but one task could not be saved|3' \
     'done|open records written downstairs|3'; do
     verb=${reply%%|*}
     reply=${reply#*|}
@@ -1025,8 +1022,7 @@ test_plain_correlated_persistence_replies() {
     for suffix in bracketed bare; do
       for reply in \
         'done|open records written down' \
-        'blocked|open work could not be saved' \
-        'done|open records written down except one unsaved task'; do
+        'blocked|open work could not be saved'; do
         verb=${reply%%|*}
         answer=${reply#*|}
         dir=$(new_case "plain-$timing-$suffix")

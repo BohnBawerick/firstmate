@@ -30,8 +30,11 @@
 #      restart instead of serializing the fleet behind it.
 #   B. RESTART. Only after that mate's own correlated answer lands on the parent
 #      channel with `done:` and a payload beginning `open records written down`
-#      (case-insensitive), alone or separated from further detail; negations
-#      and any other answer settle the request but fall back to the nudge.
+#      (case-insensitive), alone or followed by a non-alphanumeric separator and
+#      informational detail. The gate trusts the 'done:' or 'blocked:' verb and
+#      ignores trailing detail by design. A mate with any unsaved work must
+#      answer 'blocked:'. Any other answer settles the request but falls back to
+#      the nudge.
 #      The gate is that answer, never a wall clock, so a mate that is mid-turn
 #      queues the request behind that
 #      turn; the bound below exists to end the wait, not to authorize a restart
@@ -167,8 +170,7 @@ report_unreached() {  # <id> <reason>
 }
 
 resolve_persist_reply() {
-  local i=$1 line verb payload normalized detail contradicts subject incomplete clause_start
-  local except_clause partial_clause incomplete_clause remaining_clause j depth
+  local i=$1 line verb payload normalized j depth
   fm_pending_reply_try_resolve "$STATE" "${CORR[i]}" || return 1
   line=$(fm_pending_reply_find_resolve_line "$STATE/${IDS[i]}.status" "${CORR[i]}")
   status_line_verb "$line" verb
@@ -194,24 +196,8 @@ resolve_persist_reply() {
   esac
   pending_count=$((pending_count - 1))
   normalized=$(printf '%s' "$payload" | LC_ALL=C tr '[:upper:]' '[:lower:]')
-  detail=${normalized#open records written down}
-  subject='(open[[:space:]]+)?(record|records|task|tasks|work)'
-  incomplete='((remain|remains)([[:space:]]+(unfiled|unsaved|unrecorded|to[[:space:]]+be[[:space:]]+(filed|saved|recorded|persisted|written[[:space:]]+down)))?|could[[:space:]]+not[[:space:]]+be[[:space:]]+(filed|saved|recorded|persisted|written[[:space:]]+down)|(is|are)[[:space:]]+(still[[:space:]]+)?(unfiled|unsaved|unrecorded))'
-  clause_start='(^|[[:punct:]])[[:space:]]*'
-  except_clause="${clause_start}except[[:space:]]+[^.;:]*(record|records|task|tasks|work)([^[:alnum:]]|$)"
-  partial_clause="${clause_start}not[[:space:]]+(all|every)[[:space:]][^.;:]*(written[[:space:]]+down|filed|saved|recorded|persisted)([^[:alnum:]]|$)"
-  incomplete_clause="${clause_start}((but|however|and)[[:space:]]+)?((an?|one|some|several|the|[1-9][0-9]*)[[:space:]]+)?${subject}[[:space:]]+${incomplete}"
-  remaining_clause="${clause_start}((but|however|and)[[:space:]]+)?((an?|one|some|several|the|[1-9][0-9]*)[[:space:]]+)?remaining[[:space:]]+${subject}"
-  contradicts=0
-  if [[ "$detail" =~ $except_clause ]] \
-    || [[ "$detail" =~ $partial_clause ]] \
-    || [[ "$detail" =~ $incomplete_clause ]] \
-    || [[ "$detail" =~ $remaining_clause ]]; then
-    contradicts=1
-  fi
   if [ "$verb" = 'done' ] \
-    && [[ "$normalized" =~ ^open\ records\ written\ down($|[^[:alnum:]]) ]] \
-    && [ "$contradicts" -eq 0 ]; then
+    && [[ "$normalized" =~ ^open\ records\ written\ down($|[^[:alnum:]]) ]]; then
     launch_restart "$i"
   else
     fall_back_to_nudge "${IDS[i]}" \
