@@ -136,21 +136,9 @@ case "${1:-}" in
       observe) : > "$D/settle-observe-probed" ;;
       composer) : > "$D/settle-composer-probed" ;;
     esac
-    if [ -f "$D/hang-capture-probe" ] \
-       && [ "${FM_SECONDMATE_SETTLE_PROBE:-}" = "$(cat "$D/hang-capture-probe")" ]; then
-      /bin/sleep 30
-    fi
-    if [ -f "$D/composer-unknown-count" ]; then
-      count=$(cat "$D/composer-unknown-count")
-      if [ "$count" -gt 0 ]; then
-        printf '%s\n' "$((count - 1))" > "$D/composer-unknown-count"
-        printf '── ⠇ Working ──\n'; exit 0
-      fi
-    fi
     if [ -f "$D/calm-hidden-working" ]; then
       printf '     ◿│◣\n▁▂▃▂▁╲▁▁▁╱▁▂▃▂▁\n╭────╮\n│    │\n╰────╯\n'; exit 0
     fi
-    if [ -f "$D/composer-draft" ]; then printf '╭────╮\n│draft│\n╰────╯\n'; exit 0; fi
     printf '╭────╮\n│    │\n╰────╯\n'; exit 0 ;;
   list-windows) [ -f "$D/windows" ] && cat "$D/windows"; exit 0 ;;
 esac
@@ -450,12 +438,12 @@ test_answer_between_resolution_and_timeout_wins() {
 # --- Pi: a done reply can precede the end of the same turn ------------------
 test_pi_settle_wait_configuration() {
   local dir out rc wait
-  for wait in 1 01; do
+  for wait in 1 00 01 08 09; do
     dir=$(new_case "pi-settle-wait-$wait")
     out=$(FM_TEST_SETTLE_WAIT=$wait run_restart "$dir" sm1); rc=$?
-    expect_code 2 "$rc" "a one-second Pi settle wait must be rejected"$'\n'"$out"
-    assert_contains "$out" 'must be 0 or an integer of at least 2 seconds' \
-      "a one-second Pi settle wait did not explain the valid range"
+    expect_code 2 "$rc" "a noncanonical or too-short Pi settle wait must be rejected"$'\n'"$out"
+    assert_contains "$out" 'must be canonical decimal 0 or an integer of at least 2 seconds' \
+      "an invalid Pi settle wait did not explain the valid range"
   done
 
   dir=$(new_case pi-settle-no-probe)
@@ -469,49 +457,26 @@ test_pi_settle_wait_configuration() {
   assert_absent "$dir/fake/settle-observe-probed" 'zero-second containment ran the activity probe'
   assert_absent "$dir/fake/settle-composer-probed" 'zero-second containment ran the composer probe'
   assert_no_grep '/quit' "$dir/fake/literal" 'zero-second containment sent /quit'
-  pass 'Pi settle wait accepts zero containment and rejects one second'
+  pass 'Pi settle wait accepts zero containment and rejects invalid decimal forms'
 }
 
 test_pi_settle_requires_semantic_idle() {
-  local dir out rc
+  local dir out rc started elapsed
   dir=$(new_case pi-calm-hidden-busy)
   add_local_mate "$dir" sm1 pi
   printf 'pi' > "$dir/fake/command"
   arm_answer "$dir" sm1
   : > "$dir/fake/calm-hidden-working"
-  printf '100\n' > "$dir/fake/fake-epoch"
-  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=2 run_restart "$dir" sm1); rc=$?
+  started=$SECONDS
+  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=120 run_restart "$dir" sm1); rc=$?
+  elapsed=$((SECONDS - started))
   expect_code 3 "$rc" "a Calm-hidden Pi turn needs semantic idle proof"$'\n'"$out"
   assert_contains "$out" 'unreached: sm1:' 'Calm-hidden Pi must be reported honestly'
-  assert_present "$dir/fake/settle-observe-probed" 'the Calm-hidden Pi activity probe never ran'
-  assert_present "$dir/fake/settle-composer-probed" 'the Calm-hidden Pi composer probe never ran'
+  [ "$elapsed" -lt 2 ] || fail "local tmux Pi containment waited ${elapsed}s for an impossible idle proof"
+  assert_absent "$dir/fake/settle-observe-probed" 'local tmux Pi containment ran the activity probe'
+  assert_absent "$dir/fake/settle-composer-probed" 'local tmux Pi containment ran the composer probe'
   assert_no_grep '/quit' "$dir/fake/literal" 'a Calm-hidden Pi turn was sent /quit'
-
-  dir=$(new_case pi-stays-busy)
-  add_local_mate "$dir" sm1 pi
-  printf 'pi' > "$dir/fake/command"
-  arm_answer "$dir" sm1
-  printf '1000\n' > "$dir/fake/composer-unknown-count"
-  printf '100\n' > "$dir/fake/fake-epoch"
-  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=2 run_restart "$dir" sm1); rc=$?
-  expect_code 3 "$rc" "an unreadable Pi input must never be overwritten"$'\n'"$out"
-  assert_contains "$out" 'unreached: sm1:' 'unsettled Pi must be reported honestly'
-  assert_present "$dir/fake/settle-observe-probed" 'the busy Pi activity probe never ran'
-  assert_present "$dir/fake/settle-composer-probed" 'the busy Pi composer probe never ran'
-  assert_no_grep '/quit' "$dir/fake/literal" 'an unsettled Pi was sent /quit'
-
-  dir=$(new_case pi-typed-draft)
-  add_local_mate "$dir" sm1 pi
-  printf 'pi' > "$dir/fake/command"
-  arm_answer "$dir" sm1
-  : > "$dir/fake/composer-draft"
-  printf '100\n' > "$dir/fake/fake-epoch"
-  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=2 run_restart "$dir" sm1); rc=$?
-  expect_code 3 "$rc" "typed Pi text must remain untouched"$'\n'"$out"
-  assert_present "$dir/fake/settle-observe-probed" 'the typed Pi activity probe never ran'
-  assert_present "$dir/fake/settle-composer-probed" 'the typed Pi composer probe never ran'
-  assert_no_grep '/quit' "$dir/fake/literal" 'typed Pi text was overwritten'
-  pass 'Local tmux Pi requires semantic idle; Calm-hidden, busy, and typed panes keep their conversation'
+  pass 'Local tmux Pi fails closed immediately without semantic idle proof'
 }
 
 test_pi_settle_deadline_bounds_success_and_sleep() {
@@ -521,7 +486,7 @@ test_pi_settle_deadline_bounds_success_and_sleep() {
   export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm1.status"
   printf '100\n' > "$dir/fake/fake-epoch"
 
-  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=2 FM_TEST_SETTLE_POLL=3 run_restart "$dir" sm1); rc=$?
+  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=3 FM_TEST_SETTLE_POLL=4 run_restart "$dir" sm1); rc=$?
   unset FM_FAKE_ANSWER_STATUS
 
   expect_code 3 "$rc" "Pi must not accept a second sample at the settle deadline"$'\n'"$out"
@@ -621,6 +586,7 @@ setup_remote_case() {  # <case-dir> <id> <ssh-mode> [running-harness]
     echo "remote_backend=herdr"
     echo "remote_target=fm-remote:2ndmate-$id"
   } > "$dir/home/state/$id.meta"
+  printf '%s\n' "$running_harness" > "$dir/fake/remote-running-harness"
   printf -- '- %s - remote domain (host: remote-mac; root: /srv/fm; home: /srv/%s; scope: things; projects: p; added 2026-09-03)\n' \
     "$id" "$id" > "$dir/home/data/secondmates.md"
   cat > "$fb/fake-ssh" <<'SH'
@@ -643,6 +609,16 @@ if [ "${FM_FAKE_SSH_HANG:-}" = "${rargs[1]:-}" ]; then
   /bin/sleep 30
 fi
 case "${rargs[1]:-}" in
+  route)
+    harness=$(cat "$FM_FAKE_DIR/remote-running-harness")
+    printf 'schema=fm-remote-secondmate-control.v1\n'
+    printf 'backend=herdr\n'
+    printf 'target=fm-remote:2ndmate-%s\n' "${rargs[2]}"
+    printf 'herdr_session=fm-remote\n'
+    printf 'harness=%s\n' "$harness"
+    printf 'model=default\n'
+    printf 'effort=default\n'
+    exit 0 ;;
   observe)
     observation=idle
     if [ -f "$FM_FAKE_DIR/remote-observe-busy-count" ]; then
@@ -723,11 +699,12 @@ test_remote_mate_restarts_over_the_transport_hop() {
 }
 
 test_remote_running_pi_settles_before_harness_change() {
-  local start running dir out rc expected_samples expected_observations last_observe_line relaunch_line
+  local start running dir out rc expected_samples expected_observations route_line first_observe_line last_observe_line relaunch_line
   for start in idle busy; do
     for running in pi pi-signed; do
       dir=$(new_case "remote-$running-$start-to-codex")
-      setup_remote_case "$dir" sm2 ok "$running"
+      setup_remote_case "$dir" sm2 ok codex
+      printf '%s\n' "$running" > "$dir/fake/remote-running-harness"
       export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm2.status"
       printf 'codex big-model high\n' > "$dir/home/config/secondmate-harness"
       if [ "$start" = busy ]; then
@@ -743,8 +720,12 @@ test_remote_running_pi_settles_before_harness_change() {
       unset FM_FAKE_ANSWER_STATUS
 
       expect_code 0 "$rc" "a remote running $running mate should settle from $start before changing harness"$'\n'"$out"
+      route_line=$(grep -n '^fm-remote-secondmate-control.sh route sm2$' "$dir/ssh.log" | head -1 | cut -d: -f1)
+      first_observe_line=$(grep -n '^fm-remote-secondmate-control.sh observe sm2$' "$dir/ssh.log" | head -1 | cut -d: -f1)
       last_observe_line=$(grep -n '^fm-remote-secondmate-control.sh observe sm2$' "$dir/ssh.log" | tail -1 | cut -d: -f1)
       relaunch_line=$(grep -n '^fm-remote-secondmate-control.sh relaunch sm2 codex big-model high$' "$dir/ssh.log" | head -1 | cut -d: -f1)
+      [ -n "$route_line" ] && [ -n "$first_observe_line" ] && [ "$route_line" -lt "$first_observe_line" ] \
+        || fail "remote $running did not verify the host harness before settling"$'\n'"$(cat "$dir/ssh.log")"
       [ -n "$last_observe_line" ] && [ -n "$relaunch_line" ] && [ "$last_observe_line" -lt "$relaunch_line" ] \
         || fail "remote $running relaunched before its $start transition completed"$'\n'"$(cat "$dir/ssh.log")"
       [ "$(grep -c '^fm-remote-secondmate-control.sh observe sm2$' "$dir/ssh.log")" -eq "$expected_samples" ] \
@@ -758,43 +739,28 @@ test_remote_running_pi_settles_before_harness_change() {
   pass 'Remote Pi and Pi-signed mates settle from native idle or busy before profile changes'
 }
 
-test_pi_settle_bounds_local_and_remote_probes() {
-  local placement probe dir out rc started elapsed
-  for placement in local remote; do
-    for probe in observe composer; do
-      dir=$(new_case "settle-$placement-$probe-timeout")
-      if [ "$placement" = local ]; then
-        add_local_mate "$dir" sm1 pi
-        printf 'pi' > "$dir/fake/command"
-        arm_answer "$dir" sm1
-        printf '%s\n' "$probe" > "$dir/fake/hang-capture-probe"
-      else
-        setup_remote_case "$dir" sm1 ok pi
-        export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm1.status"
-        export FM_FAKE_SSH_HANG=$probe
-      fi
+test_pi_settle_bounds_remote_probes() {
+  local probe dir out rc started elapsed
+  for probe in route observe composer; do
+    dir=$(new_case "settle-remote-$probe-timeout")
+    setup_remote_case "$dir" sm1 ok pi
+    export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm1.status"
+    export FM_FAKE_SSH_HANG=$probe
 
-      started=$SECONDS
-      out=$(FM_TEST_SETTLE_WAIT=3 run_restart "$dir" sm1); rc=$?
-      elapsed=$((SECONDS - started))
-      unset FM_FAKE_ANSWER_STATUS FM_FAKE_SSH_HANG
+    started=$SECONDS
+    out=$(FM_TEST_SETTLE_WAIT=3 run_restart "$dir" sm1); rc=$?
+    elapsed=$((SECONDS - started))
+    unset FM_FAKE_ANSWER_STATUS FM_FAKE_SSH_HANG
 
-      expect_code 3 "$rc" "a hung $placement $probe probe must leave Pi unreached"$'\n'"$out"
-      [ "$elapsed" -le 3 ] || fail "a hung $placement $probe probe exceeded the settle deadline (${elapsed}s)"
-      assert_contains "$out" 'unreached: sm1:' "a hung $placement $probe probe was not reported as unreached"
-      if [ "$placement" = local ]; then
-        [ -e "$dir/fake/settle-$probe-probed" ] \
-          || fail "the hung local $probe probe did not run"
-        assert_no_grep '/quit' "$dir/fake/literal" "a hung local $probe probe allowed /quit"
-      else
-        assert_contains "$(cat "$dir/ssh.log")" "fm-remote-secondmate-control.sh $probe sm1" \
-          "the hung remote $probe probe did not run"
-        assert_no_grep 'fm-remote-secondmate-control.sh relaunch' "$dir/ssh.log" \
-          "a hung remote $probe probe reached relaunch"
-      fi
-    done
+    expect_code 3 "$rc" "a hung remote $probe probe must leave Pi unreached"$'\n'"$out"
+    [ "$elapsed" -le 3 ] || fail "a hung remote $probe probe exceeded the settle deadline (${elapsed}s)"
+    assert_contains "$out" 'unreached: sm1:' "a hung remote $probe probe was not reported as unreached"
+    assert_contains "$(cat "$dir/ssh.log")" "fm-remote-secondmate-control.sh $probe sm1" \
+      "the hung remote $probe probe did not run"
+    assert_no_grep 'fm-remote-secondmate-control.sh relaunch' "$dir/ssh.log" \
+      "a hung remote $probe probe reached relaunch"
   done
-  pass 'Local and remote Pi settle probes obey one deadline'
+  pass 'Remote Pi settle probes obey one deadline'
 }
 
 # --- T7: an unreachable host is unknown, never a claimed reload --------------
@@ -1294,7 +1260,7 @@ test_codex_max_warning_survives_local_and_remote_restarts
 test_native_ultra_restart_keeps_local_and_remote_profiles
 test_remote_mate_restarts_over_the_transport_hop
 test_remote_running_pi_settles_before_harness_change
-test_pi_settle_bounds_local_and_remote_probes
+test_pi_settle_bounds_remote_probes
 test_unreachable_host_is_reported_unknown
 test_concurrent_reply_cannot_release_persist_gate
 test_persist_waits_are_polled_together

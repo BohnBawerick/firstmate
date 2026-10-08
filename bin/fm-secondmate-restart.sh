@@ -67,7 +67,7 @@
 # Environment knobs:
 #   FM_SECONDMATE_PERSIST_WAIT  seconds to wait for one mate's persist answer (900)
 #   FM_SECONDMATE_PERSIST_POLL  seconds between checks of that answer (5)
-#   FM_SECONDMATE_SETTLE_WAIT   Pi settle seconds: 0 skips probes; active minimum 2 (120)
+#   FM_SECONDMATE_SETTLE_WAIT   Pi settle seconds: canonical 0 skips probes; active minimum 2 (120)
 #   FM_SECONDMATE_SETTLE_POLL   seconds between Pi composer reads (2)
 #
 # Exit status: 0 every named mate restarted; 3 at least one was nudged or left
@@ -113,10 +113,10 @@ SETTLE_POLL=${FM_SECONDMATE_SETTLE_POLL:-2}
 case "$PERSIST_WAIT" in ''|*[!0-9]*) echo "error: FM_SECONDMATE_PERSIST_WAIT must be a non-negative integer: $PERSIST_WAIT" >&2; exit 2 ;; esac
 case "$PERSIST_POLL" in ''|*[!0-9]*|0) echo "error: FM_SECONDMATE_PERSIST_POLL must be a positive integer: $PERSIST_POLL" >&2; exit 2 ;; esac
 case "$SETTLE_WAIT" in ''|*[!0-9]*) echo "error: FM_SECONDMATE_SETTLE_WAIT must be a non-negative integer: $SETTLE_WAIT" >&2; exit 2 ;; esac
-if [[ "$SETTLE_WAIT" =~ ^0*1$ ]]; then
-  echo "error: FM_SECONDMATE_SETTLE_WAIT must be 0 or an integer of at least 2 seconds: $SETTLE_WAIT" >&2
-  exit 2
-fi
+case "$SETTLE_WAIT" in
+  0|[2-9]|[1-9][0-9]*) ;;
+  *) echo "error: FM_SECONDMATE_SETTLE_WAIT must be canonical decimal 0 or an integer of at least 2 seconds: $SETTLE_WAIT" >&2; exit 2 ;;
+esac
 case "$SETTLE_POLL" in ''|*[!0-9]*|0) echo "error: FM_SECONDMATE_SETTLE_POLL must be a positive integer: $SETTLE_POLL" >&2; exit 2 ;; esac
 
 IDS=()
@@ -227,16 +227,34 @@ resolve_persist_reply() {
 # plane repeats the composer guard before /quit.
 wait_for_pi_settle() {  # <array-index>
   local i=$1 id backend target observation composer deadline stable=0 now remaining sleep_for
-  local probe_grace=1 probe_timeout
+  local route running_harness
+  local clock_reserve=0 probe_grace=1 probe_timeout
   id=${IDS[$i]}
   deadline=$(($(date +%s) + SETTLE_WAIT))
-  while :; do
-    if [ "${PLACEMENT[i]}" != remote ]; then
-      backend=$(fm_backend_of_meta "$STATE/$id.meta")
-      target=$(fm_backend_target_of_meta "$STATE/$id.meta")
-    fi
+  if [ "${PLACEMENT[i]}" = remote ]; then
     now=$(date +%s)
     remaining=$((deadline - now))
+    [ "$remaining" -gt "$probe_grace" ] || return 1
+    probe_timeout=$((remaining - probe_grace))
+    route=$( (fm_exec_timed "$probe_timeout" "$probe_grace" env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh route "$id") 2>/dev/null) || return 1
+    [ "$(printf '%s\n' "$route" | sed -n 's/^schema=//p' | tail -1)" = fm-remote-secondmate-control.v1 ] \
+      || return 1
+    running_harness=$(printf '%s\n' "$route" | sed -n 's/^harness=//p' | tail -1)
+    clock_reserve=1
+  else
+    running_harness=${RUNNING_HARNESS[i]}
+  fi
+  running_harness=$(fm_control_harness_family "$running_harness") || return 1
+  case "$running_harness" in pi|pi-signed) ;; *) return 0 ;; esac
+  if [ "${PLACEMENT[i]}" != remote ]; then
+    backend=$(fm_backend_of_meta "$STATE/$id.meta")
+    [ "$backend" = herdr ] || return 1
+    target=$(fm_backend_target_of_meta "$STATE/$id.meta")
+  fi
+  while :; do
+    now=$(date +%s)
+    remaining=$((deadline - now - clock_reserve))
     [ "$remaining" -gt "$probe_grace" ] || return 1
     probe_timeout=$((remaining - probe_grace))
     if [ "${PLACEMENT[i]}" = remote ]; then
@@ -250,7 +268,7 @@ wait_for_pi_settle() {  # <array-index>
         || observation=unknown
     fi
     now=$(date +%s)
-    remaining=$((deadline - now))
+    remaining=$((deadline - now - clock_reserve))
     [ "$remaining" -gt "$probe_grace" ] || return 1
     probe_timeout=$((remaining - probe_grace))
     if [ "${PLACEMENT[i]}" = remote ]; then
@@ -272,7 +290,7 @@ wait_for_pi_settle() {  # <array-index>
     else
       stable=0
     fi
-    remaining=$((deadline - now))
+    remaining=$((deadline - now - clock_reserve))
     [ "$remaining" -gt 0 ] || return 1
     sleep_for=$SETTLE_POLL
     [ "$sleep_for" -le "$remaining" ] || sleep_for=$remaining
@@ -283,14 +301,10 @@ wait_for_pi_settle() {  # <array-index>
 restart_mate() {  # <array-index>
   local i=$1 id restart_out restart_rc restart_reason ran_on
   id=${IDS[$i]}
-  case "${RUNNING_HARNESS[i]}" in
-    pi|pi-signed)
-      if ! wait_for_pi_settle "$i"; then
-        report_unreached "$id" "the confirmed mate did not settle to a readable empty input within ${SETTLE_WAIT}s; its conversation was preserved"
-        return
-      fi
-      ;;
-  esac
+  if ! wait_for_pi_settle "$i"; then
+    report_unreached "$id" "the confirmed mate could not be proven settled at a readable empty input within the ${SETTLE_WAIT}s bound; its conversation was preserved"
+    return
+  fi
   if [ "${PLACEMENT[i]}" = remote ]; then
     restart_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
       "$SCRIPT_DIR/fm-remote-secondmate-relaunch.sh" \
