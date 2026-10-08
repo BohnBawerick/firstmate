@@ -751,16 +751,20 @@ test_pi_settle_bounds_local_and_remote_probes() {
       fi
 
       started=$SECONDS
-      out=$(FM_TEST_SETTLE_WAIT=1 run_restart "$dir" sm1); rc=$?
+      out=$(FM_TEST_SETTLE_WAIT=3 run_restart "$dir" sm1); rc=$?
       elapsed=$((SECONDS - started))
       unset FM_FAKE_ANSWER_STATUS FM_FAKE_SSH_HANG
 
       expect_code 3 "$rc" "a hung $placement $probe probe must leave Pi unreached"$'\n'"$out"
-      [ "$elapsed" -lt 5 ] || fail "a hung $placement $probe probe exceeded the settle deadline (${elapsed}s)"
+      [ "$elapsed" -le 3 ] || fail "a hung $placement $probe probe exceeded the settle deadline (${elapsed}s)"
       assert_contains "$out" 'unreached: sm1:' "a hung $placement $probe probe was not reported as unreached"
       if [ "$placement" = local ]; then
+        [ -e "$dir/fake/settle-$probe-probed" ] \
+          || fail "the hung local $probe probe did not run"
         assert_no_grep '/quit' "$dir/fake/literal" "a hung local $probe probe allowed /quit"
       else
+        assert_contains "$(cat "$dir/ssh.log")" "fm-remote-secondmate-control.sh $probe sm1" \
+          "the hung remote $probe probe did not run"
         assert_no_grep 'fm-remote-secondmate-control.sh relaunch' "$dir/ssh.log" \
           "a hung remote $probe probe reached relaunch"
       fi

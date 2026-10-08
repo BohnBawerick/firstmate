@@ -223,32 +223,37 @@ resolve_persist_reply() {
 # plane repeats the composer guard before /quit.
 wait_for_pi_settle() {  # <array-index>
   local i=$1 id backend target observation composer deadline stable=0 now remaining sleep_for
+  local probe_grace=1 probe_timeout
   id=${IDS[$i]}
   deadline=$(($(date +%s) + SETTLE_WAIT))
   while :; do
-    now=$(date +%s)
-    remaining=$((deadline - now))
-    [ "$remaining" -gt 0 ] || return 1
-    if [ "${PLACEMENT[i]}" = remote ]; then
-      observation=$( (fm_exec_timed "$remaining" 1 env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-        "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh observe "$id") 2>/dev/null) || observation=unknown
-      now=$(date +%s)
-      remaining=$((deadline - now))
-      [ "$remaining" -gt 0 ] || return 1
-      composer=$( (fm_exec_timed "$remaining" 1 env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-        "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh composer "$id") 2>/dev/null) || composer=unknown
-    else
+    if [ "${PLACEMENT[i]}" != remote ]; then
       backend=$(fm_backend_of_meta "$STATE/$id.meta")
       target=$(fm_backend_target_of_meta "$STATE/$id.meta")
-      observation=$( (fm_exec_timed "$remaining" 1 env FM_SECONDMATE_SETTLE_PROBE=observe \
+    fi
+    now=$(date +%s)
+    remaining=$((deadline - now))
+    [ "$remaining" -gt "$probe_grace" ] || return 1
+    probe_timeout=$((remaining - probe_grace))
+    if [ "${PLACEMENT[i]}" = remote ]; then
+      observation=$( (fm_exec_timed "$probe_timeout" "$probe_grace" env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+        "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh observe "$id") 2>/dev/null) || observation=unknown
+    else
+      observation=$( (fm_exec_timed "$probe_timeout" "$probe_grace" env FM_SECONDMATE_SETTLE_PROBE=observe \
         FM_HOME="$FM_HOME" FM_ROOT_OVERRIDE="$FM_ROOT" \
         FM_STATE_OVERRIDE="$STATE" bash -c '. "$1"; fm_pending_reply_backend_observation "$2" "$3" "$4" "$5"' \
         _ "$SCRIPT_DIR/fm-pending-reply-lib.sh" "$backend" "$target" "fm-$id" "${RUNNING_HARNESS[i]}") 2>/dev/null) \
         || observation=unknown
-      now=$(date +%s)
-      remaining=$((deadline - now))
-      [ "$remaining" -gt 0 ] || return 1
-      composer=$( (fm_exec_timed "$remaining" 1 env FM_SECONDMATE_SETTLE_PROBE=composer \
+    fi
+    now=$(date +%s)
+    remaining=$((deadline - now))
+    [ "$remaining" -gt "$probe_grace" ] || return 1
+    probe_timeout=$((remaining - probe_grace))
+    if [ "${PLACEMENT[i]}" = remote ]; then
+      composer=$( (fm_exec_timed "$probe_timeout" "$probe_grace" env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+        "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh composer "$id") 2>/dev/null) || composer=unknown
+    else
+      composer=$( (fm_exec_timed "$probe_timeout" "$probe_grace" env FM_SECONDMATE_SETTLE_PROBE=composer \
         FM_HOME="$FM_HOME" FM_ROOT_OVERRIDE="$FM_ROOT" \
         FM_STATE_OVERRIDE="$STATE" bash -c '. "$1"; fm_backend_composer_state "$2" "$3" "$4"' \
         _ "$SCRIPT_DIR/fm-backend.sh" "$backend" "$target" "fm-$id") 2>/dev/null) || composer=unknown
