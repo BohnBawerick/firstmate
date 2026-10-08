@@ -130,6 +130,10 @@ case "${1:-}" in
     done
     printf 'fakepane\n'; exit 0 ;;
   capture-pane)
+    case "${FM_SECONDMATE_SETTLE_PROBE:-}" in
+      observe) : > "$D/settle-observe-probed" ;;
+      composer) : > "$D/settle-composer-probed" ;;
+    esac
     if [ -f "$D/hang-capture-probe" ] \
        && [ "${FM_SECONDMATE_SETTLE_PROBE:-}" = "$(cat "$D/hang-capture-probe")" ]; then
       /bin/sleep 30
@@ -460,9 +464,12 @@ test_pi_waits_for_settled_input() {
   printf 'pi' > "$dir/fake/command"
   arm_answer "$dir" sm1
   printf '1000\n' > "$dir/fake/composer-unknown-count"
-  out=$(FM_TEST_SETTLE_WAIT=0 run_restart "$dir" sm1); rc=$?
+  printf '100\n' > "$dir/fake/fake-epoch"
+  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=1 run_restart "$dir" sm1); rc=$?
   expect_code 3 "$rc" "an unreadable Pi input must never be overwritten"$'\n'"$out"
   assert_contains "$out" 'unreached: sm1:' 'unsettled Pi must be reported honestly'
+  assert_present "$dir/fake/settle-observe-probed" 'the busy Pi activity probe never ran'
+  assert_present "$dir/fake/settle-composer-probed" 'the busy Pi composer probe never ran'
   assert_no_grep '/quit' "$dir/fake/literal" 'an unsettled Pi was sent /quit'
 
   dir=$(new_case pi-typed-draft)
@@ -470,8 +477,11 @@ test_pi_waits_for_settled_input() {
   printf 'pi' > "$dir/fake/command"
   arm_answer "$dir" sm1
   : > "$dir/fake/composer-draft"
-  out=$(FM_TEST_SETTLE_WAIT=0 run_restart "$dir" sm1); rc=$?
+  printf '100\n' > "$dir/fake/fake-epoch"
+  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=1 run_restart "$dir" sm1); rc=$?
   expect_code 3 "$rc" "typed Pi text must remain untouched"$'\n'"$out"
+  assert_present "$dir/fake/settle-observe-probed" 'the typed Pi activity probe never ran'
+  assert_present "$dir/fake/settle-composer-probed" 'the typed Pi composer probe never ran'
   assert_no_grep '/quit' "$dir/fake/literal" 'typed Pi text was overwritten'
   pass 'Pi confirmation waits for a readable empty input; busy and typed panes keep their conversation'
 }
