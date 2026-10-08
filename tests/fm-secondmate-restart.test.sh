@@ -531,18 +531,16 @@ test_pi_settle_minimum_allows_local_herdr() {
 }
 
 test_pi_settle_requires_semantic_idle() {
-  local dir out rc started elapsed
+  local dir out rc
   dir=$(new_case pi-calm-hidden-busy)
   add_local_mate "$dir" sm1 pi
   printf 'pi' > "$dir/fake/command"
   arm_answer "$dir" sm1
   : > "$dir/fake/calm-hidden-working"
-  started=$SECONDS
   out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=120 run_restart "$dir" sm1); rc=$?
-  elapsed=$((SECONDS - started))
   expect_code 3 "$rc" "a Calm-hidden Pi turn needs semantic idle proof"$'\n'"$out"
   assert_contains "$out" 'unreached: sm1:' 'Calm-hidden Pi must be reported honestly'
-  [ "$elapsed" -lt 2 ] || fail "local tmux Pi containment waited ${elapsed}s for an impossible idle proof"
+  assert_absent "$dir/fake/sleep-args" 'local tmux Pi containment entered the settle polling loop'
   assert_absent "$dir/fake/settle-observe-probed" 'local tmux Pi containment ran the activity probe'
   assert_absent "$dir/fake/settle-composer-probed" 'local tmux Pi containment ran the composer probe'
   assert_no_grep '/quit' "$dir/fake/literal" 'a Calm-hidden Pi turn was sent /quit'
