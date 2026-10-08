@@ -990,10 +990,12 @@ test_detailed_persist_replies() {
     'done|open records written down - data/tasks.md filed|0' \
     'done|open records written down! Safe to restart.|0' \
     'done|open records written down; not holding any unrecorded work|0' \
+    'done|open records written down; no open work remains unrecorded|0' \
     'blocked|open records written down|3' \
     'done|the open records written down|3' \
     'done|not all open records written down|3' \
     'done|open records written down, but one record remains to be filed|3' \
+    'done|open records written down, but one task could not be saved|3' \
     'done|open records written downstairs|3'; do
     verb=${reply%%|*}
     reply=${reply#*|}

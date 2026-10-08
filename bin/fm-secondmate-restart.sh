@@ -167,7 +167,8 @@ report_unreached() {  # <id> <reason>
 }
 
 resolve_persist_reply() {
-  local i=$1 line verb payload normalized detail contradicts j depth
+  local i=$1 line verb payload normalized detail contradicts subject incomplete clause_start
+  local except_clause partial_clause incomplete_clause remaining_clause j depth
   fm_pending_reply_try_resolve "$STATE" "${CORR[i]}" || return 1
   line=$(fm_pending_reply_find_resolve_line "$STATE/${IDS[i]}.status" "${CORR[i]}")
   status_line_verb "$line" verb
@@ -194,8 +195,18 @@ resolve_persist_reply() {
   pending_count=$((pending_count - 1))
   normalized=$(printf '%s' "$payload" | LC_ALL=C tr '[:upper:]' '[:lower:]')
   detail=${normalized#open records written down}
+  subject='(open[[:space:]]+)?(record|records|task|tasks|work)'
+  incomplete='((remain|remains)([[:space:]]+(unfiled|unsaved|unrecorded|to[[:space:]]+be[[:space:]]+(filed|saved|recorded|persisted|written[[:space:]]+down)))?|could[[:space:]]+not[[:space:]]+be[[:space:]]+(filed|saved|recorded|persisted|written[[:space:]]+down)|(is|are)[[:space:]]+(still[[:space:]]+)?(unfiled|unsaved|unrecorded))'
+  clause_start='(^|[[:punct:]])[[:space:]]*'
+  except_clause="${clause_start}except[[:space:]]+[^.;:]*(record|records|task|tasks|work)([^[:alnum:]]|$)"
+  partial_clause="${clause_start}not[[:space:]]+(all|every)[[:space:]][^.;:]*(written[[:space:]]+down|filed|saved|recorded|persisted)([^[:alnum:]]|$)"
+  incomplete_clause="${clause_start}((but|however|and)[[:space:]]+)?((an?|one|some|several|the|[1-9][0-9]*)[[:space:]]+)?${subject}[[:space:]]+${incomplete}"
+  remaining_clause="${clause_start}((but|however|and)[[:space:]]+)?((an?|one|some|several|the|[1-9][0-9]*)[[:space:]]+)?remaining[[:space:]]+${subject}"
   contradicts=0
-  if [[ "$detail" =~ (^|[^[:alnum:]])(except[[:space:]]+[^.;:]*(record|records|task|tasks|work)([^[:alnum:]]|$)|(remaining[[:space:]]+(open[[:space:]]+)?(record|records|task|tasks|work)([^[:alnum:]]|$))|((open[[:space:]]+)?(record|records|task|tasks|work)[[:space:]]+(remain|remains)([^[:alnum:]]|$))|((open[[:space:]]+)?(record|records|task|tasks|work)[[:space:]]+(is|are)[[:space:]]+(still[[:space:]]+)?(unfiled|unsaved|unrecorded)([^[:alnum:]]|$))|(not[[:space:]]+(all|every)[[:space:]][^.;:]*(written[[:space:]]+down|filed|saved|recorded|persisted)([^[:alnum:]]|$))) ]]; then
+  if [[ "$detail" =~ $except_clause ]] \
+    || [[ "$detail" =~ $partial_clause ]] \
+    || [[ "$detail" =~ $incomplete_clause ]] \
+    || [[ "$detail" =~ $remaining_clause ]]; then
     contradicts=1
   fi
   if [ "$verb" = 'done' ] \
