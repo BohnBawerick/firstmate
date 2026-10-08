@@ -1,0 +1,23 @@
+FM_TEST_BEGIN 2026-10-08T18:15:47Z tests/fm-timeout-lib.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - fm_exec_timed passes a command's status and output through unchanged
+ok - fm_exec_timed runs when BASHPID is unavailable
+Terminated                 "$@"
+ok - fm_run_timed reports 124 when the bound TERMs a read whose wrapper recorded 143
+ok - fm_run_timed passes a natural exit through when the bound fired after completion
+ok - fm_exec_timed sends TERM at the bound and a cooperative command ends there
+ok - fm_exec_timed kills a TERM-ignoring command once the grace has passed
+ok - fm_exec_timed replaces the calling shell instead of wrapping it
+ok - fm_exec_timed reaps a descendant that would otherwise hold the output past the bound
+ok - fm_exec_timed forwards a TERM it receives to the bounded command
+ok - fm_exec_timed ends the command when its named owner is already gone
+ok - fm_exec_timed ends the command when its owner dies during watchdog startup
+ok - fm_exec_timed prefers its perl watchdog over timeout
+ok - fm_exec_timed refuses instead of running unbounded when no mechanism exists
+ok - fm_exec_timed rejects a zero, padded, non-numeric, or missing bound and a missing command
+tests/fm-timeout-lib.test.sh: line 28: 2921997 Killed                     ( . "$ROOT/bin/fm-timeout-lib.sh"; PATH=$path fm_exec_timed "$@" )
+ok - fm_exec_timed's GNU timeout fallback kills a TERM-ignoring command once the grace has passed
+ok - fm_timed_out accepts 124 and 137 and nothing else
+FM_TEST_END 2026-10-08T18:15:58Z tests/fm-timeout-lib.test.sh exit=0 duration_ms=10848 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=10927
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=10848 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-timeout-lib.test.sh duration_ms=10848

@@ -1,0 +1,38 @@
+FM_TEST_BEGIN 2026-10-08T18:06:28Z tests/fm-secondmate-restart.test.sh family=secondmate expected_gate_skip=none
+ok - detailed confirmations restart; other replies preserve the conversation
+ok - plain correlated replies release the persist gate only after affirmative acknowledgment
+ok - documented helper acknowledgments permit restart at both reply boundaries
+ok - unsaved or incomplete replies retain the conversation at both restart decisions
+ok - T1 persist is a gate, and asks for open records and task status only
+ok - T2 the mate persists before anything is stopped
+ok - T2b an arrived persist answer is resolved before timeout
+ok - T2c a reply between the preliminary scan and timeout decision wins
+ok - Pi settle wait accepts zero containment and rejects invalid or short values
+ok - The derived minimum permits two stable local Herdr samples
+ok - Local tmux Pi fails closed immediately without semantic idle proof
+ok - Pi settle samples and sleeps stay inside the configured deadline
+ok - T3 a runtime that cannot prove a restart falls back to the re-read message
+ok - T4 every named mate is accounted for, including one this home does not know
+ok - T5 a refused restart leaves the mate running and reports an unknown outcome
+ok - T8 a local restart re-resolves this home's pin and reports the runtime that came up
+ok - Codex max downgrade warnings survive local and remote restart capture
+ok - native Ultra survives local restart and the remote restart transport
+ok - T6 a remote mate restarts through the host-local control plane over the fm-on hop
+ok - Zero settle wait contains only host-verified remote Pi harnesses
+ok - The derived minimum covers real remote route, probe, and poll timing
+ok - Remote Pi and Pi-signed mates settle from native idle or busy before profile changes
+ok - Remote Pi settle probes obey one deadline
+ok - T7 an unreachable host is reported honestly instead of claimed as reloaded
+ok - T9 the persist gate retains its explicitly allocated correlation
+ok - T10 pending persist answers are polled as one fleet
+ok - T11 post-stop restart failure is never misreported as a nudge
+ok - T12 relaunch waits do not block fleet persistence polling
+ok - T13 a dead restart worker cannot hang the parent
+ok - T14 a result published during reaping is honored
+ok - T15 an already-current live mate is named by the update pass and genuinely restarted
+ok - T16 an already-current mate with an unprovable runtime keeps the honest nudge path
+# all fm-secondmate-restart tests passed
+FM_TEST_END 2026-10-08T18:09:10Z tests/fm-secondmate-restart.test.sh exit=0 duration_ms=162319 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=162389
+FM_TEST_SUMMARY_FAMILY family=secondmate count=1 duration_ms=162319 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-secondmate-restart.test.sh duration_ms=162319

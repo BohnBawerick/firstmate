@@ -1,0 +1,54 @@
+2026-10-08T18:13:07Z live validation start commit=0654937011db40e7613b2c4bee6ac29d726e5ba3
+Note: switching to '0654937011db40e7613b2c4bee6ac29d726e5ba3'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+2026-10-08T18:13:08Z Herdr session=fm-lab-pi-restart-sol-2809294-25792 pi_version=1.0.4 model=openai-codex/gpt-6-sol
+warning: secondmate live-pi-sol sync skipped before launch: primary default-branch commit cannot be resolved
+2026-10-08T18:13:34Z Herdr startup target=fm-lab-pi-restart-sol-2809294-25792:w1:p2 agent_status=idle agent_session=unreported
+2026-10-08T18:13:34Z Herdr metadata harness=pi model=openai-codex/gpt-6-sol
+2026-10-08T18:13:52Z Herdr persistence_confirmation=done [corr=4d76336b62c984c8] [at=1791483232]: open records written down; isolated live restart check (via-helper)
+2026-10-08T18:13:52Z Herdr state_at_confirmation agent_status=working composer=unknown restart_process_alive=yes
+HERDR_MIDTURN_VIEW: 
+HERDR_MIDTURN_VIEW:  read /tmp/fm-live-pi-restart.fKhKAa/parent/state/live-pi-sol.inbox/001.msg
+HERDR_MIDTURN_VIEW: 
+HERDR_MIDTURN_VIEW: 
+HERDR_MIDTURN_VIEW:  Thinking...
+HERDR_MIDTURN_VIEW: 
+HERDR_MIDTURN_VIEW: 
+HERDR_MIDTURN_VIEW:  read bin/fm-secondmate-report.sh:1-90
+HERDR_MIDTURN_VIEW: 
+HERDR_MIDTURN_VIEW: 
+HERDR_MIDTURN_VIEW: 
+HERDR_MIDTURN_VIEW:  $ FM_HOME=/tmp/fm-live-pi-restart.fKhKAa/mate bin/fm-secondmate-report.sh done 4d76336b62c984c8 'open records written
+HERDR_MIDTURN_VIEW:  down; isolated live restart check' (timeout 20s)
+HERDR_MIDTURN_VIEW: 
+HERDR_MIDTURN_VIEW:  (no output)
+HERDR_MIDTURN_VIEW: 
+HERDR_MIDTURN_VIEW:  Took 0.1s
+HERDR_MIDTURN_VIEW: 
+HERDR_MIDTURN_VIEW: 
+HERDR_MIDTURN_VIEW: ── ⠋ Working ───────────────────────────────────────────────────────────────────────────────────────────────────────────
+HERDR_MIDTURN_VIEW: 
+HERDR_MIDTURN_VIEW: ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+HERDR_MIDTURN_VIEW: /tmp/fm-live-pi-restart.fKhKAa/mate (detached)
+HERDR_MIDTURN_VIEW: ↑53k ↓638 R380k CH97.6% $0.189 (sub) 19.2%/272k (auto)                                   (openai-codex) gpt-6-sol • high
+HERDR_MIDTURN_VIEW: /tmp/fm-live-pi-restart.fKhKAa/mate ● 🐴 ponytail: ⚡ FULL
+HERDR_RESTART_OUTPUT: restarted: live-pi-sol (pi)
+HERDR_RESTART_OUTPUT: summary: 1 of 1 restarted, 0 nudged, 0 unreached
+2026-10-08T18:14:42Z Herdr replacement target=fm-lab-pi-restart-sol-2809294-25792:w1:p2 agent_status=idle agent_session=unreported
+2026-10-08T18:14:42Z Herdr replacement_metadata harness=pi model=openai-codex/gpt-6-sol
+2026-10-08T18:14:42Z PASS: real Herdr Pi on GPT Sol confirmed persistence mid-turn, remained running until settle, then restarted
