@@ -493,6 +493,15 @@ jobs:
             exit 1
           }
 
+          restart_output=$(FM_TEST_ONLY=test_pi_waits_for_settled_input \
+            /bin/bash tests/fm-secondmate-restart.test.sh)
+          printf '%s\n' "$restart_output"
+          restart_count=$(printf '%s\n' "$restart_output" | grep -c '^ok - ')
+          [ "$restart_count" -eq 1 ] || {
+            echo "::error::expected 1 secondmate settle bash 3.2 regression, got $restart_count"
+            exit 1
+          }
+
           backend_output=$(FM_TEST_ONLY=test_backend_source_requires_adapter_file \
             FM_TEST_BASH=/bin/bash \
             /bin/bash tests/fm-backend.test.sh)

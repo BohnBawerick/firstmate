@@ -1210,6 +1210,11 @@ test_plain_correlated_persistence_replies() {
   pass 'plain correlated replies release the persist gate only after affirmative acknowledgment'
 }
 
+if [ -n "${FM_TEST_ONLY:-}" ]; then
+  "$FM_TEST_ONLY"
+  exit 0
+fi
+
 test_detailed_persist_replies
 test_plain_correlated_persistence_replies
 test_documented_report_releases_persist_gate
