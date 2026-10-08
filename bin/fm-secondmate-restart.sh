@@ -67,7 +67,7 @@
 # Environment knobs:
 #   FM_SECONDMATE_PERSIST_WAIT  seconds to wait for one mate's persist answer (900)
 #   FM_SECONDMATE_PERSIST_POLL  seconds between checks of that answer (5)
-#   FM_SECONDMATE_SETTLE_WAIT   Pi settle seconds: canonical 0 skips probes; active minimum 2 (120)
+#   FM_SECONDMATE_SETTLE_WAIT   Pi settle seconds: 0 skips probes; active minimum derives from poll and probe bounds (120)
 #   FM_SECONDMATE_SETTLE_POLL   seconds between Pi composer reads (2)
 #
 # Exit status: 0 every named mate restarted; 3 at least one was nudged or left
@@ -110,14 +110,25 @@ PERSIST_WAIT=${FM_SECONDMATE_PERSIST_WAIT:-900}
 PERSIST_POLL=${FM_SECONDMATE_PERSIST_POLL:-5}
 SETTLE_WAIT=${FM_SECONDMATE_SETTLE_WAIT:-120}
 SETTLE_POLL=${FM_SECONDMATE_SETTLE_POLL:-2}
+SETTLE_PROBE_GRACE=1
+SETTLE_PROBE_TIMEOUT_MIN=1
+SETTLE_REMOTE_CLOCK_RESERVE=1
 case "$PERSIST_WAIT" in ''|*[!0-9]*) echo "error: FM_SECONDMATE_PERSIST_WAIT must be a non-negative integer: $PERSIST_WAIT" >&2; exit 2 ;; esac
 case "$PERSIST_POLL" in ''|*[!0-9]*|0) echo "error: FM_SECONDMATE_PERSIST_POLL must be a positive integer: $PERSIST_POLL" >&2; exit 2 ;; esac
 case "$SETTLE_WAIT" in ''|*[!0-9]*) echo "error: FM_SECONDMATE_SETTLE_WAIT must be a non-negative integer: $SETTLE_WAIT" >&2; exit 2 ;; esac
 case "$SETTLE_WAIT" in
-  0|[2-9]|[1-9][0-9]*) ;;
-  *) echo "error: FM_SECONDMATE_SETTLE_WAIT must be canonical decimal 0 or an integer of at least 2 seconds: $SETTLE_WAIT" >&2; exit 2 ;;
+  0|[1-9]|[1-9][0-9]*) ;;
+  *) echo "error: FM_SECONDMATE_SETTLE_WAIT must be canonical decimal 0 or a positive integer: $SETTLE_WAIT" >&2; exit 2 ;;
 esac
-case "$SETTLE_POLL" in ''|*[!0-9]*|0) echo "error: FM_SECONDMATE_SETTLE_POLL must be a positive integer: $SETTLE_POLL" >&2; exit 2 ;; esac
+case "$SETTLE_POLL" in
+  [1-9]|[1-9][0-9]*) ;;
+  *) echo "error: FM_SECONDMATE_SETTLE_POLL must be a canonical positive integer: $SETTLE_POLL" >&2; exit 2 ;;
+esac
+SETTLE_MIN_WAIT=$((SETTLE_POLL + SETTLE_PROBE_GRACE + SETTLE_PROBE_TIMEOUT_MIN + SETTLE_REMOTE_CLOCK_RESERVE))
+if [ "$SETTLE_WAIT" -ne 0 ] && [ "$SETTLE_WAIT" -lt "$SETTLE_MIN_WAIT" ]; then
+  echo "error: FM_SECONDMATE_SETTLE_WAIT must be 0 or at least $SETTLE_MIN_WAIT seconds when FM_SECONDMATE_SETTLE_POLL is $SETTLE_POLL: $SETTLE_WAIT" >&2
+  exit 2
+fi
 
 IDS=()
 for arg in "$@"; do
@@ -228,20 +239,21 @@ resolve_persist_reply() {
 wait_for_pi_settle() {  # <array-index>
   local i=$1 id backend target observation composer deadline stable=0 now remaining sleep_for
   local route running_harness
-  local clock_reserve=0 probe_grace=1 probe_timeout
+  local clock_reserve=0 probe_grace=$SETTLE_PROBE_GRACE probe_floor probe_timeout
+  probe_floor=$((probe_grace + SETTLE_PROBE_TIMEOUT_MIN))
   id=${IDS[$i]}
   deadline=$(($(date +%s) + SETTLE_WAIT))
   if [ "${PLACEMENT[i]}" = remote ]; then
     now=$(date +%s)
     remaining=$((deadline - now))
-    [ "$remaining" -gt "$probe_grace" ] || return 1
+    [ "$remaining" -ge "$probe_floor" ] || return 1
     probe_timeout=$((remaining - probe_grace))
     route=$( (fm_exec_timed "$probe_timeout" "$probe_grace" env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
       "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh route "$id") 2>/dev/null) || return 1
     [ "$(printf '%s\n' "$route" | sed -n 's/^schema=//p' | tail -1)" = fm-remote-secondmate-control.v1 ] \
       || return 1
     running_harness=$(printf '%s\n' "$route" | sed -n 's/^harness=//p' | tail -1)
-    clock_reserve=1
+    clock_reserve=$SETTLE_REMOTE_CLOCK_RESERVE
   else
     running_harness=${RUNNING_HARNESS[i]}
   fi
@@ -255,7 +267,7 @@ wait_for_pi_settle() {  # <array-index>
   while :; do
     now=$(date +%s)
     remaining=$((deadline - now - clock_reserve))
-    [ "$remaining" -gt "$probe_grace" ] || return 1
+    [ "$remaining" -ge "$probe_floor" ] || return 1
     probe_timeout=$((remaining - probe_grace))
     if [ "${PLACEMENT[i]}" = remote ]; then
       observation=$( (fm_exec_timed "$probe_timeout" "$probe_grace" env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
@@ -269,7 +281,7 @@ wait_for_pi_settle() {  # <array-index>
     fi
     now=$(date +%s)
     remaining=$((deadline - now - clock_reserve))
-    [ "$remaining" -gt "$probe_grace" ] || return 1
+    [ "$remaining" -ge "$probe_floor" ] || return 1
     probe_timeout=$((remaining - probe_grace))
     if [ "${PLACEMENT[i]}" = remote ]; then
       composer=$( (fm_exec_timed "$probe_timeout" "$probe_grace" env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \

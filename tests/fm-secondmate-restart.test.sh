@@ -154,19 +154,20 @@ fi
 exec /bin/date "$@"
 SH
   chmod +x "$fb/date"
-  cat > "$fb/sleep" <<'SH'
+cat > "$fb/sleep" <<'SH'
 #!/usr/bin/env bash
-if [ -f "$FM_FAKE_DIR/fake-epoch" ]; then
-  case "${1:-}" in
-    1|2)
+case "${1:-}" in
+  1|2)
+    printf '%s\n' "$1" >> "$FM_FAKE_DIR/sleep-args"
+    if [ -f "$FM_FAKE_DIR/fake-epoch" ]; then
       epoch=$(cat "$FM_FAKE_DIR/fake-epoch")
-      printf '%s\n' "$1" >> "$FM_FAKE_DIR/sleep-args"
       printf '%s\n' "$((epoch + $1))" > "$FM_FAKE_DIR/fake-epoch"
-      exit 0
-      ;;
-    *) ;;
-  esac
-fi
+    else
+      /bin/sleep 0.01
+    fi
+    exit 0
+    ;;
+esac
 case "${1:-}" in
   ''|*[!0-9]*) ;;
   *) /bin/sleep 0.01 ;;
@@ -174,6 +175,35 @@ esac
 exit 0
 SH
   chmod +x "$fb/sleep"
+  cat > "$fb/herdr" <<'SH'
+#!/usr/bin/env bash
+set -u
+printf '%s:%s\n' "${FM_SECONDMATE_SETTLE_PROBE:-other}" "$*" >> "$FM_FAKE_DIR/herdr.log"
+case "${1:-} ${2:-}" in
+  'status --json') printf '%s\n' '{"server":{"running":true}}' ;;
+  'agent get') printf '%s\n' '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}' ;;
+  'pane read')
+    printf '%s\n' 'transcript' '────────────────────────' '' '────────────────────────' 'footer'
+    ;;
+  'pane send-text')
+    payload=${4:-}
+    case "$payload" in
+      ': Firstmate instruction waiting: list '*)
+        if [ -f "$FM_FAKE_DIR/answer-inbox" ]; then
+          inbox=$(cat "$FM_FAKE_DIR/answer-inbox")
+          corr=$(cat "$inbox"/*.msg 2>/dev/null | grep -oE 'corr=[0-9a-f]{16}' | head -1)
+          [ -z "$corr" ] || printf 'done [%s]: open records written down\n' "$corr" \
+            >> "$(cat "$FM_FAKE_DIR/answer-status")"
+        fi
+        ;;
+    esac
+    printf '%s\n' '{}'
+    ;;
+  'pane get') printf '%s\n' '{"result":{"pane":{"pane_id":"w1:p1"}}}' ;;
+  *) printf '%s\n' '{}' ;;
+esac
+SH
+  chmod +x "$fb/herdr"
 }
 
 # new_case <name> -> a parent home with a stub session provider.
@@ -438,13 +468,25 @@ test_answer_between_resolution_and_timeout_wins() {
 # --- Pi: a done reply can precede the end of the same turn ------------------
 test_pi_settle_wait_configuration() {
   local dir out rc wait
-  for wait in 1 00 01 08 09; do
+  for wait in 00 01 08 09; do
     dir=$(new_case "pi-settle-wait-$wait")
     out=$(FM_TEST_SETTLE_WAIT=$wait run_restart "$dir" sm1); rc=$?
-    expect_code 2 "$rc" "a noncanonical or too-short Pi settle wait must be rejected"$'\n'"$out"
-    assert_contains "$out" 'must be canonical decimal 0 or an integer of at least 2 seconds' \
-      "an invalid Pi settle wait did not explain the valid range"
+    expect_code 2 "$rc" "a noncanonical Pi settle wait must be rejected"$'\n'"$out"
+    assert_contains "$out" 'must be canonical decimal 0 or a positive integer' \
+      "a noncanonical Pi settle wait did not explain the valid forms"
   done
+
+  dir=$(new_case pi-settle-below-minimum)
+  out=$(FM_TEST_SETTLE_WAIT=4 FM_TEST_SETTLE_POLL=2 run_restart "$dir" sm1); rc=$?
+  expect_code 2 "$rc" "a Pi settle wait one second below the derived minimum must be rejected"$'\n'"$out"
+  assert_contains "$out" 'must be 0 or at least 5 seconds when FM_SECONDMATE_SETTLE_POLL is 2' \
+    "a short Pi settle wait did not name its derived minimum"
+
+  dir=$(new_case pi-settle-poll-noncanonical)
+  out=$(FM_TEST_SETTLE_POLL=08 run_restart "$dir" sm1); rc=$?
+  expect_code 2 "$rc" "a noncanonical Pi settle poll must be rejected before arithmetic"$'\n'"$out"
+  assert_contains "$out" 'FM_SECONDMATE_SETTLE_POLL must be a canonical positive integer' \
+    "a noncanonical Pi settle poll did not produce its configuration error"
 
   dir=$(new_case pi-settle-no-probe)
   add_local_mate "$dir" sm1 pi
@@ -457,7 +499,30 @@ test_pi_settle_wait_configuration() {
   assert_absent "$dir/fake/settle-observe-probed" 'zero-second containment ran the activity probe'
   assert_absent "$dir/fake/settle-composer-probed" 'zero-second containment ran the composer probe'
   assert_no_grep '/quit' "$dir/fake/literal" 'zero-second containment sent /quit'
-  pass 'Pi settle wait accepts zero containment and rejects invalid decimal forms'
+  pass 'Pi settle wait accepts zero containment and rejects invalid or short values'
+}
+
+test_pi_settle_minimum_allows_local_herdr() {
+  local dir out rc idle_reads composer_reads
+  dir=$(new_case pi-settle-local-minimum)
+  add_local_mate "$dir" sm1 pi herdr
+  sed -i 's|^window=.*|window=default:w1:p1|' "$dir/home/state/sm1.meta"
+  printf 'herdr_session=default\nherdr_workspace=w1\nherdr_tab=t1\nherdr_pane=w1:p1\n' >> "$dir/home/state/sm1.meta"
+  : > "$dir/fake/herdr.log"
+  printf 'pi' > "$dir/fake/command"
+  arm_answer "$dir" sm1
+
+  out=$(FM_TEST_SETTLE_WAIT=4 FM_TEST_SETTLE_POLL=1 run_restart "$dir" sm1); rc=$?
+
+  case "$rc" in 0|3) ;; *) fail "a local Herdr Pi failed before or during relaunch at the derived minimum"$'\n'"$out" ;; esac
+  assert_not_contains "$out" 'could not be proven settled at a readable empty input' \
+    'a local idle Herdr Pi was rejected at the derived minimum'
+  idle_reads=$(grep -c '^observe:agent get ' "$dir/fake/herdr.log" || true)
+  composer_reads=$(grep -c '^composer:pane read .*--source visible --format ansi' "$dir/fake/herdr.log" || true)
+  [ "$idle_reads" -eq 2 ] || fail "local Herdr did not take two native idle samples at the derived minimum"
+  [ "$composer_reads" -eq 2 ] || fail "local Herdr did not read two composers at the derived minimum"
+  assert_grep '1' "$dir/fake/sleep-args" 'local Herdr did not separate its stable samples by the configured poll'
+  pass 'The derived minimum permits two stable local Herdr samples'
 }
 
 test_pi_settle_requires_semantic_idle() {
@@ -484,14 +549,15 @@ test_pi_settle_deadline_bounds_success_and_sleep() {
   dir=$(new_case pi-settle-deadline)
   setup_remote_case "$dir" sm1 ok pi
   export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm1.status"
+  printf '99\n' > "$dir/fake/remote-observe-busy-count"
   printf '100\n' > "$dir/fake/fake-epoch"
 
-  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=3 FM_TEST_SETTLE_POLL=4 run_restart "$dir" sm1); rc=$?
+  out=$(FM_TEST_PERSIST_POLL=9 FM_TEST_SETTLE_WAIT=5 FM_TEST_SETTLE_POLL=2 run_restart "$dir" sm1); rc=$?
   unset FM_FAKE_ANSWER_STATUS
 
   expect_code 3 "$rc" "Pi must not accept a second sample at the settle deadline"$'\n'"$out"
-  assert_grep '2' "$dir/fake/sleep-args" 'the settle loop did not sleep for its two-second remainder'
-  assert_no_grep '3' "$dir/fake/sleep-args" 'the settle sleep exceeded the remaining two-second budget'
+  [ "$(grep -c '^2$' "$dir/fake/sleep-args")" -eq 2 ] \
+    || fail 'the settle loop did not cap both sleeps to the available two-second intervals'
   assert_no_grep 'fm-remote-secondmate-control.sh relaunch' "$dir/ssh.log" \
     'a remote Pi mate was stopped after its settle deadline'
   pass 'Pi settle samples and sleeps stay inside the configured deadline'
@@ -699,7 +765,7 @@ test_remote_mate_restarts_over_the_transport_hop() {
 }
 
 test_remote_running_pi_settles_before_harness_change() {
-  local start running dir out rc expected_samples expected_observations route_line first_observe_line last_observe_line relaunch_line
+  local start running dir out rc expected_samples expected_observations settle_wait route_line first_observe_line last_observe_line relaunch_line
   for start in idle busy; do
     for running in pi pi-signed; do
       dir=$(new_case "remote-$running-$start-to-codex")
@@ -711,15 +777,16 @@ test_remote_running_pi_settles_before_harness_change() {
         printf '1\n' > "$dir/fake/remote-observe-busy-count"
         expected_samples=3
         expected_observations=$'observe-result=busy\nobserve-result=idle\nobserve-result=idle'
+        settle_wait=5
       else
         expected_samples=2
         expected_observations=$'observe-result=idle\nobserve-result=idle'
+        settle_wait=4
       fi
-
-      out=$(run_restart "$dir" sm2); rc=$?
+      out=$(FM_TEST_SETTLE_WAIT=$settle_wait FM_TEST_SETTLE_POLL=1 run_restart "$dir" sm2); rc=$?
       unset FM_FAKE_ANSWER_STATUS
 
-      expect_code 0 "$rc" "a remote running $running mate should settle from $start before changing harness"$'\n'"$out"
+      expect_code 0 "$rc" "a remote running $running mate should settle from $start before changing harness"$'\n'"$out"$'\n'"$(cat "$dir/ssh.log")"
       route_line=$(grep -n '^fm-remote-secondmate-control.sh route sm2$' "$dir/ssh.log" | head -1 | cut -d: -f1)
       first_observe_line=$(grep -n '^fm-remote-secondmate-control.sh observe sm2$' "$dir/ssh.log" | head -1 | cut -d: -f1)
       last_observe_line=$(grep -n '^fm-remote-secondmate-control.sh observe sm2$' "$dir/ssh.log" | tail -1 | cut -d: -f1)
@@ -748,12 +815,12 @@ test_pi_settle_bounds_remote_probes() {
     export FM_FAKE_SSH_HANG=$probe
 
     started=$SECONDS
-    out=$(FM_TEST_SETTLE_WAIT=3 run_restart "$dir" sm1); rc=$?
+    out=$(FM_TEST_SETTLE_WAIT=4 run_restart "$dir" sm1); rc=$?
     elapsed=$((SECONDS - started))
     unset FM_FAKE_ANSWER_STATUS FM_FAKE_SSH_HANG
 
     expect_code 3 "$rc" "a hung remote $probe probe must leave Pi unreached"$'\n'"$out"
-    [ "$elapsed" -le 3 ] || fail "a hung remote $probe probe exceeded the settle deadline (${elapsed}s)"
+    [ "$elapsed" -le 4 ] || fail "a hung remote $probe probe exceeded the settle deadline (${elapsed}s)"
     assert_contains "$out" 'unreached: sm1:' "a hung remote $probe probe was not reported as unreached"
     assert_contains "$(cat "$dir/ssh.log")" "fm-remote-secondmate-control.sh $probe sm1" \
       "the hung remote $probe probe did not run"
@@ -1250,6 +1317,7 @@ test_persist_precedes_restart
 test_arrived_answer_precedes_deadline_check
 test_answer_between_resolution_and_timeout_wins
 test_pi_settle_wait_configuration
+test_pi_settle_minimum_allows_local_herdr
 test_pi_settle_requires_semantic_idle
 test_pi_settle_deadline_bounds_success_and_sleep
 test_unprovable_runtime_falls_back
