@@ -67,7 +67,7 @@
 # Environment knobs:
 #   FM_SECONDMATE_PERSIST_WAIT  seconds to wait for one mate's persist answer (900)
 #   FM_SECONDMATE_PERSIST_POLL  seconds between checks of that answer (5)
-#   FM_SECONDMATE_SETTLE_WAIT   seconds to wait for a confirmed Pi mate to finish its turn (120)
+#   FM_SECONDMATE_SETTLE_WAIT   Pi settle seconds: 0 skips probes; active minimum 2 (120)
 #   FM_SECONDMATE_SETTLE_POLL   seconds between Pi composer reads (2)
 #
 # Exit status: 0 every named mate restarted; 3 at least one was nudged or left
@@ -113,6 +113,10 @@ SETTLE_POLL=${FM_SECONDMATE_SETTLE_POLL:-2}
 case "$PERSIST_WAIT" in ''|*[!0-9]*) echo "error: FM_SECONDMATE_PERSIST_WAIT must be a non-negative integer: $PERSIST_WAIT" >&2; exit 2 ;; esac
 case "$PERSIST_POLL" in ''|*[!0-9]*|0) echo "error: FM_SECONDMATE_PERSIST_POLL must be a positive integer: $PERSIST_POLL" >&2; exit 2 ;; esac
 case "$SETTLE_WAIT" in ''|*[!0-9]*) echo "error: FM_SECONDMATE_SETTLE_WAIT must be a non-negative integer: $SETTLE_WAIT" >&2; exit 2 ;; esac
+if [[ "$SETTLE_WAIT" =~ ^0*1$ ]]; then
+  echo "error: FM_SECONDMATE_SETTLE_WAIT must be 0 or an integer of at least 2 seconds: $SETTLE_WAIT" >&2
+  exit 2
+fi
 case "$SETTLE_POLL" in ''|*[!0-9]*|0) echo "error: FM_SECONDMATE_SETTLE_POLL must be a positive integer: $SETTLE_POLL" >&2; exit 2 ;; esac
 
 IDS=()

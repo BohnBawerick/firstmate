@@ -448,6 +448,30 @@ test_answer_between_resolution_and_timeout_wins() {
 }
 
 # --- Pi: a done reply can precede the end of the same turn ------------------
+test_pi_settle_wait_configuration() {
+  local dir out rc wait
+  for wait in 1 01; do
+    dir=$(new_case "pi-settle-wait-$wait")
+    out=$(FM_TEST_SETTLE_WAIT=$wait run_restart "$dir" sm1); rc=$?
+    expect_code 2 "$rc" "a one-second Pi settle wait must be rejected"$'\n'"$out"
+    assert_contains "$out" 'must be 0 or an integer of at least 2 seconds' \
+      "a one-second Pi settle wait did not explain the valid range"
+  done
+
+  dir=$(new_case pi-settle-no-probe)
+  add_local_mate "$dir" sm1 pi
+  printf 'pi' > "$dir/fake/command"
+  arm_answer "$dir" sm1
+  out=$(FM_TEST_SETTLE_WAIT=0 run_restart "$dir" sm1); rc=$?
+
+  expect_code 3 "$rc" "a zero-second Pi settle wait must fail closed"$'\n'"$out"
+  assert_contains "$out" 'unreached: sm1:' 'zero-second containment did not report the Pi mate as unreached'
+  assert_absent "$dir/fake/settle-observe-probed" 'zero-second containment ran the activity probe'
+  assert_absent "$dir/fake/settle-composer-probed" 'zero-second containment ran the composer probe'
+  assert_no_grep '/quit' "$dir/fake/literal" 'zero-second containment sent /quit'
+  pass 'Pi settle wait accepts zero containment and rejects one second'
+}
+
 test_pi_settle_requires_semantic_idle() {
   local dir out rc
   dir=$(new_case pi-calm-hidden-busy)
@@ -1259,6 +1283,7 @@ test_persist_gates_and_asks_only_for_open_records
 test_persist_precedes_restart
 test_arrived_answer_precedes_deadline_check
 test_answer_between_resolution_and_timeout_wins
+test_pi_settle_wait_configuration
 test_pi_settle_requires_semantic_idle
 test_pi_settle_deadline_bounds_success_and_sleep
 test_unprovable_runtime_falls_back
