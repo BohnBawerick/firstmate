@@ -624,11 +624,11 @@ A live remote second mate is restarted with `relaunch`, which runs the ordinary 
 The endpoint record there was written by a host-local launch and carries no remote placement.
 So the transaction, its checkpoint, and its postconditions are the local ones.
 
-The primary passes `<harness> <model|default|-> <effort|default|->` explicitly, using `default` when an axis has no parent pin.
-It passes them explicitly because `config/secondmate-harness` is not inherited into a second mate's home, and the file on that host belongs to a different home.
+The primary passes `<harness> <model|default|-> <effort|default|->` explicitly, resolved from that mate's own `config/secondmate-harness.d/<id>` pin, else `config/secondmate-harness`, and using `default` when an axis has no parent pin.
+It passes them explicitly because neither pin is inherited into a second mate's home, and the files on that host belong to a different home.
 Letting the far side re-resolve it would silently move the mate onto another runtime.
 SSH exit 255 leaves completion unknown and the route preserved, exactly as every other verb here.
-Move a live remote second mate onto a newly pinned harness, model, or effort with [`bin/fm-remote-secondmate-relaunch.sh`](../bin/fm-remote-secondmate-relaunch.sh) rather than calling `relaunch` through `fm-on.sh` directly: the host-local relaunch it drives can only rewrite the host's own endpoint record, so this wrapper reads the confirmed identity back from that record afterward and republishes the primary's own route metadata to match, the same way launch already records a fresh route.
+Move a live remote second mate onto a newly pinned harness, model, or effort with [`bin/fm-remote-secondmate-relaunch.sh <id>`](../bin/fm-remote-secondmate-relaunch.sh), which resolves that pin on the primary, rather than calling `relaunch` through `fm-on.sh` directly: the host-local relaunch it drives can only rewrite the host's own endpoint record, so this wrapper reads the confirmed identity back from that record afterward and republishes the primary's own route metadata to match, the same way launch already records a fresh route.
 
 ### Firstmate code convergence
 

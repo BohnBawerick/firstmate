@@ -176,7 +176,8 @@
 #   config/crew-dispatch.json is absent. When that file exists, crewmate/scout
 #   spawns require an explicit harness so firstmate cannot silently skip dispatch
 #   profile consultation. A --secondmate spawn is exempt and resolves the SECONDMATE
-#   harness (config/secondmate-harness -> config/crew-harness -> own), so the
+#   harness (config/secondmate-harness.d/<id> -> config/secondmate-harness ->
+#   config/crew-harness -> own; bin/fm-harness.sh secondmate <id>), so the
 #   secondmate-vs-crewmate split is DURABLE across every respawn (recovery,
 #   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp|agy|devin)
 #   overrides it for this spawn (either kind). A non-flag string containing
@@ -221,10 +222,11 @@
 #   all and relies on omp auto-discovering the home's tracked .omp/extensions/
 #   (verified, omp 18.1.11: a file named both ways loads twice, and discovery is
 #   cwd-only with no trust dialog).
-#   config/secondmate-harness may also carry an optional model and effort as extra
+#   The secondmate pin in effect (the per-mate file, else config/secondmate-harness)
+#   may also carry an optional model and effort as extra
 #   whitespace-separated tokens ("<harness> [<model>] [<effort>]"). For a
 #   --secondmate spawn, those tokens apply only when this spawn also resolves its
-#   harness from config/secondmate-harness. An explicit per-spawn --harness,
+#   harness from that pin. An explicit per-spawn --harness,
 #   positional harness arg, or raw launch command starts with clean model/effort
 #   defaults unless the caller also passes explicit --model/--effort flags. When
 #   the file governs the spawn, its model/effort tokens are re-resolved on every
@@ -895,7 +897,7 @@ spawn_remote_secondmate() {
   elif [ -n "$positional" ]; then
     harness=$positional
   else
-    harness=$("$FM_ROOT/bin/fm-harness.sh" secondmate)
+    harness=$("$FM_ROOT/bin/fm-harness.sh" secondmate "$id")
   fi
   case "$harness" in
     agy)
@@ -916,11 +918,11 @@ spawn_remote_secondmate() {
   effort=${EFFORT:--}
   if [ -z "$HARNESS_ARG" ] && [ -z "$positional" ]; then
     if [ "$MODEL_SET" -eq 0 ]; then
-      model=$("$SCRIPT_DIR/fm-harness.sh" secondmate-model)
+      model=$("$SCRIPT_DIR/fm-harness.sh" secondmate-model "$id")
       [ -n "$model" ] || model=-
     fi
     if [ "$EFFORT_SET" -eq 0 ]; then
-      effort=$("$SCRIPT_DIR/fm-harness.sh" secondmate-effort)
+      effort=$("$SCRIPT_DIR/fm-harness.sh" secondmate-effort "$id")
       [ -n "$effort" ] || effort=-
     fi
   fi
@@ -2213,16 +2215,18 @@ case "$ARG3" in
   ;;
 '')
   # No explicit harness: resolve from config. A secondmate AGENT launches on the
-  # secondmate harness (config/secondmate-harness -> config/crew-harness -> own);
+  # secondmate harness (config/secondmate-harness.d/<id> ->
+  # config/secondmate-harness -> config/crew-harness -> own);
   # every other kind uses the crew harness only when no dispatch profile file is
   # active. Resolving here on every spawn is what makes the split DURABLE - a
   # respawn (recovery, /updatefirstmate, restart) re-resolves, so
-  # config/secondmate-harness keeps governing secondmate launches across restarts.
+  # the secondmate pins keep governing secondmate launches across restarts.
   # The launch_template lookup below is the unverified-adapter guard for both
   # kinds: a harness with no template aborts the spawn.
   if [ "$KIND" = secondmate ]; then
-    HARNESS=$("$FM_ROOT/bin/fm-harness.sh" secondmate)
-    harness_src='config/secondmate-harness (falling back to config/crew-harness)'
+    HARNESS=$("$FM_ROOT/bin/fm-harness.sh" secondmate "$ID")
+    harness_src=$("$FM_ROOT/bin/fm-harness.sh" secondmate-source "$ID")
+    harness_src=${harness_src:-config/crew-harness}
   else
     if [ -f "$CONFIG/crew-dispatch.json" ]; then
       echo "error: config/crew-dispatch.json is active - pass an explicit harness resolved from the dispatch rules (the consultation backstop, so the rules are never silently skipped)." >&2
@@ -2345,7 +2349,8 @@ agy)
   ;;
 esac
 
-# config/secondmate-harness may carry optional model/effort tokens alongside the
+# The secondmate pin in effect (config/secondmate-harness.d/<id>, else
+# config/secondmate-harness) may carry optional model/effort tokens alongside the
 # harness ("<harness> [<model>] [<effort>]"). They apply only when this is a
 # --secondmate spawn and no explicit per-spawn harness/raw launch was supplied, so
 # the harness itself came from the secondmate config fallback chain. Resolving
@@ -2353,15 +2358,15 @@ esac
 # --model/--effort flags still win over the file's tokens.
 if [ "$KIND" = secondmate ] && [ -z "$ARG3" ]; then
   if [ "$MODEL_SET" -eq 0 ]; then
-    SM_MODEL=$("$SCRIPT_DIR/fm-harness.sh" secondmate-model)
+    SM_MODEL=$("$SCRIPT_DIR/fm-harness.sh" secondmate-model "$ID")
     [ -z "$SM_MODEL" ] || MODEL=$SM_MODEL
   fi
   if [ "$EFFORT_SET" -eq 0 ]; then
-    SM_EFFORT=$("$SCRIPT_DIR/fm-harness.sh" secondmate-effort)
+    SM_EFFORT=$("$SCRIPT_DIR/fm-harness.sh" secondmate-effort "$ID")
     if [ -n "$SM_EFFORT" ]; then
       case "$SM_EFFORT" in
       low | medium | high | xhigh | max | ultra) EFFORT=$SM_EFFORT ;;
-      *) echo "warning: config/secondmate-harness effort token '$SM_EFFORT' is not one of low, medium, high, xhigh, max, ultra; ignoring" >&2 ;;
+      *) echo "warning: $("$SCRIPT_DIR/fm-harness.sh" secondmate-source "$ID") effort token '$SM_EFFORT' is not one of low, medium, high, xhigh, max, ultra; ignoring" >&2 ;;
       esac
     fi
   fi

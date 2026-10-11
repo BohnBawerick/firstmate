@@ -3,16 +3,26 @@
 # Usage: fm-harness.sh                  print own harness: claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp|agy|devin|unknown
 #        fm-harness.sh crew             print the effective CREWMATE harness
 #                                        (config/crew-harness; "default" resolves to own)
-#        fm-harness.sh secondmate       print the harness the PRIMARY uses to launch
-#                                        SECONDMATE agents: config/secondmate-harness ->
+#        fm-harness.sh secondmate [<id>]
+#                                        print the harness the PRIMARY uses to launch
+#                                        SECONDMATE agents: config/secondmate-harness.d/<id>
+#                                        (when <id> is given) -> config/secondmate-harness ->
 #                                        config/crew-harness -> own. "default" or absent
-#                                        defers to the crew resolution, so an unset
-#                                        secondmate-harness behaves exactly as the crew
-#                                        harness did before this knob existed.
-#        fm-harness.sh secondmate-model    print the optional MODEL token from
-#                                        config/secondmate-harness, or empty when absent.
-#        fm-harness.sh secondmate-effort   print the optional EFFORT token from
-#                                        config/secondmate-harness, or empty when absent.
+#                                        defers to the next link, so an unset pin behaves
+#                                        exactly as the crew harness did before these
+#                                        knobs existed.
+#        fm-harness.sh secondmate-model [<id>]
+#                                        print the optional MODEL token from the pin
+#                                        file in effect, or empty when absent.
+#        fm-harness.sh secondmate-effort [<id>]
+#                                        print the optional EFFORT token from the pin
+#                                        file in effect, or empty when absent.
+#        fm-harness.sh secondmate-source [<id>]
+#                                        print the config-relative path of the pin file
+#                                        in effect (config/secondmate-harness.d/<id> or
+#                                        config/secondmate-harness), or empty when
+#                                        neither names a harness, so a caller can name
+#                                        the file it refuses or warns about.
 #        fm-harness.sh validate-native-effort <harness> <model> <effort>
 #                                        Refuse ultra unless the harness is pi or
 #                                        pi-signed and the model explicitly names
@@ -42,8 +52,13 @@
 # config/secondmate-harness format: a single line "<harness> [<model>] [<effort>]",
 # whitespace-separated. A bare "<harness>" (today's format) behaves exactly as before:
 # harness only, no model/effort. Only the first non-empty, non-comment line is parsed.
-# Model/effort come ONLY from this file - config/crew-harness stays a bare adapter
-# name and is never parsed for a model.
+# config/secondmate-harness.d/<id> is the per-secondmate pin, in the same format.
+# When it names a harness, its whole line governs that mate and the shared file is
+# not consulted; when it is absent, blank, comment-only, or "default", the mate
+# resolves through config/secondmate-harness exactly as an unpinned mate does.
+# Model/effort come ONLY from the pin file in effect - config/crew-harness stays a
+# bare adapter name and is never parsed for a model. An <id> that is not a plain
+# secondmate id refuses (exit 2, nothing on stdout).
 # Detection evidence and precedence:
 #   Markers  - verified environment variables a harness publishes about itself.
 #              Cheap and unambiguous about WHICH harness set them, but they are
@@ -445,12 +460,12 @@ resolve_crew() {
   if [ -z "$crew" ] || [ "$crew" = "default" ]; then detect_own; else echo "$crew"; fi
 }
 
-# Print the first non-empty, non-comment line of config/secondmate-harness
-# (leading/trailing whitespace trimmed), or nothing when the file is absent or
-# holds only blank/comment lines.
-secondmate_line() {
-  local line
-  [ -f "$CONFIG/secondmate-harness" ] || return 0
+# Print the first non-empty, non-comment line of <file> (leading/trailing
+# whitespace trimmed), or nothing when the file is absent or holds only
+# blank/comment lines.
+pin_line() {
+  local file=$1 line
+  [ -f "$file" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line#"${line%%[![:space:]]*}"}"
     line="${line%"${line##*[![:space:]]}"}"
@@ -460,15 +475,49 @@ secondmate_line() {
     esac
     printf '%s\n' "$line"
     return 0
-  done < "$CONFIG/secondmate-harness"
+  done < "$file"
+}
+
+# Refuse an <id> that could name anything but one file under
+# config/secondmate-harness.d/.
+validate_secondmate_id() {
+  case "$1" in
+    ''|.|..|*[!A-Za-z0-9._-]*)
+      echo "error: invalid secondmate id '$1'; refusing to resolve its harness pin" >&2
+      return 2
+      ;;
+  esac
+}
+
+# Print the config-relative path of the pin file that governs secondmate <id>
+# (or the shared pin when no id is given): the per-mate file when its first
+# token names a harness other than "default", else the shared file when it
+# does, else nothing.
+secondmate_source() {
+  local id=${1:-} line
+  if [ -n "$id" ]; then
+    validate_secondmate_id "$id" || return 2
+    line=$(pin_line "$CONFIG/secondmate-harness.d/$id")
+    case "${line%%[[:space:]]*}" in
+      ''|default) ;;
+      *) printf 'config/secondmate-harness.d/%s\n' "$id"; return 0 ;;
+    esac
+  fi
+  line=$(pin_line "$CONFIG/secondmate-harness")
+  case "${line%%[[:space:]]*}" in
+    ''|default) ;;
+    *) printf 'config/secondmate-harness\n' ;;
+  esac
 }
 
 # Print the 1-based whitespace-separated token (1=harness, 2=model, 3=effort) of
-# the resolved secondmate_line, or nothing if the line or that field is absent.
+# the pin line in effect for secondmate <id>, or nothing if no pin names a
+# harness or that field is absent.
 secondmate_field() {
-  local idx=$1 line
-  line=$(secondmate_line)
-  [ -n "$line" ] || return 0
+  local idx=$1 id=${2:-} src line
+  src=$(secondmate_source "$id") || return 2
+  [ -n "$src" ] || return 0
+  line=$(pin_line "$CONFIG/${src#config/}")
   # shellcheck disable=SC2086  # deliberate word-splitting: tokenizing the line into fields
   set -- $line
   case "$idx" in
@@ -479,35 +528,34 @@ secondmate_field() {
 }
 
 # Resolve the harness the PRIMARY uses to launch SECONDMATE agents: a fallback
-# chain config/secondmate-harness -> config/crew-harness -> own. An absent or
-# "default" secondmate-harness token defers to the crew resolution, so an unset
-# secondmate-harness behaves exactly as before this knob existed (a secondmate
-# launched on the crew harness). config/secondmate-harness is the PRIMARY's own
-# setting and is never inherited downstream - secondmates do not spawn secondmates.
+# chain config/secondmate-harness.d/<id> -> config/secondmate-harness ->
+# config/crew-harness -> own. An absent or "default" pin defers to the next
+# link, so an unpinned mate behaves exactly as before these knobs existed (a
+# secondmate launched on the crew harness). Both pin files are the PRIMARY's
+# own settings and are never inherited downstream - secondmates do not spawn
+# secondmates.
 resolve_secondmate() {
   local sm
-  sm=$(secondmate_field 1)
-  if [ -z "$sm" ] || [ "$sm" = "default" ]; then sm=$(resolve_crew) || exit; fi
+  sm=$(secondmate_field 1 "${1:-}") || exit 2
+  [ -n "$sm" ] || { sm=$(resolve_crew) || exit; }
   echo "$sm"
 }
 
-# Print the optional model token (2nd field) from config/secondmate-harness, or
-# empty when the harness token is absent/"default" (harness-only file, same as
-# today) or when no model token is present.
+# Print the optional model token (2nd field) from the pin file in effect, or
+# empty when no pin names a harness (harness-only file, same as before) or when
+# no model token is present.
 resolve_secondmate_model() {
-  local sm
-  sm=$(secondmate_field 1)
-  [ -n "$sm" ] && [ "$sm" != "default" ] || return 0
-  secondmate_field 2
+  secondmate_field 2 "${1:-}" || exit 2
 }
 
-# Print the optional effort token (3rd field) from config/secondmate-harness,
-# the same way.
+# Print the optional effort token (3rd field) from the pin file in effect, the
+# same way.
 resolve_secondmate_effort() {
-  local sm
-  sm=$(secondmate_field 1)
-  [ -n "$sm" ] && [ "$sm" != "default" ] || return 0
-  secondmate_field 3
+  secondmate_field 3 "${1:-}" || exit 2
+}
+
+resolve_secondmate_source() {
+  secondmate_source "${1:-}" || exit 2
 }
 
 validate_native_effort() {
@@ -542,8 +590,9 @@ case "${1:-}" in
     harness_ancestry_descent "$descent_pid" ${1+"$@"}
     ;;
   crew) resolve_crew ;;
-  secondmate) resolve_secondmate ;;
-  secondmate-model) resolve_secondmate_model ;;
-  secondmate-effort) resolve_secondmate_effort ;;
+  secondmate) resolve_secondmate "${2:-}" ;;
+  secondmate-model) resolve_secondmate_model "${2:-}" ;;
+  secondmate-effort) resolve_secondmate_effort "${2:-}" ;;
+  secondmate-source) resolve_secondmate_source "${2:-}" ;;
   *) detect_own ;;
 esac

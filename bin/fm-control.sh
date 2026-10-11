@@ -66,7 +66,8 @@
 #              it refuses.
 #              An explicit `default` model or effort clears that
 #              axis for the replacement. With no explicit axis, a secondmate
-#              re-resolves its durable config/secondmate-harness pin (harness
+#              re-resolves its durable secondmate pin (config/secondmate-harness.d/<id>,
+#              else config/secondmate-harness: harness
 #              plus its optional model and effort tokens) exactly as any other
 #              respawn does, while a ship or scout keeps the exact adapter
 #              already recorded for it.
@@ -805,13 +806,13 @@ resolve_relaunch_profile() {
     # and scouts deliberately do NOT resolve config here: their harness comes
     # from firstmate's own dispatch-profile judgment at intake, and silently
     # re-resolving it would bypass that consultation.
-    CONFIG_HARNESS=$("$SCRIPT_DIR/fm-harness.sh" secondmate 2>/dev/null || true)
-    CONFIG_MODEL=$("$SCRIPT_DIR/fm-harness.sh" secondmate-model 2>/dev/null || true)
-    CONFIG_EFFORT=$("$SCRIPT_DIR/fm-harness.sh" secondmate-effort 2>/dev/null || true)
+    CONFIG_HARNESS=$("$SCRIPT_DIR/fm-harness.sh" secondmate "$ID" 2>/dev/null || true)
+    CONFIG_MODEL=$("$SCRIPT_DIR/fm-harness.sh" secondmate-model "$ID" 2>/dev/null || true)
+    CONFIG_EFFORT=$("$SCRIPT_DIR/fm-harness.sh" secondmate-effort "$ID" 2>/dev/null || true)
     case "$CONFIG_EFFORT" in
       ''|low|medium|high|xhigh|max|ultra) ;;
       *)
-        echo "warning: config/secondmate-harness effort token '$CONFIG_EFFORT' is not one of low, medium, high, xhigh, max, ultra; ignoring" >&2
+        echo "warning: $("$SCRIPT_DIR/fm-harness.sh" secondmate-source "$ID" 2>/dev/null || true) effort token '$CONFIG_EFFORT' is not one of low, medium, high, xhigh, max, ultra; ignoring" >&2
         CONFIG_EFFORT=
         ;;
     esac

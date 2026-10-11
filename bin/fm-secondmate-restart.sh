@@ -433,14 +433,14 @@ while [ "$i" -lt "${#IDS[@]}" ]; do
   if [ "${PLACEMENT[i]}" = remote ]; then
     # A local relaunch re-resolves this home's durable secondmate pin on its own,
     # which is the one owner of that resolution. A remote one cannot: it runs in
-    # a home whose config/secondmate-harness is deliberately NOT inherited, so
-    # the file on that host belongs to a different home and re-resolving there
+    # a home whose secondmate pins are deliberately NOT inherited, so the
+    # files on that host belong to a different home and re-resolving there
     # would silently move the mate onto another runtime. Resolve the pin here and
     # pass it explicitly, so both placements land on the same decision.
-    HARNESS[i]=$("$SCRIPT_DIR/fm-harness.sh" secondmate 2>/dev/null || true)
+    HARNESS[i]=$("$SCRIPT_DIR/fm-harness.sh" secondmate "$id" 2>/dev/null || true)
     [ -n "${HARNESS[i]}" ] || HARNESS[i]=$FM_SECONDMATE_RESTART_HARNESS
-    MODEL[i]=$("$SCRIPT_DIR/fm-harness.sh" secondmate-model 2>/dev/null || true)
-    EFFORT[i]=$("$SCRIPT_DIR/fm-harness.sh" secondmate-effort 2>/dev/null || true)
+    MODEL[i]=$("$SCRIPT_DIR/fm-harness.sh" secondmate-model "$id" 2>/dev/null || true)
+    EFFORT[i]=$("$SCRIPT_DIR/fm-harness.sh" secondmate-effort "$id" 2>/dev/null || true)
     case "${EFFORT[i]}" in
       ''|low|medium|high|xhigh|max|ultra) ;;
       *) EFFORT[i]="" ;;

@@ -1288,6 +1288,10 @@ jq --arg p "$ios_pane" \
 [ "$(remote_env "$ROOT/bin/fm-on.sh" ios fm-remote-secondmate-control.sh state ios)" = dead ] \
   || fail "the agent-free remote pane did not classify dead"
 
+# This mate carries its own pin beside the shared codex one, so the relaunch
+# must resolve that per-mate profile on the parent and carry it to the host.
+mkdir -p "$PARENT/config/secondmate-harness.d"
+printf 'codex pinned-mac-model high\n' > "$PARENT/config/secondmate-harness.d/ios"
 tabs_before=$(grep -c '^tab create' "$HERDR_LOG" || true)
 # exec keeps $! the watcher itself rather than the function's subshell, so a
 # kill reaches the process that probes and writes into the fixture root.
@@ -1324,6 +1328,13 @@ assert_grep 'remote_host=remote-mac' "$WATCH_STATE/ios.meta" \
   "the watcher relaunch dropped the remote host route"
 assert_grep 'herdr_session=fm-remote' "$remote_route_meta" \
   "the watcher relaunch did not re-record the pinned remote Herdr session"
+assert_grep 'model=pinned-mac-model' "$WATCH_STATE/ios.meta" \
+  "the watcher relaunch did not apply the mate's own pinned model"
+assert_grep 'effort=high' "$WATCH_STATE/ios.meta" \
+  "the watcher relaunch did not apply the mate's own pinned effort"
+assert_grep 'model=pinned-mac-model' "$remote_route_meta" \
+  "the host did not launch on the mate's own pinned model"
+rm -rf "$PARENT/config/secondmate-harness.d"
 assert_grep '- ios ' "$PARENT/data/secondmates.md" \
   "the watcher relaunch changed the registry route"
 [ "$(remote_env "$ROOT/bin/fm-on.sh" ios fm-remote-secondmate-control.sh state ios)" = alive ] \
@@ -1333,7 +1344,7 @@ assert_grep '- ios ' "$PARENT/data/secondmates.md" \
 # parent state out of scope, so fold both records back now.
 cp "$WATCH_STATE/ios.meta" "$PARENT/state/ios.meta"
 cp "$WATCH_STATE/.remote-inherit-ios.generation" "$PARENT/state/" 2>/dev/null || true
-pass "watch liveness: a dead remote secondmate is auto-relaunched on its own host with one wake"
+pass "watch liveness: a dead remote secondmate is auto-relaunched on its own host with one wake, on its own pin"
 
 # Host loss mid-supervision is never evidence of death: the same tick on an
 # unreachable route probes, preserves, and stays silent.

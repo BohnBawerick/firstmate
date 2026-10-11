@@ -772,6 +772,26 @@ test_remote_mate_restarts_over_the_transport_hop() {
   pass "T6 a remote mate restarts through the host-local control plane over the fm-on hop"
 }
 
+test_remote_mate_restarts_on_its_own_pin() {
+  local dir out rc relaunch_line
+  dir=$(new_case remote-per-mate-pin)
+  setup_remote_case "$dir" sm2 ok
+  export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm2.status"
+  # The mate's own pin wins over the shared one for that mate.
+  printf 'codex big-model high\n' > "$dir/home/config/secondmate-harness"
+  mkdir -p "$dir/home/config/secondmate-harness.d"
+  printf 'claude mate-model low\n' > "$dir/home/config/secondmate-harness.d/sm2"
+
+  out=$(run_restart "$dir" sm2); rc=$?
+  unset FM_FAKE_ANSWER_STATUS
+
+  expect_code 0 "$rc" "a remote mate with its own pin should restart"$'\n'"$out"
+  relaunch_line=$(grep '^fm-remote-secondmate-control.sh relaunch' "$dir/ssh.log" | head -1)
+  [ "$relaunch_line" = "fm-remote-secondmate-control.sh relaunch sm2 claude mate-model low" ] \
+    || fail "the host-local relaunch did not carry the mate's own pin: $relaunch_line"
+  pass "T6b a remote mate restarts on its own per-mate pin ahead of the shared pin"
+}
+
 test_zero_settle_wait_only_contains_remote_pi() {
   local running dir out rc
   for running in claude codex pi pi-signed; do
@@ -1393,6 +1413,7 @@ test_local_restart_uses_the_home_pin_and_reports_what_ran
 test_codex_max_warning_survives_local_and_remote_restarts
 test_native_ultra_restart_keeps_local_and_remote_profiles
 test_remote_mate_restarts_over_the_transport_hop
+test_remote_mate_restarts_on_its_own_pin
 test_zero_settle_wait_only_contains_remote_pi
 test_pi_settle_minimum_covers_real_remote_timing
 test_remote_running_pi_settles_before_harness_change

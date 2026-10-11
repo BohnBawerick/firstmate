@@ -42,6 +42,12 @@
 #      spawn only when the harness also resolves from that file, so the pin is
 #      durable across every respawn while explicit per-spawn harness/model/effort
 #      flags still win.
+#   D) Per-mate pin. config/secondmate-harness.d/<id> carries the same one-line
+#      format for one secondmate and, when it names a harness, governs that mate
+#      ahead of config/secondmate-harness; an absent or "default" per-mate pin
+#      leaves the mate on the shared resolution, explicit per-spawn flags still
+#      win, an unverified adapter in it is refused naming that file, and it is
+#      never inherited.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -171,6 +177,53 @@ extra whitespace between tokens is tolerated^grok   grok-4    xhigh^grok^grok-4^
 leading/trailing blank lines and a comment are skipped^# a comment\n\nclaude opus low\n^claude^opus^low
 ROWS
   pass "C1 fm-harness.sh secondmate-model/secondmate-effort resolve the optional tokens; bare harness stays empty (backward-compat)"
+}
+
+# ===========================================================================
+# D) per-mate pin resolution order
+# ===========================================================================
+# Each row writes the shared pin and the per-mate pin for id "mac" (ABSENT skips
+# a file) and resolves for <ask-id>, asserting harness, model, effort, and the
+# pin file reported as in effect. crew-harness is codex so the fall-through to
+# the crew link is visible.
+#   <label>^<shared>^<per-mate>^<ask-id>^<harness>^<model>^<effort>^<source>
+test_secondmate_per_mate_resolution_order() {
+  local label shared mate ask exp_h exp_m exp_e exp_src cfg got n rc
+  n=0
+  while IFS='^' read -r label shared mate ask exp_h exp_m exp_e exp_src; do
+    [ -n "$label" ] || continue
+    n=$((n + 1))
+    cfg="$TMP_ROOT/per-mate-$n/config"
+    mkdir -p "$cfg/secondmate-harness.d"
+    printf 'codex\n' > "$cfg/crew-harness"
+    [ "$shared" = ABSENT ] || printf '%b\n' "$shared" > "$cfg/secondmate-harness"
+    [ "$mate" = ABSENT ] || printf '%b\n' "$mate" > "$cfg/secondmate-harness.d/mac"
+    got=$(for verb in secondmate secondmate-model secondmate-effort secondmate-source; do
+      printf '%s|' "$(PATH="$BLIND_BIN:$BASE_PATH" CLAUDECODE=1 FM_CONFIG_OVERRIDE="$cfg" \
+        "$ROOT/bin/fm-harness.sh" "$verb" ${ask:+"$ask"})"
+    done)
+    [ "$got" = "$exp_h|$exp_m|$exp_e|$exp_src|" ] \
+      || fail "$label: resolved '$got', expected '$exp_h|$exp_m|$exp_e|$exp_src|'"
+  done <<'ROWS'
+per-mate pin wins over the shared pin^pi deepseek high^codex gpt-6.1-sol xhigh^mac^codex^gpt-6.1-sol^xhigh^config/secondmate-harness.d/mac
+per-mate pin governs as a whole line, not merged token by token^pi deepseek high^claude^mac^claude^^^config/secondmate-harness.d/mac
+another mate stays on the shared pin^pi deepseek high^codex gpt-6.1-sol xhigh^work^pi^deepseek^high^config/secondmate-harness
+no id resolves the shared pin exactly as before^pi deepseek high^codex gpt-6.1-sol xhigh^^pi^deepseek^high^config/secondmate-harness
+absent per-mate pin behaves as unpinned^pi deepseek high^ABSENT^mac^pi^deepseek^high^config/secondmate-harness
+default per-mate pin defers to the shared pin^pi deepseek high^# note\ndefault^mac^pi^deepseek^high^config/secondmate-harness
+per-mate pin over an absent shared pin^ABSENT^grok grok-4^mac^grok^grok-4^^config/secondmate-harness.d/mac
+both pins absent fall through to the crew harness^ABSENT^ABSENT^mac^codex^^^
+ROWS
+  for ask in '../mac' '.' 'a/b'; do
+    rc=0
+    got=$(PATH="$BLIND_BIN:$BASE_PATH" CLAUDECODE=1 FM_CONFIG_OVERRIDE="$cfg" \
+      "$ROOT/bin/fm-harness.sh" secondmate "$ask" 2>/dev/null) || rc=$?
+    [ "$rc" -eq 2 ] && [ -z "$got" ] \
+      || fail "id '$ask' should be refused with exit 2 and no harness, got rc=$rc '$got'"
+  done
+  ! fm_config_inherit_items | grep -F 'secondmate-harness' >/dev/null \
+    || fail "a secondmate pin appeared in the inherited-material set"
+  pass "D1 fm-harness.sh resolves per-mate pin -> shared pin -> crew; bad ids refused; pins never inherited"
 }
 
 # ===========================================================================
@@ -903,6 +956,83 @@ test_spawn_explicit_effort_overrides_secondmate_harness_token() {
   assert_contains "$launch" "--effort 'low'" "explicit-effort: launch did not use the explicit --effort"
   assert_not_contains "$launch" "--effort 'high'" "explicit-effort: launch leaked the file's effort token"
   pass "C6 spawn: an explicit --effort overrides config/secondmate-harness's effort token; the file's model token still applies"
+}
+
+# A per-mate pin governs its own mate's launch and leaves other mates on the
+# shared pin; explicit per-spawn flags still win over it.
+test_spawn_per_mate_pin_precedence() {
+  local w mac work meta launchlog launch
+  w="$TMP_ROOT/spawn-per-mate-pin"
+  mac="$w/mac"
+  work="$w/work"
+  mkdir -p "$w/home/config/secondmate-harness.d"
+  printf 'claude sonnet low\n' > "$w/home/config/secondmate-harness"
+  printf 'claude opus high\n' > "$w/home/config/secondmate-harness.d/mac"
+  make_seeded_home "$mac" mac
+  make_seeded_home "$work" work
+
+  launchlog="$w/mac.log"
+  spawn_secondmate_capture "$w" mac "$mac" "$launchlog" >/dev/null 2>&1
+  meta="$w/home/state/mac.meta"
+  [ "$(meta_field "$meta" model)" = opus ] || fail "per-mate: mac meta model not opus (got '$(meta_field "$meta" model)')"
+  [ "$(meta_field "$meta" effort)" = high ] || fail "per-mate: mac meta effort not high (got '$(meta_field "$meta" effort)')"
+  launch=$(cat "$launchlog")
+  assert_contains "$launch" "--model 'opus' --effort 'high'" "per-mate: mac launch did not use its own pin"
+
+  launchlog="$w/work.log"
+  spawn_secondmate_capture "$w" work "$work" "$launchlog" >/dev/null 2>&1
+  meta="$w/home/state/work.meta"
+  [ "$(meta_field "$meta" model)" = sonnet ] || fail "per-mate: unpinned mate did not stay on the shared pin (got '$(meta_field "$meta" model)')"
+  [ "$(meta_field "$meta" effort)" = low ] || fail "per-mate: unpinned mate effort not low"
+
+  rm -f "$w/home/state/mac.meta"
+  launchlog="$w/mac-explicit.log"
+  spawn_secondmate_capture "$w" mac "$mac" "$launchlog" --model haiku >/dev/null 2>&1
+  meta="$w/home/state/mac.meta"
+  [ "$(meta_field "$meta" model)" = haiku ] || fail "per-mate: explicit --model did not win over the per-mate pin"
+  [ "$(meta_field "$meta" effort)" = high ] || fail "per-mate: per-mate effort should still apply beside an explicit --model"
+
+  rm -f "$w/home/state/mac.meta"
+  launchlog="$w/mac-harness.log"
+  spawn_secondmate_capture "$w" mac "$mac" "$launchlog" --harness codex >/dev/null 2>&1
+  meta="$w/home/state/mac.meta"
+  [ "$(meta_field "$meta" harness)" = codex ] || fail "per-mate: explicit --harness did not win over the per-mate pin"
+  [ "$(meta_field "$meta" model)" = default ] || fail "per-mate: explicit --harness should start with a clean model"
+  pass "D2 spawn: a per-mate pin governs its mate, others keep the shared pin, explicit flags still win"
+}
+
+# An unverified adapter or invalid effort in a per-mate pin meets the same
+# guard as the shared pin, naming the per-mate file.
+test_spawn_per_mate_pin_refusals() {
+  local w sm fakebin err rc launchlog
+  w="$TMP_ROOT/spawn-per-mate-refusal"
+  sm="$w/sm"
+  mkdir -p "$w/home/config/secondmate-harness.d" "$w/home/state"
+  printf 'claude\n' > "$w/home/config/secondmate-harness"
+  printf 'bogus\n' > "$w/home/config/secondmate-harness.d/sm"
+  make_seeded_home "$sm" sm
+  fakebin=$(make_noop_tmux "$w/tmux")
+  err="$w/spawn.err"
+  rc=0
+  PATH="$fakebin:$BLIND_BIN:$BASE_PATH" TMUX='' CLAUDECODE=1 \
+    FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$w/home" HOME="$w/home/user-home" CLAUDE_CONFIG_DIR='' \
+    FM_STATE_OVERRIDE="$w/home/state" FM_DATA_OVERRIDE="$w/home/data" \
+    FM_PROJECTS_OVERRIDE="$w/home/projects" FM_CONFIG_OVERRIDE="$w/home/config" \
+    FM_SPAWN_NO_GUARD=1 \
+    "$ROOT/bin/fm-spawn.sh" sm "$sm" --secondmate >/dev/null 2>"$err" || rc=$?
+  [ "$rc" -ne 0 ] || fail "per-mate refusal: spawn on an unverified per-mate harness should fail"
+  assert_contains "$(cat "$err")" "no launch template for harness 'bogus' (from config/secondmate-harness.d/sm" \
+    "per-mate refusal: error must name the rejected harness and the per-mate file"
+  [ -e "$w/home/state/sm.meta" ] && fail "per-mate refusal: a meta was written despite the abort"
+
+  printf 'claude opus loud\n' > "$w/home/config/secondmate-harness.d/sm"
+  launchlog="$w/launch.log"
+  spawn_secondmate_capture "$w" sm "$sm" "$launchlog" > "$w/effort.out" 2>&1
+  assert_contains "$(cat "$w/effort.out")" "warning: config/secondmate-harness.d/sm effort token 'loud'" \
+    "per-mate refusal: an invalid per-mate effort must be named and ignored like the shared pin's"
+  [ "$(meta_field "$w/home/state/sm.meta" effort)" = default ] \
+    || fail "per-mate refusal: an invalid per-mate effort leaked into the launch"
+  pass "D3 spawn: an unverified or invalid per-mate pin meets the shared pin's guards, naming its file"
 }
 
 test_spawn_explicit_harness_does_not_inherit_secondmate_harness_tokens() {
@@ -2757,6 +2887,7 @@ SH
 test_harness_resolution
 test_cursor_marker_detection
 test_secondmate_model_effort_tokens
+test_secondmate_per_mate_resolution_order
 test_pi_signed_detection_and_session_lock_identity
 test_dash_leading_process_names_are_basename_operands
 test_propagate_lib
@@ -2774,6 +2905,8 @@ test_spawn_secondmate_harness_model_and_effort_tokens
 test_spawn_explicit_model_overrides_secondmate_harness_token
 test_spawn_explicit_effort_overrides_secondmate_harness_token
 test_spawn_explicit_harness_does_not_inherit_secondmate_harness_tokens
+test_spawn_per_mate_pin_precedence
+test_spawn_per_mate_pin_refusals
 test_codex_catalog_max_effort
 test_spawn_explicit_harness_uses_explicit_profile_axes
 test_spawned_secondmate_uses_its_harness_supervision_model
