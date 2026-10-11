@@ -800,7 +800,7 @@ resolve_relaunch_profile() {
   CONFIG_EFFORT=
   if [ "$KIND" = secondmate ]; then
     # A secondmate's harness, model, and effort are a durable configured pin
-    # that every respawn re-resolves (the secondmate-provisioning contract), so
+    # that every respawn re-resolves (docs/configuration.md owns the schema), so
     # a relaunch with no explicit harness picks up a newly configured one
     # instead of freezing whatever this incarnation happens to run. Crewmates
     # and scouts deliberately do NOT resolve config here: their harness comes

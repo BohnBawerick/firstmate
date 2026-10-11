@@ -231,8 +231,8 @@ cmd_launch() {
 # transport hop, not a second implementation.
 #
 # harness/model/effort come from the PARENT and are passed explicitly, because
-# config/secondmate-harness is deliberately not inherited into a secondmate home:
-# the copy on this host is a different home's file, so letting the control plane
+# secondmate launch pins are deliberately not inherited into a secondmate home:
+# the pins on this host are a different home's files, so letting the control plane
 # re-resolve it here would silently drift the mate onto another runtime. `default`
 # explicitly clears an absent parent pin; `-` remains its compatibility spelling.
 cmd_relaunch() {

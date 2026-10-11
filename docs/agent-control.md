@@ -66,7 +66,7 @@ A relaunch does take one session reference when the endpoint's own runtime recor
 
 1. **Resolve the profile.**
    An explicit `--harness`, `--model`, or `--effort` wins.
-   Otherwise a `kind=secondmate` task re-resolves its durable pin - its own `config/secondmate-harness.d/<id>` when that names a harness, else `config/secondmate-harness` - including the optional model and effort tokens, exactly as every other respawn does - so setting the pin and relaunching is the ordinary way to move a secondmate's runtime.
+   Otherwise a `kind=secondmate` task re-resolves its [configured profile](configuration.md#choose-the-secondmate-harness), so changing its pin and relaunching moves it onto the new profile.
    A ship or scout keeps the harness already recorded for it, because that harness comes from firstmate's dispatch-profile judgment at intake and must not be silently re-read from configuration.
    A recorded raw-command basename that differs from its resolved adapter cannot reproduce the command actually running, so relaunch refuses before the checkpoint unless the caller passes an explicit `--harness` to choose the replacement runtime deliberately.
    A harness change resets model and effort unless they are named too, because a model chosen for one adapter does not transfer to another.

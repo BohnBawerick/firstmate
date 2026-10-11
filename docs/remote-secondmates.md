@@ -624,11 +624,13 @@ A live remote second mate is restarted with `relaunch`, which runs the ordinary 
 The endpoint record there was written by a host-local launch and carries no remote placement.
 So the transaction, its checkpoint, and its postconditions are the local ones.
 
-The primary passes `<harness> <model|default|-> <effort|default|->` explicitly, resolved from that mate's own `config/secondmate-harness.d/<id>` pin, else `config/secondmate-harness`, and using `default` when an axis has no parent pin.
-It passes them explicitly because neither pin is inherited into a second mate's home, and the files on that host belong to a different home.
-Letting the far side re-resolve it would silently move the mate onto another runtime.
+The primary resolves the mate's [configured profile](configuration.md#choose-the-secondmate-harness) and passes it to the host explicitly.
+The pins belong to the primary; letting the host read its own configuration would select a different home's profile.
 SSH exit 255 leaves completion unknown and the route preserved, exactly as every other verb here.
-Move a live remote second mate onto a newly pinned harness, model, or effort with [`bin/fm-remote-secondmate-relaunch.sh <id>`](../bin/fm-remote-secondmate-relaunch.sh), which resolves that pin on the primary, rather than calling `relaunch` through `fm-on.sh` directly: the host-local relaunch it drives can only rewrite the host's own endpoint record, so this wrapper reads the confirmed identity back from that record afterward and republishes the primary's own route metadata to match, the same way launch already records a fresh route.
+Use [`bin/fm-remote-secondmate-relaunch.sh`](../bin/fm-remote-secondmate-relaunch.sh) to move a live remote second mate onto a new profile.
+With only the mate's id, it uses the primary's configured profile; explicit profile arguments override it, as documented in the script's header.
+The wrapper reads the identity confirmed by the host and republishes the primary's route metadata to match.
+Do not call `relaunch` through `fm-on.sh` directly, because that only updates the host's endpoint record and leaves the primary's record stale.
 
 ### Firstmate code convergence
 

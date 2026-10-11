@@ -111,7 +111,7 @@ Run `bin/fm-dispatch-resolve.sh` directly on the written brief in the same turn,
 The generic effort fallback and its precedence are owned by `harness-adapters`: explicit captain and standing configured effort win; otherwise use low for well-understood explicit work, xhigh for ambiguous investigation or design, intermediate levels proportionally, and never max without explicit captain preference.
 Do not add model-specific versions of that policy.
 
-`secondmate-provisioning` owns secondmate harness pins and inherited local material, while `harness-adapters` owns the harness consequences.
+`docs/configuration.md` owns secondmate harness pins, `secondmate-provisioning` owns inherited local material, and `harness-adapters` owns the harness consequences.
 Dispatch only on a backend that `fm-spawn` validates as spawn-capable; pass an explicit per-spawn `--backend` only under that exact task's own authority, never as later-task precedent (selection contract: [`docs/configuration.md`](docs/configuration.md) "Runtime backend").
 A missing dependency, authentication failure, unsupported backend, or version refusal is a blocker; never silently retry on another backend.
 
