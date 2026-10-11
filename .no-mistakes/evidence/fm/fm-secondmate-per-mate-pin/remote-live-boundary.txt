@@ -1,0 +1,12 @@
+Remote live validation constraints
+SSH tools available:
+/usr/bin/ssh
+/usr/bin/sshd
+
+Disposable container route checked:
+29.7.2
+
+Named-session helper rejects the session required by the remote launcher:
+fm-herdr-lab: session name must start with 'fm-lab-' and contain only letters, digits, underscores, or dashes: fm-remote
+
+The remote readiness owner bin/fm-remote-doctor.sh fixes its session to fm-remote. The approved helper refuses that session name. The remote entrypoint also clears HOME and resolves the OS account home, so a loopback SSH route cannot be redirected to disposable account state with FM_HOME alone. Docker is available, but a container would still use the prohibited session name. No remote lifecycle was attempted outside the approved lab contract.

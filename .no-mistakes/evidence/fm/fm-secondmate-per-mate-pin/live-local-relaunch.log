@@ -1,0 +1,5 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4MXE3H360EQJY80HJE7X9TZ/.test-pin-tmp/live/parent
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4MXE3H360EQJY80HJE7X9TZ/.test-pin-tmp/live/parent
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+warning: secondmate mac sync skipped before launch: 143d585745ec46c3b24d19c79e758be363642162 does not exist
+relaunched mac harness=codex from=codex model=gpt-6.1-sol effort=high backend=tmux endpoint=primary:fm-mac worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4MXE3H360EQJY80HJE7X9TZ/.test-pin-tmp/live/mac

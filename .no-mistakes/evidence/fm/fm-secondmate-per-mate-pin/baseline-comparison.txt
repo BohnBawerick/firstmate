@@ -1,0 +1,5 @@
+Shared pin: pi opencode-go/deepseek-v4.1-flash high
+Mac pin: codex gpt-6.1-sol medium
+Before this change, resolving mac: pi
+With this change, resolving mac: codex
+With this change, resolving work-pc: pi

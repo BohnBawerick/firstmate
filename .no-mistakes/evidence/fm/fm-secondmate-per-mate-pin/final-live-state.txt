@@ -1,0 +1,14 @@
+CLI version: codex-cli 0.162.0
+
+Mac profile:
+harness=codex
+model=gpt-6.1-sol
+effort=medium
+
+Explicit override profile:
+harness=codex
+model=gpt-6.1-sol
+effort=medium
+
+Mac child config pins absent: yes
+Explicit child config pins absent: yes

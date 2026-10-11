@@ -1,0 +1,18 @@
+mac-air -> codex|gpt-6.1-sol|low|config/secondmate-harness.d/mac-air
+work-pc -> pi|opencode-go/deepseek-v4.1-flash|high|config/secondmate-harness
+no id -> pi|opencode-go/deepseek-v4.1-flash|high|config/secondmate-harness
+Per-mate state: absent
+mac-air -> pi|opencode-go/deepseek-v4.1-flash|high|config/secondmate-harness
+Per-mate state: blank
+mac-air -> pi|opencode-go/deepseek-v4.1-flash|high|config/secondmate-harness
+Per-mate state: comment
+mac-air -> pi|opencode-go/deepseek-v4.1-flash|high|config/secondmate-harness
+Per-mate state: default
+mac-air -> pi|opencode-go/deepseek-v4.1-flash|high|config/secondmate-harness
+mac-air -> codex|||config/secondmate-harness.d/mac-air
+mac-air -> claude|||
+No pins or crew setting -> codex; own harness -> codex
+Invalid id ../outside: exit=2; error: invalid secondmate id '../outside'; refusing to resolve its harness pin
+Invalid id .: exit=2; error: invalid secondmate id '.'; refusing to resolve its harness pin
+Invalid id ..: exit=2; error: invalid secondmate id '..'; refusing to resolve its harness pin
+Invalid id nested/name: exit=2; error: invalid secondmate id 'nested/name'; refusing to resolve its harness pin

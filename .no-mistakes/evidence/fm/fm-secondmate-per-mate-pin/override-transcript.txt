@@ -1,0 +1,107 @@
+Command: fm-spawn.sh explicit --secondmate --harness codex --model gpt-6.1-sol --effort medium
+Conflicting per-mate pin: pi opencode-go/deepseek-v4.1-flash high
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4MXE3H360EQJY80HJE7X9TZ/.test-pin-tmp/live/parent
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+warning: secondmate explicit sync skipped before launch: cannot determine default branch
+spawned explicit harness=codex kind=secondmate mode=secondmate yolo=off window=primary:fm-explicit worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4MXE3H360EQJY80HJE7X9TZ/.test-pin-tmp/live/explicit
+
+Persisted launch profile:
+window=primary:fm-explicit
+harness=codex
+model=gpt-6.1-sol
+effort=medium
+
+Actual terminal after launch:
+  `needs-decision`, or `blocked` event so the earlier working phase is superseded.
+  When a keyed phase ends without another reportable state, append `resolved [key=<work-slug>] [at=<epoch>]: {why it is no longer active}`.
+  `resolved` separately closes an escalated decision or blocker, and only a `resolved` line carrying that decision's exact key closes it: a
+  later `done` or `working` event never does, even when the answer is what started that work.
+  The main firstmate's answer normally writes that closing line at answer time; when a blocker or wait clears WITHOUT an answer from the
+  main firstmate, append `resolved [key=<slug>] [at=<epoch>]: {how it cleared}` yourself (same `[key=<slug>]` if you opened it with one) as
+  your domain resumes.
+  Routine internal supervision, heartbeats, retries, and crewmate churn stay inside your own home and must not touch that status file.
+
+  # Definition of done
+  You are persistent by default. Do not exit just because your queue is empty.
+  On startup and restart, run normal firstmate bootstrap and recovery through `bin/fm-session-start.sh` for your own home, but only to
+  RECONCILE work that is already yours: in-flight crewmates, tracked backlog items, and durable watches recorded in this home.
+  When you have no assigned or in-flight work after that reconciliation, go idle and wait silently for the main firstmate to route you a
+  task.
+  An empty queue is a healthy resting state, not a cue to invent work: never spawn a survey, audit, or any self-directed "find work" task
+  on your own initiative.
+  If this charter cannot be carried out, append `blocked [at=<epoch>]: {why}` or `failed [at=<epoch>]: {why}` to the main status file and
+  stop.
+
+
+• Ran pwd; rg --files -g 'fm-session-start.sh' -g 'SKILL.md' -g 'AGENTS.md' -g '.env' -g 'fm-secondmate-report.sh'
+  └ skills/stow/SKILL.md
+    bin/fm-session-start.sh
+    bin/fm-secondmate-report.sh
+    + 2 lines (^t to expand)
+
+• Explored
+  └ Read SKILL.md, SKILL.md (operational-home-layout skill), fm-session-start.sh
+    + Show details
+
+• Ran FM_HOME="$PWD" bin/fm-session-start.sh
+  └
+    The digest above is complete for this session start. The READ-ONCE CONTRACT
+    section near the top of it governs what may still be read from disk.
+    + 130 lines (^t to expand)
+
+• Working (24s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  GPT-6.1-Sol medium · ~/.no-mistakes/worktrees/842a31c92d33/01M4MXE3H360EQJY80HJE7X9TZ/.test-pin-tmp/live/explicit · never · Context 13% u…
+  ? for shortcuts                                                                                                  ⚠ 1 warning · f2 to view
+
+Actual process profile:
+/home/bohn/.local/share/mise/installs/codex/latest/bin/codex --model gpt-6.1-sol -c model_reasoning_effort="medium" --dangerously-bypass-approvals-and-sandbox ⁣FIRSTMATE_OP: v1 launch-brief: You are a persisten
+
+Final live terminal:
+  on your own initiative.
+  If this charter cannot be carried out, append `blocked [at=<epoch>]: {why}` or `failed [at=<epoch>]: {why}` to the main status file and
+  stop.
+
+
+• Ran pwd; rg --files -g 'fm-session-start.sh' -g 'SKILL.md' -g 'AGENTS.md' -g '.env' -g 'fm-secondmate-report.sh'
+  └ skills/stow/SKILL.md
+    bin/fm-session-start.sh
+    bin/fm-secondmate-report.sh
+    + 2 lines (^t to expand)
+
+• Explored
+  └ Read SKILL.md, SKILL.md (operational-home-layout skill), fm-session-start.sh
+    + Show details
+
+• Ran FM_HOME="$PWD" bin/fm-session-start.sh
+  └
+    The digest above is complete for this session start. The READ-ONCE CONTRACT
+    section near the top of it governs what may still be read from disk.
+    + 130 lines (^t to expand)
+
+• Explored · 1 failed
+  └ Read SKILL.md (session-start-recovery skill)
+    Read fm-startup-network.sh
+    Read fm-secondmate-report.sh
+    + Show details
+
+• Ran FM_HOME="$PWD" bin/fm-startup-network.sh report; date +%s
+  └   stage       network-checks probe_sweeps                start=+53      elapsed=2370
+      slowest: stage network-checks probe_sweeps 2370ms, phase fleet-sync 1014ms, phase gh-auth 970ms
+    1791704276
+    + 8 lines (^t to expand)
+
+• Ran echo 'done [at=1791704276]: PIN_OVERRIDE_READY' >> '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4MXE3H360EQJY80HJE7X9TZ/.test-p…
+  └ (no output)
+    + Show details
+
+  Worked for 46s • 15:38
+
+
+› Ask Codex to do anything
+
+  GPT-6.1-Sol medium · ~/.no-mistakes/worktrees/842a31c92d33/01M4MXE3H360EQJY80HJE7X9TZ/.test-pin-tmp/live/explicit · never · Context 16% u…
+  ? for shortcuts                                                                                                  ⚠ 1 warning · f2 to view

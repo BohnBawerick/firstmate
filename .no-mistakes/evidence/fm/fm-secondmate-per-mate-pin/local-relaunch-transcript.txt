@@ -1,0 +1,51 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4MXE3H360EQJY80HJE7X9TZ/.test-pin-tmp/live/parent
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4MXE3H360EQJY80HJE7X9TZ/.test-pin-tmp/live/parent
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+warning: secondmate mac sync skipped before launch: 143d585745ec46c3b24d19c79e758be363642162 does not exist
+relaunched mac harness=codex from=codex model=gpt-6.1-sol effort=high backend=tmux endpoint=primary:fm-mac worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4MXE3H360EQJY80HJE7X9TZ/.test-pin-tmp/live/mac
+
+Actual terminal after hook decline:
+  RECONCILE work that is already yours: in-flight crewmates, tracked backlog items, and durable watches recorded in this home.
+  When you have no assigned or in-flight work after that reconciliation, go idle and wait silently for the main firstmate to route you a
+  task.
+  An empty queue is a healthy resting state, not a cue to invent work: never spawn a survey, audit, or any self-directed "find work" task
+  on your own initiative.
+  If this charter cannot be carried out, append `blocked [at=<epoch>]: {why}` or `failed [at=<epoch>]: {why}` to the main status file and
+  stop.
+
+
+• Captain, I’ll run the lab’s startup checks and report readiness through the parent channel.
+
+• Ran pwd; rg --files -g 'AGENTS.md' -g 'fm-session-start.sh' -g 'SKILL.md' -g 'fm-secondmate-report.sh' . | head -60
+  └ ./bin/fm-session-start.sh
+    ./bin/fm-secondmate-report.sh
+    ./skills/stow/SKILL.md
+    + 2 lines (^t to expand)
+
+• Explored
+  └ Read SKILL.md, SKILL.md (operational-home-layout skill)
+    + Show details
+
+• Ran sed -n '1,110p' .agents/skills/operational-home-layout/SKILL.md; printenv FM_HOME
+  └   .<id>.open-decisions-cursor  per-task byte cursor and folded open-decision set bounding the OPEN DECISIONS scan's cost to new status-…
+      .<id>.home-appends  per-task ledger of byte ranges this home itself appended as bookkeeping closes, so a wake scan can tell its own g…
+    /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4MXE3H360EQJY80HJE7X9TZ/.test-pin-tmp/live/mac
+    + 110 lines (^t to expand)
+
+• Explored
+  └ Read fm-session-start.sh, fm-secondmate-report.sh
+    + Show details
+
+• Ran bin/fm-session-start.sh
+  └
+    The digest above is complete for this session start. The READ-ONCE CONTRACT
+    section near the top of it governs what may still be read from disk.
+    + 130 lines (^t to expand)
+
+• Working (27s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  GPT-6.1-Sol high · ~/.no-mistakes/worktrees/842a31c92d33/01M4MXE3H360EQJY80HJE7X9TZ/.test-pin-tmp/live/mac · never · Context 14% used · 2…
+  ? for shortcuts                                                                                                  ⚠ 1 warning · f2 to view
