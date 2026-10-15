@@ -89,6 +89,20 @@ secondmate_registry_line_for_id() {
   secondmate_registry_parse_line "$SECONDMATE_REGISTRY_LINE"
 }
 
+# A mailbox mate keeps the ordinary home/scope registry shape. Its private
+# transport marker prevents process lifecycle and code-sync operations on that
+# non-executable home. An invalid marker is never treated as a process home.
+secondmate_home_transport() { # <home>
+  local marker="$1/.fm-secondmate-transport" value
+  if [ ! -e "$marker" ] && [ ! -L "$marker" ]; then
+    printf 'process\n'
+  elif [ -f "$marker" ] && [ ! -L "$marker" ] && value=$(cat "$marker") && [ "$value" = dot-mcp ]; then
+    printf 'dot-mcp\n'
+  else
+    printf 'invalid\n'
+  fi
+}
+
 secondmate_registry_field() {
   local reg=$1 id=$2 key=$3
   secondmate_registry_line_for_id "$reg" "$id" || return 1
@@ -99,6 +113,9 @@ secondmate_registry_field() {
     scope) printf '%s\n' "$SECONDMATE_REGISTRY_SCOPE" ;;
     projects) printf '%s\n' "$SECONDMATE_REGISTRY_PROJECTS" ;;
     remote) printf '%s\n' "$SECONDMATE_REGISTRY_REMOTE" ;;
+    transport)
+      if [ "$SECONDMATE_REGISTRY_REMOTE" = 1 ]; then printf 'process\n'; else secondmate_home_transport "$SECONDMATE_REGISTRY_HOME"; fi
+      ;;
     *) return 1 ;;
   esac
 }

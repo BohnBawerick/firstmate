@@ -364,6 +364,10 @@ BACKEND=$FM_BACKEND_VALIDATED_BACKEND
 T=$FM_BACKEND_VALIDATED_TARGET
 LABEL="fm-$ID"
 RECORDED_HARNESS=$(fm_meta_get "$META" harness)
+if [ "$(fm_meta_get "$META" transport)" = dot-mcp ]; then
+  echo 'error: a dot has no local process to interrupt, exit or relaunch; route instructions with fm-send' >&2
+  exit 1
+fi
 KIND=$(fm_meta_get "$META" kind)
 WT=$(fm_meta_get "$META" worktree)
 [ -n "$KIND" ] || KIND=ship

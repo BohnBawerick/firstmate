@@ -792,8 +792,10 @@ SH
 
   FM_RACE_WORLD="$WORLD" run_reconcile "$MATE" --startup &
   recon_pid=$!
+  fm_test_track_pid "$recon_pid"
   i=0
-  while [ "$i" -lt 40 ] && [ ! -e "$WORLD/state-started" ]; do sleep 0.05; i=$((i + 1)); done
+  # Starting the real reconciler can exceed two seconds on a loaded machine.
+  while [ "$i" -lt 400 ] && [ ! -e "$WORLD/state-started" ]; do sleep 0.05; i=$((i + 1)); done
   [ -e "$WORLD/state-started" ] || fail "reconciliation did not begin its state snapshot"
 
   FM_HOME="$MATE" FM_STATE_OVERRIDE="$MATE/state" bash -c '
@@ -808,6 +810,7 @@ SH
     fm_lock_release "$lock"
   ' _ "$ROOT" "$WORLD" &
   update_pid=$!
+  fm_test_track_pid "$update_pid"
   i=0
   while [ "$i" -lt 10 ] && [ ! -e "$WORLD/meta-updated" ]; do sleep 0.05; i=$((i + 1)); done
   : > "$WORLD/state-release"
@@ -950,7 +953,8 @@ SH
   fi
 
   write_child "$MAIN" b 'done: green'
-  FM_INACTIVE_RECONCILE_BUDGET_SECS=1 run_reconcile "$MAIN" --startup
+  # This assertion measures the saved cursor, not a one-second publish deadline.
+  FM_INACTIVE_RECONCILE_BUDGET_SECS=10 run_reconcile "$MAIN" --startup
   grep -Fq 'child=b state=done' "$MAIN/state/.wake-queue" \
     || fail "next bounded scan did not resume with the following child"
   pass "stalled state reads are bounded without starving later children"
@@ -966,8 +970,9 @@ test_full_scan_budget_includes_wake_lock_wait() {
     sleep 30
   ' _ "$ROOT" "$WORLD/lock-ready" &
   holder=$!
+  fm_test_track_pid "$holder"
   i=0
-  while [ "$i" -lt 30 ] && [ ! -e "$WORLD/lock-ready" ]; do sleep 0.1; i=$((i + 1)); done
+  while [ "$i" -lt 200 ] && [ ! -e "$WORLD/lock-ready" ]; do sleep 0.1; i=$((i + 1)); done
   [ -e "$WORLD/lock-ready" ] || fail "wake lock holder did not start"
 
   started=$(date +%s)

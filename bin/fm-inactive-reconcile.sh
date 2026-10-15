@@ -161,79 +161,8 @@ sha256_text() {
   fi
 }
 
-record_path() { printf '%s/%s.%s\n' "$OUTCOME_DIR" "$1" "$2"; }
-
-record_value() {
-  local record=$1 key=$2
-  [ -f "$record" ] && [ ! -L "$record" ] || return 0
-  grep "^${key}=" "$record" 2>/dev/null | tail -1 | cut -d= -f2- || true
-}
-
-record_phase_set() {
-  local record=$1 phase=$2 tmp line
-  [ -f "$record" ] && [ ! -L "$record" ] || return 1
-  tmp=$(mktemp "$OUTCOME_DIR/.record.XXXXXX") || return 1
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in phase=*) continue ;; esac
-    printf '%s\n' "$line" >> "$tmp" || { rm -f "$tmp"; return 1; }
-  done < "$record"
-  printf 'phase=%s\n' "$phase" >> "$tmp" || { rm -f "$tmp"; return 1; }
-  chmod 600 "$tmp" 2>/dev/null || true
-  mv -f "$tmp" "$record"
-}
-
-record_field_set() {
-  local record=$1 key=$2 value=$3 tmp line
-  [ -f "$record" ] && [ ! -L "$record" ] || return 1
-  tmp=$(mktemp "$OUTCOME_DIR/.record.XXXXXX") || return 1
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in "${key}="*) continue ;; esac
-    printf '%s\n' "$line" >> "$tmp" || { rm -f "$tmp"; return 1; }
-  done < "$record"
-  printf '%s=%s\n' "$key" "$value" >> "$tmp" || { rm -f "$tmp"; return 1; }
-  chmod 600 "$tmp" 2>/dev/null || true
-  mv -f "$tmp" "$record"
-}
-
-ensure_record() { # <fingerprint> <task> <incarnation> <state> <outcome-key> <origin> <phase> <pr> [status-head]
-  local fingerprint=$1 task=$2 incarnation=$3 state=$4 outcome_key=$5 origin=$6 phase=$7 pr=$8 status_head=${9:-} tmp
-  RECORD_PENDING=$(record_path "$fingerprint" pending)
-  RECORD_PRESENTED=$(record_path "$fingerprint" presented)
-  RECORD_REPORTED=$(record_path "$fingerprint" reported)
-  if [ -f "$RECORD_PRESENTED" ] || [ -f "$RECORD_REPORTED" ]; then
-    RECORD_PENDING=
-    return 0
-  fi
-  if [ -f "$RECORD_PENDING" ] && [ ! -L "$RECORD_PENDING" ]; then
-    return 0
-  fi
-  mkdir -p "$OUTCOME_DIR" || return 1
-  [ ! -L "$OUTCOME_DIR" ] || return 1
-  tmp=$(mktemp "$OUTCOME_DIR/.pending.XXXXXX") || return 1
-  {
-    printf 'schema=fm-terminal-outcome.v1\n'
-    printf 'fingerprint=%s\n' "$fingerprint"
-    printf 'task_id=%s\n' "$task"
-    printf 'incarnation=%s\n' "$incarnation"
-    printf 'state=%s\n' "$state"
-    printf 'outcome_key=%s\n' "$outcome_key"
-    printf 'origin=%s\n' "$origin"
-    printf 'phase=%s\n' "$phase"
-    printf 'pr=%s\n' "$pr"
-    printf 'created_epoch=%s\n' "$(reconcile_now)"
-    printf 'notice_emitted=0\n'
-    [ -z "$status_head" ] || printf 'status_head=%s\n' "$status_head"
-  } > "$tmp" || { rm -f "$tmp"; return 1; }
-  chmod 600 "$tmp" 2>/dev/null || true
-  mv -f "$tmp" "$RECORD_PENDING" || { rm -f "$tmp"; return 1; }
-}
-
-mark_reported() { # <record>
-  local record=$1 reported
-  [ -f "$record" ] && [ ! -L "$record" ] || return 1
-  reported=${record%.pending}.reported
-  mv -f "$record" "$reported"
-}
+# shellcheck source=bin/fm-child-outcome-lib.sh
+. "$SCRIPT_DIR/fm-child-outcome-lib.sh"
 
 queue_key_exists() { # <key>
   local key=$1 queued
@@ -412,7 +341,7 @@ claim_inactive_report_for_ledger() { # <task> <incarnation> <state> <ledger-fing
 # delivered, or nothing is owed, and 1 when it is owed but the parent channel
 # could not be written (the notice is queued once per record).
 report_child_ledger_locked() { # <id> <meta>
-  local id=$1 meta=$2 status last previous state note pr mode yolo data incarnation fingerprint predecessor_head outcome_key line
+  local id=$1 meta=$2 status last previous state note pr mode yolo data incarnation fingerprint predecessor_head outcome_key line report
   status="$STATE/$id.status"
   last=$(child_terminal_ledger_line "$status") || return 0
   state=$(status_line_verb "$last")
@@ -443,15 +372,12 @@ report_child_ledger_locked() { # <id> <meta>
   mode=$(clean_field "$(meta_field "$meta" mode)")
   yolo=$(clean_field "$(meta_field "$meta" yolo)")
   data="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
-  line="$state [key=$outcome_key]: child $id $state: $note"
-  [ -z "$pr" ] || line="$line pr=$pr"
-  [ -z "$mode" ] || line="$line mode=$mode"
-  [ -z "$yolo" ] || line="$line yolo=$yolo"
+  report=
   if [ -f "$data/$id/report.md" ] && [ ! -L "$data/$id/report.md" ]; then
-    line="$line report=data/$id/report.md"
+    report="data/$id/report.md"
   fi
-  if fm_parent_channel_report "$FM_HOME" "$STATE" "$line"; then
-    mark_reported "$RECORD_PENDING" || return 1
+  line=$(fm_child_outcome_line "$id" "$state" "$outcome_key" "$note" "$pr" "$mode" "$yolo" "$report")
+  if fm_child_outcome_publish "$FM_HOME" "$STATE" "$RECORD_PENDING" "$line"; then
     return 0
   fi
   notice_parent_report_failed "$RECORD_PENDING" "$fingerprint" \

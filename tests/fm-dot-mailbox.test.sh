@@ -8,6 +8,7 @@
 #   4. Callback verification challenge and signed Standard Webhook event delivery.
 #   5. Server restart persistence and database recovery.
 #   6. Security contract: strict rejection of non-HTTPS and private/loopback callbacks.
+#   7. Request diagnostics include methods and status without payloads or secrets.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -85,7 +86,7 @@ test_mailbox_crud_and_idempotency() {
 }
 
 test_mcp_http_and_event_callback_delivery() {
-  local srv_port rcv_port srv_pid rcv_pid srv_db log_dir out res_file secret
+  local srv_port rcv_port srv_pid rcv_pid srv_db log_dir out res_file
 
   srv_port=$(get_free_port)
   rcv_port=$(get_free_port)
@@ -428,6 +429,11 @@ class Receiver(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def do_GET(self):
+        self.send_response(200 if self.server.ready else 503)
+        self.end_headers()
+        self.wfile.write(b"ready")
+
     def do_POST(self):
         body = self.rfile.read(int(self.headers["Content-Length"]))
         payload = json.loads(body)
@@ -449,6 +455,7 @@ class MailboxRegressionTests(unittest.TestCase):
         cls.server.guard = threading.Lock()
         cls.server.event_status = 200
         cls.server.verification_status = 200
+        cls.server.ready = True
         cls.receiver_thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.receiver_thread.start()
         cls.url = f"http://127.0.0.1:{cls.server.server_port}/callback"
@@ -468,6 +475,7 @@ class MailboxRegressionTests(unittest.TestCase):
             self.server.received.clear()
             self.server.event_status = 200
             self.server.verification_status = 200
+            self.server.ready = True
 
     def subscribe(self, **overrides):
         params = {"name": "message.created", "arguments": {"queue": "work"},
@@ -480,6 +488,296 @@ class MailboxRegressionTests(unittest.TestCase):
     def events(self):
         with self.server.guard:
             return [record for record in self.server.received if "eventId" in record["payload"]]
+
+    def test_activity_history_replay_and_reported_children(self):
+        parent, home = self.directory / "parent", self.directory / "mate"
+        (parent / "state").mkdir(parents=True)
+        (parent / "data").mkdir()
+        charter = self.directory / "charter.md"
+        charter.write_text("Idle until routed work arrives. Report activity through the mailbox.\n")
+        env = {**os.environ, "FM_HOME": str(parent), "FM_ROOT_OVERRIDE": str(parent)}
+        for key in ("FM_STATE_OVERRIDE", "FM_DATA_OVERRIDE", "FM_CONFIG_OVERRIDE"):
+            env.pop(key, None)
+        def run(script, *args):
+            return subprocess.run(["bash", str(root / "bin" / script), *map(str, args)], env=env,
+                capture_output=True, text=True, check=True, timeout=30).stdout
+        run("fm-dot-secondmate.sh", "register", "dot-test", self.box.db_path, home, "work",
+            "http://127.0.0.1:1/health", "http://127.0.0.1:1/readyz", "Cloud tests", charter)
+        run("fm-send.sh", "dot-test", "Subject: activity-note test\nRun a read-only cloud proof")
+        message = self.box.get_messages(queue="work")["messages"][0]
+        def note(event_id, kind="milestone", observed_at="2026-01-01T00:00:00Z", **extra):
+            payload = {"schema": "fm.activity-note.v1", "event_id": event_id, "kind": kind,
+                "observed_at": observed_at, "summary": "visible corpus checked", **extra}
+            if kind != "pickup":
+                payload.update(task_id="native-thread", turn_id="native-turn")
+            return "activity-note: " + json.dumps(payload)
+        def reply(text):
+            return self.box.reply_message(message["id"], text, message["correlation_id"])
+        def snapshot():
+            return json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test"))
+        first = reply(note("pickup-1", "pickup"))
+        self.assertEqual(reply(note("pickup-1", "pickup"))["revision"], first["revision"])
+        with self.assertRaises(ValueError):
+            reply(note("pickup-1", "pickup", summary="conflicting retry"))
+        reply(note("created-1", "task-created"))
+        reply(note("progress-1"))
+        reply(note("progress-2"))  # Same text is still a distinct observation.
+        self.box.publish_mate_replies()
+        status = parent / "state/dot-test.status"
+        self.assertEqual(len(status.read_text().splitlines()), 1)
+        history = json.loads(run("fm-dot-secondmate.sh", "history", "dot-test", "--limit", "2"))
+        self.assertEqual(len(history["events"]), 2)
+        page = json.loads(run("fm-dot-secondmate.sh", "history", "dot-test", "--cursor", history["next_cursor"]))
+        self.assertEqual(len(page["events"]), 2)
+        child = snapshot()["children"][0]
+        self.assertFalse(child["terminal"])
+        self.assertEqual(child["current_state"], "unknown")
+        self.assertTrue(child["display_required"])
+        fleet = json.loads(run("fm-fleet-snapshot.sh", "--json"))
+        mate = next(row for row in fleet["secondmate_current"]["records"] if row["id"] == "dot-test")
+        self.assertEqual(mate["counts"]["active_children"], 1)
+        self.assertEqual(mate["active_children"][0]["provenance"], "dot-reported")
+        self.assertEqual(mate["active_children"][0]["state"], "unknown")
+        self.assertEqual(mate["active_children"][0]["reported_state"], "working")
+        self.assertIn("current unknown", mate["active_children"][0]["doing"])
+        done = note("done-1", "done", "2026-01-01T00:02:00Z", summary="proof result returned", task_title="rust-brep visible proof")
+        reply(done)
+        self.assertTrue(snapshot()["children"][0]["display_required"])
+        # A temporarily broken binding preserves the terminal result and keeps its tab owed.
+        meta = parent / "state/dot-test.meta"
+        original = meta.read_text()
+        meta.write_text(original.replace("transport=dot-mcp", "transport=unavailable"))
+        self.box.publish_mate_replies()
+        meta.write_text(original)
+        self.assertFalse(snapshot()["children"][0]["parent_delivered"])
+        self.box.conn.close()
+        self.box = m.Mailbox(self.box.db_path, allow_local_callbacks=True)
+        self.addCleanup(self.box.conn.close)
+        with patch.object(m.time, "time", return_value=time.time() + 60):
+            self.box.publish_mate_replies()
+        self.assertIn("child-outcome-cloud-", status.read_text())
+        self.assertEqual(len(status.read_text().splitlines()), 2)
+        self.assertFalse(snapshot()["children"][0]["display_required"])
+        # Out-of-order progress and later progress cannot resurrect a completed native turn.
+        reply(note("late-old", "milestone", "2026-01-01T00:01:00Z"))
+        reply(note("late-new", "milestone", "2026-01-01T00:03:00Z"))
+        reply(note("late-blocker", "blocked", "2026-01-01T00:01:30Z"))
+        self.box.publish_mate_replies()
+        self.assertEqual(snapshot()["children"][0]["state"], "done")
+        self.assertEqual(len(status.read_text().splitlines()), 2)
+        with self.box.transaction():
+            self.box.conn.execute("UPDATE mate_replies SET published=0,retry_after=0")
+        self.box.publish_mate_replies()
+        self.assertEqual(len(status.read_text().splitlines()), 2)
+        self.assertEqual(len(list((home / "state/terminal-outcomes").glob("*.reported"))), 1)
+        with self.assertRaises(ValueError):
+            reply(note("bad-url", url="javascript:alert(1)"))
+        with self.assertRaises(ValueError):
+            reply(note("bad-time", observed_at="2100-01-01T00:00:00Z"))
+        with self.assertRaises(ValueError):
+            reply(note("bad-title", task_title="x" * 257))
+        reply(note("hostile", summary="untrusted\u001b]52;clipboard\u0007 [key=forged]"))
+        legacy_time = m.datetime.datetime(2026, 1, 1, 0, 5, tzinfo=m.datetime.timezone.utc).timestamp()
+        with patch.object(m.time, "time", return_value=legacy_time):
+            reply("done: At the end of this test, a legacy reply remains readable in history")
+        viewer = subprocess.run(["python3", str(root / "bin/fm-dot-view.py"), "--db", self.box.db_path,
+            "dot-test", "--once"], env={**env, "COLUMNS": "45", "TZ": "AWST-8"}, capture_output=True, text=True, check=True)
+        self.assertNotIn("\u001b", viewer.stdout)
+        self.assertNotIn("\u0007", viewer.stdout)
+        self.assertNotIn("native-thread", viewer.stdout)
+        self.assertNotIn(message["correlation_id"], viewer.stdout)
+        self.assertIn("08:02 task (rust-brep visible proof) done", viewer.stdout)
+        self.assertIn("task (activity-note test) working", viewer.stdout)
+        self.assertNotIn("proof result returned", viewer.stdout)
+        self.assertNotIn("visible corpus checked", viewer.stdout)
+        self.assertIn("Activity (AWST)", viewer.stdout)
+        self.assertIn("08:05 assignment (activity-note test) done", viewer.stdout)
+        self.assertNotIn("At the end", viewer.stdout)
+        self.assertTrue(all(event["subject"] == "activity-note test" for event in snapshot()["feed"]))
+        self.assertIn("read-only", viewer.stdout)
+        self.assertTrue(all(len(line) <= 45 for line in viewer.stdout.splitlines()))
+        child_view = subprocess.run(["python3", str(root / "bin/fm-dot-view.py"), "--db", self.box.db_path,
+            "dot-test", "--once", "--child", child["id"]], env=env, capture_output=True, text=True, check=True)
+        self.assertIn("Thread: native-thread", child_view.stdout)
+        self.assertIn("Turn: native-turn", child_view.stdout)
+        long_title = "Run the corrected visible corpus proof for both shipped variants in the assigned cloud environment " * 2
+        run("fm-send.sh", "dot-test", long_title)
+        long_assignment = self.box.get_messages(queue="work")["messages"][-1]
+        self.box.reply_message(long_assignment["id"], "done: fixture result", long_assignment["correlation_id"])
+        self.box.reply_message(long_assignment["id"], note("long-title", "task-created", task_title=long_title), long_assignment["correlation_id"])
+        wide = subprocess.run(["python3", str(root / "bin/fm-dot-view.py"), "--db", self.box.db_path,
+            "dot-test", "--once"], env={**env, "COLUMNS": "240"}, capture_output=True, text=True, check=True)
+        entries = [line for line in wide.stdout.splitlines() if " (Run the corrected" in line]
+        self.assertEqual(len(entries), 2)
+        for line in entries:
+            description = line.split(" (", 1)[1].rsplit(") ", 1)[0]
+            self.assertLessEqual(len(description), 40)
+            self.assertTrue(description.endswith("..."))
+            self.assertRegex(line, r"\) (done|started)$")
+
+    def test_dot_secondmate_routes_replies_and_reports_health_without_a_pane(self):
+        parent, home = self.directory / "parent", self.directory / "mate"
+        (parent / "state").mkdir(parents=True)
+        (parent / "data").mkdir()
+        charter = self.directory / "charter.md"
+        charter.write_text("You are a second mate. Stay idle until routed work arrives. Reply through the mailbox, never directly to the user.\n")
+        fakebin = self.directory / "fakebin"
+        fakebin.mkdir()
+        terminal_log = self.directory / "terminal.log"
+        for tool in ("tmux", "herdr", "orca", "zellij", "cmux"):
+            path = fakebin / tool
+            path.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$DOT_TERMINAL_LOG"\nexit 1\n')
+            path.chmod(0o755)
+        env = {**os.environ, "FM_HOME": str(parent), "FM_ROOT_OVERRIDE": str(parent),
+               "PATH": str(fakebin) + os.pathsep + os.environ["PATH"], "DOT_TERMINAL_LOG": str(terminal_log)}
+        for key in ("FM_STATE_OVERRIDE", "FM_DATA_OVERRIDE", "FM_CONFIG_OVERRIDE"):
+            env.pop(key, None)
+
+        def run(script, *args, success=True, extra_env=None):
+            result = subprocess.run(["bash", str(root / "bin" / script), *map(str, args)],
+                                    env={**env, **(extra_env or {})}, capture_output=True, text=True, timeout=30)
+            if success:
+                self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            return result
+
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+        probe.close()
+        process = subprocess.Popen(cli + ["--db", self.box.db_path, "serve", "--port", str(port), "--allow-local-callbacks"],
+                                   env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        def rpc(method, params=None):
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            try:
+                connection.request("POST", "/mcp", json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}),
+                                   headers={"Content-Type": "application/json"})
+                return json.loads(connection.getresponse().read())
+            finally:
+                connection.close()
+        try:
+            for _ in range(100):
+                try:
+                    if "result" in rpc("server/discover"):
+                        break
+                except OSError:
+                    time.sleep(.05)
+            else:
+                self.fail("dot mailbox did not start")
+            health_url = f"http://127.0.0.1:{port}/health"
+            tunnel_url = f"http://127.0.0.1:{self.server.server_port}/readyz"
+            registration = ("register", "dot-test", self.box.db_path, home, "work", health_url, tunnel_url, "Read-only cloud proof", charter)
+            run("fm-dot-secondmate.sh", *registration)
+            run("fm-dot-secondmate.sh", *registration)
+            run("fm-dot-secondmate.sh", "validate", "dot-test")
+            self.assertEqual((parent / "data/secondmates.md").read_text().count("- dot-test -"), 1)
+            self.assertFalse((home / "AGENTS.md").exists())
+            self.assertIn("subscription=missing", run("fm-dot-secondmate.sh", "health", "dot-test", success=False).stdout)
+            result = rpc("events/subscribe", {"name": "message.created", "arguments": {"queue": "work"},
+                         "delivery": {"mode": "webhook", "url": self.url, "secret": secret1}})
+            self.assertIn("result", result)
+            run("fm-send.sh", "fm-dot-test", "Return the read-only proof nonce")
+            messages = json.loads(rpc("tools/call", {"name": "get_messages", "arguments": {"queue": "work"}})["result"]["content"][0]["text"])["messages"]
+            self.assertEqual(len(messages), 1)
+            assignment = messages[0]
+            corr = assignment["correlation_id"]
+            self.assertRegex(corr, r"^[a-f0-9]{16}$")
+            self.assertIn("corr=" + corr, assignment["content"])
+            self.assertIn("Stay idle until routed work arrives", assignment["content"])
+            self.assertIn("Return the read-only proof nonce", assignment["content"])
+            run("fm-send.sh", "dot-test", "Return the read-only proof nonce", extra_env={"FM_PENDING_REPLY_EXISTING_CORR": corr})
+            self.assertEqual(len(self.box.get_messages(queue="work")["messages"]), 1)
+            invalid = rpc("tools/call", {"name": "reply", "arguments": {"message_id": assignment["id"], "reply": "done: proof"}})
+            self.assertIn("error", invalid)
+            reply = {"name": "reply", "arguments": {"message_id": assignment["id"], "correlation_id": corr, "reply": "done: proof nonce returned"}}
+            self.assertIn("result", rpc("tools/call", reply))
+            status = parent / "state/dot-test.status"
+            for _ in range(100):
+                if status.exists() and "proof nonce returned" in status.read_text():
+                    break
+                time.sleep(.1)
+            else:
+                self.fail("dot reply did not reach the parent status channel")
+            self.assertIn("corr=" + corr, status.read_text())
+            self.assertIn("result", rpc("tools/call", reply))
+            self.box.publish_mate_replies()
+            self.assertEqual(len(status.read_text().splitlines()), 1)
+            self.assertEqual(next((parent / "data/dot-test/mailbox-replies").glob("*.md")).read_text(), "done: proof nonce returned\n")
+            health = run("fm-dot-secondmate.sh", "health", "dot-test").stdout
+            self.assertIn("mailbox=ready tunnel=ready subscription=active", health)
+            self.assertNotIn("last-contact=never", health)
+            self.assertIn("dot-online=unknown", health)
+            probe_script = '. "$1/bin/fm-secondmate-liveness-lib.sh"; fm_secondmate_liveness_probe "$2" dot-test poll; printf "%s %s %s\\n" "$FM_SM_LIVE_STATUS" "$FM_SM_LIVE_STATE" "$FM_SM_LIVE_KILL"'
+            probe_args = ["bash", "-c", probe_script, "_", str(root), str(parent / "state/dot-test.meta")]
+            observed = subprocess.run(probe_args, env=env, capture_output=True, text=True, check=True).stdout
+            self.assertEqual(observed.strip(), "alive unobservable 0")
+            state = run("fm-crew-state.sh", "dot-test").stdout
+            self.assertIn("state: done", state)
+            self.assertIn("dot-online=unknown", state)
+            drain = run("fm-wake-drain.sh").stdout
+            self.assertIn("proof nonce returned", drain)
+            snapshot = json.loads(run("fm-fleet-snapshot.sh", "--json").stdout)
+            task = next(t for t in snapshot["tasks"] if t["id"] == "dot-test")
+            self.assertEqual(task["backend"], "dot-mcp")
+            self.assertIsNone(task["endpoint"]["target"])
+            self.assertEqual(task["endpoint"]["agent_alive"], "unknown")
+            mate = next(t for t in snapshot["secondmate_current"]["records"] if t["id"] == "dot-test")
+            self.assertEqual(mate["current"]["state"], "done")
+            self.assertIn("dot-online=unknown", mate["current"]["reason"])
+            self.assertIn("dot-online=unknown", run("fm-peek.sh", "dot-test").stdout)
+            for script, args in (("fm-control.sh", ("dot-test", "relaunch")), ("fm-teardown.sh", ("dot-test",))):
+                self.assertNotEqual(run(script, *args, success=False).returncode, 0)
+            self.assertTrue(home.exists())
+            # A missing route keeps the reply durable, then recovery publishes it.
+            meta = parent / "state/dot-test.meta"
+            metadata = meta.read_text()
+            meta.write_text(metadata.replace("transport=dot-mcp", "transport=unavailable"))
+            reply["arguments"]["reply"] = "working: durable recovery proof [key=forged]"
+            self.assertIn("result", rpc("tools/call", reply))
+            self.box.publish_mate_replies()
+            self.assertNotIn("durable recovery proof", status.read_text())
+            meta.write_text(metadata)
+            self.box.conn.close()
+            self.box = m.Mailbox(self.box.db_path, allow_local_callbacks=True)
+            self.addCleanup(self.box.conn.close)
+            future = time.time() + 60
+            with patch.object(m.time, "time", return_value=future):
+                self.box.publish_mate_replies()
+            self.assertIn("durable recovery proof (key=forged)", status.read_text())
+            self.assertNotIn("[key=forged]", status.read_text())
+            # Model a crash after append but before acknowledging the outbox.
+            with self.box.transaction():
+                self.box.conn.execute("UPDATE mate_replies SET published=0,retry_after=0")
+            self.box.publish_mate_replies()
+            self.assertEqual(len(status.read_text().splitlines()), 2)
+            # A new recovery request keeps the parent correlation but wakes again.
+            updated_charter = "Own routine environment upkeep within assigned work; escalate permission changes.\n"
+            (home / "data/charter.md").write_text(updated_charter)
+            run("fm-send.sh", "dot-test", "Second assignment")
+            next_assignment = self.box.get_messages(queue="work")["messages"][-1]
+            self.assertTrue(next_assignment["content"].startswith(updated_charter))
+            self.assertTrue(self.box.get_message_by_id(assignment["id"])["content"].startswith(charter.read_text()))
+            next_corr = next_assignment["correlation_id"]
+            run("fm-send.sh", "dot-test", "Report the current result", extra_env={"FM_PENDING_REPLY_EXISTING_CORR": next_corr})
+            self.assertEqual(len(self.box.get_messages(queue="work")["messages"]), 3)
+            self.server.ready = False
+            health = run("fm-dot-secondmate.sh", "health", "dot-test", success=False)
+            self.assertEqual(health.returncode, 3)
+            self.assertIn("tunnel=unavailable", health.stdout)
+            observed = subprocess.run(probe_args, env=env, capture_output=True, text=True, check=True).stdout
+            self.assertEqual(observed.strip(), "skipped unobservable 0")
+            self.assertIn("state: unknown", run("fm-crew-state.sh", "dot-test").stdout)
+            self.assertNotEqual(run("fm-send.sh", "dot-test", "--key", "Enter", success=False).returncode, 0)
+            # Dot-origin notes must not create a new assignment event for itself.
+            note = json.loads(rpc("tools/call", {"name": "submit_message", "arguments": {"queue": "work", "content": "outbound note"}})["result"]["content"][0]["text"])
+            self.box.deliver_pending_events()
+            self.assertEqual(note["origin"], "dot")
+            self.assertEqual(self.box.get_message_by_id(note["id"])["delivery"], {"pending": 0, "delivered": 0, "undelivered": 0})
+            if terminal_log.exists():
+                self.assertNotIn("capture-pane", terminal_log.read_text())
+                self.assertNotIn("send-keys", terminal_log.read_text())
+        finally:
+            process.terminate()
+            process.communicate(timeout=10)
 
     def test_verification_cache_is_scoped_bounded_and_persistent(self):
         clock = [datetime.datetime.now(datetime.timezone.utc)]
@@ -570,7 +868,7 @@ class MailboxRegressionTests(unittest.TestCase):
             self.assertEqual(json.loads(run("--db", self.box.db_path, "reply", message["id"], "result"))["status"], "ok")
             self.assertIn("pending=0", run("--db", self.box.db_path, "status"))
 
-    def test_serve_requires_explicit_flags_despite_environment(self):
+    def test_serve_flags_and_private_request_logging(self):
         env = {**os.environ, "FM_DOT_MCP_HOST": "203.0.113.1", "FM_DOT_MCP_PORT": "", "FM_DOT_MCP_ALLOW_LOCAL_CALLBACK": "1"}
         for allow_local in (False, True):
             probe = socket.socket()
@@ -585,8 +883,8 @@ class MailboxRegressionTests(unittest.TestCase):
             def request(method, path, body=None):
                 connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
                 try:
-                    connection.request(method, path, body=json.dumps(body) if body else None,
-                                       headers={"Content-Type": "application/json"})
+                    connection.request(method, path, body=body if isinstance(body, bytes) else json.dumps(body),
+                                       headers={"Content-Type": "application/json", "Authorization": "Bearer private-header"})
                     response = connection.getresponse()
                     return response.status, response.read()
                 finally:
@@ -614,9 +912,39 @@ class MailboxRegressionTests(unittest.TestCase):
                     self.assertEqual(result["error"]["code"], -32015)
                     with self.server.guard:
                         self.assertEqual(self.server.received, [])
+                sensitive = "private-body-and-request-id"
+                calls = [
+                    ("server/discover", {}, None), ("events/list", {}, None),
+                    ("tools/call", {"name": "submit_message", "arguments": {"content": sensitive}}, None),
+                    ("tools/call", {"name": "reply", "arguments": {"message_id": sensitive, "reply": sensitive}}, -32603),
+                    ("tools/call", {"name": sensitive}, -32601),
+                    (sensitive, {}, -32601),
+                    ("notifications/initialized", {}, None),
+                ]
+                for method, params, error in calls:
+                    _, body = request("POST", "/mcp", {"jsonrpc": "2.0", "id": sensitive,
+                                                         "method": method, "params": params})
+                    if body:
+                        self.assertEqual(json.loads(body).get("error", {}).get("code"), error)
+                self.assertEqual(json.loads(request("POST", "/mcp", b"private-broken-json")[1])["error"]["code"], -32700)
+                self.assertEqual(request("POST", "/private-url", {})[0], 404)
+                self.assertEqual(request("POST", "/mcp", b"x" * (256 * 1024 + 1))[0], 413)
             finally:
                 process.terminate()
-                process.communicate(timeout=10)
+                _, logs = process.communicate(timeout=10)
+            for hidden in (secret1, self.url, sensitive, "private-header", "private-broken-json", "private-url"):
+                self.assertNotIn(hidden, logs)
+            records = [json.loads(line) for line in logs.splitlines() if line.startswith("{")]
+            expected = [("events/subscribe", 200, "ok" if allow_local else "error", None if allow_local else -32015)]
+            expected += [(method if method != sensitive else "unknown", 204 if method == "notifications/initialized" else 200,
+                          "error" if error else "notification" if method == "notifications/initialized" else "ok", error)
+                         for method, _, error in calls]
+            expected += [("unknown", 200, "error", -32700), ("unknown", 404, "error", None), ("unknown", 413, "error", None)]
+            self.assertEqual([(r["method"], r["http_status"], r["result"], r["error_code"]) for r in records], expected)
+            self.assertEqual([r["tool"] for r in records if "tool" in r], ["submit_message", "reply", "unknown"])
+            for record in records:
+                self.assertEqual(record["event"], "mcp_request")
+                self.assertTrue(record["timestamp"].endswith("Z"))
 
     def test_database_selection_ignores_inherited_override(self):
         env = os.environ.copy()

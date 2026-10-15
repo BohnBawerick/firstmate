@@ -658,6 +658,10 @@ prefetch_task_observations() {  # <meta> <id>
     kind=$(meta_value "$meta" kind)
     backend=$(fm_backend_of_meta "$meta")
     target=$(fm_backend_target_of_meta "$meta")
+    if [ "$(meta_value "$meta" transport)" = dot-mcp ]; then
+      agent_alive=unknown
+      target=
+    fi
     if [ -n "$target" ]; then
       if fm_backend_target_exists "$backend" "$target" "fm-$id" >/dev/null 2>&1; then
         endpoint_exists=true
@@ -767,7 +771,10 @@ task_json_lines() {
     branch=$(meta_value "$meta" branch)
     remote_host=$(meta_value "$meta" remote_host)
     remote_root=$(meta_value "$meta" remote_root)
-    if [ -n "$remote_host" ]; then
+    if [ "$(meta_value "$meta" transport)" = dot-mcp ]; then
+      backend=dot-mcp
+      target=
+    elif [ -n "$remote_host" ]; then
       backend=$(meta_value "$meta" remote_backend)
       [ -n "$backend" ] || backend=unknown
       target=$(meta_value "$meta" remote_target)
@@ -1721,7 +1728,7 @@ secondmate_current_json() {  # <parent-tasks-json-file> <output-file>
   local tasks_file=$1 output_file=$2 registry_file union_file records_file rows total_registered total shown truncated
   local row id home host remote registered registry_error task sampled_spawn_gen status_file status_observation_file event_raw event_note event_age observed_epoch observed_age
   local activity_scan activities decisions reconciliation provenance freshness reason summary_file summary_sampled summary_valid summary_invalidity state terminal terminal_contradiction contradiction
-  local summary_source summary_age summary_observed summary_freshness cache_path collection_status collection_slot summary_index=0
+  local summary_source summary_age summary_observed summary_freshness cache_path collection_status collection_slot summary_index=0 dot_snapshot
   local seen_homes=''
   registry_file="$JSON_TRANSPORT_DIR/secondmate-registry.json"
   union_file="$JSON_TRANSPORT_DIR/secondmate-union.json"
@@ -1908,21 +1915,40 @@ secondmate_current_json() {  # <parent-tasks-json-file> <output-file>
         terminal=$(jq -n --arg observed "$SNAPSHOT_NOW" \
           '{provenance:"parent-direct-report-terminal",trust:"untrusted-supplement",captured:false,observed_at:$observed,freshness:"not-collected",reason:"no parent event to compare",lines:0,bytes:0,event_note_seen:false,contradiction:false}')
       fi
-      jq -n \
+      dot_snapshot="$SNAPSHOT_COLLECT_DIR/dot-$summary_index.json"
+      printf '{}\n' > "$dot_snapshot"
+      if [ "$(printf '%s' "$task" | jq -r '.backend')" = dot-mcp ]; then
+        if ! "$SCRIPT_DIR/fm-dot-secondmate.sh" snapshot "$id" > "$dot_snapshot" 2>/dev/null; then
+          printf '{"unavailable":true}\n' > "$dot_snapshot"
+        fi
+      fi
+      jq -n --slurpfile dot "$dot_snapshot" \
         --arg id "$id" --arg home "$home" --arg host "$host" --argjson remote "$remote" --arg reason "$reason" --arg observed "$SNAPSHOT_NOW" \
         --arg spawn_gen "$sampled_spawn_gen" \
         --arg provenance "$provenance" --arg freshness "$freshness" --arg event_raw "$event_raw" --arg event_note "$event_note" \
         --argjson registered "$registered" --argjson event_age "$event_age" --argjson observed_age "$observed_age" --argjson activities "$activities" --argjson activity_scan "$activity_scan" \
-        --argjson decisions "$decisions" --argjson terminal "$terminal" --slurpfile summary "$summary_file" --argjson summary_sampled "$summary_sampled" '
+        --argjson decisions "$decisions" --argjson terminal "$terminal" --slurpfile summary "$summary_file" --argjson summary_sampled "$summary_sampled" --argjson task "$task" '
         ($summary[0]) as $summary
         |
         {id:$id,home:($home | if . == "" then null else . end),host:($host | if . == "" then null else . end),remote:$remote,registered:$registered,
          spawn_gen:($spawn_gen | if . == "" then null else . end),
-         current:{state:"unknown",reason:(if $summary_sampled then "structured home state invalid: " + ($summary.reason // "unknown reason") else $reason end)},invalidity:null,
+         current:(if $task.backend == "dot-mcp" then
+           {state:(if $dot[0].unavailable or $dot[0].ready == false then "unknown"
+                   elif any($dot[0].children[]?; .terminal == false and .current_state == "unknown") then "unknown"
+                   elif any($dot[0].children[]?; .terminal == false) then "active_child_work"
+                   else ($task.current_state.state // "unknown") end),
+            reason:(($task.current_state.detail // "mailbox health unknown") + (if $dot[0].unavailable then "; reported cloud inventory unavailable" else "; cloud activity is dot-reported, not directly observed" end))}
+           else {state:"unknown",reason:(if $summary_sampled then "structured home state invalid: " + ($summary.reason // "unknown reason") else $reason end)} end),invalidity:null,
          reconcile_inventory:(if $summary_sampled then $summary.invalidity else null end),
-         provenance:{selected:$provenance,structured_home:($home | if . == "" then null else . end),parent_event_role:"fallback-only-not-current"},
+         provenance:{selected:(if $task.backend == "dot-mcp" then "mailbox-parent-channel" else $provenance end),structured_home:($home | if . == "" then null else . end),parent_event_role:(if $task.backend == "dot-mcp" then "reported-outcome" else "fallback-only-not-current" end)},
          freshness:{status:$freshness,observed_at:$observed,age_seconds:$observed_age},
-         active_children:[],decisions_open:[],holds:[],queued:[],landed:[],endpoints:[],counts:{active_children:0,decisions_open:0,holds:0,queued:0,landed:0,endpoints:0},omitted:[],
+         active_children:[$dot[0].children[]? | select(.terminal == false)
+           | .activity_kind=.kind | .kind="reported-cloud" | .reported_state=.state | .state=.current_state
+           | .doing=(.summary + " (reported " + (.age_seconds | tostring) + "s ago; current " + .current_state + ")")],
+         reported_children:($dot[0].children // []),
+         decisions_open:[],holds:[],queued:[],landed:[],endpoints:[],
+         counts:{active_children:([$dot[0].children[]? | select(.terminal == false)] | length),decisions_open:0,holds:0,queued:0,landed:0,endpoints:0},
+         omitted:(if $dot[0].children_truncated then [{surface:"reported_children",reason:"bounded to 100 children"}] else [] end),
          parent_event:{raw:$event_raw,note:$event_note,age_seconds:$event_age,open_activities:$activities,open_decisions:$decisions,activity_scan:$activity_scan},
          terminal_evidence:$terminal,contradiction:false}' >> "$records_file" || return 1
     fi

@@ -41,6 +41,13 @@ The home-seeded `data/charter.md` is the sole owner of boilerplate idle-by-defau
 The `scope:` field is used during intake.
 The `projects:` field is a non-exclusive clone list, not ownership.
 
+## Dot mailbox transport
+
+An existing ChatGPT dot can use the mailbox transport described in [`docs/dot-mcp-bridge.md`](../../../docs/dot-mcp-bridge.md#register-an-existing-dot-as-a-second-mate).
+Use `bin/fm-dot-secondmate.sh` to register and inspect that route, not the process-home seed, spawn or restart commands below.
+Its private home stores the charter and parent binding; it has no local executable checkout, agent pane or child inventory to inspect.
+Route work through ordinary `fm-send`, read its returned status/documents, and treat mailbox/tunnel readiness and last contact as separate facts from the unobservable hosted process state.
+
 ## Charter and seed
 
 Scaffold a secondmate charter with:
@@ -177,7 +184,8 @@ Treat an inherited queue that carries plans with no matching delivery record as 
 ## Backlog handoff
 
 Apply `AGENTS.md` section 10's work-items-only backlog contract before creation or handoff.
-When a secondmate is created for a domain, existing main-backlog items that fall under its scope should become its work instead of staying stranded in the main backlog.
+When a process-backed secondmate is created for a domain, existing main-backlog items that fall under its scope should become its work instead of staying stranded in the main backlog.
+Dot mailbox routes accept explicit assignments rather than a local backlog-file handoff; their transport guide above owns that limit.
 Scope-matching is firstmate's judgment against the secondmate's natural-language scope, not a keyword rule.
 Read `data/backlog.md`, pick queued items that fit the new scope, and move them with:
 
@@ -206,7 +214,7 @@ Do not hand off `local-only` items.
 
 ## Recovery
 
-For local `kind=secondmate` meta with no window, treat the secondmate as a dead persistent direct report and respawn it with:
+For local process-backed `kind=secondmate` meta with no window, treat the secondmate as a dead persistent direct report and respawn it with:
 
 ```sh
 bin/fm-spawn.sh <id> --secondmate
@@ -222,7 +230,7 @@ If the secondmate is already running and only inherited local material changed, 
 To apply a changed pin to a live local secondmate, use the [control-plane relaunch](../../../docs/agent-control.md#transactional-relaunch).
 That plane refuses a remotely placed secondmate by name, because its agent runs on another host where none of the plane's postconditions can be read.
 For a remote secondmate, follow the [remote relaunch procedure](../../../docs/remote-secondmates.md#relaunch-a-live-remote-second-mate).
-A successful update restarts every live mate of both placements on its own, including one already on the target commit; the `/updatefirstmate` skill owns that pass, and `bin/fm-secondmate-restart.sh` owns its persist gate and failure vocabulary.
+A successful update restarts every live process-backed mate of both placements on its own, including one already on the target commit; the `/updatefirstmate` skill owns that pass, and `bin/fm-secondmate-restart.sh` owns its persist gate and failure vocabulary.
 
 Do not reconstruct a secondmate's whole tree from the main home.
 The main firstmate reconciles only direct reports.
@@ -234,7 +242,8 @@ It never initiates a survey or audit during recovery.
 
 A secondmate is persistent by default.
 An empty queue is healthy and does not trigger teardown.
-Run `bin/fm-teardown.sh <id>` for `kind=secondmate` only when the captain or main firstmate explicitly decides to retire that persistent second mate.
+Run `bin/fm-teardown.sh <id>` for a process-backed `kind=secondmate` only when the captain or main firstmate explicitly decides to retire that persistent second mate.
+Dot routes refuse that process cleanup; the mailbox transport guide owns their lifecycle limits.
 
 The safety check is the secondmate's own home.
 Teardown refuses while its `state/*.meta` contains in-flight work.

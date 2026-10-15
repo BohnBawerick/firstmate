@@ -930,6 +930,10 @@ fi
 
 ACTIVE_REGISTRY_LOCK=$(secondmate_registry_lock_path "$STATE")
 fm_lock_acquire_wait "$ACTIVE_REGISTRY_LOCK"
+if [ "$(secondmate_registry_field "$REG" "$ID" transport 2>/dev/null || true)" = dot-mcp ]; then
+  echo 'error: a dot has no local backlog agent; route the assignment with fm-send instead' >&2
+  exit 1
+fi
 REMOTE=$(secondmate_registry_field "$REG" "$ID" remote 2>/dev/null || true)
 if [ "$REMOTE" = 1 ]; then
   ACTIVE_HANDOFF_LOCK="$STATE/.backlog-handoff-$ID.lock"

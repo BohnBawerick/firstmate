@@ -24,6 +24,10 @@ RAW_TARGET=$1
 N=${2:-40}
 
 REMOTE_META=$(fm_backend_meta_for_selector "$RAW_TARGET" "$STATE" 2>/dev/null || true)
+if [ -n "$REMOTE_META" ] && [ "$(fm_meta_get "$REMOTE_META" transport)" = dot-mcp ]; then
+  DOT_ID=$(basename "$REMOTE_META" .meta)
+  exec "$SCRIPT_DIR/fm-dot-secondmate.sh" health "$DOT_ID"
+fi
 if [ -n "$REMOTE_META" ] && [ -n "$(fm_meta_get "$REMOTE_META" remote_host)" ]; then
   REMOTE_ID=${REMOTE_META##*/}
   REMOTE_ID=${REMOTE_ID%.meta}

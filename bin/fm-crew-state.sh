@@ -254,6 +254,7 @@ WT=$(meta_value worktree)
 KIND=$(meta_value kind)
 HARNESS=$(meta_value harness)
 REMOTE_HOST=$(meta_value remote_host)
+TRANSPORT=$(meta_value transport)
 # Empty until the meta is read, which keeps emit()'s quality gate inert on the
 # only paths that emit before this point (and none of them emit `done`).
 QUALITY_POSTURE=$(meta_value quality)
@@ -262,7 +263,7 @@ QUALITY_POSTURE=$(meta_value quality)
 # A torn-down (or never-created) worktree has no current state to read. A
 # remote secondmate's recorded worktree is a path on ITS host, so the local
 # probe proves nothing for it - the remote arm below reads the true source.
-if [ -z "$REMOTE_HOST" ] && { [ -z "$WT" ] || [ ! -d "$WT" ]; }; then
+if [ "$TRANSPORT" != dot-mcp ] && [ -z "$REMOTE_HOST" ] && { [ -z "$WT" ] || [ ! -d "$WT" ]; }; then
   emit unknown none "worktree gone (torn down?)"
 fi
 
@@ -301,6 +302,17 @@ map_log_state() {  # <line>
 
 LOG_LINE=$(status_current_line "$LOG" "$KIND")
 LOG_VERB=$(status_line_verb "$LOG_LINE")
+
+if [ "$TRANSPORT" = dot-mcp ]; then
+  [ "$KIND" = secondmate ] || emit unknown mailbox 'dot transport is only valid for a secondmate'
+  if DOT_HEALTH=$("$SCRIPT_DIR/fm-dot-secondmate.sh" health "$ID" 2>&1); then
+    if [ -n "$LOG_LINE" ]; then
+      emit "$(map_log_state "$LOG_LINE")" status-log "$(status_line_note "$LOG_LINE")${SEP}$DOT_HEALTH"
+    fi
+    emit unknown mailbox "$DOT_HEALTH (idle until routed work; dot process state is not observable)"
+  fi
+  emit unknown mailbox "$DOT_HEALTH"
+fi
 
 # --- remote secondmate: the true source is the remote endpoint ---------------
 # A remote mate's recorded worktree and backend target live on its own host, so

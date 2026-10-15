@@ -186,6 +186,9 @@ while IFS= read -r line || [ -n "$line" ]; do
   id=$SECONDMATE_REGISTRY_ID
   home=$SECONDMATE_REGISTRY_HOME
   remote=$SECONDMATE_REGISTRY_REMOTE
+  if [ "$remote" -eq 0 ] && [ "$(secondmate_home_transport "$home")" = dot-mcp ]; then
+    continue # Dot replies persist in the mailbox and parent channel, not a local agent session.
+  fi
   host=$SECONDMATE_REGISTRY_HOST
   total=$((total + 1))
   rc=0

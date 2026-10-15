@@ -447,6 +447,10 @@ fi
 fm_lease_guard "$ID" "teardown (fm-teardown)"
 
 META="$STATE/$ID.meta"
+if [ "$(fm_meta_get "$META" transport)" = dot-mcp ]; then
+  echo 'REFUSED: dot registration and mailbox work must be retired explicitly; no terminal or local copy was removed' >&2
+  exit 1
+fi
 TREEHOUSE_PROJECT_LOCK=
 TREEHOUSE_PROJECT_LOCK_HELD=0
 TREEHOUSE_SLOT_LOCK_REQUIRED=0

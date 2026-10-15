@@ -2757,8 +2757,8 @@ EOF
 # CLEANUP_SAFE becomes 1 only after both creates returned complete exact IDs.
 # A missing, failed, or malformed create response stays ambiguous and grants no
 # cleanup authority.
-fm_backend_herdr_projection_create_task() {  # <cwd> <workspace-label> <task-label>
-  local cwd=$1 workspace_label=$2 task_label=$3 session out tabs panes tab_count pane_count focus_before active_tab
+fm_backend_herdr_projection_create_task() {  # <cwd> <workspace-label> <task-label> [existing-session-only]
+  local cwd=$1 workspace_label=$2 task_label=$3 existing_only=${4:-} session out tabs panes tab_count pane_count focus_before active_tab
   FM_BACKEND_HERDR_PROJECTION_SESSION=""
   FM_BACKEND_HERDR_PROJECTION_WORKSPACE_ID=""
   FM_BACKEND_HERDR_PROJECTION_SEEDED_TAB_ID=""
@@ -2769,7 +2769,11 @@ fm_backend_herdr_projection_create_task() {  # <cwd> <workspace-label> <task-lab
 
   fm_backend_herdr_version_check || return 1
   session=$(fm_backend_herdr_session)
-  fm_backend_herdr_server_ensure "$session" || return 1
+  if [ "$existing_only" = existing-session-only ]; then
+    [ "$(fm_backend_herdr_server_running_state "$session")" = running ] || return 1
+  else
+    fm_backend_herdr_server_ensure "$session" || return 1
+  fi
   focus_before=$(fm_backend_herdr_projection_focus_snapshot "$session") || {
     echo "error: herdr presentation workspace create could not capture exact active workspace and tab; refusing a focus-unsafe projection" >&2
     return 1

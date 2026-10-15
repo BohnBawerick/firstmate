@@ -189,6 +189,10 @@ if [ -f "$SECONDMATES_MD" ]; then
     fi
     id=$SECONDMATE_REGISTRY_ID
     home=$SECONDMATE_REGISTRY_HOME
+    if [ "$SECONDMATE_REGISTRY_REMOTE" -eq 0 ] && [ "$(secondmate_home_transport "$home")" = dot-mcp ]; then
+      echo "secondmate $id: external dot uses the mailbox server's code; no local runtime to update"
+      continue
+    fi
     if [ "$SECONDMATE_REGISTRY_REMOTE" -eq 1 ]; then
       if remote_out=$("$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh update "$id" < /dev/null 2>&1); then
         remote_result=$(printf '%s\n' "$remote_out" | tail -1)

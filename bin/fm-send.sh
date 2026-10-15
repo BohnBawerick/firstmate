@@ -355,6 +355,15 @@ fm_send_resolve_target() { # <raw-target>
 
   meta=$(fm_backend_meta_for_selector "$raw" "$STATE" 2>/dev/null || true)
   if [ -n "$meta" ]; then
+    if [ "$(fm_meta_get "$meta" transport)" = dot-mcp ]; then
+      id=$(fm_send_id_from_meta "$meta")
+      RESOLVED_TARGET="dot-mcp:$id"
+      TARGET_BACKEND=dot-mcp
+      TARGET_META=$meta
+      TARGET_SELECTOR=1
+      RESOLUTION_TRIED="meta=$meta; transport=dot-mcp"
+      return 0
+    fi
     if [ -n "$(fm_meta_get "$meta" remote_host)" ]; then
       id=$(fm_send_id_from_meta "$meta")
       RESOLVED_TARGET="remote:$id"
@@ -522,7 +531,9 @@ while :; do
   esac
 done
 
-if [ "$TARGET_BACKEND" != remote ]; then
+if [ "$TARGET_BACKEND" = dot-mcp ]; then
+  "$SCRIPT_DIR/fm-dot-secondmate.sh" validate "$(fm_send_id_from_meta "$TARGET_META")" || exit 1
+elif [ "$TARGET_BACKEND" != remote ]; then
   fm_backend_validate "$TARGET_BACKEND" || exit 1
 fi
 
@@ -773,6 +784,7 @@ if [ "${1:-}" = "--key" ]; then
     exit 1
     ;;
   esac
+  [ "$TARGET_BACKEND" != dot-mcp ] || { echo 'error: a dot has no terminal keys; send a routed assignment instead' >&2; exit 1; }
   key=$2
   semantic_key=$(fm_send_normalize_key "$key")
   if [ "$TARGET_BACKEND" = remote ]; then
@@ -849,7 +861,7 @@ else
     fm_pending_reply_embed_corr "$MESSAGE" "$PENDING_REPLY_CORR" MESSAGE
     if [ "$PENDING_REPLY_CREATED" != 1 ] &&
       fm_pending_reply_delivery_attempt_unresolved "$STATE" "$PENDING_REPLY_CORR"; then
-      if [ "$TARGET_BACKEND" = remote ]; then
+      if [ "$TARGET_BACKEND" = remote ] || [ "$TARGET_BACKEND" = dot-mcp ]; then
         if ! fm_pending_reply_reset_known_undelivered "$STATE" "$PENDING_REPLY_CORR"; then
           echo "error: pending-reply delivery for $TARGET_TASK_ID could not be reset for an idempotent remote resend of correlation $PENDING_REPLY_CORR" >&2
           exit 1
@@ -865,6 +877,26 @@ else
       echo "error: failed to durably prepare pending-reply delivery for $TARGET_TASK_ID" >&2
       exit 1
     fi
+  fi
+  if [ "$TARGET_BACKEND" = dot-mcp ]; then
+    dot_corr=${PENDING_REPLY_CORR:-$FIRE_AND_FORGET_ID}
+    if ! printf '%s' "$MESSAGE" | "$SCRIPT_DIR/fm-dot-secondmate.sh" send "$TARGET_TASK_ID" \
+      "$dot_corr" "dot:$TARGET_TASK_ID:$dot_corr" >/dev/null; then
+      [ -z "$PENDING_REPLY_CORR" ] || fm_pending_reply_mark_delivery_unknown "$STATE" "$PENDING_REPLY_CORR" || true
+      echo 'error: dot delivery is unconfirmed; do not mint a new request. Retry with the same correlation or fire-and-forget delivery id.' >&2
+      if [ -n "$PENDING_REPLY_CORR" ]; then
+        printf 'FM_PENDING_REPLY_EXISTING_CORR=%q FM_HOME=%q %q %q %q\n' "$PENDING_REPLY_CORR" "$FM_HOME" "$SCRIPT_DIR/fm-send.sh" "$TARGET_TASK_ID" "$RESOLVE_ANSWER_TEXT" >&2
+      fi
+      exit 1
+    fi
+    if [ -n "$PENDING_REPLY_CORR" ] && ! fm_pending_reply_confirm_delivery "$STATE" "$PENDING_REPLY_CORR"; then
+      echo "warning: dot assignment is stored; reply-tracking commit failed. Do not resend; inspect $STATE." >&2
+    fi
+    if [ -n "$RESOLVE_KEYS" ]; then
+      fm_send_close_resolved_keys "$RESOLVE_ANSWER_TEXT" || exit 1
+      fm_send_feed_resolved_holds "$RESOLVE_ANSWER_TEXT" || exit 1
+    fi
+    exit 0
   fi
   # Data-plane selection (see the header): text addressed to a task selector
   # resolved through this home's metadata rides the inbox plane, unless it is

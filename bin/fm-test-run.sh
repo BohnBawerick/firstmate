@@ -566,7 +566,7 @@ family_for_basename() {
       printf '%s\n' watcher-wake-lock
       ;;
     fm-afk-inject-herdr-e2e.test.sh|fm-afk-inject-self-deadlock-e2e.test.sh|fm-afk-launch.test.sh|fm-backend-autodetect-smoke.test.sh|\
-    fm-backend-herdr-eventwait-smoke.test.sh|fm-backend-herdr-presentation-e2e.test.sh|\
+    fm-backend-herdr-eventwait-smoke.test.sh|fm-backend-herdr-presentation-e2e.test.sh|fm-dot-view-herdr-e2e.test.sh|\
     fm-backend-herdr-launcher-workspace-e2e.test.sh|\
     fm-backend-herdr-prune-safety-e2e.test.sh|fm-backend-herdr-respawn-idem-e2e.test.sh|\
     fm-backend-herdr-focus-flash-e2e.test.sh|\
@@ -1705,8 +1705,11 @@ families_for_changed_path() {
       # through run_script_contained, so it cannot regress fixture Git isolation.
       printf '%s\n' pure-contract-unit
       ;;
-    bin/fm-dot-mailbox*|tests/fm-dot-mailbox*)
+    bin/fm-dot-mailbox*|bin/fm-dot-secondmate.sh|tests/fm-dot-mailbox*)
       printf '%s\n' pure-contract-unit
+      ;;
+    bin/fm-dot-view*)
+      printf '%s\n' pure-contract-unit real-herdr-gated
       ;;
     bin/backends/herdr*|bin/fm-herdr-lab.sh|tests/herdr-test-safety.sh|tests/herdr-client-pair-fixture.sh)
       printf '%s\n' real-herdr-gated
@@ -1741,7 +1744,7 @@ families_for_changed_path() {
       printf '%s\n' real-herdr-gated
       printf '%s\n' pure-contract-unit
       ;;
-    bin/fm-watch*|bin/fm-wake*|bin/fm-inactive-reconcile.sh|\
+    bin/fm-watch*|bin/fm-wake*|bin/fm-inactive-reconcile.sh|bin/fm-child-outcome-lib.sh|\
     bin/fm-classify-lib.sh|bin/fm-daemon*|bin/fm-turnend-guard*|bin/fm-guard.sh)
       printf '%s\n' watcher-wake-lock
       ;;

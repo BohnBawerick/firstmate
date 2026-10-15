@@ -137,6 +137,17 @@ fm_secondmate_liveness_probe() {  # <meta> <id> <full|poll>
   FM_SM_LIVE_STATUS=skipped FM_SM_LIVE_STATE=unknown FM_SM_LIVE_KILL=0
   FM_SM_LIVE_CAUSE='' FM_SM_LIVE_WHERE='' FM_SM_LIVE_REASON='' FM_SM_LIVE_LINE=''
   local window harness remote_host remote_rc out agent_state readiness_reason route_out remote_backend
+  if [ "$(fm_meta_get "$meta" transport)" = dot-mcp ]; then
+    FM_SM_LIVE_STATE=unobservable
+    if out=$("$FM_SM_LIVE_LIB_DIR/fm-dot-secondmate.sh" health "$id" 2>&1); then
+      # Ready means its bridge accepts work, not that ChatGPT has a live process.
+      FM_SM_LIVE_STATUS=alive
+      FM_SM_LIVE_LINE="dot bridge ready: $out"
+    else
+      FM_SM_LIVE_REASON="dot bridge not ready: $out; no local relaunch is valid"
+    fi
+    return 0
+  fi
   window=$(fm_meta_get "$meta" window)
   [ -n "$window" ] || { FM_SM_LIVE_STATUS=silent; return 0; }
   harness=$(fm_meta_get "$meta" harness)
