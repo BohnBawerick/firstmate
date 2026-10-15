@@ -1,0 +1,22 @@
+fm-dot-mailbox: listening on http://127.0.0.1:55649/mcp (database: /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/private/mailbox.sqlite3)
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "get_messages", "timestamp": "2026-10-15T20:39:13.631910Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "reply", "timestamp": "2026-10-15T20:39:13.644320Z", "http_status": 200}
+fm-dot-mailbox: listening on http://127.0.0.1:55649/mcp (database: /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/private/mailbox.sqlite3)
+{"event": "mcp_request", "method": "events/subscribe", "result": "ok", "error_code": null, "timestamp": "2026-10-15T20:39:14.347883Z", "http_status": 200}
+{"event": "mcp_request", "method": "events/subscribe", "result": "ok", "error_code": null, "timestamp": "2026-10-15T20:39:14.352651Z", "http_status": 200}
+fm-dot-mailbox: listening on http://127.0.0.1:55649/mcp (database: /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/private/mailbox.sqlite3)
+{"event": "mcp_request", "method": "events/subscribe", "result": "ok", "error_code": null, "timestamp": "2026-10-15T20:39:14.470152Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "get_messages", "timestamp": "2026-10-15T20:39:15.262881Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "reply", "timestamp": "2026-10-15T20:39:15.268185Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "reply", "timestamp": "2026-10-15T20:39:16.292545Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "reply", "timestamp": "2026-10-15T20:39:16.599689Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "reply", "timestamp": "2026-10-15T20:39:16.606238Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "reply", "timestamp": "2026-10-15T20:39:19.341364Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "reply", "timestamp": "2026-10-15T20:39:20.019936Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "reply", "timestamp": "2026-10-15T20:39:22.244439Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "reply", "timestamp": "2026-10-15T20:39:22.253097Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "reply", "timestamp": "2026-10-15T20:39:23.158784Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "reply", "timestamp": "2026-10-15T20:39:23.495956Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "reply", "timestamp": "2026-10-15T20:39:24.233464Z", "http_status": 200}
+{"event": "mcp_request", "method": "events/subscribe", "result": "ok", "error_code": null, "timestamp": "2026-10-15T20:39:26.551275Z", "http_status": 200}
+fm-dot-mailbox: listening on http://127.0.0.1:55649/mcp (database: /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/private/mailbox.sqlite3)

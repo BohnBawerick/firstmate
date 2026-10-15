@@ -1,0 +1,16 @@
+[2J[Hdot-proof | connection ready | read-only
+Seen 04:39 | expiry 10-17 04:39
+
+Thread: fixture-native-thread
+Turn: turn-D
+Reported: working at 10-16 04:39 (17s ago)
+Current: working | parent delivered: True
+Synthetic local reported observation
+
+Activity (AWST)
+04:05 task (Visible corpus read-only feasibility...) done
+04:05 task (Visible corpus comparison with full...) started
+04:22 task (Visible corpus read-only feasibility...) failed
+04:22 task (Visible corpus read-only feasibility...) started
+04:39 task (Visible corpus comparison with full...) working
+04:39 task (Visible corpus read-only feasibility...) working

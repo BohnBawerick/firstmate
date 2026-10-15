@@ -1,0 +1,1983 @@
+$ fm-lab-home.sh create /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent
+/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent
+
+
+Mailbox HTTP health
+{
+  "status": "ok",
+  "name": "fm-dot-mailbox",
+  "protocolVersion": "2026-07-28",
+  "server": "fm-dot-mailbox"
+}
+
+$ fm-dot-mailbox.sh --db /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/private/mailbox.sqlite3 submit --queue hello --correlation-id hello-1f6f47e2a9774403b00ee321acb13495 --idempotency-key hello-1f6f47e2a9774403b00ee321acb13495 hello-1f6f47e2a9774403b00ee321acb13495
+{"seq": 1, "id": "msg_3d8a9b976365720f", "queue": "hello", "content": "hello-1f6f47e2a9774403b00ee321acb13495", "correlation_id": "hello-1f6f47e2a9774403b00ee321acb13495", "idempotency_key": "hello-1f6f47e2a9774403b00ee321acb13495", "status": "pending", "reply": null, "created_at": "2026-10-15T20:39:13.505966Z", "updated_at": "2026-10-15T20:39:13.505966Z", "origin": "firstmate", "mate_id": null, "delivery": {"pending": 0, "delivered": 0, "undelivered": 0}}
+
+
+$ fm-dot-mailbox.sh --db /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/private/mailbox.sqlite3 submit --queue hello --correlation-id hello-1f6f47e2a9774403b00ee321acb13495 --idempotency-key hello-1f6f47e2a9774403b00ee321acb13495 hello-1f6f47e2a9774403b00ee321acb13495
+{"seq": 1, "id": "msg_3d8a9b976365720f", "queue": "hello", "content": "hello-1f6f47e2a9774403b00ee321acb13495", "correlation_id": "hello-1f6f47e2a9774403b00ee321acb13495", "idempotency_key": "hello-1f6f47e2a9774403b00ee321acb13495", "status": "pending", "reply": null, "created_at": "2026-10-15T20:39:13.505966Z", "updated_at": "2026-10-15T20:39:13.505966Z", "origin": "firstmate", "mate_id": null, "delivery": {"pending": 0, "delivered": 0, "undelivered": 0}}
+
+
+MCP tools/call
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"messages\": [{\"seq\": 1, \"id\": \"msg_3d8a9b976365720f\", \"queue\": \"hello\", \"content\": \"hello-1f6f47e2a9774403b00ee321acb13495\", \"correlation_id\": \"hello-1f6f47e2a9774403b00ee321acb13495\", \"idempotency_key\": \"hello-1f6f47e2a9774403b00ee321acb13495\", \"status\": \"pending\", \"reply\": null, \"created_at\": \"2026-10-15T20:39:13.505966Z\", \"updated_at\": \"2026-10-15T20:39:13.505966Z\", \"origin\": \"firstmate\", \"mate_id\": null, \"delivery\": {\"pending\": 0, \"delivered\": 0, \"undelivered\": 0}}], \"next_cursor\": \"1\"}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+MCP tools/call
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"status\": \"ok\", \"message_id\": \"msg_3d8a9b976365720f\", \"revision\": null}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+$ fm-dot-mailbox.sh --db /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/private/mailbox.sqlite3 get msg_3d8a9b976365720f
+{"seq": 1, "id": "msg_3d8a9b976365720f", "queue": "hello", "content": "hello-1f6f47e2a9774403b00ee321acb13495", "correlation_id": "hello-1f6f47e2a9774403b00ee321acb13495", "idempotency_key": "hello-1f6f47e2a9774403b00ee321acb13495", "status": "replied", "reply": "done: hello-1f6f47e2a9774403b00ee321acb13495", "created_at": "2026-10-15T20:39:13.505966Z", "updated_at": "2026-10-15T20:39:13.632713Z", "origin": "firstmate", "mate_id": null, "delivery": {"pending": 0, "delivered": 0, "undelivered": 0}}
+
+
+Mailbox HTTP health
+{
+  "status": "ok",
+  "name": "fm-dot-mailbox",
+  "protocolVersion": "2026-07-28",
+  "server": "fm-dot-mailbox"
+}
+
+$ fm-dot-mailbox.sh --db /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/private/mailbox.sqlite3 submit --queue hello --correlation-id hello-1f6f47e2a9774403b00ee321acb13495 --idempotency-key hello-1f6f47e2a9774403b00ee321acb13495 hello-1f6f47e2a9774403b00ee321acb13495
+{"seq": 1, "id": "msg_3d8a9b976365720f", "queue": "hello", "content": "hello-1f6f47e2a9774403b00ee321acb13495", "correlation_id": "hello-1f6f47e2a9774403b00ee321acb13495", "idempotency_key": "hello-1f6f47e2a9774403b00ee321acb13495", "status": "replied", "reply": "done: hello-1f6f47e2a9774403b00ee321acb13495", "created_at": "2026-10-15T20:39:13.505966Z", "updated_at": "2026-10-15T20:39:13.632713Z", "origin": "firstmate", "mate_id": null, "delivery": {"pending": 0, "delivered": 0, "undelivered": 0}}
+
+
+$ fm-dot-mailbox.sh --db /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/private/mailbox.sqlite3 get msg_3d8a9b976365720f
+{"seq": 1, "id": "msg_3d8a9b976365720f", "queue": "hello", "content": "hello-1f6f47e2a9774403b00ee321acb13495", "correlation_id": "hello-1f6f47e2a9774403b00ee321acb13495", "idempotency_key": "hello-1f6f47e2a9774403b00ee321acb13495", "status": "replied", "reply": "done: hello-1f6f47e2a9774403b00ee321acb13495", "created_at": "2026-10-15T20:39:13.505966Z", "updated_at": "2026-10-15T20:39:13.632713Z", "origin": "firstmate", "mate_id": null, "delivery": {"pending": 0, "delivered": 0, "undelivered": 0}}
+
+
+$ fm-dot-secondmate.sh register dot-proof /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/private/mailbox.sqlite3 /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate work http://127.0.0.1:55649/health http://127.0.0.1:45745/readyz Disposable local proof /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/charter.md
+{"id": "dot-proof", "home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate", "queue": "work"}
+
+
+MCP events/subscribe
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "id": "sub_b60fe7e18cf4416c",
+    "refreshBefore": "2026-10-16T20:39:14.343978Z",
+    "cursor": null,
+    "truncated": false
+  }
+}
+
+MCP events/subscribe
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "id": "sub_b60fe7e18cf4416c",
+    "refreshBefore": "2026-10-16T20:39:14.348960Z",
+    "cursor": null,
+    "truncated": false
+  }
+}
+
+Mailbox HTTP health
+{
+  "status": "ok",
+  "name": "fm-dot-mailbox",
+  "protocolVersion": "2026-07-28",
+  "server": "fm-dot-mailbox"
+}
+
+MCP events/subscribe
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "id": "sub_b60fe7e18cf4416c",
+    "refreshBefore": "2026-10-16T20:39:14.458743Z",
+    "cursor": null,
+    "truncated": false
+  }
+}
+
+Receiver verification
+{
+  "signature_valid": true,
+  "challenge_echoed": true,
+  "duplicate_subscribe_challenges": 1
+}
+
+$ fm-send.sh dot-proof Subject: Visible corpus read-only feasibility comparison
+Return the synthetic proof nonce only.
+
+
+MCP tools/call
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"messages\": [{\"seq\": 2, \"id\": \"msg_d9f016056d2688ba\", \"queue\": \"work\", \"content\": \"Idle until routed work. Report only through the mailbox.\\n\\n## Routed assignment\\n[fm-from-firstmate]\u2063corr=857f777469de6e0f Subject: Visible corpus read-only feasibility comparison\\nReturn the synthetic proof nonce only.\", \"correlation_id\": \"857f777469de6e0f\", \"idempotency_key\": \"dot:dot-proof:857f777469de6e0f:5626a17bca189c426dd8ea9584aff1c72a41b87960fb0740d75dcef32a135778\", \"status\": \"pending\", \"reply\": null, \"created_at\": \"2026-10-15T20:39:15.164402Z\", \"updated_at\": \"2026-10-15T20:39:15.164402Z\", \"origin\": \"firstmate\", \"mate_id\": \"dot-proof\", \"delivery\": {\"pending\": 0, \"delivered\": 1, \"undelivered\": 0}}], \"next_cursor\": \"2\"}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+Local controlled receiver, not a hosted dot wake
+[
+  {
+    "event": {
+      "name": "message.created",
+      "timestamp": "2026-10-15T20:39:15.164402Z",
+      "data": {
+        "queue": "work",
+        "content": "Idle until routed work. Report only through the mailbox.\n\n## Routed assignment\n[fm-from-firstmate]\u2063corr=857f777469de6e0f Subject: Visible corpus read-only feasibility comparison\nReturn the synthetic proof nonce only.",
+        "created_at": "2026-10-15T20:39:15.164402Z",
+        "message_id": "msg_d9f016056d2688ba",
+        "correlation_id": "857f777469de6e0f"
+      },
+      "cursor": null,
+      "eventId": "evt_749f53a5970c30d7"
+    },
+    "signature_valid": true,
+    "http_status": 202
+  }
+]
+
+MCP tools/call
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"status\": \"ok\", \"message_id\": \"msg_d9f016056d2688ba\", \"revision\": 1}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+$ fm-wake-drain.sh 
+STATUS OUTCOME BACKSTOP (newest captain-facing task event has no covering branch outcome):
+dot-proof done [corr=857f777469de6e0f] [at=1792096755]: turn A completed (report=data/dot-proof/mailbox-replies/1.md)
+
+
+Parent wake drain
+STATUS OUTCOME BACKSTOP (newest captain-facing task event has no covering branch outcome):
+dot-proof done [corr=857f777469de6e0f] [at=1792096755]: turn A completed (report=data/dot-proof/mailbox-replies/1.md)
+
+
+MCP tools/call
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"status\": \"ok\", \"message_id\": \"msg_d9f016056d2688ba\", \"revision\": 2}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+MCP tools/call
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"status\": \"ok\", \"message_id\": \"msg_d9f016056d2688ba\", \"revision\": 3}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+MCP tools/call
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"status\": \"ok\", \"message_id\": \"msg_d9f016056d2688ba\", \"idempotent\": true, \"revision\": 3}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+Exact activity retry
+{
+  "first_revision": 3,
+  "retry_revision": 3,
+  "routine_parent_status_unchanged": true
+}
+
+$ fm-crew-state.sh dot-proof
+state: working · source: mailbox · reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:16.600471Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0
+
+
+$ fm-fleet-snapshot.sh --json
+{
+  "schema": "fm-fleet-snapshot.v1",
+  "generated": "2026-10-15T20:39:17Z",
+  "fm_home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent",
+  "roots": {
+    "fm_root": "/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50DPBG3H9SMSTA1C87NNP2P",
+    "state": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state",
+    "data": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data",
+    "config": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/config",
+    "projects": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/projects"
+  },
+  "backlog": {
+    "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/backlog.md",
+    "present": false,
+    "records": []
+  },
+  "tasks": [
+    {
+      "id": "dot-proof",
+      "kind": "secondmate",
+      "harness": "",
+      "mode": "",
+      "yolo": "",
+      "branch": null,
+      "project": "",
+      "spawn_gen": null,
+      "backend": "dot-mcp",
+      "remote": null,
+      "paths": {
+        "meta": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state/dot-proof.meta",
+          "present": true
+        },
+        "status_log": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state/dot-proof.status",
+          "present": true,
+          "kind": "event_history",
+          "last_event": {
+            "state": "done",
+            "note": "child cloud-3db2f6e48402dcf0e60b39ef done: Synthetic local reported observation report=data/dot-proof/mailbox-replies/2.md",
+            "raw": "done [key=child-outcome-cloud-3db2f6e48402dcf0e60b39ef-done-2] [at=1792096756]: child cloud-3db2f6e48402dcf0e60b39ef done: Synthetic local reported observation report=data/dot-proof/mailbox-replies/2.md",
+            "age_seconds": 1
+          }
+        },
+        "worktree": {
+          "path": null,
+          "present": false
+        },
+        "home": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "present": true
+        },
+        "report": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/dot-proof/report.md",
+          "present": false
+        }
+      },
+      "secondmate_projects": [],
+      "current_state": {
+        "state": "working",
+        "source": "mailbox",
+        "detail": "reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:16.600471Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+        "raw": "state: working · source: mailbox · reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:16.600471Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+        "observed_at": "2026-10-15T20:39:17Z",
+        "freshness": "fresh"
+      },
+      "endpoint": {
+        "target": null,
+        "exists": null,
+        "agent_alive": "unknown",
+        "status": "unknown",
+        "observed_at": "2026-10-15T20:39:17Z",
+        "freshness": "fresh"
+      },
+      "pr": {
+        "url": null,
+        "source": "absent",
+        "head": null
+      },
+      "hints": {
+        "pending_decision": false,
+        "blocked_event": false,
+        "open_decisions": [],
+        "scout_report_present": false,
+        "last_event_text": "done [key=child-outcome-cloud-3db2f6e48402dcf0e60b39ef-done-2] [at=1792096756]: child cloud-3db2f6e48402dcf0e60b39ef done: Synthetic local reported observation report=data/dot-proof/mailbox-replies/2.md"
+      },
+      "actions": {
+        "send": "bin/fm-send.sh fm-dot-proof '<request>'",
+        "watch": "read status/doc return channel; do not routinely fm-peek a secondmate for answers",
+        "return_channel_note": "Secondmate answers come back through status/doc paths after a marked fm-send request."
+      },
+      "backlog": null
+    }
+  ],
+  "main_inventory": {
+    "valid": true,
+    "reason": null,
+    "orphan_in_flight": [],
+    "unstructured_current_count": 0
+  },
+  "contributions": {
+    "known": 0,
+    "checked": 0,
+    "counts": {
+      "captain": 0,
+      "fleet": 0,
+      "maintainer": 0,
+      "nobody": 0
+    },
+    "unmeasured": 0,
+    "complete": false,
+    "proven_clear": false,
+    "stale_verdicts": 0,
+    "missing_verdicts": 0,
+    "unreadable_records": 1,
+    "valid_until": 900,
+    "captain": [],
+    "captain_omitted": 0
+  },
+  "scout_reports": [],
+  "secondmate_current": {
+    "registry": {
+      "present": true,
+      "available": true,
+      "reason": null,
+      "provenance": "registered-table",
+      "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/secondmates.md",
+      "freshness": {
+        "status": "fresh",
+        "observed_at": "2026-10-15T20:39:17Z"
+      },
+      "records": [
+        {
+          "id": "dot-proof",
+          "home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "host": null,
+          "root": null,
+          "remote": false,
+          "registered": true,
+          "registry_error": null
+        }
+      ],
+      "input_truncated": false,
+      "records_truncated": false,
+      "complete": true,
+      "reasons": [],
+      "lines_in_window": 2,
+      "records_in_window": 1
+    },
+    "records": [
+      {
+        "id": "dot-proof",
+        "home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+        "host": null,
+        "remote": false,
+        "registered": true,
+        "spawn_gen": null,
+        "current": {
+          "state": "active_child_work",
+          "reason": "reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:16.600471Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0; cloud activity is dot-reported, not directly observed"
+        },
+        "invalidity": null,
+        "reconcile_inventory": null,
+        "provenance": {
+          "selected": "mailbox-parent-channel",
+          "structured_home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "parent_event_role": "reported-outcome"
+        },
+        "freshness": {
+          "status": "historical-event",
+          "observed_at": "2026-10-15T20:39:17Z",
+          "age_seconds": 1
+        },
+        "active_children": [
+          {
+            "schema": "fm.activity-note.v1",
+            "event_id": "turn-B-created",
+            "kind": "reported-cloud",
+            "observed_at": "2026-10-15T20:39:16.594730Z",
+            "summary": "Synthetic local reported observation",
+            "task_id": "fixture-native-thread",
+            "turn_id": "turn-B",
+            "task_title": "Visible corpus comparison with full native task title",
+            "id": "cloud-3db2f6e48402dcf0e60b39ef",
+            "revision": 3,
+            "state": "working",
+            "provenance": "dot-reported",
+            "age_seconds": 1,
+            "current_state": "working",
+            "terminal": false,
+            "parent_delivered": true,
+            "display_required": true,
+            "activity_kind": "task-created",
+            "reported_state": "working",
+            "doing": "Synthetic local reported observation (reported 1s ago; current working)"
+          }
+        ],
+        "reported_children": [
+          {
+            "schema": "fm.activity-note.v1",
+            "event_id": "turn-B-created",
+            "kind": "task-created",
+            "observed_at": "2026-10-15T20:39:16.594730Z",
+            "summary": "Synthetic local reported observation",
+            "task_id": "fixture-native-thread",
+            "turn_id": "turn-B",
+            "task_title": "Visible corpus comparison with full native task title",
+            "id": "cloud-3db2f6e48402dcf0e60b39ef",
+            "revision": 3,
+            "state": "working",
+            "provenance": "dot-reported",
+            "age_seconds": 1,
+            "current_state": "working",
+            "terminal": false,
+            "parent_delivered": true,
+            "display_required": true
+          }
+        ],
+        "decisions_open": [],
+        "holds": [],
+        "queued": [],
+        "landed": [],
+        "endpoints": [],
+        "counts": {
+          "active_children": 1,
+          "decisions_open": 0,
+          "holds": 0,
+          "queued": 0,
+          "landed": 0,
+          "endpoints": 0
+        },
+        "omitted": [],
+        "parent_event": {
+          "raw": "done [key=child-outcome-cloud-3db2f6e48402dcf0e60b39ef-done-2] [at=1792096756]: child cloud-3db2f6e48402dcf0e60b39ef done: Synthetic local reported observation report=data/dot-proof/mailbox-replies/2.md",
+          "note": "child cloud-3db2f6e48402dcf0e60b39ef done: Synthetic local reported observation report=data/dot-proof/mailbox-replies/2.md",
+          "age_seconds": 1,
+          "open_activities": [],
+          "open_decisions": [],
+          "activity_scan": {
+            "records": [],
+            "available": true,
+            "input_truncated": false,
+            "retained_truncated": false,
+            "reasons": [],
+            "lines_in_window": 2,
+            "records_in_window": 0
+          }
+        },
+        "terminal_evidence": {
+          "provenance": "parent-direct-report-terminal",
+          "trust": "untrusted-supplement",
+          "captured": false,
+          "observed_at": "2026-10-15T20:39:17Z",
+          "freshness": "unknown",
+          "reason": "no recorded endpoint",
+          "lines": 0,
+          "bytes": 0,
+          "event_note_seen": false,
+          "contradiction": false
+        },
+        "contradiction": false
+      }
+    ],
+    "total_registered": 1,
+    "total": 1,
+    "shown": 1,
+    "truncated": 0
+  },
+  "secondmate_landed": {
+    "records": [],
+    "truncated": [],
+    "unreadable": [],
+    "partial": []
+  },
+  "secondmate_guidance": {
+    "note": "For kind=secondmate, bearings selects validated structured state from that registered home; parent events and bounded terminal evidence are fallback-only supplements and never current-state authority."
+  }
+}
+
+
+Fresh turn B reconciles older turn A
+{
+  "tasks.current_state": {
+    "state": "working",
+    "source": "mailbox",
+    "detail": "reported cloud observations \u00b7 mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:16.600471Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+    "raw": "state: working \u00b7 source: mailbox \u00b7 reported cloud observations \u00b7 mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:16.600471Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+    "observed_at": "2026-10-15T20:39:17Z",
+    "freshness": "fresh"
+  },
+  "secondmate_current": {
+    "state": "active_child_work",
+    "reason": "reported cloud observations \u00b7 mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:16.600471Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0; cloud activity is dot-reported, not directly observed"
+  }
+}
+
+$ fm-crew-state.sh dot-proof
+state: unknown · source: mailbox · reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:16.600471Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0
+
+
+$ fm-fleet-snapshot.sh --json
+{
+  "schema": "fm-fleet-snapshot.v1",
+  "generated": "2026-10-15T20:39:18Z",
+  "fm_home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent",
+  "roots": {
+    "fm_root": "/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50DPBG3H9SMSTA1C87NNP2P",
+    "state": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state",
+    "data": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data",
+    "config": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/config",
+    "projects": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/projects"
+  },
+  "backlog": {
+    "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/backlog.md",
+    "present": false,
+    "records": []
+  },
+  "tasks": [
+    {
+      "id": "dot-proof",
+      "kind": "secondmate",
+      "harness": "",
+      "mode": "",
+      "yolo": "",
+      "branch": null,
+      "project": "",
+      "spawn_gen": null,
+      "backend": "dot-mcp",
+      "remote": null,
+      "paths": {
+        "meta": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state/dot-proof.meta",
+          "present": true
+        },
+        "status_log": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state/dot-proof.status",
+          "present": true,
+          "kind": "event_history",
+          "last_event": {
+            "state": "done",
+            "note": "child cloud-3db2f6e48402dcf0e60b39ef done: Synthetic local reported observation report=data/dot-proof/mailbox-replies/2.md",
+            "raw": "done [key=child-outcome-cloud-3db2f6e48402dcf0e60b39ef-done-2] [at=1792096756]: child cloud-3db2f6e48402dcf0e60b39ef done: Synthetic local reported observation report=data/dot-proof/mailbox-replies/2.md",
+            "age_seconds": 2
+          }
+        },
+        "worktree": {
+          "path": null,
+          "present": false
+        },
+        "home": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "present": true
+        },
+        "report": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/dot-proof/report.md",
+          "present": false
+        }
+      },
+      "secondmate_projects": [],
+      "current_state": {
+        "state": "unknown",
+        "source": "mailbox",
+        "detail": "reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:16.600471Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+        "raw": "state: unknown · source: mailbox · reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:16.600471Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+        "observed_at": "2026-10-15T20:39:18Z",
+        "freshness": "fresh"
+      },
+      "endpoint": {
+        "target": null,
+        "exists": null,
+        "agent_alive": "unknown",
+        "status": "unknown",
+        "observed_at": "2026-10-15T20:39:18Z",
+        "freshness": "fresh"
+      },
+      "pr": {
+        "url": null,
+        "source": "absent",
+        "head": null
+      },
+      "hints": {
+        "pending_decision": false,
+        "blocked_event": false,
+        "open_decisions": [],
+        "scout_report_present": false,
+        "last_event_text": "done [key=child-outcome-cloud-3db2f6e48402dcf0e60b39ef-done-2] [at=1792096756]: child cloud-3db2f6e48402dcf0e60b39ef done: Synthetic local reported observation report=data/dot-proof/mailbox-replies/2.md"
+      },
+      "actions": {
+        "send": "bin/fm-send.sh fm-dot-proof '<request>'",
+        "watch": "read status/doc return channel; do not routinely fm-peek a secondmate for answers",
+        "return_channel_note": "Secondmate answers come back through status/doc paths after a marked fm-send request."
+      },
+      "backlog": null
+    }
+  ],
+  "main_inventory": {
+    "valid": true,
+    "reason": null,
+    "orphan_in_flight": [],
+    "unstructured_current_count": 0
+  },
+  "contributions": {
+    "known": 0,
+    "checked": 0,
+    "counts": {
+      "captain": 0,
+      "fleet": 0,
+      "maintainer": 0,
+      "nobody": 0
+    },
+    "unmeasured": 0,
+    "complete": false,
+    "proven_clear": false,
+    "stale_verdicts": 0,
+    "missing_verdicts": 0,
+    "unreadable_records": 1,
+    "valid_until": 900,
+    "captain": [],
+    "captain_omitted": 0
+  },
+  "scout_reports": [],
+  "secondmate_current": {
+    "registry": {
+      "present": true,
+      "available": true,
+      "reason": null,
+      "provenance": "registered-table",
+      "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/secondmates.md",
+      "freshness": {
+        "status": "fresh",
+        "observed_at": "2026-10-15T20:39:18Z"
+      },
+      "records": [
+        {
+          "id": "dot-proof",
+          "home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "host": null,
+          "root": null,
+          "remote": false,
+          "registered": true,
+          "registry_error": null
+        }
+      ],
+      "input_truncated": false,
+      "records_truncated": false,
+      "complete": true,
+      "reasons": [],
+      "lines_in_window": 2,
+      "records_in_window": 1
+    },
+    "records": [
+      {
+        "id": "dot-proof",
+        "home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+        "host": null,
+        "remote": false,
+        "registered": true,
+        "spawn_gen": null,
+        "current": {
+          "state": "unknown",
+          "reason": "reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:16.600471Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0; cloud activity is dot-reported, not directly observed"
+        },
+        "invalidity": null,
+        "reconcile_inventory": null,
+        "provenance": {
+          "selected": "mailbox-parent-channel",
+          "structured_home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "parent_event_role": "reported-outcome"
+        },
+        "freshness": {
+          "status": "historical-event",
+          "observed_at": "2026-10-15T20:39:18Z",
+          "age_seconds": 2
+        },
+        "active_children": [
+          {
+            "schema": "fm.activity-note.v1",
+            "event_id": "turn-B-created",
+            "kind": "reported-cloud",
+            "observed_at": "2026-10-15T20:22:36.594730+00:00",
+            "summary": "Synthetic local reported observation",
+            "task_id": "fixture-native-thread",
+            "turn_id": "turn-B",
+            "task_title": "Visible corpus comparison with full native task title",
+            "id": "cloud-3db2f6e48402dcf0e60b39ef",
+            "revision": 3,
+            "state": "unknown",
+            "provenance": "dot-reported",
+            "age_seconds": 1002,
+            "current_state": "unknown",
+            "terminal": false,
+            "parent_delivered": true,
+            "display_required": true,
+            "activity_kind": "task-created",
+            "reported_state": "working",
+            "doing": "Synthetic local reported observation (reported 1002s ago; current unknown)"
+          }
+        ],
+        "reported_children": [
+          {
+            "schema": "fm.activity-note.v1",
+            "event_id": "turn-B-created",
+            "kind": "task-created",
+            "observed_at": "2026-10-15T20:22:36.594730+00:00",
+            "summary": "Synthetic local reported observation",
+            "task_id": "fixture-native-thread",
+            "turn_id": "turn-B",
+            "task_title": "Visible corpus comparison with full native task title",
+            "id": "cloud-3db2f6e48402dcf0e60b39ef",
+            "revision": 3,
+            "state": "working",
+            "provenance": "dot-reported",
+            "age_seconds": 1002,
+            "current_state": "unknown",
+            "terminal": false,
+            "parent_delivered": true,
+            "display_required": true
+          }
+        ],
+        "decisions_open": [],
+        "holds": [],
+        "queued": [],
+        "landed": [],
+        "endpoints": [],
+        "counts": {
+          "active_children": 1,
+          "decisions_open": 0,
+          "holds": 0,
+          "queued": 0,
+          "landed": 0,
+          "endpoints": 0
+        },
+        "omitted": [],
+        "parent_event": {
+          "raw": "done [key=child-outcome-cloud-3db2f6e48402dcf0e60b39ef-done-2] [at=1792096756]: child cloud-3db2f6e48402dcf0e60b39ef done: Synthetic local reported observation report=data/dot-proof/mailbox-replies/2.md",
+          "note": "child cloud-3db2f6e48402dcf0e60b39ef done: Synthetic local reported observation report=data/dot-proof/mailbox-replies/2.md",
+          "age_seconds": 2,
+          "open_activities": [],
+          "open_decisions": [],
+          "activity_scan": {
+            "records": [],
+            "available": true,
+            "input_truncated": false,
+            "retained_truncated": false,
+            "reasons": [],
+            "lines_in_window": 2,
+            "records_in_window": 0
+          }
+        },
+        "terminal_evidence": {
+          "provenance": "parent-direct-report-terminal",
+          "trust": "untrusted-supplement",
+          "captured": false,
+          "observed_at": "2026-10-15T20:39:18Z",
+          "freshness": "unknown",
+          "reason": "no recorded endpoint",
+          "lines": 0,
+          "bytes": 0,
+          "event_note_seen": false,
+          "contradiction": false
+        },
+        "contradiction": false
+      }
+    ],
+    "total_registered": 1,
+    "total": 1,
+    "shown": 1,
+    "truncated": 0
+  },
+  "secondmate_landed": {
+    "records": [],
+    "truncated": [],
+    "unreadable": [
+      "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate"
+    ],
+    "partial": []
+  },
+  "secondmate_guidance": {
+    "note": "For kind=secondmate, bearings selects validated structured state from that registered home; parent events and bounded terminal evidence are fallback-only supplements and never current-state authority."
+  }
+}
+
+
+Aged persisted observations, live public reads
+{
+  "tasks.current_state": {
+    "state": "unknown",
+    "source": "mailbox",
+    "detail": "reported cloud observations \u00b7 mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:16.600471Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+    "raw": "state: unknown \u00b7 source: mailbox \u00b7 reported cloud observations \u00b7 mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:16.600471Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+    "observed_at": "2026-10-15T20:39:18Z",
+    "freshness": "fresh"
+  },
+  "secondmate_current": {
+    "state": "unknown",
+    "reason": "reported cloud observations \u00b7 mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:16.600471Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0; cloud activity is dot-reported, not directly observed"
+  }
+}
+
+MCP tools/call
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"status\": \"ok\", \"message_id\": \"msg_d9f016056d2688ba\", \"revision\": 4}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+$ fm-crew-state.sh dot-proof
+state: failed · source: status-log · child cloud-3db2f6e48402dcf0e60b39ef failed: Synthetic local reported observation report=data/dot-proof/mailbox-replies/4.md · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:19.329897Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0
+
+
+MCP tools/call
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"status\": \"ok\", \"message_id\": \"msg_d9f016056d2688ba\", \"revision\": 5}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+$ fm-fleet-snapshot.sh --json
+{
+  "schema": "fm-fleet-snapshot.v1",
+  "generated": "2026-10-15T20:39:20Z",
+  "fm_home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent",
+  "roots": {
+    "fm_root": "/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50DPBG3H9SMSTA1C87NNP2P",
+    "state": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state",
+    "data": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data",
+    "config": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/config",
+    "projects": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/projects"
+  },
+  "backlog": {
+    "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/backlog.md",
+    "present": false,
+    "records": []
+  },
+  "tasks": [
+    {
+      "id": "dot-proof",
+      "kind": "secondmate",
+      "harness": "",
+      "mode": "",
+      "yolo": "",
+      "branch": null,
+      "project": "",
+      "spawn_gen": null,
+      "backend": "dot-mcp",
+      "remote": null,
+      "paths": {
+        "meta": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state/dot-proof.meta",
+          "present": true
+        },
+        "status_log": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state/dot-proof.status",
+          "present": true,
+          "kind": "event_history",
+          "last_event": {
+            "state": "failed",
+            "note": "child cloud-3db2f6e48402dcf0e60b39ef failed: Synthetic local reported observation report=data/dot-proof/mailbox-replies/4.md",
+            "raw": "failed [key=child-outcome-cloud-3db2f6e48402dcf0e60b39ef-failed-4] [at=1792096759]: child cloud-3db2f6e48402dcf0e60b39ef failed: Synthetic local reported observation report=data/dot-proof/mailbox-replies/4.md",
+            "age_seconds": 1
+          }
+        },
+        "worktree": {
+          "path": null,
+          "present": false
+        },
+        "home": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "present": true
+        },
+        "report": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/dot-proof/report.md",
+          "present": false
+        }
+      },
+      "secondmate_projects": [],
+      "current_state": {
+        "state": "working",
+        "source": "mailbox",
+        "detail": "reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:20.008433Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+        "raw": "state: working · source: mailbox · reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:20.008433Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+        "observed_at": "2026-10-15T20:39:20Z",
+        "freshness": "fresh"
+      },
+      "endpoint": {
+        "target": null,
+        "exists": null,
+        "agent_alive": "unknown",
+        "status": "unknown",
+        "observed_at": "2026-10-15T20:39:20Z",
+        "freshness": "fresh"
+      },
+      "pr": {
+        "url": null,
+        "source": "absent",
+        "head": null
+      },
+      "hints": {
+        "pending_decision": false,
+        "blocked_event": false,
+        "open_decisions": [],
+        "scout_report_present": false,
+        "last_event_text": "failed [key=child-outcome-cloud-3db2f6e48402dcf0e60b39ef-failed-4] [at=1792096759]: child cloud-3db2f6e48402dcf0e60b39ef failed: Synthetic local reported observation report=data/dot-proof/mailbox-replies/4.md"
+      },
+      "actions": {
+        "send": "bin/fm-send.sh fm-dot-proof '<request>'",
+        "watch": "read status/doc return channel; do not routinely fm-peek a secondmate for answers",
+        "return_channel_note": "Secondmate answers come back through status/doc paths after a marked fm-send request."
+      },
+      "backlog": null
+    }
+  ],
+  "main_inventory": {
+    "valid": true,
+    "reason": null,
+    "orphan_in_flight": [],
+    "unstructured_current_count": 0
+  },
+  "contributions": {
+    "known": 0,
+    "checked": 0,
+    "counts": {
+      "captain": 0,
+      "fleet": 0,
+      "maintainer": 0,
+      "nobody": 0
+    },
+    "unmeasured": 0,
+    "complete": false,
+    "proven_clear": false,
+    "stale_verdicts": 0,
+    "missing_verdicts": 0,
+    "unreadable_records": 1,
+    "valid_until": 900,
+    "captain": [],
+    "captain_omitted": 0
+  },
+  "scout_reports": [],
+  "secondmate_current": {
+    "registry": {
+      "present": true,
+      "available": true,
+      "reason": null,
+      "provenance": "registered-table",
+      "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/secondmates.md",
+      "freshness": {
+        "status": "fresh",
+        "observed_at": "2026-10-15T20:39:20Z"
+      },
+      "records": [
+        {
+          "id": "dot-proof",
+          "home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "host": null,
+          "root": null,
+          "remote": false,
+          "registered": true,
+          "registry_error": null
+        }
+      ],
+      "input_truncated": false,
+      "records_truncated": false,
+      "complete": true,
+      "reasons": [],
+      "lines_in_window": 2,
+      "records_in_window": 1
+    },
+    "records": [
+      {
+        "id": "dot-proof",
+        "home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+        "host": null,
+        "remote": false,
+        "registered": true,
+        "spawn_gen": null,
+        "current": {
+          "state": "active_child_work",
+          "reason": "reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:20.008433Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0; cloud activity is dot-reported, not directly observed"
+        },
+        "invalidity": null,
+        "reconcile_inventory": null,
+        "provenance": {
+          "selected": "mailbox-parent-channel",
+          "structured_home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "parent_event_role": "reported-outcome"
+        },
+        "freshness": {
+          "status": "historical-event",
+          "observed_at": "2026-10-15T20:39:20Z",
+          "age_seconds": 1
+        },
+        "active_children": [
+          {
+            "schema": "fm.activity-note.v1",
+            "event_id": "turn-D-created",
+            "kind": "reported-cloud",
+            "observed_at": "2026-10-15T20:39:20.007603Z",
+            "summary": "Synthetic local reported observation",
+            "task_id": "fixture-native-thread",
+            "turn_id": "turn-D",
+            "id": "cloud-3db2f6e48402dcf0e60b39ef",
+            "revision": 5,
+            "state": "working",
+            "provenance": "dot-reported",
+            "age_seconds": 1,
+            "current_state": "working",
+            "terminal": false,
+            "parent_delivered": true,
+            "display_required": true,
+            "activity_kind": "task-created",
+            "reported_state": "working",
+            "doing": "Synthetic local reported observation (reported 1s ago; current working)"
+          }
+        ],
+        "reported_children": [
+          {
+            "schema": "fm.activity-note.v1",
+            "event_id": "turn-D-created",
+            "kind": "task-created",
+            "observed_at": "2026-10-15T20:39:20.007603Z",
+            "summary": "Synthetic local reported observation",
+            "task_id": "fixture-native-thread",
+            "turn_id": "turn-D",
+            "id": "cloud-3db2f6e48402dcf0e60b39ef",
+            "revision": 5,
+            "state": "working",
+            "provenance": "dot-reported",
+            "age_seconds": 1,
+            "current_state": "working",
+            "terminal": false,
+            "parent_delivered": true,
+            "display_required": true
+          }
+        ],
+        "decisions_open": [],
+        "holds": [],
+        "queued": [],
+        "landed": [],
+        "endpoints": [],
+        "counts": {
+          "active_children": 1,
+          "decisions_open": 0,
+          "holds": 0,
+          "queued": 0,
+          "landed": 0,
+          "endpoints": 0
+        },
+        "omitted": [],
+        "parent_event": {
+          "raw": "failed [key=child-outcome-cloud-3db2f6e48402dcf0e60b39ef-failed-4] [at=1792096759]: child cloud-3db2f6e48402dcf0e60b39ef failed: Synthetic local reported observation report=data/dot-proof/mailbox-replies/4.md",
+          "note": "child cloud-3db2f6e48402dcf0e60b39ef failed: Synthetic local reported observation report=data/dot-proof/mailbox-replies/4.md",
+          "age_seconds": 1,
+          "open_activities": [],
+          "open_decisions": [],
+          "activity_scan": {
+            "records": [],
+            "available": true,
+            "input_truncated": false,
+            "retained_truncated": false,
+            "reasons": [],
+            "lines_in_window": 3,
+            "records_in_window": 0
+          }
+        },
+        "terminal_evidence": {
+          "provenance": "parent-direct-report-terminal",
+          "trust": "untrusted-supplement",
+          "captured": false,
+          "observed_at": "2026-10-15T20:39:20Z",
+          "freshness": "unknown",
+          "reason": "no recorded endpoint",
+          "lines": 0,
+          "bytes": 0,
+          "event_note_seen": false,
+          "contradiction": false
+        },
+        "contradiction": false
+      }
+    ],
+    "total_registered": 1,
+    "total": 1,
+    "shown": 1,
+    "truncated": 0
+  },
+  "secondmate_landed": {
+    "records": [],
+    "truncated": [],
+    "unreadable": [],
+    "partial": []
+  },
+  "secondmate_guidance": {
+    "note": "For kind=secondmate, bearings selects validated structured state from that registered home; parent events and bounded terminal evidence are fallback-only supplements and never current-state authority."
+  }
+}
+
+
+Fresh turn D reconciles older failed turn C
+{
+  "tasks.current_state": {
+    "state": "working",
+    "source": "mailbox",
+    "detail": "reported cloud observations \u00b7 mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:20.008433Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+    "raw": "state: working \u00b7 source: mailbox \u00b7 reported cloud observations \u00b7 mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:20.008433Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+    "observed_at": "2026-10-15T20:39:20Z",
+    "freshness": "fresh"
+  },
+  "secondmate_current": {
+    "state": "active_child_work",
+    "reason": "reported cloud observations \u00b7 mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:20.008433Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0; cloud activity is dot-reported, not directly observed"
+  }
+}
+
+$ fm-fleet-snapshot.sh --json
+{
+  "schema": "fm-fleet-snapshot.v1",
+  "generated": "2026-10-15T20:39:21Z",
+  "fm_home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent",
+  "roots": {
+    "fm_root": "/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50DPBG3H9SMSTA1C87NNP2P",
+    "state": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state",
+    "data": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data",
+    "config": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/config",
+    "projects": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/projects"
+  },
+  "backlog": {
+    "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/backlog.md",
+    "present": false,
+    "records": []
+  },
+  "tasks": [
+    {
+      "id": "dot-proof",
+      "kind": "secondmate",
+      "harness": "",
+      "mode": "",
+      "yolo": "",
+      "branch": null,
+      "project": "",
+      "spawn_gen": null,
+      "backend": "dot-mcp",
+      "remote": null,
+      "paths": {
+        "meta": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state/dot-proof.meta",
+          "present": true
+        },
+        "status_log": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state/dot-proof.status",
+          "present": true,
+          "kind": "event_history",
+          "last_event": {
+            "state": "failed",
+            "note": "child cloud-3db2f6e48402dcf0e60b39ef failed: Synthetic local reported observation report=data/dot-proof/mailbox-replies/4.md",
+            "raw": "failed [key=child-outcome-cloud-3db2f6e48402dcf0e60b39ef-failed-4] [at=1792096759]: child cloud-3db2f6e48402dcf0e60b39ef failed: Synthetic local reported observation report=data/dot-proof/mailbox-replies/4.md",
+            "age_seconds": 2
+          }
+        },
+        "worktree": {
+          "path": null,
+          "present": false
+        },
+        "home": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "present": true
+        },
+        "report": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/dot-proof/report.md",
+          "present": false
+        }
+      },
+      "secondmate_projects": [],
+      "current_state": {
+        "state": "unknown",
+        "source": "mailbox",
+        "detail": "reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:20.008433Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+        "raw": "state: unknown · source: mailbox · reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:20.008433Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+        "observed_at": "2026-10-15T20:39:21Z",
+        "freshness": "fresh"
+      },
+      "endpoint": {
+        "target": null,
+        "exists": null,
+        "agent_alive": "unknown",
+        "status": "unknown",
+        "observed_at": "2026-10-15T20:39:21Z",
+        "freshness": "fresh"
+      },
+      "pr": {
+        "url": null,
+        "source": "absent",
+        "head": null
+      },
+      "hints": {
+        "pending_decision": false,
+        "blocked_event": false,
+        "open_decisions": [],
+        "scout_report_present": false,
+        "last_event_text": "failed [key=child-outcome-cloud-3db2f6e48402dcf0e60b39ef-failed-4] [at=1792096759]: child cloud-3db2f6e48402dcf0e60b39ef failed: Synthetic local reported observation report=data/dot-proof/mailbox-replies/4.md"
+      },
+      "actions": {
+        "send": "bin/fm-send.sh fm-dot-proof '<request>'",
+        "watch": "read status/doc return channel; do not routinely fm-peek a secondmate for answers",
+        "return_channel_note": "Secondmate answers come back through status/doc paths after a marked fm-send request."
+      },
+      "backlog": null
+    }
+  ],
+  "main_inventory": {
+    "valid": true,
+    "reason": null,
+    "orphan_in_flight": [],
+    "unstructured_current_count": 0
+  },
+  "contributions": {
+    "known": 0,
+    "checked": 0,
+    "counts": {
+      "captain": 0,
+      "fleet": 0,
+      "maintainer": 0,
+      "nobody": 0
+    },
+    "unmeasured": 0,
+    "complete": false,
+    "proven_clear": false,
+    "stale_verdicts": 0,
+    "missing_verdicts": 0,
+    "unreadable_records": 1,
+    "valid_until": 900,
+    "captain": [],
+    "captain_omitted": 0
+  },
+  "scout_reports": [],
+  "secondmate_current": {
+    "registry": {
+      "present": true,
+      "available": true,
+      "reason": null,
+      "provenance": "registered-table",
+      "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/secondmates.md",
+      "freshness": {
+        "status": "fresh",
+        "observed_at": "2026-10-15T20:39:21Z"
+      },
+      "records": [
+        {
+          "id": "dot-proof",
+          "home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "host": null,
+          "root": null,
+          "remote": false,
+          "registered": true,
+          "registry_error": null
+        }
+      ],
+      "input_truncated": false,
+      "records_truncated": false,
+      "complete": true,
+      "reasons": [],
+      "lines_in_window": 2,
+      "records_in_window": 1
+    },
+    "records": [
+      {
+        "id": "dot-proof",
+        "home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+        "host": null,
+        "remote": false,
+        "registered": true,
+        "spawn_gen": null,
+        "current": {
+          "state": "unknown",
+          "reason": "reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:20.008433Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0; cloud activity is dot-reported, not directly observed"
+        },
+        "invalidity": null,
+        "reconcile_inventory": null,
+        "provenance": {
+          "selected": "mailbox-parent-channel",
+          "structured_home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "parent_event_role": "reported-outcome"
+        },
+        "freshness": {
+          "status": "historical-event",
+          "observed_at": "2026-10-15T20:39:21Z",
+          "age_seconds": 2
+        },
+        "active_children": [
+          {
+            "schema": "fm.activity-note.v1",
+            "event_id": "turn-D-created",
+            "kind": "reported-cloud",
+            "observed_at": "2026-10-15T20:22:40.007603+00:00",
+            "summary": "Synthetic local reported observation",
+            "task_id": "fixture-native-thread",
+            "turn_id": "turn-D",
+            "id": "cloud-3db2f6e48402dcf0e60b39ef",
+            "revision": 5,
+            "state": "unknown",
+            "provenance": "dot-reported",
+            "age_seconds": 1002,
+            "current_state": "unknown",
+            "terminal": false,
+            "parent_delivered": true,
+            "display_required": true,
+            "activity_kind": "task-created",
+            "reported_state": "working",
+            "doing": "Synthetic local reported observation (reported 1002s ago; current unknown)"
+          }
+        ],
+        "reported_children": [
+          {
+            "schema": "fm.activity-note.v1",
+            "event_id": "turn-D-created",
+            "kind": "task-created",
+            "observed_at": "2026-10-15T20:22:40.007603+00:00",
+            "summary": "Synthetic local reported observation",
+            "task_id": "fixture-native-thread",
+            "turn_id": "turn-D",
+            "id": "cloud-3db2f6e48402dcf0e60b39ef",
+            "revision": 5,
+            "state": "working",
+            "provenance": "dot-reported",
+            "age_seconds": 1002,
+            "current_state": "unknown",
+            "terminal": false,
+            "parent_delivered": true,
+            "display_required": true
+          }
+        ],
+        "decisions_open": [],
+        "holds": [],
+        "queued": [],
+        "landed": [],
+        "endpoints": [],
+        "counts": {
+          "active_children": 1,
+          "decisions_open": 0,
+          "holds": 0,
+          "queued": 0,
+          "landed": 0,
+          "endpoints": 0
+        },
+        "omitted": [],
+        "parent_event": {
+          "raw": "failed [key=child-outcome-cloud-3db2f6e48402dcf0e60b39ef-failed-4] [at=1792096759]: child cloud-3db2f6e48402dcf0e60b39ef failed: Synthetic local reported observation report=data/dot-proof/mailbox-replies/4.md",
+          "note": "child cloud-3db2f6e48402dcf0e60b39ef failed: Synthetic local reported observation report=data/dot-proof/mailbox-replies/4.md",
+          "age_seconds": 2,
+          "open_activities": [],
+          "open_decisions": [],
+          "activity_scan": {
+            "records": [],
+            "available": true,
+            "input_truncated": false,
+            "retained_truncated": false,
+            "reasons": [],
+            "lines_in_window": 3,
+            "records_in_window": 0
+          }
+        },
+        "terminal_evidence": {
+          "provenance": "parent-direct-report-terminal",
+          "trust": "untrusted-supplement",
+          "captured": false,
+          "observed_at": "2026-10-15T20:39:21Z",
+          "freshness": "unknown",
+          "reason": "no recorded endpoint",
+          "lines": 0,
+          "bytes": 0,
+          "event_note_seen": false,
+          "contradiction": false
+        },
+        "contradiction": false
+      }
+    ],
+    "total_registered": 1,
+    "total": 1,
+    "shown": 1,
+    "truncated": 0
+  },
+  "secondmate_landed": {
+    "records": [],
+    "truncated": [],
+    "unreadable": [
+      "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate"
+    ],
+    "partial": []
+  },
+  "secondmate_guidance": {
+    "note": "For kind=secondmate, bearings selects validated structured state from that registered home; parent events and bounded terminal evidence are fallback-only supplements and never current-state authority."
+  }
+}
+
+
+Stale turn D remains unknown after failed turn C
+{
+  "tasks.current_state": {
+    "state": "unknown",
+    "source": "mailbox",
+    "detail": "reported cloud observations \u00b7 mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:20.008433Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+    "raw": "state: unknown \u00b7 source: mailbox \u00b7 reported cloud observations \u00b7 mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:20.008433Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+    "observed_at": "2026-10-15T20:39:21Z",
+    "freshness": "fresh"
+  },
+  "secondmate_current": {
+    "state": "unknown",
+    "reason": "reported cloud observations \u00b7 mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:20.008433Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0; cloud activity is dot-reported, not directly observed"
+  }
+}
+
+MCP tools/call
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"status\": \"ok\", \"message_id\": \"msg_d9f016056d2688ba\", \"revision\": 6}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+MCP tools/call
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"status\": \"ok\", \"message_id\": \"msg_d9f016056d2688ba\", \"revision\": 7, \"blocker_key\": \"dot-msg_d9f016056d2688ba\"}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+$ fm-crew-state.sh dot-proof
+state: blocked · source: status-log · synthetic dependency unavailable (report=data/dot-proof/mailbox-replies/7.md) · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:22.246174Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0
+
+
+MCP tools/call
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"status\": \"ok\", \"message_id\": \"msg_d9f016056d2688ba\", \"revision\": 8}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+$ fm-crew-state.sh dot-proof
+state: blocked · source: status-log · synthetic dependency unavailable (report=data/dot-proof/mailbox-replies/7.md) · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:23.147257Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0
+
+
+MCP tools/call
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"status\": \"ok\", \"message_id\": \"msg_d9f016056d2688ba\", \"revision\": 9}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+$ fm-crew-state.sh dot-proof
+state: working · source: mailbox · reported cloud observations · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:23.484452Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0
+
+
+MCP tools/call
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"status\": \"ok\", \"message_id\": \"msg_d9f016056d2688ba\", \"revision\": 10}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+$ fm-crew-state.sh dot-proof
+state: parked · source: status-log · synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md) · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:24.222165Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0
+
+
+$ fm-fleet-snapshot.sh --json
+{
+  "schema": "fm-fleet-snapshot.v1",
+  "generated": "2026-10-15T20:39:24Z",
+  "fm_home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent",
+  "roots": {
+    "fm_root": "/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50DPBG3H9SMSTA1C87NNP2P",
+    "state": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state",
+    "data": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data",
+    "config": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/config",
+    "projects": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/projects"
+  },
+  "backlog": {
+    "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/backlog.md",
+    "present": false,
+    "records": []
+  },
+  "tasks": [
+    {
+      "id": "dot-proof",
+      "kind": "secondmate",
+      "harness": "",
+      "mode": "",
+      "yolo": "",
+      "branch": null,
+      "project": "",
+      "spawn_gen": null,
+      "backend": "dot-mcp",
+      "remote": null,
+      "paths": {
+        "meta": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state/dot-proof.meta",
+          "present": true
+        },
+        "status_log": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/state/dot-proof.status",
+          "present": true,
+          "kind": "event_history",
+          "last_event": {
+            "state": "needs-decision",
+            "note": "synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md)",
+            "raw": "needs-decision [corr=857f777469de6e0f] [at=1792096764] [key=dot-msg_d9f016056d2688ba]: synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md)",
+            "age_seconds": 0
+          }
+        },
+        "worktree": {
+          "path": null,
+          "present": false
+        },
+        "home": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "present": true
+        },
+        "report": {
+          "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/dot-proof/report.md",
+          "present": false
+        }
+      },
+      "secondmate_projects": [],
+      "current_state": {
+        "state": "parked",
+        "source": "status-log",
+        "detail": "synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md) · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:24.222165Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+        "raw": "state: parked · source: status-log · synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md) · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:24.222165Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0",
+        "observed_at": "2026-10-15T20:39:24Z",
+        "freshness": "fresh"
+      },
+      "endpoint": {
+        "target": null,
+        "exists": null,
+        "agent_alive": "unknown",
+        "status": "unknown",
+        "observed_at": "2026-10-15T20:39:24Z",
+        "freshness": "fresh"
+      },
+      "pr": {
+        "url": null,
+        "source": "absent",
+        "head": null
+      },
+      "hints": {
+        "pending_decision": true,
+        "blocked_event": false,
+        "open_decisions": [
+          {
+            "key": "dot-msg_d9f016056d2688ba",
+            "verb": "needs-decision",
+            "summary": "synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md)"
+          }
+        ],
+        "scout_report_present": false,
+        "last_event_text": "needs-decision [corr=857f777469de6e0f] [at=1792096764] [key=dot-msg_d9f016056d2688ba]: synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md)"
+      },
+      "actions": {
+        "send": "bin/fm-send.sh fm-dot-proof '<request>'",
+        "watch": "read status/doc return channel; do not routinely fm-peek a secondmate for answers",
+        "return_channel_note": "Secondmate answers come back through status/doc paths after a marked fm-send request."
+      },
+      "backlog": null
+    }
+  ],
+  "main_inventory": {
+    "valid": true,
+    "reason": null,
+    "orphan_in_flight": [],
+    "unstructured_current_count": 0
+  },
+  "contributions": {
+    "known": 0,
+    "checked": 0,
+    "counts": {
+      "captain": 0,
+      "fleet": 0,
+      "maintainer": 0,
+      "nobody": 0
+    },
+    "unmeasured": 0,
+    "complete": false,
+    "proven_clear": false,
+    "stale_verdicts": 0,
+    "missing_verdicts": 0,
+    "unreadable_records": 1,
+    "valid_until": 900,
+    "captain": [],
+    "captain_omitted": 0
+  },
+  "scout_reports": [],
+  "secondmate_current": {
+    "registry": {
+      "present": true,
+      "available": true,
+      "reason": null,
+      "provenance": "registered-table",
+      "path": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/parent/data/secondmates.md",
+      "freshness": {
+        "status": "fresh",
+        "observed_at": "2026-10-15T20:39:24Z"
+      },
+      "records": [
+        {
+          "id": "dot-proof",
+          "home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "host": null,
+          "root": null,
+          "remote": false,
+          "registered": true,
+          "registry_error": null
+        }
+      ],
+      "input_truncated": false,
+      "records_truncated": false,
+      "complete": true,
+      "reasons": [],
+      "lines_in_window": 2,
+      "records_in_window": 1
+    },
+    "records": [
+      {
+        "id": "dot-proof",
+        "home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+        "host": null,
+        "remote": false,
+        "registered": true,
+        "spawn_gen": null,
+        "current": {
+          "state": "captain_decision",
+          "reason": "synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md) · mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:24.222165Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0; cloud activity is dot-reported, not directly observed"
+        },
+        "invalidity": null,
+        "reconcile_inventory": null,
+        "provenance": {
+          "selected": "mailbox-parent-channel",
+          "structured_home": "/home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/mate",
+          "parent_event_role": "reported-outcome"
+        },
+        "freshness": {
+          "status": "historical-event",
+          "observed_at": "2026-10-15T20:39:24Z",
+          "age_seconds": 0
+        },
+        "active_children": [
+          {
+            "schema": "fm.activity-note.v1",
+            "event_id": "turn-D-routine",
+            "kind": "reported-cloud",
+            "observed_at": "2026-10-15T20:39:23.146266Z",
+            "summary": "Synthetic local reported observation",
+            "task_id": "fixture-native-thread",
+            "turn_id": "turn-D",
+            "id": "cloud-3db2f6e48402dcf0e60b39ef",
+            "revision": 8,
+            "state": "working",
+            "provenance": "dot-reported",
+            "age_seconds": 2,
+            "current_state": "working",
+            "terminal": false,
+            "parent_delivered": true,
+            "display_required": true,
+            "activity_kind": "milestone",
+            "reported_state": "working",
+            "doing": "Synthetic local reported observation (reported 2s ago; current working)"
+          }
+        ],
+        "reported_children": [
+          {
+            "schema": "fm.activity-note.v1",
+            "event_id": "turn-D-routine",
+            "kind": "milestone",
+            "observed_at": "2026-10-15T20:39:23.146266Z",
+            "summary": "Synthetic local reported observation",
+            "task_id": "fixture-native-thread",
+            "turn_id": "turn-D",
+            "id": "cloud-3db2f6e48402dcf0e60b39ef",
+            "revision": 8,
+            "state": "working",
+            "provenance": "dot-reported",
+            "age_seconds": 2,
+            "current_state": "working",
+            "terminal": false,
+            "parent_delivered": true,
+            "display_required": true
+          }
+        ],
+        "decisions_open": [
+          {
+            "key": "dot-msg_d9f016056d2688ba",
+            "verb": "needs-decision",
+            "summary": "synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md)"
+          }
+        ],
+        "holds": [],
+        "queued": [],
+        "landed": [],
+        "endpoints": [],
+        "counts": {
+          "active_children": 1,
+          "decisions_open": 1,
+          "holds": 0,
+          "queued": 0,
+          "landed": 0,
+          "endpoints": 0
+        },
+        "omitted": [],
+        "parent_event": {
+          "raw": "needs-decision [corr=857f777469de6e0f] [at=1792096764] [key=dot-msg_d9f016056d2688ba]: synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md)",
+          "note": "synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md)",
+          "age_seconds": 0,
+          "open_activities": [],
+          "open_decisions": [
+            {
+              "key": "dot-msg_d9f016056d2688ba",
+              "verb": "needs-decision",
+              "summary": "synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md)"
+            }
+          ],
+          "activity_scan": {
+            "records": [],
+            "available": true,
+            "input_truncated": false,
+            "retained_truncated": false,
+            "reasons": [],
+            "lines_in_window": 6,
+            "records_in_window": 0
+          }
+        },
+        "terminal_evidence": {
+          "provenance": "parent-direct-report-terminal",
+          "trust": "untrusted-supplement",
+          "captured": false,
+          "observed_at": "2026-10-15T20:39:24Z",
+          "freshness": "unknown",
+          "reason": "no recorded endpoint",
+          "lines": 0,
+          "bytes": 0,
+          "event_note_seen": false,
+          "contradiction": false
+        },
+        "contradiction": false
+      }
+    ],
+    "total_registered": 1,
+    "total": 1,
+    "shown": 1,
+    "truncated": 0
+  },
+  "secondmate_landed": {
+    "records": [],
+    "truncated": [],
+    "unreadable": [],
+    "partial": []
+  },
+  "secondmate_guidance": {
+    "note": "For kind=secondmate, bearings selects validated structured state from that registered home; parent events and bounded terminal evidence are fallback-only supplements and never current-state authority."
+  }
+}
+
+
+Folded owner decision remains waiting
+{
+  "current": {
+    "state": "captain_decision",
+    "reason": "synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md) \u00b7 mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:24.222165Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0; cloud activity is dot-reported, not directly observed"
+  },
+  "decisions_open": [
+    {
+      "key": "dot-msg_d9f016056d2688ba",
+      "verb": "needs-decision",
+      "summary": "synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md)"
+    }
+  ]
+}
+
+$ fm-dot-secondmate.sh snapshot dot-proof
+{"id": "dot-proof", "ready": true, "health": "mailbox=ready tunnel=ready subscription=active last-contact=2026-10-15T20:39:24.222165Z dot-online=unknown assignments-pending=0 events-undelivered=0 replies-pending=0", "last_contact": "2026-10-15T20:39:24.222165Z", "subscription_expiry": "2026-10-16T20:39:14.458743Z", "children": [{"schema": "fm.activity-note.v1", "event_id": "turn-D-routine", "kind": "milestone", "observed_at": "2026-10-15T20:39:23.146266Z", "summary": "Synthetic local reported observation", "task_id": "fixture-native-thread", "turn_id": "turn-D", "id": "cloud-3db2f6e48402dcf0e60b39ef", "revision": 8, "state": "working", "provenance": "dot-reported", "age_seconds": 3, "current_state": "working", "terminal": false, "parent_delivered": true, "display_required": true}], "children_truncated": false, "feed": [{"revision": 1, "line": "done [corr=857f777469de6e0f] [at=1792096755]: turn A completed", "published": true, "subject": "Visible corpus read-only feasibility comparison", "activity": null}, {"revision": 2, "line": "done [corr=857f777469de6e0f] [at=1792096756]: Synthetic local reported observation", "published": true, "subject": "Visible corpus read-only feasibility comparison", "activity": {"schema": "fm.activity-note.v1", "event_id": "turn-A-done", "kind": "done", "observed_at": "2026-10-15T20:05:56.280276+00:00", "summary": "Synthetic local reported observation", "task_id": "fixture-native-thread", "turn_id": "turn-A"}}, {"revision": 3, "line": "working [corr=857f777469de6e0f] [at=1792096756]: Synthetic local reported observation", "published": true, "subject": "Visible corpus read-only feasibility comparison", "activity": {"schema": "fm.activity-note.v1", "event_id": "turn-B-created", "kind": "task-created", "observed_at": "2026-10-15T20:05:56.594730+00:00", "summary": "Synthetic local reported observation", "task_id": "fixture-native-thread", "turn_id": "turn-B", "task_title": "Visible corpus comparison with full native task title"}}, {"revision": 4, "line": "failed [corr=857f777469de6e0f] [at=1792096759]: Synthetic local reported observation", "published": true, "subject": "Visible corpus read-only feasibility comparison", "activity": {"schema": "fm.activity-note.v1", "event_id": "turn-C-failed", "kind": "failed", "observed_at": "2026-10-15T20:22:39.329236+00:00", "summary": "Synthetic local reported observation", "task_id": "fixture-native-thread", "turn_id": "turn-C"}}, {"revision": 5, "line": "working [corr=857f777469de6e0f] [at=1792096760]: Synthetic local reported observation", "published": true, "subject": "Visible corpus read-only feasibility comparison", "activity": {"schema": "fm.activity-note.v1", "event_id": "turn-D-created", "kind": "task-created", "observed_at": "2026-10-15T20:22:40.007603+00:00", "summary": "Synthetic local reported observation", "task_id": "fixture-native-thread", "turn_id": "turn-D"}}, {"revision": 6, "line": "working [corr=857f777469de6e0f] [at=1792096762]: Synthetic local reported observation", "published": true, "subject": "Visible corpus read-only feasibility comparison", "activity": {"schema": "fm.activity-note.v1", "event_id": "turn-D-milestone", "kind": "milestone", "observed_at": "2026-10-15T20:39:22.224209Z", "summary": "Synthetic local reported observation", "task_id": "fixture-native-thread", "turn_id": "turn-D", "task_title": "Visible corpus comparison with full native task title"}}, {"revision": 7, "line": "blocked [corr=857f777469de6e0f] [at=1792096762] [key=dot-msg_d9f016056d2688ba]: synthetic dependency unavailable", "published": true, "subject": "Visible corpus read-only feasibility comparison", "activity": null}, {"revision": 8, "line": "working [corr=857f777469de6e0f] [at=1792096763]: Synthetic local reported observation", "published": true, "subject": "Visible corpus read-only feasibility comparison", "activity": {"schema": "fm.activity-note.v1", "event_id": "turn-D-routine", "kind": "milestone", "observed_at": "2026-10-15T20:39:23.146266Z", "summary": "Synthetic local reported observation", "task_id": "fixture-native-thread", "turn_id": "turn-D"}}, {"revision": 9, "line": "resolved [corr=857f777469de6e0f] [at=1792096763] [key=dot-msg_d9f016056d2688ba]: fixture dependency repaired", "published": true, "subject": "Visible corpus read-only feasibility comparison", "activity": null}, {"revision": 10, "line": "needs-decision [corr=857f777469de6e0f] [at=1792096764] [key=dot-msg_d9f016056d2688ba]: synthetic owner choice", "published": true, "subject": "Visible corpus read-only feasibility comparison", "activity": null}], "work_observation_fresh": true}
+
+
+$ fm-dot-secondmate.sh history dot-proof --limit 50
+{"events": [{"message_id": "msg_d9f016056d2688ba", "body": "done: turn A completed", "line": "done [corr=857f777469de6e0f] [at=1792096755]: turn A completed", "published": 1, "activity": null, "correlation_id": "857f777469de6e0f", "revision": 1}, {"message_id": "msg_d9f016056d2688ba", "body": "activity-note: {\"schema\": \"fm.activity-note.v1\", \"event_id\": \"turn-A-done\", \"kind\": \"done\", \"observed_at\": \"2026-10-15T20:39:16.280276+00:00\", \"summary\": \"Synthetic local reported observation\", \"task_id\": \"fixture-native-thread\", \"turn_id\": \"turn-A\"}", "line": "done [corr=857f777469de6e0f] [at=1792096756]: Synthetic local reported observation", "published": 1, "activity": {"schema": "fm.activity-note.v1", "event_id": "turn-A-done", "kind": "done", "observed_at": "2026-10-15T20:05:56.280276+00:00", "summary": "Synthetic local reported observation", "task_id": "fixture-native-thread", "turn_id": "turn-A"}, "correlation_id": "857f777469de6e0f", "revision": 2}, {"message_id": "msg_d9f016056d2688ba", "body": "activity-note: {\"schema\": \"fm.activity-note.v1\", \"event_id\": \"turn-B-created\", \"kind\": \"task-created\", \"observed_at\": \"2026-10-15T20:39:16.594730+00:00\", \"summary\": \"Synthetic local reported observation\", \"task_id\": \"fixture-native-thread\", \"turn_id\": \"turn-B\", \"task_title\": \"Visible corpus comparison with full native task title\"}", "line": "working [corr=857f777469de6e0f] [at=1792096756]: Synthetic local reported observation", "published": 1, "activity": {"schema": "fm.activity-note.v1", "event_id": "turn-B-created", "kind": "task-created", "observed_at": "2026-10-15T20:05:56.594730+00:00", "summary": "Synthetic local reported observation", "task_id": "fixture-native-thread", "turn_id": "turn-B", "task_title": "Visible corpus comparison with full native task title"}, "correlation_id": "857f777469de6e0f", "revision": 3}, {"message_id": "msg_d9f016056d2688ba", "body": "activity-note: {\"schema\": \"fm.activity-note.v1\", \"event_id\": \"turn-C-failed\", \"kind\": \"failed\", \"observed_at\": \"2026-10-15T20:39:19.329236+00:00\", \"summary\": \"Synthetic local reported observation\", \"task_id\": \"fixture-native-thread\", \"turn_id\": \"turn-C\"}", "line": "failed [corr=857f777469de6e0f] [at=1792096759]: Synthetic local reported observation", "published": 1, "activity": {"schema": "fm.activity-note.v1", "event_id": "turn-C-failed", "kind": "failed", "observed_at": "2026-10-15T20:22:39.329236+00:00", "summary": "Synthetic local reported observation", "task_id": "fixture-native-thread", "turn_id": "turn-C"}, "correlation_id": "857f777469de6e0f", "revision": 4}, {"message_id": "msg_d9f016056d2688ba", "body": "activity-note: {\"schema\": \"fm.activity-note.v1\", \"event_id\": \"turn-D-created\", \"kind\": \"task-created\", \"observed_at\": \"2026-10-15T20:39:20.007603+00:00\", \"summary\": \"Synthetic local reported observation\", \"task_id\": \"fixture-native-thread\", \"turn_id\": \"turn-D\"}", "line": "working [corr=857f777469de6e0f] [at=1792096760]: Synthetic local reported observation", "published": 1, "activity": {"schema": "fm.activity-note.v1", "event_id": "turn-D-created", "kind": "task-created", "observed_at": "2026-10-15T20:22:40.007603+00:00", "summary": "Synthetic local reported observation", "task_id": "fixture-native-thread", "turn_id": "turn-D"}, "correlation_id": "857f777469de6e0f", "revision": 5}, {"message_id": "msg_d9f016056d2688ba", "body": "activity-note: {\"schema\": \"fm.activity-note.v1\", \"event_id\": \"turn-D-milestone\", \"kind\": \"milestone\", \"observed_at\": \"2026-10-15T20:39:22.224209+00:00\", \"summary\": \"Synthetic local reported observation\", \"task_id\": \"fixture-native-thread\", \"turn_id\": \"turn-D\", \"task_title\": \"Visible corpus comparison with full native task title\"}", "line": "working [corr=857f777469de6e0f] [at=1792096762]: Synthetic local reported observation", "published": 1, "activity": {"schema": "fm.activity-note.v1", "event_id": "turn-D-milestone", "kind": "milestone", "observed_at": "2026-10-15T20:39:22.224209Z", "summary": "Synthetic local reported observation", "task_id": "fixture-native-thread", "turn_id": "turn-D", "task_title": "Visible corpus comparison with full native task title"}, "correlation_id": "857f777469de6e0f", "revision": 6}, {"message_id": "msg_d9f016056d2688ba", "body": "blocked: synthetic dependency unavailable", "line": "blocked [corr=857f777469de6e0f] [at=1792096762] [key=dot-msg_d9f016056d2688ba]: synthetic dependency unavailable", "published": 1, "activity": null, "correlation_id": "857f777469de6e0f", "revision": 7}, {"message_id": "msg_d9f016056d2688ba", "body": "activity-note: {\"schema\": \"fm.activity-note.v1\", \"event_id\": \"turn-D-routine\", \"kind\": \"milestone\", \"observed_at\": \"2026-10-15T20:39:23.146266+00:00\", \"summary\": \"Synthetic local reported observation\", \"task_id\": \"fixture-native-thread\", \"turn_id\": \"turn-D\"}", "line": "working [corr=857f777469de6e0f] [at=1792096763]: Synthetic local reported observation", "published": 1, "activity": {"schema": "fm.activity-note.v1", "event_id": "turn-D-routine", "kind": "milestone", "observed_at": "2026-10-15T20:39:23.146266Z", "summary": "Synthetic local reported observation", "task_id": "fixture-native-thread", "turn_id": "turn-D"}, "correlation_id": "857f777469de6e0f", "revision": 8}, {"message_id": "msg_d9f016056d2688ba", "body": "resolved: [key=dot-msg_d9f016056d2688ba] fixture dependency repaired", "line": "resolved [corr=857f777469de6e0f] [at=1792096763] [key=dot-msg_d9f016056d2688ba]: fixture dependency repaired", "published": 1, "activity": null, "correlation_id": "857f777469de6e0f", "revision": 9}, {"message_id": "msg_d9f016056d2688ba", "body": "needs-decision: synthetic owner choice", "line": "needs-decision [corr=857f777469de6e0f] [at=1792096764] [key=dot-msg_d9f016056d2688ba]: synthetic owner choice", "published": 1, "activity": null, "correlation_id": "857f777469de6e0f", "revision": 10}], "next_cursor": 10}
+
+
+Final parent status log
+done [corr=857f777469de6e0f] [at=1792096755]: turn A completed (report=data/dot-proof/mailbox-replies/1.md)
+done [key=child-outcome-cloud-3db2f6e48402dcf0e60b39ef-done-2] [at=1792096756]: child cloud-3db2f6e48402dcf0e60b39ef done: Synthetic local reported observation report=data/dot-proof/mailbox-replies/2.md
+failed [key=child-outcome-cloud-3db2f6e48402dcf0e60b39ef-failed-4] [at=1792096759]: child cloud-3db2f6e48402dcf0e60b39ef failed: Synthetic local reported observation report=data/dot-proof/mailbox-replies/4.md
+blocked [corr=857f777469de6e0f] [at=1792096762] [key=dot-msg_d9f016056d2688ba]: synthetic dependency unavailable (report=data/dot-proof/mailbox-replies/7.md)
+resolved [corr=857f777469de6e0f] [at=1792096763] [key=dot-msg_d9f016056d2688ba]: fixture dependency repaired (report=data/dot-proof/mailbox-replies/9.md)
+needs-decision [corr=857f777469de6e0f] [at=1792096764] [key=dot-msg_d9f016056d2688ba]: synthetic owner choice (report=data/dot-proof/mailbox-replies/10.md)
+
+
+MCP events/subscribe
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "id": "sub_9c77d3ef21774f9b",
+    "refreshBefore": "2026-10-16T20:39:26.547423Z",
+    "cursor": null,
+    "truncated": false
+  }
+}
+
+$ fm-dot-mailbox.sh --db /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/private/mailbox.sqlite3 submit --queue recovery --correlation-id recovery-nonce Subject: Recover a pending callback
+{"seq": 3, "id": "msg_bce15eb776135c30", "queue": "recovery", "content": "Subject: Recover a pending callback", "correlation_id": "recovery-nonce", "idempotency_key": null, "status": "pending", "reply": null, "created_at": "2026-10-15T20:39:26.684620Z", "updated_at": "2026-10-15T20:39:26.684620Z", "origin": "firstmate", "mate_id": null, "delivery": {"pending": 1, "delivered": 0, "undelivered": 0}}
+
+
+Mailbox HTTP health
+{
+  "status": "ok",
+  "name": "fm-dot-mailbox",
+  "protocolVersion": "2026-07-28",
+  "server": "fm-dot-mailbox"
+}
+
+$ fm-dot-mailbox.sh --db /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/private/mailbox.sqlite3 get msg_bce15eb776135c30
+{"seq": 3, "id": "msg_bce15eb776135c30", "queue": "recovery", "content": "Subject: Recover a pending callback", "correlation_id": "recovery-nonce", "idempotency_key": null, "status": "pending", "reply": null, "created_at": "2026-10-15T20:39:26.684620Z", "updated_at": "2026-10-15T20:39:26.684620Z", "origin": "firstmate", "mate_id": null, "delivery": {"pending": 0, "delivered": 1, "undelivered": 0}}
+
+
+$ fm-dot-mailbox.sh --db /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/proof-537omj24/private/mailbox.sqlite3 get msg_bce15eb776135c30
+{"seq": 3, "id": "msg_bce15eb776135c30", "queue": "recovery", "content": "Subject: Recover a pending callback", "correlation_id": "recovery-nonce", "idempotency_key": null, "status": "pending", "reply": null, "created_at": "2026-10-15T20:39:26.684620Z", "updated_at": "2026-10-15T20:39:26.684620Z", "origin": "firstmate", "mate_id": null, "delivery": {"pending": 0, "delivered": 1, "undelivered": 0}}
+
+
+503 then server restart then 202, stable event identity
+[
+  {
+    "event": {
+      "name": "message.created",
+      "timestamp": "2026-10-15T20:39:26.684620Z",
+      "data": {
+        "queue": "recovery",
+        "content": "Subject: Recover a pending callback",
+        "created_at": "2026-10-15T20:39:26.684620Z",
+        "message_id": "msg_bce15eb776135c30",
+        "correlation_id": "recovery-nonce"
+      },
+      "cursor": null,
+      "eventId": "evt_f2f3a66436225cd9"
+    },
+    "signature_valid": true,
+    "http_status": 503
+  },
+  {
+    "event": {
+      "name": "message.created",
+      "timestamp": "2026-10-15T20:39:26.684620Z",
+      "data": {
+        "queue": "recovery",
+        "content": "Subject: Recover a pending callback",
+        "created_at": "2026-10-15T20:39:26.684620Z",
+        "message_id": "msg_bce15eb776135c30",
+        "correlation_id": "recovery-nonce"
+      },
+      "cursor": null,
+      "eventId": "evt_f2f3a66436225cd9"
+    },
+    "signature_valid": true,
+    "http_status": 202
+  }
+]
+
+Live terminal capture
+{
+  "artifact": "console-narrow.png",
+  "pty_columns": 40,
+  "pty_rows": 24,
+  "process": "bin/fm-dot-view.py",
+  "fixture_native_ids": true
+}
+
+Live terminal capture
+{
+  "artifact": "child-detail.png",
+  "pty_columns": 100,
+  "pty_rows": 24,
+  "process": "bin/fm-dot-view.py",
+  "fixture_native_ids": true
+}
+
+RESULT
+Local executable/MCP round trip, signed local callback, routing/drain, retry deduplication, current-state reconciliation, explicit blocker resolution, and terminal capture completed.
+

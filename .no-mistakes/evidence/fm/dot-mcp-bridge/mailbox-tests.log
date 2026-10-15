@@ -1,0 +1,45 @@
+ok - fm-dot-mailbox: --help prints usage for all commands
+ok - fm-dot-mailbox: unknown command exits non-zero
+ok - fm-dot-mailbox: CLI submit, idempotency, list, reply, get, and status succeed
+ok - fm-dot-mailbox: MCP HTTP discovery, subscription challenge, signed webhook delivery, tools, and reply work end-to-end
+ok - fm-dot-mailbox: security contract enforces HTTPS, blocks private IPs, and validates secrets
+ok - fm-dot-mailbox: state and cursors persist across process restarts
+test_activity_history_replay_and_reported_children (__main__.MailboxRegressionTests.test_activity_history_replay_and_reported_children) ... {"event": "mate_reply_publish", "result": "error"}
+ok
+test_atomic_submission_restart_and_stable_retries (__main__.MailboxRegressionTests.test_atomic_submission_restart_and_stable_retries) ... ok
+test_bounded_retries_and_terminal_responses (__main__.MailboxRegressionTests.test_bounded_retries_and_terminal_responses) ... ok
+test_bridge_readiness_does_not_refresh_old_work_observations (__main__.MailboxRegressionTests.test_bridge_readiness_does_not_refresh_old_work_observations) ... ok
+test_cli_ignores_inherited_serve_configuration (__main__.MailboxRegressionTests.test_cli_ignores_inherited_serve_configuration) ... ok
+test_completed_history_does_not_truncate_current_inventory (__main__.MailboxRegressionTests.test_completed_history_does_not_truncate_current_inventory) ... ok
+test_concurrent_threads_and_connections (__main__.MailboxRegressionTests.test_concurrent_threads_and_connections) ... ok
+test_connection_candidates_share_one_budget (__main__.MailboxRegressionTests.test_connection_candidates_share_one_budget) ... ok
+test_current_cloud_turn_supersedes_older_terminal_parent_event (__main__.MailboxRegressionTests.test_current_cloud_turn_supersedes_older_terminal_parent_event) ... ok
+test_database_selection_ignores_inherited_override (__main__.MailboxRegressionTests.test_database_selection_ignores_inherited_override) ... ok
+test_delivery_acknowledgment_does_not_read_response_body (__main__.MailboxRegressionTests.test_delivery_acknowledgment_does_not_read_response_body) ... ok
+test_delivery_state_has_one_owner (__main__.MailboxRegressionTests.test_delivery_state_has_one_owner) ... ok
+test_dot_fleet_waiting_state_uses_folded_parent_decisions (__main__.MailboxRegressionTests.test_dot_fleet_waiting_state_uses_folded_parent_decisions) ... ok
+test_dot_secondmate_routes_replies_and_reports_health_without_a_pane (__main__.MailboxRegressionTests.test_dot_secondmate_routes_replies_and_reports_health_without_a_pane) ... ok
+test_fire_and_forget_subject_uses_the_routed_assignment (__main__.MailboxRegressionTests.test_fire_and_forget_subject_uses_the_routed_assignment) ... ok
+test_http_startup_recovery_routes_and_round_trip (__main__.MailboxRegressionTests.test_http_startup_recovery_routes_and_round_trip) ... ok
+test_lifetime_rotation_and_expiration (__main__.MailboxRegressionTests.test_lifetime_rotation_and_expiration) ... ok
+test_native_task_child_survives_turn_changes (__main__.MailboxRegressionTests.test_native_task_child_survives_turn_changes) ... ok
+test_only_explicit_blocker_clearances_resolve_original_parent_keys (__main__.MailboxRegressionTests.test_only_explicit_blocker_clearances_resolve_original_parent_keys) ... {"event": "mate_reply_publish", "result": "error"}
+ok
+test_outcomes_survive_later_observations_and_restart (__main__.MailboxRegressionTests.test_outcomes_survive_later_observations_and_restart) ... {"event": "mate_reply_publish", "result": "error"}
+{"event": "mate_reply_publish", "result": "error"}
+{"event": "mate_reply_publish", "result": "error"}
+{"event": "mate_reply_publish", "result": "error"}
+ok
+test_owner_only_storage_and_no_home_fallback (__main__.MailboxRegressionTests.test_owner_only_storage_and_no_home_fallback) ... ok
+test_serve_flags_and_private_request_logging (__main__.MailboxRegressionTests.test_serve_flags_and_private_request_logging) ... ok
+test_shared_byte_limits_pagination_and_exact_replies (__main__.MailboxRegressionTests.test_shared_byte_limits_pagination_and_exact_replies) ... ok
+test_tls_destination_pinning_rebinding_and_no_redirects (__main__.MailboxRegressionTests.test_tls_destination_pinning_rebinding_and_no_redirects) ... ok
+test_transaction_rolls_back_message_with_failed_event (__main__.MailboxRegressionTests.test_transaction_rolls_back_message_with_failed_event) ... ok
+test_unsubscribe_stops_queued_delivery (__main__.MailboxRegressionTests.test_unsubscribe_stops_queued_delivery) ... ok
+test_verification_cache_is_scoped_bounded_and_persistent (__main__.MailboxRegressionTests.test_verification_cache_is_scoped_bounded_and_persistent) ... ok
+test_verification_cache_upgrades_legacy_subscription_storage (__main__.MailboxRegressionTests.test_verification_cache_upgrades_legacy_subscription_storage) ... ok
+
+----------------------------------------------------------------------
+Ran 28 tests in 102.070s
+
+OK

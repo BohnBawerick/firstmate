@@ -1,0 +1,10 @@
+fm-dot-mailbox: listening on http://127.0.0.1:48235/mcp (database: /home/bohn/.no-mistakes/evidence/01M50DPBG3H9SMSTA1C87NNP2P/.tmp/security-mi6c4m4h/data/dot-mcp/mailbox.sqlite3)
+{"event": "mcp_request", "method": "server/discover", "result": "ok", "error_code": null, "timestamp": "2026-10-15T20:40:45.726574Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/list", "result": "ok", "error_code": null, "timestamp": "2026-10-15T20:40:45.727708Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "error", "error_code": -32601, "tool": "unknown", "timestamp": "2026-10-15T20:40:45.728636Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "error", "error_code": -32603, "tool": "submit_message", "timestamp": "2026-10-15T20:40:45.729768Z", "http_status": 200}
+{"event": "mcp_request", "method": "events/subscribe", "result": "error", "error_code": -32015, "timestamp": "2026-10-15T20:40:45.730789Z", "http_status": 200}
+{"event": "mcp_request", "method": "events/subscribe", "result": "error", "error_code": -32015, "timestamp": "2026-10-15T20:40:45.731678Z", "http_status": 200}
+{"event": "mcp_request", "method": "events/subscribe", "result": "error", "error_code": -32015, "timestamp": "2026-10-15T20:40:45.732542Z", "http_status": 200}
+{"event": "mcp_request", "method": "events/subscribe", "result": "error", "error_code": -32015, "timestamp": "2026-10-15T20:40:45.733425Z", "http_status": 200}
+{"event": "mcp_request", "method": "tools/call", "result": "ok", "error_code": null, "tool": "get_messages", "timestamp": "2026-10-15T20:40:45.734354Z", "http_status": 200}
