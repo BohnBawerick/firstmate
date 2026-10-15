@@ -2,6 +2,7 @@
 # fm-dot-mailbox.py - Persistent private MCP mailbox and MCP 2.0 event bridge.
 #
 # Usage:
+#   fm-dot-mailbox.py [--db <path>] <command> [options]
 #   fm-dot-mailbox.py submit [--queue <q>] [--correlation-id <id>] [--idempotency-key <key>] <content | ->
 #   fm-dot-mailbox.py get <message_id>
 #   fm-dot-mailbox.py list [--queue <q>] [--status <pending|replied|all>] [--cursor <c>] [--limit <n>]

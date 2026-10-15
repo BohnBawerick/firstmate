@@ -2,6 +2,7 @@
 # fm-dot-mailbox.sh - local operator interface for Firstmate dot MCP mailbox.
 #
 # Usage:
+#   bin/fm-dot-mailbox.sh [--db <path>] <command> [options]
 #   bin/fm-dot-mailbox.sh submit [--queue <q>] [--correlation-id <id>] [--idempotency-key <key>] <content | ->
 #   bin/fm-dot-mailbox.sh get <message_id>
 #   bin/fm-dot-mailbox.sh list [--queue <q>] [--status <pending|replied|all>] [--cursor <c>] [--limit <n>]
@@ -12,6 +13,8 @@
 #
 # Environment:
 #   FM_HOME                        Owning home when no database path is supplied.
+#
+# Setup and limits: docs/dot-mcp-bridge.md.
 set -eu
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

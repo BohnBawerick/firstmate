@@ -3,6 +3,9 @@
 This bridge connects Firstmate to a ChatGPT dot through a private SQLite mailbox and an HTTP MCP endpoint.
 Firstmate submits assignments, a signed callback wakes the dot, and the dot retrieves work and replies.
 The tools expose mailbox operations only.
+The local commands require Bash and Python 3 with SQLite support.
+The HTTP endpoint accepts requests without authentication and uses a shared `dot-worker` principal for subscriptions.
+Keep the listener on loopback and use the private tunnel for remote access.
 
 ## Mailbox operations and limits
 
@@ -60,10 +63,12 @@ Use a private operational home inside the isolated copy:
 
 ```sh
 export FM_HOME="$PWD"
-bin/fm-dot-mailbox.sh submit --queue worker-tasks --correlation-id task-101 --idempotency-key task-101 "Execute analysis task"
+DOT_ASSIGNMENT=$(bin/fm-dot-mailbox.sh submit --queue worker-tasks --correlation-id task-101 --idempotency-key task-101 "Execute analysis task")
+DOT_MESSAGE_ID=$(printf '%s\n' "$DOT_ASSIGNMENT" | python3 -c 'import json, sys; print(json.load(sys.stdin)["id"])')
 bin/fm-dot-mailbox.sh list --queue worker-tasks --status pending
-bin/fm-dot-mailbox.sh get msg_0123456789abcdef
-bin/fm-dot-mailbox.sh reply msg_0123456789abcdef "Task completed"
+bin/fm-dot-mailbox.sh get "$DOT_MESSAGE_ID"
+bin/fm-dot-mailbox.sh reply "$DOT_MESSAGE_ID" "Task completed" --correlation-id task-101
+bin/fm-dot-mailbox.sh get "$DOT_MESSAGE_ID"
 bin/fm-dot-mailbox.sh status
 ```
 
@@ -75,7 +80,9 @@ The following live steps remain for Firstmate after review.
 They create a tunnel profile, connect a plugin, and contact the dot only when the operator executes them.
 Use an existing official `tunnel-client` binary; these commands use the verified v0.0.16 flag names.
 
-Obtain a tunnel identifier in OpenAI Platform tunnel settings, associate the Platform organization and ChatGPT workspace, and generate a runtime API key with Tunnels Read and Use permissions.
+Follow the [Secure MCP Tunnel setup guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) to obtain a tunnel identifier in Platform tunnel settings and associate the Platform organization and ChatGPT workspace.
+Creating or editing a tunnel requires Tunnels Read and Manage permissions.
+The runtime API key and the operator adding the ChatGPT connection need Tunnels Read and Use permissions.
 No credential values belong in tracked files or shell history.
 
 In the first terminal, from the isolated copy, keep the mailbox in the foreground:
@@ -109,7 +116,9 @@ The sample references `env:CONTROL_PLANE_API_KEY`, so credential entry, doctor, 
 Start run only after doctor succeeds.
 
 Open [ChatGPT Plugins](https://chatgpt.com/plugins), select the plus button, then Add custom MCP server.
-Select Connection Tunnel, enter the tunnel identifier, review permissions, and create the plugin.
+Following the [custom MCP connection steps](https://developers.openai.com/plugins/deploy/connect-chatgpt#add-the-mcp-server), enter a name and description, select Connection Tunnel, and enter the tunnel identifier.
+Select no authentication for this mailbox server, review the risk warning, and create the plugin.
+Review the discovered tools and enable the plugin in the dot conversation.
 Account and workspace UI availability remain unverified.
 In the dot conversation, request a `message.created` subscription on the connector for queue `worker-tasks`, with instructions to retrieve assignments and reply to their exact message IDs.
 Confirm challenge verification and the subscription before submitting a unique hello nonce.
