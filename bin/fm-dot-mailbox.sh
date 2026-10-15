@@ -12,9 +12,6 @@
 #
 # Environment:
 #   FM_HOME                        Owning home when no database path is supplied.
-#   FM_DOT_MCP_ALLOW_LOCAL_CALLBACK Allow loopback callback URLs (testing).
-#   FM_DOT_MCP_PORT                Default HTTP listen port (default: 8765).
-#   FM_DOT_MCP_HOST                Default HTTP host (default: 127.0.0.1).
 set -eu
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

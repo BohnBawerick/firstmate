@@ -11,9 +11,6 @@
 #
 # Environment:
 #   FM_HOME                       Owning home when no database path is supplied.
-#   FM_DOT_MCP_ALLOW_LOCAL_CALLBACK  Allow loopback/http callback URLs (for tests).
-#   FM_DOT_MCP_PORT               Default port for serve (default: 8765).
-#   FM_DOT_MCP_HOST               Default host for serve (default: 127.0.0.1).
 import argparse
 import base64
 import datetime
@@ -43,6 +40,7 @@ MAX_FIELD_BYTES = 256
 DEFAULT_SUB_LIFETIME_MS = 24 * 60 * 60 * 1000
 MAX_SUB_LIFETIME_MS = DEFAULT_SUB_LIFETIME_MS
 SECRET_ROTATION_SEC = 300
+VERIFICATION_CACHE_SEC = 300
 MAX_DELIVERY_ATTEMPTS = 4
 CALLBACK_TIMEOUT_SEC = 10
 
@@ -136,6 +134,7 @@ def init_db(db_path):
         conn.execute("""
             CREATE TABLE IF NOT EXISTS subscriptions (
                 id TEXT PRIMARY KEY,
+                principal TEXT,
                 event_name TEXT NOT NULL,
                 filter_queue TEXT,
                 callback_url TEXT NOT NULL,
@@ -145,7 +144,10 @@ def init_db(db_path):
                 verified_at TEXT NOT NULL
             )
         """)
+        if "principal" not in {row["name"] for row in conn.execute("PRAGMA table_info(subscriptions)")}:
+            conn.execute("ALTER TABLE subscriptions ADD COLUMN principal TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_subscriptions_event ON subscriptions(event_name, filter_queue)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_subscriptions_callback ON subscriptions(principal, callback_url, verified_at)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS retired_signing_keys (
                 subscription_id TEXT NOT NULL,
@@ -185,10 +187,8 @@ def check_ip_allowed(ip_str, allow_local=False):
     return True, None
 
 
-def post_callback(url, body, headers, allow_local=False, *, read_response=False):
+def resolve_callback(url, allow_local=False):
     validate_text("delivery.url", url, 4096)
-    if len(body) > MAX_BODY_BYTES:
-        raise ValueError("Event payload exceeds 256 KiB")
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme not in (("https", "http") if allow_local else ("https",)):
         raise ValueError("Destination URL must use HTTPS")
@@ -203,6 +203,13 @@ def post_callback(url, body, headers, allow_local=False, *, read_response=False)
         ok, error = check_ip_allowed(address[0], allow_local)
         if not ok:
             raise ValueError(error)
+    return parsed, hostname, port, addresses
+
+
+def post_callback(url, body, headers, allow_local=False, *, read_response=False):
+    if len(body) > MAX_BODY_BYTES:
+        raise ValueError("Event payload exceeds 256 KiB")
+    parsed, hostname, port, addresses = resolve_callback(url, allow_local)
     tls_context = ssl.create_default_context() if parsed.scheme == "https" else None
     conn = http.client.HTTPConnection(hostname, port, timeout=CALLBACK_TIMEOUT_SEC)
     deadline = time.monotonic() + CALLBACK_TIMEOUT_SEC
@@ -445,22 +452,35 @@ class Mailbox:
             raise ValueError(error)
         validate_text("delivery.url", url, 4096)
         sub_id = derive_subscription_id(principal, url, name, arguments)
-        challenge = secrets.token_hex(16)
-        body = json_bytes({"type": "verification", "challenge": challenge})
-        webhook_id = f"msg_verification_{secrets.token_hex(8)}"
-        timestamp = str(now_unix())
-        headers = {
-            "Content-Type": "application/json", "webhook-id": webhook_id, "webhook-timestamp": timestamp,
-            "webhook-signature": sign_standard_webhook(raw_key, webhook_id, timestamp, body),
-            "X-MCP-Subscription-Id": sub_id,
-        }
+        with self.lock:
+            checked_at = datetime.datetime.now(datetime.timezone.utc)
+            cutoff = (checked_at - datetime.timedelta(seconds=VERIFICATION_CACHE_SEC)).isoformat(timespec="microseconds").replace("+00:00", "Z")
+            cached = self.conn.execute(
+                """SELECT verified_at FROM subscriptions WHERE principal=? AND callback_url=?
+                   AND verified_at>? AND verified_at<=? ORDER BY verified_at DESC LIMIT 1""",
+                (principal, url, cutoff, checked_at.isoformat(timespec="microseconds").replace("+00:00", "Z")),
+            ).fetchone()
+        verified_at = cached["verified_at"] if cached else None
         try:
-            status, response = post_callback(url, body, headers, self.allow_local_callbacks, read_response=True)
-            if not 200 <= status < 300:
-                raise ValueError(f"Verification challenge returned status {status}")
-            returned = json.loads(response).get("challenge")
-            if not isinstance(returned, str) or not hmac.compare_digest(returned, challenge):
-                raise ValueError("Verification challenge echo mismatch")
+            if verified_at is not None:
+                resolve_callback(url, self.allow_local_callbacks)
+            else:
+                challenge = secrets.token_hex(16)
+                body = json_bytes({"type": "verification", "challenge": challenge})
+                webhook_id = f"msg_verification_{secrets.token_hex(8)}"
+                timestamp = str(now_unix())
+                headers = {
+                    "Content-Type": "application/json", "webhook-id": webhook_id, "webhook-timestamp": timestamp,
+                    "webhook-signature": sign_standard_webhook(raw_key, webhook_id, timestamp, body),
+                    "X-MCP-Subscription-Id": sub_id,
+                }
+                status, response = post_callback(url, body, headers, self.allow_local_callbacks, read_response=True)
+                if not 200 <= status < 300:
+                    raise ValueError(f"Verification challenge returned status {status}")
+                returned = json.loads(response).get("challenge")
+                if not isinstance(returned, str) or not hmac.compare_digest(returned, challenge):
+                    raise ValueError("Verification challenge echo mismatch")
+                verified_at = now_iso()
         except Exception as error:
             raise ValueError(f"Verification challenge failed: {error}") from error
         refresh_before = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(milliseconds=ttl_ms)).isoformat(timespec="microseconds").replace("+00:00", "Z")
@@ -475,11 +495,11 @@ class Mailbox:
                 )
             self.conn.execute("DELETE FROM retired_signing_keys WHERE expires_at <= ?", (time.time(),))
             self.conn.execute(
-                """INSERT INTO subscriptions (id, event_name, filter_queue, callback_url, signing_secret, refresh_before, created_at, verified_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """INSERT INTO subscriptions (id, principal, event_name, filter_queue, callback_url, signing_secret, refresh_before, created_at, verified_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET signing_secret=excluded.signing_secret,
-                       refresh_before=excluded.refresh_before, verified_at=excluded.verified_at""",
-                (sub_id, name, filter_queue, url, secret, refresh_before, ts, ts),
+                       principal=excluded.principal, refresh_before=excluded.refresh_before, verified_at=excluded.verified_at""",
+                (sub_id, principal, name, filter_queue, url, secret, refresh_before, ts, verified_at),
             )
         return {"id": sub_id, "refreshBefore": refresh_before, "cursor": None, "truncated": False}
 
@@ -899,8 +919,8 @@ def main():
 
     # serve
     p_serve = subparsers.add_parser("serve", help="Run the MCP server")
-    p_serve.add_argument("--host", default=os.environ.get("FM_DOT_MCP_HOST", "127.0.0.1"), help="Host to bind (default 127.0.0.1)")
-    p_serve.add_argument("--port", type=int, default=int(os.environ.get("FM_DOT_MCP_PORT", 8765)), help="Port to listen (default 8765)")
+    p_serve.add_argument("--host", default="127.0.0.1", help="Host to bind (default 127.0.0.1)")
+    p_serve.add_argument("--port", type=int, default=8765, help="Port to listen (default 8765)")
     p_serve.add_argument("--allow-local-callbacks", action="store_true", help="Allow HTTP and loopback callbacks for local testing")
 
     args = parser.parse_args()
@@ -910,7 +930,7 @@ def main():
 
     try:
         db_path = args.db or default_db_path()
-        allow_local = getattr(args, "allow_local_callbacks", False) or os.environ.get("FM_DOT_MCP_ALLOW_LOCAL_CALLBACK") == "1"
+        allow_local = getattr(args, "allow_local_callbacks", False)
         mailbox = Mailbox(db_path, allow_local_callbacks=allow_local)
     except (ValueError, OSError, sqlite3.Error) as error:
         parser.error(str(error))
