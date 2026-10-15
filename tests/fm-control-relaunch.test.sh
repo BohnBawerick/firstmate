@@ -490,6 +490,37 @@ test_relaunch_preserves_durable_task_metadata() {
   pass "fm-control relaunch: durable task metadata survives replacement launch publication"
 }
 
+# An armed merge poll authenticates only while the task record still parses as
+# one PR identity: fm_pr_metadata_identity_parse refuses any other key after
+# pr=. A relaunch writes its own keys (control_relaunch_tx=, and traceparent=
+# when tracing is on), so it must keep the PR block last or every armed poll
+# reads as an unauthenticated state check after the relaunch.
+test_relaunch_keeps_the_pr_identity_parseable() {
+  local dir out rc meta
+  dir=$(new_case pr-identity rl41)
+  add_ship_task "$dir" rl41 claude
+  {
+    printf '%s\n' 'pr=https://github.com/example/repo/pull/41'
+    printf '%s\n' 'pr_head=0123456789abcdef0123456789abcdef01234567'
+  } >> "$dir/home/state/rl41.meta"
+  meta="$dir/home/state/rl41.meta"
+  bash -c '. "$1/bin/fm-pr-lib.sh"; fm_pr_metadata_identity_parse "$2"' _ "$ROOT" "$meta" \
+    || fail "fixture: the armed record must parse before the relaunch"
+  printf '%s\n' "$$" > "$dir/home/state/.lock"
+  printf '%s on\n' "$$" > "$dir/home/state/.trace-context-effective"
+
+  out=$(run_control "$dir" rl41 relaunch --note "continuing after a reboot"); rc=$?
+  expect_code 0 "$rc" "relaunch of a task with an armed PR should succeed"$'\n'"$out"
+  [ -n "$(meta_field "$dir" rl41 control_relaunch_tx)" ] \
+    || fail "fixture: the relaunch should record its control transaction"
+  fm_trace_context_valid "$(meta_field "$dir" rl41 traceparent)" \
+    || fail "fixture: the traced relaunch should record a trace carrier"
+  bash -c '. "$1/bin/fm-pr-lib.sh"; fm_pr_metadata_identity_parse "$2" && [ "$FM_PR_META_URL" = "$3" ]' \
+    _ "$ROOT" "$meta" 'https://github.com/example/repo/pull/41' \
+    || fail "the relaunched record must still parse as the task's PR identity:"$'\n'"$(cat "$meta")"
+  pass "fm-control relaunch: the record keeps its PR identity block last, so an armed poll stays valid"
+}
+
 # The quality posture and its base commit are the two records a hardened task's
 # quality loop reads back, so a replacement agent must inherit both unchanged.
 # base_sha is the one that is easy to get wrong and hard to notice: each loop
@@ -2633,6 +2664,7 @@ test_relaunch_refuses_before_exit_when_the_composer_holds_pending_text
 test_relaunch_refuses_before_exit_when_the_composer_state_is_unproven
 test_relaunch_from_linked_home_preserves_recorded_worktree
 test_relaunch_preserves_durable_task_metadata
+test_relaunch_keeps_the_pr_identity_parseable
 test_relaunch_reuses_the_quality_posture_and_base_commit
 test_relaunch_serializes_concurrent_durable_metadata_publication
 test_disabled_relaunch_clears_prior_trace_context

@@ -406,6 +406,49 @@ fm_pr_regular_destination_on_device_or_absent() {
   [ ! -e "$path" ] || [ "$(fm_pr_file_device "$path")" = "$device" ]
 }
 
+# The task record's PR identity block: pr= and the only keys
+# fm_pr_metadata_identity_parse accepts after it. Any other key written after
+# pr= makes the record unparseable, which revokes the task's armed merge poll,
+# so a writer that adds or rewrites keys in a record that may hold a PR emits
+# them before this block (fm_pr_metadata_identity_block_last).
+FM_PR_METADATA_IDENTITY_KEYS='pr pr_head x_request x_request_ts x_followups x_platform x_reply_max_chars'
+
+# Print <file> with every line whose key is in <skip-keys> (space-separated)
+# dropped, then each <line> argument, then the identity block in its original
+# order. The result is what a writer publishes when it adds or replaces keys in
+# a task record without breaking an armed PR identity.
+fm_pr_metadata_identity_block_last() {  # <file> <skip-keys> [<line>...]
+  local file=$1 skip=$2
+  shift 2
+  awk -F= -v identity="$FM_PR_METADATA_IDENTITY_KEYS" -v skip="$skip" '
+    BEGIN {
+      n = split(identity, keys, " ")
+      for (i = 1; i <= n; i++) block[keys[i]] = 1
+      n = split(skip, keys, " ")
+      for (i = 1; i <= n; i++) skipped[keys[i]] = 1
+      for (i = 1; i < ARGC; i++) {
+        if (i == 1) continue
+        extra[++extras] = ARGV[i]
+        ARGV[i] = ""
+      }
+    }
+    ($1 in skipped) { next }
+    ($1 in block) { tail[++tails] = $0; next }
+    { print }
+    END {
+      for (i = 1; i <= extras; i++) print extra[i]
+      for (i = 1; i <= tails; i++) print tail[i]
+    }
+  ' "$file" "$@"
+}
+
+fm_pr_metadata_identity_key() {  # <key>
+  case " $FM_PR_METADATA_IDENTITY_KEYS " in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+
 fm_pr_metadata_identity_parse() {
   local file=$1 line value pr_count=0 seen_pr=0 post_pr_invalid=0
   FM_PR_META_PROVIDER=
@@ -436,10 +479,8 @@ fm_pr_metadata_identity_parse() {
           fm_pr_head_valid "$value" || post_pr_invalid=1
         fi
         ;;
-      x_request=*|x_request_ts=*|x_followups=*|x_platform=*|x_reply_max_chars=*)
-        ;;
       *)
-        [ "$seen_pr" -eq 0 ] || post_pr_invalid=1
+        fm_pr_metadata_identity_key "${line%%=*}" || [ "$seen_pr" -eq 0 ] || post_pr_invalid=1
         ;;
     esac
   done < "$file"

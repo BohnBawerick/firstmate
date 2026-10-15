@@ -385,6 +385,31 @@ test_sweep_respawns_confirmed_dead_secondmate() {
   pass "sweep: a confirmed-dead secondmate endpoint is killed and respawned"
 }
 
+# The respawn rewrites the secondmate's record. A merge poll armed on that
+# record authenticates only through its pr= binding, so the respawn must carry
+# the binding forward with the PR identity block still closing the record.
+test_sweep_respawn_keeps_an_armed_pr_binding() {
+  local w fb tmuxfb log meta url head
+  w=$(new_world sweep-pr-binding)
+  add_sm_home "$w" sm1 firstmate:fm-sm1
+  meta="$w/home/state/sm1.meta"
+  url='https://github.com/example/home/pull/6'
+  head='0123456789abcdef0123456789abcdef01234567'
+  printf 'pr=%s\npr_head=%s\n' "$url" "$head" >> "$meta"
+  fb=$(make_toolchain "$w"); tmuxfb=$(make_liveness_tmux "$w")
+  log="$w/calls.log"; : > "$log"
+
+  run_bootstrap "$tmuxfb:$fb" "$w/home" zsh "$log" >/dev/null
+
+  assert_contains "$(cat "$log")" "new-window" "fixture: the dead secondmate should be respawned"
+  assert_grep "pr=$url" "$meta" "the respawn dropped the secondmate's pr= binding"
+  assert_grep "pr_head=$head" "$meta" "the respawn dropped the secondmate's pr_head= binding"
+  bash -c '. "$1/bin/fm-pr-lib.sh"; fm_pr_metadata_identity_parse "$2" && [ "$FM_PR_META_URL" = "$3" ]' \
+    _ "$ROOT" "$meta" "$url" \
+    || fail "the respawned record must still parse as the secondmate's PR identity:"$'\n'"$(cat "$meta")"
+  pass "sweep: a respawned secondmate keeps its armed PR binding parseable"
+}
+
 test_sweep_relays_codex_max_downgrade_warning() {
   local w fb tmuxfb log out warning count
   w=$(new_world sweep-codex-max-warning)
@@ -799,6 +824,7 @@ test_tmux_agent_state_rejects_malformed_targets_before_probe
 test_herdr_agent_state_preserves_husk_classifier
 test_agent_state_dispatcher_and_compatibility
 test_sweep_respawns_confirmed_dead_secondmate
+test_sweep_respawn_keeps_an_armed_pr_binding
 test_sweep_relays_codex_max_downgrade_warning
 test_sweep_serializes_distinct_secondmate_relaunches
 test_sweep_leaves_alive_secondmate_untouched

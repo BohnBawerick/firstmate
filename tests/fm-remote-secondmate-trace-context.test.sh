@@ -222,10 +222,21 @@ LAUNCH_LINE=$(grep -n "^pane send-text [^ ]* \\. '.*' --session " "$HERDR_LOG" |
 pass "enabled: a remote-routed second mate receives one carrier in its pane, identical to the parent's recorded identity, before launch"
 
 # --- relaunch stability on the remote path ----------------------------------
+# The route record also carries an armed PR binding across the relaunch, with
+# the PR identity block still closing it, or the merge poll stops
+# authenticating.
+PR_URL='https://github.com/example/home/pull/6'
+printf 'pr=%s\n' "$PR_URL" >> "$PARENT/state/ios.meta"
 reset_remote_herdr_fixture "$HERDR_STATE"
 : > "$HERDR_LOG"
 remote_env "$ROOT/bin/fm-spawn.sh" ios --secondmate >/dev/null 2>&1 \
   || fail "enabled remote secondmate relaunch failed"
+grep -qx "pr=$PR_URL" "$PARENT/state/ios.meta" \
+  || fail "a remote relaunch dropped the route record's pr= binding"
+bash -c '. "$1/bin/fm-pr-lib.sh"; fm_pr_metadata_identity_parse "$2" && [ "$FM_PR_META_URL" = "$3" ]' \
+  _ "$ROOT" "$PARENT/state/ios.meta" "$PR_URL" \
+  || fail "the relaunched route record must still parse as the mate's PR identity"
+pass "relaunch: a remote-routed second mate keeps its armed PR binding parseable"
 RELAUNCH_TP=$(meta_traceparent "$PARENT/state/ios.meta")
 RELAUNCH_INJECTED=$(remote_injected_traceparent)
 [ "$RELAUNCH_TP" = "$PARENT_TP" ] \
