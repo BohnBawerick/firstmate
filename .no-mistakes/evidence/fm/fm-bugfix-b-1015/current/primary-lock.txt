@@ -1,0 +1,1 @@
+lock acquired: THIS session holds the fleet lock (harness pid 3008278)

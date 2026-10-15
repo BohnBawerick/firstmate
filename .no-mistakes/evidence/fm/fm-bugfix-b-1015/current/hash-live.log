@@ -1,0 +1,46 @@
+$ bash bin/fm-lab-home.sh create /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/fallback 
+exit= 0 
+/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/fallback
+
+$ bash bin/fm-contributions.sh poll 
+exit= 0 
+contribution-wake: check: contributions hash 309a7b98a1314e27ae9ef2d3d3da676b3e44fa7c9838d97e4595e9c5274e04de
+
+1792102391	1	check	contribution-309a7b98a1314e27ae9ef2d3d3da676b3e44fa7c9838d97e4595e9c5274e04de	check: contributions hash 309a7b98a1314e27ae9ef2d3d3da676b3e44fa7c9838d97e4595e9c5274e04de
+
+$ bash bin/fm-contributions.sh poll 
+exit= 0 
+
+sha256sum-only contribution wake has the exact digest and deduplicates
+$ bash bin/fm-live-lab.sh up --harness claude --source /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/missing-origin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/partial-lab 
+exit= 1 
+lab: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/partial-lab (tear down with: bin/fm-live-lab.sh down /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/partial-lab)
+fatal: '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/missing-origin' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+fm-live-lab: cannot fetch HEAD from /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/missing-origin
+
+$ bash bin/fm-live-lab.sh down /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/partial-lab 
+exit= 0 
+stopped: lab tmux server and lab processes
+removed: 0 Claude project entries under /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/partial-lab
+removed: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/partial-lab
+
+sha256sum-only lab prepares and tears down a partial launch
+$ bash bin/fm-lab-home.sh create /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/no-hash 
+exit= 0 
+/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/no-hash
+
+$ bash bin/fm-contributions.sh poll 
+exit= 1 
+fm-contributions: shasum or sha256sum is required for the contribution wake key
+fm-contributions: could not hash the contribution wake key
+
+$ bash bin/fm-live-lab.sh up --harness claude --source /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/missing-origin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/hash-live/refused-lab 
+exit= 1 
+fm-live-lab: shasum or sha256sum is required and neither was found on PATH
+
+Missing both hash tools refuses by name before a lab launch
+LIVE HASH SCENARIOS PASSED

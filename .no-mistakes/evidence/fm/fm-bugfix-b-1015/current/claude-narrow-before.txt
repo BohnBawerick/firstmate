@@ -1,0 +1,20 @@
+
+           Claude Code v2.1.300
+ ▐▛███▛█   Sonnet 5.5
+▝▜██████▀  Claude Max
+ ▝▝   ▝▝   …/01M50CWGPF8YPNBTQR…
+
+
+
+
+
+      Ctrl+Y to paste deleted text
+────────────────────────────────────
+❯ else. This sentence only pads
+  the request so that it wraps
+  past the composer's visible rows
+  in a narrow pane, and this one
+  pads it a little further.
+────────────────────────────────────
+  01M50CWGPF8YPNBTQRHJHZRNM6 [?] …
+  ⏵⏵ bypass permissions on

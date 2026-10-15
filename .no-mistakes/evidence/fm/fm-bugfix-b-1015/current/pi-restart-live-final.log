@@ -1,0 +1,46 @@
+bash-5.3$ env -u FM_GATE_REFUSE_BYPASS -u FM_TEST_SEAM FM_HOME=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/runtime/fm-
+secondmate-busy-live.XpPnfq/pi/sm FM_TASK_INBOX=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/runtime/fm-secondmate-busy
+-live.XpPnfq/pi/primary/state/sm-pi.inbox /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/tools/pi --provider openai-codex
+ --model gpt-6-luna --thinking minimal --no-session --no-extensions --no-context-files --no-skills --no-mcp --no-prompt-templates --no-themes -e /home/bohn/.no-
+mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/runtime/fm-secondmate-busy-live.XpPnfq/pi/primary/state/sm-pi.pi-ext.ts -e /home/bohn/.no
+-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/product/.pi/extensions/fm-calm.ts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+real Pi never emitted busy

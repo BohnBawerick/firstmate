@@ -1,0 +1,64 @@
+imap command: CAPABILITY
+imap command: LOGIN
+imap command: CAPABILITY
+imap command: SELECT
+imap command: UID
+imap command: LOGOUT
+healthy-nine-seconds: rc=0 elapsed=9.18s output=''
+fm-mail-check-v1
+epoch=1792102249
+reported=
+deferred=
+one-deadline-miss: rc=0 elapsed=3.11s output=''
+fm-mail-check-v1
+epoch=1792102252
+reported=
+deferred=fm-mail poll error: mail poll deadline reached
+imap command: CAPABILITY
+imap command: LOGIN
+imap command: CAPABILITY
+imap command: SELECT
+imap command: UID
+imap command: LOGOUT
+healthy-recovery: rc=0 elapsed=0.21s output=''
+fm-mail-check-v1
+epoch=1792102253
+reported=
+deferred=
+new-first-miss: rc=0 elapsed=3.21s output=''
+fm-mail-check-v1
+epoch=1792102256
+reported=
+deferred=fm-mail poll error: mail poll deadline reached
+second-consecutive-miss: rc=0 elapsed=3.24s output='mail: fm-mail poll error: mail poll deadline reached'
+fm-mail-check-v1
+epoch=1792102259
+reported=fm-mail poll error: mail poll deadline reached
+deferred=
+already-reported-miss: rc=0 elapsed=3.18s output=''
+fm-mail-check-v1
+epoch=1792102262
+reported=fm-mail poll error: mail poll deadline reached
+deferred=
+imap command: CAPABILITY
+imap command: LOGIN
+imap command: CAPABILITY
+imap command: SELECT
+imap command: UID
+imap command: UID
+imap command: UID
+queued-mail-and-slow-header: rc=0 elapsed=3.52s output='mail: new mail: woke for 43'
+fm-mail-check-v1
+epoch=1792102266
+reported=new mail: woke for 43
+deferred=
+published queue:
+1792102266	1	check	mail:12345/42	check: mail 42 - mail from lab@example.invalid - disposable mail 42
+1792102266	2	check	mail:12345/43	check: mail 43 - mail from (no header) - unfetchable header - see fm-mail read
+
+connection-refused-reports-immediately: rc=0 elapsed=0.14s output='mail: fm-mail poll error: [Errno 111] Connection refused'
+fm-mail-check-v1
+epoch=1792102266
+reported=fm-mail poll error: [Errno 111] Connection refused
+deferred=
+LIVE MAIL SCENARIOS PASSED

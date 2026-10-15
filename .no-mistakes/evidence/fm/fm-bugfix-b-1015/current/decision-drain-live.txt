@@ -1,0 +1,4 @@
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+lab-status [key=one] needs-decision: first unresolved choice
+lab-status [key=two] blocked: second unresolved blocker
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'

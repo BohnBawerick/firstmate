@@ -1,0 +1,120 @@
+{
+  "target": "3da0b892b39838ae67e28398eb549b6a951e9539",
+  "checks": [
+    {
+      "log": "lock-ancestry.log",
+      "purpose": "live-owner and legacy daemon regression",
+      "result": "pass"
+    },
+    {
+      "log": "account-regression-retry.log",
+      "purpose": "pinned raw grammar regression",
+      "result": "pass"
+    },
+    {
+      "log": "autoarm-focused.log",
+      "purpose": "dangling lock races",
+      "result": "pass"
+    },
+    {
+      "log": "herdr-regression.log",
+      "purpose": "composer and transition regression",
+      "result": "pass"
+    },
+    {
+      "log": "lab-regression.log",
+      "purpose": "real lab teardown and hash portability",
+      "result": "pass"
+    },
+    {
+      "log": "restart-semantic.log",
+      "purpose": "semantic idle/busy restart guard",
+      "result": "pass"
+    },
+    {
+      "log": "decision-regression.log",
+      "purpose": "decision fold behavior and cost",
+      "result": "pass"
+    },
+    {
+      "log": "remote-entrypoint-regression.log",
+      "purpose": "missing parent diagnostic",
+      "result": "pass"
+    },
+    {
+      "log": "cli-live.log",
+      "purpose": "raw refusals, generated brief, capped Lavish target",
+      "result": "pass"
+    },
+    {
+      "log": "mail-live.log",
+      "purpose": "local TLS IMAP behavior",
+      "result": "pass"
+    },
+    {
+      "log": "launch-live.log",
+      "purpose": "listener recovery and repeated failure",
+      "result": "pass"
+    },
+    {
+      "log": "codex-app-live-retry.log",
+      "purpose": "real app-server refusal and legacy lock reclaim",
+      "result": "pass"
+    },
+    {
+      "log": "primary-live.log",
+      "purpose": "real primary startup, auto-arm, decision drain, branch delegation",
+      "result": "pass"
+    },
+    {
+      "log": "foreign-tree-live.log",
+      "purpose": "forged delegation outside owner tree",
+      "result": "pass"
+    },
+    {
+      "log": "herdr-live-retry.log",
+      "purpose": "real Codex idle and Claude narrow/periodic composers",
+      "result": "pass"
+    },
+    {
+      "log": "hash-live.log",
+      "purpose": "fallback digests and missing-tool diagnostics",
+      "result": "pass"
+    },
+    {
+      "log": "remote-sync-live.log",
+      "purpose": "origin-only import",
+      "result": "pass"
+    },
+    {
+      "log": "merge-live-retry.log",
+      "purpose": "real GitHub CLI base guards against local TLS API",
+      "result": "pass"
+    },
+    {
+      "log": "watch-live.log",
+      "purpose": "real watcher with persisted pipeline data",
+      "result": "pass"
+    },
+    {
+      "log": "pi-semantic-live-retry.log",
+      "purpose": "real Pi semantic lifecycle and pause liveness",
+      "result": "pass"
+    },
+    {
+      "log": "pi-restart-live-verified.log",
+      "purpose": "real Pi persist, settle, and restart",
+      "result": "pass"
+    },
+    {
+      "log": "remote-zsh-path.log",
+      "purpose": "real non-interactive zsh PATH resolution",
+      "result": "pass"
+    },
+    {
+      "log": "remote-unregistered-route.log",
+      "purpose": "missing route refusal",
+      "result": "pass"
+    }
+  ]
+}

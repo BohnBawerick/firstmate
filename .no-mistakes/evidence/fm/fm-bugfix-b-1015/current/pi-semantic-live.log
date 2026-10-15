@@ -1,0 +1,46 @@
+Warning: No models match pattern "antigravity/gemini-3.1-pro"
+Warning: No models match pattern "antigravity/gemini-3.8-flash"
+Warning: No models match pattern "antigravity/gpt-oss-120b"
+Warning: No models match pattern "antigravity/claude-opus-5-5"
+Warning: No models match pattern "antigravity/claude-sonnet-5-5"
+Error: Failed to load extension "/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/product/.pi/extensions/fm-calm.ts": Faile
+d to load extension: ENOENT: no such file or directory, open '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/product/.pi/
+extensions/lib/fm-calm-preservation.ts'
+Hint: Start without extensions using "pi -ne".
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Pane is dead (status 1, Fri Oct 16 06:13:47 2026)
+real Pi never emitted busy

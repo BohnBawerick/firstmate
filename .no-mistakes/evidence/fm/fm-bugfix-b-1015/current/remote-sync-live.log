@@ -1,0 +1,51 @@
+$ git init -q -b main /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/primary 
+ exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/primary add . 
+ exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/primary commit -qm fixture 
+ exit= 0
+$ git clone -q --bare /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/primary /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/origin.git 
+ exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/primary remote add origin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/origin.git 
+ exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/primary fetch -q origin 
+ exit= 0
+$ bash bin/fm-lab-home.sh create /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/mate 
+/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/mate
+ exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/mate init -q -b main 
+ exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/mate remote add origin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/origin.git 
+ exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/mate fetch -q origin 
+ exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/mate reset --hard origin/main 
+HEAD is now at 1949d72 fixture
+ exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/primary commit -qam local fixture change 
+ exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/primary rev-parse HEAD 
+11a496dbdcb322f9a87d0fd3ed01b3a500c552b2
+ exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/mate rev-parse HEAD 
+1949d72ec875cdbbbc8d09ab2e541ffe23315b96
+ exit= 0
+$ bash bin/fm-remote-secondmate-control.sh sync mate 11a496dbdcb322f9a87d0fd3ed01b3a500c552b2 
+error: remote home could not import 11a496dbdcb322f9a87d0fd3ed01b3a500c552b2: neither this host's Firstmate copy nor the home's origin has it; if the commit is on that origin, run /updatefirstmate to refresh this host's copy
+ exit= 1
+$ bash -c . "$1/bin/fm-ff-lib.sh"; remote_sync_failure_reason "$2" "$3" "$4" "$5" _ /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6 1 error: remote home could not import 11a496dbdcb322f9a87d0fd3ed01b3a500c552b2: neither this host's Firstmate copy nor the home's origin has it; if the commit is on that origin, run /updatefirstmate to refresh this host's copy
+ 11a496dbdcb322f9a87d0fd3ed01b3a500c552b2 /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/primary 
+this primary's commit 11a496dbdcb322f9a87d0fd3ed01b3a500c552b2 is on no remote branch this primary knows of, so the remote home cannot fetch it; it converges once that commit reaches the origin the remote home pulls from
+ exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/mate rev-parse HEAD 
+1949d72ec875cdbbbc8d09ab2e541ffe23315b96
+ exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/primary push -q origin main 
+ exit= 0
+$ bash bin/fm-remote-secondmate-control.sh sync mate 11a496dbdcb322f9a87d0fd3ed01b3a500c552b2 
+synced: 11a496dbdcb322f9a87d0fd3ed01b3a500c552b2 instr=
+ exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/sync-live/mate rev-parse HEAD 
+11a496dbdcb322f9a87d0fd3ed01b3a500c552b2
+ exit= 0
+LIVE REMOTE SYNC DIAGNOSTIC PASSED

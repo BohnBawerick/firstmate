@@ -1,0 +1,4 @@
+ok - auto-arm: dangling owner links are reclaimed so supervision re-arms
+ok - overlapping dangling-link reapers preserve the live successor mutex
+ok - an interrupted dangling-link reaper is recovered without reopening its election
+ok - auto-arm: a legacy owner still arming is never reclaimed while its watcher keeps beating

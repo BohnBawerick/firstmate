@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/home/bohn/.no-mistakes/evidence/01M50CWGPF8YPNBTQRHJHZRNM6/current/codex-app-live.py", line 22, in <module>
+    result=rpc(1,'initialize',{'clientInfo':{'name':'firstmate-live-test','version':'1.0'},'capabilities':{'experimentalApi':True}})
+  File "/home/bohn/.no-mistakes/evidence/01M50CWGPF8YPNBTQRHJHZRNM6/current/codex-app-live.py", line 20, in rpc
+    raise TimeoutError(method)
+TimeoutError: initialize

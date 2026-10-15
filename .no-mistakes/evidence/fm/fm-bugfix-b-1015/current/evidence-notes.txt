@@ -1,0 +1,23 @@
+Validated target 3da0b892b39838ae67e28398eb549b6a951e9539 against base 470cbb4efd2bfb8f9689e01bb8e31df1072471b1 on Linux.
+
+Tools: Herdr 0.9.3, Claude Code 2.1.300, Codex CLI 0.162.1, Pi 1.2.0, GitHub CLI 2.102.0.
+The PNG files render recorded terminal viewports. They are terminal captures, not desktop screenshots or reconstructed app mockups.
+
+Successful live drivers: cli-live.py, mail-live.py, launch-live.py, codex-app-live.py, primary-live.py, foreign-tree-live.py, herdr-live.sh, hash-live.py, remote-sync-live.py, merge-live.py, watch-live.py, pi-semantic-live.sh, pi-restart-live.sh.
+The final successful logs use retry or verified suffixes where an initial fixture needed correction.
+
+Fixture corrections:
+- The account regression initially used a worktree-contained TMPDIR. Its secondmate home correctly failed the production boundary. Rerunning with TMPDIR=/tmp passed.
+- Existing host launch wrappers delayed app-server and forge probes. Read-only mise which resolved already installed executables; later checks used worktree-local links to those executables.
+- An extra Codex Ctrl+U draft-clear check stopped the first Herdr driver. The requested idle-animation, real-pending-draft, periodic-truncation, and narrow-composer checks passed in a fresh named lab. That extra clear action was not used as evidence for a product claim.
+- The first Pi copy omitted the Claude mod files targeted by Calm's tracked symlinks. The completed fixture retained those files. The full restart fixture also needed the normal FM_TASK_INBOX export, parent binding, and persistent shell. An explicit reporting instruction made its otherwise context-free Pi publish to the parent status channel. The final run used real Pi for persistence, semantic settling, exit, and relaunch.
+- One exploratory Pi driver was edited while still running and stopped on a shell parse error. The final driver was re-executed intact and passed.
+- The first unregistered-route probe lacked a registry. A valid empty registry then demonstrated the intended missing-route refusal.
+
+The no-mistakes watcher check used a disposable database created by the real read-only axi status consumer, with synthetic persisted run data. No validation pipeline was started or controlled. The real Firstmate watcher, real Codex TUI, and real no-mistakes status CLI consumed that data.
+The merge check used the real GitHub CLI against a disposable TLS API endpoint. No external PR was created or merged. The remote sync check used separate repositories and a local bare origin inside the worktree.
+
+The native macOS launchd/GUI-session instructions cannot be driven on Linux. launchctl is absent. Non-interactive zsh PATH setup, missing home parent, missing registered route, and origin-only commit behavior were driven locally.
+No linters, formatters, broad repository suite, delivery phase, push target, or CI phase was run. No tracked source changes were made.
+
+All worktree fixtures were removed after the live checks completed. The final git worktree is clean.

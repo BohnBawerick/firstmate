@@ -1,0 +1,45 @@
+
+sm on  main [?]
+❯ export GOTMPDIR=/tmp/fm-sm-pi/gotmp
+export COMPACT_ADVISER_DISABLE=1
+
+sm on  main [?]
+❯ export COMPACT_ADVISER_DISABLE=1
+
+sm on  main [?]
+❯ . '/tmp/fm-sm-pi+df40ac045804d97601bdc3d1db585c8596b6a74d5754abe932829a7bd208a664/launch.s1792102996.3684986.19163.sh'
+working
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
