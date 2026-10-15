@@ -56,6 +56,15 @@ mkdir -p ~/.local/bin
 ln -s /absolute/path/to/firstmate/bin/fm-remote-entrypoint.sh ~/.local/bin/fm-remote-entrypoint.sh
 ```
 
+On macOS, a plain SSH command does not put `~/.local/bin` on `PATH`, so the symlink alone is not enough there.
+zsh reads only `~/.zshenv` for such a command, so add the directory there:
+
+```sh
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH" ;; esac
+```
+
+Confirm with `ssh <ssh-alias> 'command -v fm-remote-entrypoint.sh'`.
+
 The entrypoint accepts encoded argv for genuine executable `bin/fm-*.sh` files only.
 It never accepts a shell command string.
 
@@ -218,11 +227,14 @@ chmod +x ~/.local/bin/tasks-axi
 
 ### Check a host
 
-Check any host against it directly:
+Check a host that a registered remote record already names:
 
 ```sh
 bin/fm-on.sh <secondmate-id|ssh-alias> fm-remote-doctor.sh
 ```
+
+`fm-on.sh` reaches a host only through a registered remote record, and accepts an SSH alias only when exactly one record selects it.
+Before a route exists, [provisioning the route](#provision-a-route) runs this doctor with `--fix` as its preflight and rolls the new record back if a gap remains.
 
 That run is read-only.
 It takes these steps:
@@ -285,6 +297,8 @@ It acts on whichever server owns the `fm-remote` socket:
 | Any other (foreign) server | Stops the foreign server and takes the session over, closing its panes so the parent firstmate relaunches its mates into the Aqua-born server. |
 
 `KeepAlive={SuccessfulExit=false}` lets that exit 0 rest instead of respawning against a held socket.
+A remote attach made after the guard has settled, such as `herdr machine add --remote-session fm-remote`, can therefore start a foreign server that the resting guard never sees.
+The doctor reports that server as a `fixable:` gap; run `fm-remote-doctor.sh --fix` to reload the agent so the guard takes the session over, then relaunch the mate.
 The guard's header owns the decision table, and [`bin/fm-remote-herdr-owner-lib.sh`](../bin/fm-remote-herdr-owner-lib.sh) owns the birth markers it reads.
 
 ### Other repairs and limits
@@ -335,7 +349,7 @@ bin/fm-remote-home-seed.sh <id> <ssh-alias> <remote-root> <remote-home> {<projec
 | Argument | Meaning |
 | --- | --- |
 | `<remote-root>` | The remote Firstmate code clone that supplies tracked scripts. |
-| `<remote-home>` | A separate absolute path for the persistent secondmate home that must not overlap the code root. |
+| `<remote-home>` | A separate absolute path for the persistent secondmate home that must not overlap the code root and whose parent directory already exists on that host. |
 
 ### Project origins
 

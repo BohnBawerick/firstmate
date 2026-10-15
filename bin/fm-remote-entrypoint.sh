@@ -120,7 +120,16 @@ base64_decode_to "$4" "$TMP/argv" || die "invalid base64 for argv"
 ROOT=$(<"$TMP/root")
 HOME_PATH=$(<"$TMP/home")
 ROOT=$(fm_remote_job_canonical_existing_dir "$ROOT") || die "remote root is not a safe existing directory"
-HOME_PATH=$(fm_remote_job_canonical_home "$HOME_PATH") || die "remote home is not a safe directory"
+if ! CANONICAL_HOME=$(fm_remote_job_canonical_home "$HOME_PATH"); then
+  # One absent leaf is allowed, never an absent parent: name that parent so the
+  # operator creates it rather than chasing an unsafe-directory refusal.
+  HOME_PARENT=$(dirname -- "$HOME_PATH")
+  if [ ! -e "$HOME_PATH" ] && [ ! -L "$HOME_PATH" ] && [ ! -e "$HOME_PARENT" ] && [ ! -L "$HOME_PARENT" ]; then
+    die "remote home's parent directory does not exist: $HOME_PARENT; create it on this host first"
+  fi
+  die "remote home is not a safe directory"
+fi
+HOME_PATH=$CANONICAL_HOME
 [ -f "$ROOT/AGENTS.md" ] && [ ! -L "$ROOT/AGENTS.md" ] || die "remote root is not a Firstmate checkout"
 [ -d "$ROOT/bin" ] && [ ! -L "$ROOT/bin" ] || die "remote root has no safe bin directory"
 if path_is_ancestor "$ROOT" "$HOME_PATH" || path_is_ancestor "$HOME_PATH" "$ROOT" || [ "$ROOT" = "$HOME_PATH" ]; then

@@ -55,5 +55,27 @@ test_direct_invocation_still_works() {
   pass "fm-remote-entrypoint.sh invoked directly still resolves SCRIPT_DIR correctly"
 }
 
+test_missing_home_parent_is_named() {
+  # A persistent remote home may be one absent leaf under an existing parent.
+  # When the parent itself is missing, the refusal must name that parent so the
+  # operator knows to create it, rather than calling the home unsafe.
+  local root missing out err code b64
+  root="$TMP_ROOT/parent-check-root"
+  mkdir -p "$root/bin"
+  printf 'firstmate\n' > "$root/AGENTS.md"
+  missing="$TMP_ROOT/absent-parent/home"
+  out="$TMP_ROOT/parent.stdout"
+  err="$TMP_ROOT/parent.stderr"
+  b64() { printf '%s' "$1" | base64 | tr -d '\n'; }
+  code=0
+  "$REAL_BIN/fm-remote-entrypoint.sh" 1 "$(b64 "$root")" "$(b64 "$missing")" \
+    "$(printf 'fm-remote-doctor.sh\0' | base64 | tr -d '\n')" >"$out" 2>"$err" || code=$?
+  expect_code 64 "$code" "missing home parent exit code"
+  assert_grep "remote home's parent directory does not exist: $TMP_ROOT/absent-parent" "$err" \
+    "a missing home parent was not named as the cause"
+  pass "fm-remote-entrypoint.sh names a missing remote home parent directory"
+}
+
 test_symlink_invocation_resolves_sibling_lib
 test_direct_invocation_still_works
+test_missing_home_parent_is_named
