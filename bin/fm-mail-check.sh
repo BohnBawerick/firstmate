@@ -35,6 +35,13 @@
 # have queued mail. Fail-closed after a queued wake and timeout always
 # doorbell.
 #
+# A lone poll deadline miss (the IMAP server answered too slowly for the
+# poll's own deadline) is held quietly in the record as deferred=, because a
+# slow-but-healthy server misses once and answers on the next poll. The same
+# miss on the next consecutive poll is reported once like any other failure.
+# The hold never applies when the poll has publication evidence, and any
+# other failure still reports at once.
+#
 # The poll must finish inside the watcher's per-check bound
 # (FM_CHECK_TIMEOUT, default 30, read from this check's own environment
 # because the watcher runs it as a direct child). The internal budget
@@ -143,6 +150,7 @@ poll_summary() {
 record_read() {
   local line first=1
   RECORD_REPORTED=
+  RECORD_DEFERRED=
   [ -f "$RECORD" ] || return 0
   while IFS= read -r line; do
     if [ "$first" = 1 ]; then
@@ -152,19 +160,21 @@ record_read() {
     fi
     case "$line" in
       reported=*) RECORD_REPORTED=${line#reported=} ;;
+      deferred=*) RECORD_DEFERRED=${line#deferred=} ;;
     esac
   done < "$RECORD"
   return 0
 }
 
 record_write() {
-  local reported=$1 tmp
+  local reported=$1 deferred=${2:-} tmp
   tmp=$(mktemp "$RECORD.XXXXXX" 2>/dev/null) || return 1
   chmod 0600 "$tmp" 2>/dev/null || { rm -f -- "$tmp"; return 1; }
   {
     printf '%s\n' "$RECORD_SCHEMA"
     printf 'epoch=%s\n' "$(record_epoch_now)"
     printf 'reported=%s\n' "$reported"
+    printf 'deferred=%s\n' "$deferred"
   } > "$tmp" || { rm -f -- "$tmp"; return 1; }
   mv -f -- "$tmp" "$RECORD" || { rm -f -- "$tmp"; return 1; }
   return 0
@@ -195,8 +205,18 @@ poll_has_publication_evidence() {
   return 1
 }
 
+# True when a failed poll stopped only because its own IMAP deadline passed.
+poll_missed_deadline() {
+  local rc=${1:-0} line=$2
+  [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] || return 1
+  case "$line" in
+    *'mail poll deadline reached'*) return 0 ;;
+  esac
+  return 1
+}
+
 action_check() {
-  local out rc line woken_before queued=0
+  local out rc line woken_before queued=0 deferred=
   mkdir -p "$STATE" || return 1
   woken_before=$(mktemp) || woken_before=
   if [ -n "$woken_before" ]; then
@@ -235,11 +255,17 @@ action_check() {
     queued=1
   fi
   [ -n "$woken_before" ] && rm -f -- "$woken_before"
-  if [ -n "$line" ] && { [ "$line" != "$RECORD_REPORTED" ] || [ "$queued" -eq 1 ]; }; then
+  # Hold a lone deadline miss: report it only when the previous poll missed
+  # too. The reported line is kept as it was, so recovery still reads as quiet.
+  if [ "$queued" -eq 0 ] && poll_missed_deadline "${rc:-0}" "$line" \
+    && [ "$line" != "$RECORD_REPORTED" ] && [ "$line" != "$RECORD_DEFERRED" ]; then
+    deferred=$line
+    line=$RECORD_REPORTED
+  elif [ -n "$line" ] && { [ "$line" != "$RECORD_REPORTED" ] || [ "$queued" -eq 1 ]; }; then
     fm_cap_line_var "mail: $line" "$MAX_LINE"
     printf '%s\n' "$FM_LINE_CAP_LINE"
   fi
-  record_write "$line" || true
+  record_write "$line" "$deferred" || true
   return 0
 }
 

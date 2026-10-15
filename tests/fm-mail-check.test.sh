@@ -456,6 +456,80 @@ test_missing_mail_plane_is_reported() {
   pass "fm-mail-check: a missing mail plane is reported, not assumed"
 }
 
+test_lone_poll_deadline_miss_stays_quiet() {
+  # A slow-but-healthy IMAP server can miss the poll's own deadline once and
+  # answer in time on the next poll. That lone miss must not wake firstmate;
+  # the same miss on consecutive polls is a real outage and wakes once.
+  local home out miss ok refused
+  home=$(make_home deadline-lone)
+  write_env "$home"
+  ok='printf "uidvalidity\\t70007\\n"'
+  miss='printf "fm-mail poll error: mail poll deadline reached\\n" >&2
+exit 1'
+  refused='printf "fm-mail poll error: connection refused\\n" >&2
+exit 1'
+
+  enter_mailbox "$home" "$ok"
+  out="$home/out1.txt"
+  run_check "$home" "$out" "$CHECK"
+  [ ! -s "$out" ] || fail "a healthy poll must stay silent: $(cat "$out")"
+
+  enter_mailbox "$home" "$miss"
+  out="$home/out2.txt"
+  run_check "$home" "$out" "$CHECK"
+  [ ! -s "$out" ] || fail "a lone poll deadline miss must not wake: $(cat "$out")"
+
+  enter_mailbox "$home" "$ok"
+  out="$home/out3.txt"
+  run_check "$home" "$out" "$CHECK"
+  [ ! -s "$out" ] || fail "a healthy poll after a lone miss must stay silent: $(cat "$out")"
+
+  enter_mailbox "$home" "$miss"
+  out="$home/out4.txt"
+  run_check "$home" "$out" "$CHECK"
+  [ ! -s "$out" ] || fail "a miss after a healthy poll is lone again and must not wake: $(cat "$out")"
+
+  out="$home/out5.txt"
+  run_check "$home" "$out" "$CHECK"
+  assert_contains "$(cat "$out")" "mail: fm-mail poll error: mail poll deadline reached" "a deadline miss on consecutive polls wakes"
+  [ "$(wc -l < "$out" | tr -d '[:space:]')" = 1 ] || fail "a repeated deadline miss reports exactly one line: $(cat "$out")"
+
+  out="$home/out6.txt"
+  run_check "$home" "$out" "$CHECK"
+  [ ! -s "$out" ] || fail "a reported deadline miss must not repeat while it persists: $(cat "$out")"
+
+  enter_mailbox "$home" "$ok"
+  run_check "$home" "$home/out7.txt" "$CHECK"
+  enter_mailbox "$home" "$miss"
+  run_check "$home" "$home/out8.txt" "$CHECK"
+  [ ! -s "$home/out8.txt" ] || fail "a lone miss after recovery must not wake: $(cat "$home/out8.txt")"
+  enter_mailbox "$home" "$refused"
+  out="$home/out9.txt"
+  run_check "$home" "$out" "$CHECK"
+  assert_contains "$(cat "$out")" "mail: fm-mail poll error: connection refused" "an outage that is not a deadline miss still wakes at once"
+  pass "fm-mail-check: a lone poll deadline miss stays quiet and a repeated one wakes"
+}
+
+test_deadline_miss_that_queued_mail_still_wakes() {
+  # The quiet lone-miss rule never hides publication evidence: a deadline
+  # miss after the poll queued mail must still wake so the mail is drained.
+  local tmpbin home out check_bin
+  tmpbin="$TMP_ROOT/deadline-queued/bin"
+  home="$TMP_ROOT/deadline-queued/home"
+  mkdir -p "$tmpbin" "$home/state"
+  check_bin="$tmpbin/fm-mail-check.sh"
+  cp "$ROOT/bin/fm-mail-check.sh" "$tmpbin/"
+  for lib in fm-timeout-lib.sh fm-pr-lib.sh fm-line-cap-lib.sh fm-check-lib.sh; do
+    [ -e "$tmpbin/$lib" ] || ln -s "$ROOT/bin/$lib" "$tmpbin/$lib"
+  done
+  printf '%s\n' '#!/usr/bin/env bash' 'echo "fm-mail: woke for 42"' 'echo "fm-mail poll error: mail poll deadline reached" >&2' 'exit 1' > "$tmpbin/fm-mail.sh"
+  chmod +x "$tmpbin/fm-mail.sh"
+  out="$home/out1.txt"
+  run_check "$home" "$out" "$check_bin"
+  assert_contains "$(cat "$out")" "mail: fm-mail poll error: mail poll deadline reached" "a deadline miss that queued mail wakes at once"
+  pass "fm-mail-check: a deadline miss that queued mail still wakes"
+}
+
 test_poll_deadline_preserves_progress_and_bounds_logout() {
   local home harness real_py out count retry_uid mode
   real_py=$(command -v python3)
@@ -566,3 +640,5 @@ test_large_poll_output_is_drained
 test_repeated_timeout_still_wakes
 test_repeated_heal_failure_stays_silent
 test_missing_mail_plane_is_reported
+test_lone_poll_deadline_miss_stays_quiet
+test_deadline_miss_that_queued_mail_still_wakes

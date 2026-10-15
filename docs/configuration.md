@@ -1700,6 +1700,7 @@ Arming writes `state/mail.check.sh` and registers it with the watcher's slow-che
 
 Same-line silence is only for a proven no-op: a successful poll with no new mail, or a repeated identical pre-wake failure that cannot have queued mail.
 A fail-closed poll that already queued a wake, and a timeout, always print so the watcher wakes to drain it.
+A lone poll deadline miss, where a slow IMAP server answers too late for the poll's own deadline, stays quiet; the same miss on the next consecutive poll reports once.
 
 `FM_MAIL_CHECK_BUDGET` (default 15, valid 5..25) bounds one standing poll and is cut down to fit `FM_CHECK_TIMEOUT`.
 `bin/fm-mail-check.sh disarm` removes the standing check.
