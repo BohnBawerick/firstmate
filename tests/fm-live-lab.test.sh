@@ -611,6 +611,31 @@ expect_code 0 "$?" "down cleans a lab whose checkout failed: $out"
 assert_absent "$PARTIAL" "partial lab removed"
 pass "up gives both task IDs a long nonce and down cleans partial setup"
 
+# A host with sha256sum but no shasum, such as a stock Arch Linux install,
+# still runs up and down: every PATH entry is mirrored except shasum.
+NOSHA_BIN="$TMP_ROOT/nosha-bin"
+mkdir -p "$NOSHA_BIN"
+IFS=: read -r -a path_dirs <<< "$TMP_ROOT/stub-bin:$PATH"
+for dir in "${path_dirs[@]}"; do
+  [ -d "$dir" ] || continue
+  for tool in "$dir"/*; do
+    name=${tool##*/}
+    [ "$name" != shasum ] && [ -x "$tool" ] && [ ! -e "$NOSHA_BIN/$name" ] || continue
+    ln -s "$tool" "$NOSHA_BIN/$name"
+  done
+done
+[ ! -e "$NOSHA_BIN/shasum" ] || fail "the no-shasum PATH still offers shasum"
+[ -e "$NOSHA_BIN/sha256sum" ] || fail "the no-shasum PATH needs sha256sum to exercise the fallback"
+NOSHA="$TMP_ROOT/nosha-lab"
+out=$(PATH="$NOSHA_BIN" "$LIVE_LAB" up --harness claude --source "$TMP_ROOT/missing-origin" "$NOSHA" 2>&1)
+expect_code 1 "$?" "an unavailable source still stops up before launch without shasum"
+assert_not_contains "$out" "required" "up accepts sha256sum in place of shasum: $out"
+assert_present "$NOSHA/.fm-live-lab" "up recorded its task IDs without shasum"
+out=$(PATH="$NOSHA_BIN" "$LIVE_LAB" down "$NOSHA" 2>&1)
+expect_code 0 "$?" "down cleans a lab without shasum: $out"
+assert_absent "$NOSHA" "no-shasum lab removed"
+pass "up and down fall back to sha256sum when shasum is absent"
+
 # A rival Claude writer drops the newly registered primary key once. The
 # stand-in primary checks the store on startup, while the readiness probe fails.
 UPSRC="$TMP_ROOT/up-source"

@@ -123,9 +123,19 @@ usage() { help_text >&2; exit 2; }
 
 real_dir() { (cd -P -- "$1" 2>/dev/null && pwd -P); }
 
+sha256() {  # stdin -> sha256 hex digest; shasum or sha256sum, whichever exists
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  else
+    die "shasum or sha256sum is required and neither was found on PATH"
+  fi
+}
+
 digest() {  # <file> -> sha256 of its bytes, or "absent"
   [ -f "$1" ] || { echo absent; return; }
-  shasum -a 256 "$1" | awk '{print $1}'
+  sha256 < "$1"
 }
 
 treehouse_listing() { ls -1A "$TREEHOUSE_DIR" 2>/dev/null || true; }
@@ -485,9 +495,11 @@ cmd_up() {
   case "$CLAUDE_DIR" in ''|/*) ;; *) die "CLAUDE_CONFIG_DIR must be an absolute path" ;; esac
   CLAUDE_STORE="${CLAUDE_DIR:-$HOME}/.claude.json"
   [ -z "$root" ] || [ ! -e "$root" ] || die "refusing '$root': a lab root must not exist yet"
-  for tool in git tmux jq node python3 shasum "$harness"; do
+  for tool in git tmux jq node python3 "$harness"; do
     command -v "$tool" >/dev/null 2>&1 || die "$tool is required and was not found on PATH"
   done
+  command -v shasum >/dev/null 2>&1 || command -v sha256sum >/dev/null 2>&1 ||
+    die "shasum or sha256sum is required and neither was found on PATH"
 
   if [ -z "$root" ]; then
     root=$(mktemp -d /tmp/fmlab.XXXXXX) || die "cannot create a lab root"
@@ -792,7 +804,7 @@ cmd_down() {
   # A spawn keeps /tmp/fm-<id> and /tmp/fm-<id>+<sha256 of the spawning home>.
   # The second is scoped to this lab home for any task it spawned; the first is
   # removed only for the lab's own unique ids, since another home may share it.
-  home_hash=$(printf '%s' "$LAB" | shasum -a 256 | awk '{print $1}')
+  home_hash=$(printf '%s' "$LAB" | sha256)
   ids=("$MATE_ID" "$WORKER_ID")
   for meta in "$LAB"/state/*.meta; do
     [ -f "$meta" ] && ids+=("$(basename "$meta" .meta)")
