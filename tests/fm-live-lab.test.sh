@@ -556,6 +556,7 @@ fi
 SH
 chmod +x "$TMP_ROOT/group-ps-bin/ps"
 out=$(
+  # shellcheck disable=SC2329 # Imported by the child Bash running the lab's signal probes.
   kill() {
     if [ "${1:-}" = -0 ] && [ "${2:-}" = -- ] && [ "${3:-}" = "-$PS_GROUP_ID" ] \
       && [ "$(cat "$PS_SCAN_COUNT")" -ge 2 ]; then return 1; fi

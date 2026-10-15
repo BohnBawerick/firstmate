@@ -893,7 +893,7 @@ test_transport_success_is_not_reply_success() {
 
 test_undelivered_records_are_scan_immutable() {
   (
-    local home state sm_home corr rec before after
+    local home state sm_home corr rec before
     home=$(setup_parent undelivered-scan)
     state="$home/state"
     sm_home="$home/sm"
@@ -917,8 +917,7 @@ test_undelivered_records_are_scan_immutable() {
     fm_backend_busy_state() { fail "undelivered watcher tick must not probe the backend"; }
     fm_backend_capture() { fail "undelivered watcher tick must not capture the backend"; }
     fm_pending_reply_tick "$state" || fail "undelivered watcher tick should succeed"
-    after=$(cat "$rec")
-    [ "$after" = "$before" ] || fail "scan paths must not mutate an undelivered record"
+    [ "$(cat "$rec")" = "$before" ] || fail "scan paths must not mutate an undelivered record"
     fm_pending_reply_mark_delivered "$state" "$corr" || fail "delivery marker should succeed"
     fm_pending_reply_tick_one "$state" "$corr" unknown "$sm_home" \
       || fail "delivered direct tick should succeed"

@@ -59,7 +59,7 @@ test_missing_home_parent_is_named() {
   # A persistent remote home may be one absent leaf under an existing parent.
   # When the parent itself is missing, the refusal must name that parent so the
   # operator knows to create it, rather than calling the home unsafe.
-  local root missing out err code b64
+  local root missing out err code
   root="$TMP_ROOT/parent-check-root"
   mkdir -p "$root/bin"
   printf 'firstmate\n' > "$root/AGENTS.md"
