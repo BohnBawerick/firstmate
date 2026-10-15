@@ -910,7 +910,7 @@ fm_backend_worktree_path() {  # <backend> <worktree-id>
 # uses unknown as the cue for harness-scoped pane-tail detection, while
 # fm-crew-state.sh also corroborates native idle verdicts with the recorded
 # harness's signature before treating a no-run crew as not busy.
-fm_backend_busy_state() {  # <backend> <target>
+fm_backend_busy_state() {  # <backend> <target> [expected-label]
   local backend=$1
   shift
   fm_backend_source "$backend" || { printf 'unknown'; return 0; }
@@ -976,26 +976,14 @@ fm_backend_composer_unknown_deliverable() {  # <backend> <target>
 # primitive so callers that only need a fast alive/dead read (recovery
 # digests, the session-start fleet digest) do not re-derive it inline.
 fm_backend_target_exists() {  # <backend> <target> [expected-label]
-  local backend=$1 target=$2 expected_label=${3:-} session pane
+  local backend=$1 target=$2 expected_label=${3:-}
   case "$backend" in
     tmux)
       tmux display-message -p -t "$target" '#{pane_id}' >/dev/null 2>&1
       ;;
     herdr)
       fm_backend_source herdr || return 1
-      session=${target%%:*}
-      pane=${target#*:}
-      [ -n "$session" ] && [ -n "$pane" ] && [ "$pane" != "$target" ] || return 1
-      # fm_backend_herdr_cli (not a raw HERDR_SESSION-only call): verified
-      # empirically (docs/herdr-backend.md "Session targeting") that the bare
-      # env var alone is NOT reliably honored once another herdr server is
-      # already bound on the machine - it silently queries whatever server IS
-      # running instead. fm_backend_herdr_cli appends the required --session
-      # flag on top, so this check is correctly scoped even when the caller's
-      # own ambient session (e.g. the primary firstmate's default session) is
-      # a DIFFERENT one than the target's.
-      fm_backend_herdr_cli "$session" pane get "$pane" >/dev/null 2>&1 || return 1
-      ! fm_backend_herdr_target_unbound "$target" "$expected_label"
+      fm_backend_herdr_target_observable "$target" "$expected_label"
       ;;
     zellij)
       fm_backend_source zellij || return 1

@@ -142,10 +142,93 @@ run_control() {
     "$ROOT/bin/fm-control.sh" "$@" 2>&1
 }
 
+fm_herdr_lab_cli "$SESSION" tab rename "$TAB_ID" fm-other >/dev/null \
+  || fail "could not set up a reused endpoint for restart"
+fm_herdr_lab_stop "$SESSION" >/dev/null || fail "could not stop the isolated session"
+printf -v RESTART_MARKER_Q '%q' "$SCRATCH/restart-misdirected"
+if OUT=$(env FM_HOME="$HOME_DIR" HERDR_SESSION="$SESSION" FM_SEND_RETRIES=1 FM_SEND_SLEEP=0.05 \
+  "$ROOT/bin/fm-send.sh" hsmoke "/bin/echo misdirected > $RESTART_MARKER_Q" 2>&1); then
+  fail "a stopped-session send accepted another task's restored pane"
+fi
+fm_herdr_lab_cli "$SESSION" status --json | jq -e '.server.running == true' >/dev/null \
+  || fail "the typed send did not restore the isolated session before checking its binding"
+sleep 0.3
+[ ! -e "$SCRATCH/restart-misdirected" ] || fail "a stopped-session send typed and submitted into another task's restored pane"
+fm_herdr_lab_cli "$SESSION" tab rename "$TAB_ID" fm-hsmoke >/dev/null \
+  || fail "could not restore the expected task binding"
+printf -v BOUND_MARKER_Q '%q' "$SCRATCH/bound-delivery"
+env FM_HOME="$HOME_DIR" HERDR_SESSION="$SESSION" FM_SEND_RETRIES=1 FM_SEND_SLEEP=0.05 \
+  "$ROOT/bin/fm-send.sh" hsmoke "/bin/echo delivered > $BOUND_MARKER_Q" >/dev/null 2>&1 || true
+for _ in $(seq 1 30); do
+  [ ! -e "$SCRATCH/bound-delivery" ] || break
+  sleep 0.1
+done
+[ "$(cat "$SCRATCH/bound-delivery" 2>/dev/null)" = delivered ] || fail "a correctly bound send did not reach the restored shell"
+printf -v MID_MARKER_Q '%q' "$SCRATCH/mid-send-misdirected"
+MID_COMMAND="/bin/echo ownership-mid-send > $MID_MARKER_Q"
+(
+  # shellcheck disable=SC2329
+  fm_backend_herdr_cli() {
+    fm_herdr_lab_cli "$@" || return
+    case "${2:-} ${3:-}" in
+      'pane send-text') fm_herdr_lab_cli "$SESSION" tab rename "$TAB_ID" fm-other >/dev/null ;;
+    esac
+  }
+  verdict=$(fm_backend_herdr_send_text_submit "$SESSION:$PANE_ID" "$MID_COMMAND" 1 0.05 0 fm-hsmoke)
+  [ "$verdict" = send-failed ] || fail "submission lost the task label between typing and Enter: $verdict"
+) || fail "a task binding change during submission was accepted"
+sleep 0.2
+[ ! -e "$SCRATCH/mid-send-misdirected" ] || fail "Enter submitted into the task that reused the pane"
+fm_backend_herdr_send_text_line "$SESSION:$PANE_ID" /bin/true fm-hsmoke \
+  && fail "a staged line send accepted another task's binding"
+[ -z "$(fm_backend_herdr_current_path "$SESSION:$PANE_ID" fm-hsmoke)" ] \
+  || fail "working-directory discovery read another task's pane"
+fm_backend_herdr_composer_clear "$SESSION:$PANE_ID" "$MID_COMMAND" fm-hsmoke \
+  && fail "composer clearing accepted another task's binding"
+case "$(fm_herdr_lab_cli "$SESSION" pane read "$PANE_ID" --source visible)" in
+  *ownership-mid-send*) ;;
+  *) fail "composer clearing removed another task's draft" ;;
+esac
+(
+  # shellcheck disable=SC2329
+  fm_backend_herdr_cli() {
+    case "${2:-} ${3:-}" in
+      'agent get') printf '{"result":{"agent":{"agent_status":"working"}}}\n' ;;
+      *) fm_herdr_lab_cli "$@" ;;
+    esac
+  }
+  [ "$(fm_backend_herdr_wait_for_working "$SESSION" "$PANE_ID" 0 1 fm-hsmoke)" = unknown ] \
+    || fail "submission was confirmed by another task's native state"
+) || fail "confirmation discarded the expected task identity"
+fm_herdr_lab_cli "$SESSION" tab rename "$TAB_ID" fm-hsmoke >/dev/null || fail "could not restore the task binding after submission"
+fm_backend_send_key herdr "$SESSION:$PANE_ID" C-u fm-hsmoke || fail "could not clear the test draft"
+fm_backend_send_key herdr "$SESSION:$PANE_ID" Enter fm-hsmoke || fail "could not reset the test shell"
+(
+  # shellcheck disable=SC2329
+  fm_backend_herdr_cli() {
+    case "${2:-} ${3:-}" in 'tab get') return 1 ;; esac
+    fm_herdr_lab_cli "$@"
+  }
+  [ "$(fm_backend_agent_state herdr "$SESSION:$PANE_ID" fm-hsmoke)" = unreadable ] || fail "an unreadable binding was treated as recoverable or alive"
+  fm_backend_target_exists herdr "$SESSION:$PANE_ID" fm-hsmoke && fail "existence accepted an unreadable task binding"
+  fm_backend_send_key herdr "$SESSION:$PANE_ID" Enter fm-hsmoke && fail "a key reached an endpoint with unreadable binding"
+  fm_backend_capture herdr "$SESSION:$PANE_ID" 10 fm-hsmoke && fail "capture accepted an unreadable binding"
+  fm_backend_visible_capture herdr "$SESSION:$PANE_ID" fm-hsmoke && fail "visible capture accepted an unreadable binding"
+  [ "$(fm_backend_composer_state herdr "$SESSION:$PANE_ID" fm-hsmoke)" = unknown ] || fail "an unreadable binding produced a composer verdict"
+  [ "$(fm_backend_herdr_send_text_submit "$SESSION:$PANE_ID" text 1 0 0 fm-hsmoke)" = send-failed ] || fail "typed submission accepted an unreadable binding"
+  fm_backend_kill herdr "$SESSION:$PANE_ID" "" fm-hsmoke && fail "close accepted an unreadable binding"
+  fm_backend_herdr_kill_serialized "$SESSION" "$PANE_ID" fm-hsmoke && fail "a serialized close accepted an unreadable binding"
+  exit 0
+) || fail "an endpoint operation failed to preserve the binding invariant"
+pass "real herdr: restart and unreadable bindings cannot authorize actions on another task"
+
+if [ "${1:-}" = --ownership-regressions ]; then exit 0; fi
+
 if OUT=$(env FM_HOME="$HOME_DIR" HERDR_SESSION="$SESSION" HERDR_PANE_ID="$PANE_ID" \
   "$ROOT/bin/fm-send.sh" "$SESSION:$PANE_ID" --key Escape 2>&1); then
   fail "an unlabelled raw send accepted the caller's own pane: $OUT"
 fi
+# shellcheck disable=SC2016
 env FM_HOME="$HOME_DIR" HERDR_SESSION="$SESSION" HERDR_PANE_ID="$PANE_ID" \
   TARGET="$SESSION:$PANE_ID" ROOT="$ROOT" bash -c '
     . "$ROOT/bin/fm-backend.sh"

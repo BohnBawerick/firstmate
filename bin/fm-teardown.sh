@@ -3163,6 +3163,12 @@ teardown_herdr_preflight_target() {  # <target> <task-id>
       return 1
       ;;
   esac
+  if [ "$presence" = present ]; then
+    case "$(fm_backend_herdr_pane_label_binding "$session" "$pane" "fm-$task_id")" in
+      bound|self|foreign) ;;
+      *) echo "error: herdr endpoint $target has an unreadable task binding; nothing was changed" >&2; return 1 ;;
+    esac
+  fi
   if ! lock_path=$(fm_backend_herdr_presentation_session_lock_path "$session"); then
     echo "error: herdr session presentation lock could not be resolved for $task_id; nothing was changed - rerun teardown once the session is reachable and unambiguous" >&2
     return 1
@@ -3305,7 +3311,7 @@ cleanup_firstmate_home_children() {
         if fm_backend_herdr_target_unbound "$child_t" "fm-$child_id"; then
           echo "warning: herdr pane $child_t no longer belongs to child $child_id; leaving it open and treating that child's endpoint as gone" >&2
         else
-          fm_backend_herdr_kill_serialized "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE" 2>/dev/null || true
+          fm_backend_herdr_kill_serialized "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE" "fm-$child_id" 2>/dev/null || true
           if ! fm_backend_herdr_endpoint_confirmed_gone "$child_t"; then
             echo "error: herdr pane $child_t for child $child_id is not confirmed gone; retaining that child's durable identity records and stopping forced cleanup" >&2
             return 1
@@ -3771,6 +3777,11 @@ if [ "$HERDR_PRESENTATION_RETIRE_CANDIDATE" = 1 ]; then
     # Swallowing them left a wrong active workspace with no operator-visible
     # signal at all. The close stays non-fatal exactly as before: the presence
     # gate below is what decides whether any durable record may be removed.
+    if [ "$(fm_backend_herdr_pane_label_binding "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_PANE" "fm-$ID")" != bound ] \
+      && ! fm_backend_herdr_endpoint_confirmed_gone "$T"; then
+      echo "error: herdr endpoint $T lacks verified task ownership; retaining its records" >&2
+      exit 1
+    fi
     fm_backend_herdr_projection_close_pane_focus_preserving \
       "$HERDR_PRESENTATION_SESSION" "$HERDR_PRESENTATION_PANE" || true
   else
@@ -3780,7 +3791,7 @@ elif [ "$BACKEND" = herdr ] && [ "$TEARDOWN_HERDR_UNBOUND" = 1 ]; then
   :
 elif [ "$BACKEND" = herdr ]; then
   if teardown_herdr_session_lock_held "$TEARDOWN_HERDR_SESSION"; then
-    fm_backend_herdr_kill_serialized "$TEARDOWN_HERDR_SESSION" "$TEARDOWN_HERDR_PANE" 2>/dev/null || true
+    fm_backend_herdr_kill_serialized "$TEARDOWN_HERDR_SESSION" "$TEARDOWN_HERDR_PANE" "fm-$ID" 2>/dev/null || true
   else
     echo "warning: herdr session presentation lock path is unavailable; skipping the pane close rather than closing unlocked" >&2
   fi

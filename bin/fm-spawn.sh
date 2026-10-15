@@ -4398,7 +4398,7 @@ fi
 spawn_send_text_line() { # <target> <text>
   case "$BACKEND" in
   tmux) fm_backend_tmux_send_text_line "$1" "$2" ;;
-  herdr) fm_backend_herdr_send_text_line "$1" "$2" ;;
+  herdr) fm_backend_herdr_send_text_line "$1" "$2" "$W" ;;
   zellij) fm_backend_zellij_send_text_line "$1" "$2" "$W" ;;
   orca) fm_backend_orca_send_text_line "$1" "$2" ;;
   cmux) fm_backend_cmux_send_text_line "$1" "$2" "$W" ;;
@@ -4407,7 +4407,7 @@ spawn_send_text_line() { # <target> <text>
 spawn_current_path() { # <target>
   case "$BACKEND" in
   tmux) fm_backend_tmux_current_path "$1" ;;
-  herdr) fm_backend_herdr_current_path "$1" ;;
+  herdr) fm_backend_herdr_current_path "$1" "$W" ;;
   zellij) fm_backend_zellij_current_path "$1" "$W" ;;
   cmux) fm_backend_cmux_current_path "$1" "$W" ;;
   esac
@@ -4415,7 +4415,7 @@ spawn_current_path() { # <target>
 spawn_send_literal() { # <target> <text>
   case "$BACKEND" in
   tmux) fm_backend_tmux_send_literal "$1" "$2" ;;
-  herdr) fm_backend_herdr_send_literal "$1" "$2" ;;
+  herdr) fm_backend_herdr_send_literal "$1" "$2" "$W" ;;
   zellij) fm_backend_zellij_send_literal "$1" "$2" "$W" ;;
   orca) fm_backend_orca_send_literal "$1" "$2" ;;
   cmux) fm_backend_cmux_send_literal "$1" "$2" "$W" ;;
@@ -4424,7 +4424,7 @@ spawn_send_literal() { # <target> <text>
 spawn_send_key() { # <target> <key>
   case "$BACKEND" in
   tmux) fm_backend_tmux_send_key "$1" "$2" ;;
-  herdr) fm_backend_herdr_send_key "$1" "$2" ;;
+  herdr) fm_backend_herdr_send_key "$1" "$2" "$W" ;;
   zellij) fm_backend_zellij_send_key "$1" "$2" "$W" ;;
   orca) fm_backend_orca_send_key "$1" "$2" ;;
   cmux) fm_backend_cmux_send_key "$1" "$2" "$W" ;;

@@ -368,7 +368,7 @@ fm_task_inbox_ring() {  # <backend> <target> <record-path> [expected-label]
   case "$cstate" in
     pending)
       fm_task_inbox_composer_holds "$backend" "$target" "$line" "$label" \
-        && [ "$(fm_backend_busy_state "$backend" "$target" 2>/dev/null)" != busy ] \
+        && [ "$(fm_backend_busy_state "$backend" "$target" "$label" 2>/dev/null)" != busy ] \
         || return 1
       fm_backend_send_key "$backend" "$target" Enter "$label" >/dev/null 2>&1 || return 2
       sleep 0.3
