@@ -7,6 +7,8 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=tests/lib.sh
+. "$ROOT/tests/lib.sh"
 HERDR_LAB_HELPER=${HERDR_LAB_HELPER:-$ROOT/bin/fm-herdr-lab.sh}
 # shellcheck source=bin/fm-timeout-lib.sh
 . "$ROOT/bin/fm-timeout-lib.sh"
@@ -287,8 +289,7 @@ cleanup_all() {
   local wt pid
   for pid in "$LOCK_WAITED_PID" "$LOCK_CONTENTION_OWNER_PID" "$LOCK_REFUSE_HOLDER_PID" "$LOCK_WAIT_HOLDER_PID"; do
     [ -n "$pid" ] || continue
-    kill "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
+    fm_test_reap_pid "$pid" || true
   done
   LOCK_CONTENTION_OWNER_PID=
   LOCK_REFUSE_HOLDER_PID=
@@ -307,6 +308,7 @@ EOF
     LAB_READY=0
   fi
   rm -rf "$TMP_ROOT"
+  fm_test_cleanup
 }
 trap cleanup_all EXIT
 
