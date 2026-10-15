@@ -1,138 +1,134 @@
-# ChatGPT Dot MCP Mailbox Bridge
+# ChatGPT dot MCP mailbox bridge
 
-This document covers the private MCP mailbox and MCP 2.0 event bridge connecting Firstmate to ChatGPT dots.
-It provides persistent queueing, callback wake events, and local operator interfaces for dispatching cloud work.
+This bridge connects Firstmate to a ChatGPT dot through a private SQLite mailbox and an HTTP MCP endpoint.
+Firstmate submits assignments, a signed callback wakes the dot, and the dot retrieves work and replies.
+The tools expose mailbox operations only.
 
-## Architecture
+## Mailbox operations and limits
 
-The bridge pairs a local persistent SQLite mailbox with an MCP 2.0 endpoint.
-Firstmate submits assignments locally without exposing shell commands or file systems.
-An MCP event callback wakes the dot, which retrieves the assignment, runs cloud work, and replies.
+`submit_message` creates an assignment with a stable message ID and optional correlation and idempotency keys.
+Repeated submissions with the same idempotency key return the original assignment.
+`get_messages` returns assignments in sequence order with queue and status filters, a continuation cursor, and a maximum of 50 records.
+`reply` requires the exact message ID; a supplied correlation ID must match that assignment.
+Repeating the same reply is idempotent.
 
-```text
-[Firstmate / Operator]
-        |
-        v
- [fm-dot-mailbox.sh]
-        |
-        +---> [SQLite Mailbox Store] (messages, subscriptions, delivery logs)
-        |
- [fm-dot-mailbox.py] (MCP 2.0 Server on loopback)
-        |
-        +--- stdio or HTTP (/mcp) <--- [tunnel-client] <--- [OpenAI Tunnel Control Plane]
-        |                                                            |
-        +---> Outbound Signed Webhook Callback (message.created) ---> [ChatGPT Dot Wake]
-```
+Both the operator CLI and MCP tools enforce UTF-8 byte limits of 16 KiB for content and reply, and 256 bytes for queue, correlation ID, and idempotency key.
+Serialized responses and callback bodies cannot exceed 256 KiB, including JSON escaping and the MCP envelope.
+Pagination stops at the byte budget and returns the last included sequence as its cursor.
+Oversized writes fail before committing.
 
-## Mailbox operations
+Storage resolves from `--db`, then `FM_DOT_MAILBOX_DB`, then `$FM_HOME/data/dot-mcp/mailbox.sqlite3`.
+Without an explicit database or `FM_HOME`, commands fail.
+The storage directory must belong to the current user with owner-only permissions.
+New database files use mode `0600`, including SQLite sidecars; unsafe existing storage is rejected.
 
-The bridge exposes three MCP tools:
+## Event delivery
 
-- `submit_message`: places a new assignment into the queue and triggers matching event deliveries.
-- `get_messages`: lists queued assignments with status filtering and cursor-based pagination.
-- `reply`: records task completion or progress for a specific message identifier.
+The server implements MCP `2026-07-28` discovery, tools, and `message.created` subscriptions as described in the [official MCP Events contract](https://developers.openai.com/plugins/build/mcp-events).
+Legacy `initialize` and `notifications/initialized` handling remains for compatibility with ChatGPT custom MCP connectors.
+The HTTP routes are `POST /mcp` for MCP and `GET /health` for readiness.
 
-The server does not expose shell tools, arbitrary code execution, or file system access.
-Private data is stored in SQLite outside tracked source code.
+Matching subscriptions and assignments commit with durable event records in one transaction.
+The foreground HTTP server processes pending events on startup and every quarter second.
+Delivery uses at most four attempts with waits of one, two, and four seconds after failures.
+An interrupted attempt can remain claimed for up to eleven seconds before recovery.
+Each retry keeps the event ID and body and creates a fresh signing timestamp and signature.
+HTTP `410` and `413` stop retries immediately.
+After exhaustion, the event remains undelivered and the assignment remains readable.
+Operator `status` and each returned assignment expose pending, delivered, and undelivered event counts.
+Expired or unsubscribed destinations stop receiving queued events.
 
-## MCP 2.0 events and security contract
+Subscription lifetimes default to 24 hours and honor positive `ttlMs` values up to that maximum.
+A null lifetime request also receives a finite 24-hour grant.
+Renewal preserves the subscription ID.
+Replaced signing keys remain valid for five minutes, and callbacks carry space-separated signatures for the current key and all keys still inside that rotation window.
 
-The server advertises the `message.created` event under MCP protocol version `2026-07-28`.
-Subscribers receive webhook notifications when new messages match their queue filter.
+Verification sends a signed, single-use challenge and requires a matching JSON echo with a `2xx` response before storing the subscription.
+An absent correlation ID is omitted from the event payload.
+Both verification and delivery resolve the destination once, reject every non-public address, and connect directly to an address from that validated set.
+TLS checks the original hostname.
+Redirects are not followed, and environment proxy settings do not redirect callback connections.
+The explicit local-testing option permits HTTP and loopback destinations; it does not permit other non-public addresses.
 
-### Callback verification challenge
+## Local operator interface
 
-Before accepting an event subscription, the server validates the callback destination.
-It sends a POST request containing a short-lived random challenge to the destination URL.
-The request is signed using the subscription's `whsec_` secret via Standard Webhooks HMAC-SHA256.
-The subscriber must echo the challenge in a JSON response with status code 200.
-The server verifies the echoed challenge in constant time before activating delivery.
-
-### Destination restrictions
-
-Production callbacks require HTTPS.
-The server resolves hostnames at connection time and blocks loopback, private, link-local, and multicast IP ranges.
-Redirects are rejected without following upstream targets.
-For local testing and behavioral test suites, `FM_DOT_MCP_ALLOW_LOCAL_CALLBACK=1` enables loopback destinations.
-
-## Operator CLI reference
-
-The bash wrapper `bin/fm-dot-mailbox.sh` provides the local operator interface.
+Use a private operational home inside the isolated copy:
 
 ```sh
-# Submit an assignment to a named queue
-bin/fm-dot-mailbox.sh submit --queue worker-tasks --correlation-id task-101 "Execute analysis task"
-
-# List pending messages
+export FM_HOME="$PWD"
+bin/fm-dot-mailbox.sh submit --queue worker-tasks --correlation-id task-101 --idempotency-key task-101 "Execute analysis task"
 bin/fm-dot-mailbox.sh list --queue worker-tasks --status pending
-
-# Inspect a message and its reply
 bin/fm-dot-mailbox.sh get msg_0123456789abcdef
-
-# Record a worker reply manually
-bin/fm-dot-mailbox.sh reply msg_0123456789abcdef "Task completed successfully"
-
-# View summary counts
+bin/fm-dot-mailbox.sh reply msg_0123456789abcdef "Task completed"
 bin/fm-dot-mailbox.sh status
+```
 
-# Start the local loopback MCP server
+The script headers and `--help` own the command reference, including the local callback testing option.
+
+## Prepare a Secure MCP Tunnel connection
+
+The following live steps remain for Firstmate after review.
+They create a tunnel profile, connect a plugin, and contact the dot only when the operator executes them.
+Use an existing official `tunnel-client` binary; these commands use the verified v0.0.16 flag names.
+
+Obtain a tunnel identifier in OpenAI Platform tunnel settings, associate the Platform organization and ChatGPT workspace, and generate a runtime API key with Tunnels Read and Use permissions.
+No credential values belong in tracked files or shell history.
+
+In the first terminal, from the isolated copy, keep the mailbox in the foreground:
+
+```sh
+export FM_HOME="$PWD"
 bin/fm-dot-mailbox.sh serve --host 127.0.0.1 --port 8765
 ```
 
-## Connecting ChatGPT dot via Secure MCP Tunnel
+In a second Bash terminal, also from the isolated copy, create a private profile under the ignored `data/` directory:
 
-Secure MCP Tunnel connects private local endpoints to OpenAI without inbound firewall ports.
-Follow these steps to connect the dot:
-
-1. Obtain a tunnel identifier from OpenAI Platform tunnel settings.
-2. Ensure the tunnel has associations for both the Platform organization and ChatGPT workspace.
-3. Generate a runtime API key with Tunnels Read and Use permissions.
-4. Export the runtime credential in your current shell without writing it to script files:
-
-```sh
-read -rsp "Enter CONTROL_PLANE_API_KEY: " CONTROL_PLANE_API_KEY && export CONTROL_PLANE_API_KEY
-```
-
-5. Initialize the tunnel configuration profile using the official HTTP sample:
-
-```sh
+```bash
+umask 077
+DOT_TUNNEL_PROFILE_DIR="$PWD/data/dot-mcp-tunnel"
+mkdir -p "$DOT_TUNNEL_PROFILE_DIR"
+chmod 700 "$DOT_TUNNEL_PROFILE_DIR"
 tunnel-client init \
   --sample sample_mcp_remote_no_auth \
+  --profile-dir "$DOT_TUNNEL_PROFILE_DIR" \
   --profile dot-bridge \
   --tunnel-id "<tunnel-id>" \
   --mcp-server-url "http://127.0.0.1:8765/mcp"
+read -rsp "Enter CONTROL_PLANE_API_KEY: " CONTROL_PLANE_API_KEY
+printf '\n'
+export CONTROL_PLANE_API_KEY
+tunnel-client doctor --profile-dir "$DOT_TUNNEL_PROFILE_DIR" --profile dot-bridge --explain && \
+  tunnel-client run --profile-dir "$DOT_TUNNEL_PROFILE_DIR" --profile dot-bridge
 ```
 
-6. Verify profile readiness before starting the daemon:
+The sample references `env:CONTROL_PLANE_API_KEY`, so credential entry, doctor, and run must share this terminal.
+Start run only after doctor succeeds.
+
+Open [ChatGPT Plugins](https://chatgpt.com/plugins), select the plus button, then Add custom MCP server.
+Select Connection Tunnel, enter the tunnel identifier, review permissions, and create the plugin.
+Account and workspace UI availability remain unverified.
+In the dot conversation, request a `message.created` subscription on the connector for queue `worker-tasks`, with instructions to retrieve assignments and reply to their exact message IDs.
+Confirm challenge verification and the subscription before submitting a unique hello nonce.
+Read the nonce through MCP, reply with its correlation ID, and inspect the result with the operator CLI.
+A local controlled receiver proves callback behavior only; it does not prove an authenticated remote connection or a real dot wake.
+
+To stop, use Ctrl-C in both foreground terminals.
+In the tunnel terminal, clear the credential and remove only this run's profile directory from the isolated copy:
+
+```bash
+unset CONTROL_PLANE_API_KEY
+rm -r -- "$DOT_TUNNEL_PROFILE_DIR"
+unset DOT_TUNNEL_PROFILE_DIR
+```
+
+Mailbox records remain under `data/dot-mcp/` for inspection.
+Remove that directory only when its assignments and subscription secrets are no longer needed.
+Revoke any runtime key and remove the account-side connection when retiring the live setup.
+
+## Focused local verification
 
 ```sh
-tunnel-client doctor --profile dot-bridge --explain
+bash bin/fm-test-run.sh tests/fm-dot-mailbox.test.sh
 ```
 
-7. In a first terminal, start the mailbox server:
-
-```sh
-bin/fm-dot-mailbox.sh serve --host 127.0.0.1 --port 8765
-```
-
-8. In a second terminal, start the tunnel client in the foreground:
-
-```sh
-tunnel-client run --profile dot-bridge
-```
-
-9. In ChatGPT, open ChatGPT Plugins (https://chatgpt.com/plugins).
-Account and workspace UI availability for custom plugins remain unverified until accessed with active credentials.
-10. Select the plus button, then choose Add custom MCP server.
-11. Under Connection, select Tunnel and enter the configured tunnel identifier.
-12. Review the permissions and risk confirmation, then select Create as a plugin.
-13. In your dot conversation, configure the monitoring task:
-    "Subscribe to message.created on the dot-bridge connector for queue worker-tasks. When a message arrives, execute the brief in the target cloud environment and reply with the outcome."
-
-## Smoke testing locally
-
-Run the behavioral test suite to prove local mailbox round trips, challenge verification, signed callbacks, and restart persistence:
-
-```sh
-bin/fm-test-run.sh tests/fm-dot-mailbox.test.sh
-```
+The suite exercises the mailbox round trip, duplicate and restart behavior, callback validation, signing, bounded retries, renewal, and storage limits.
