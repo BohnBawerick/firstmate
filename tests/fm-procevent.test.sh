@@ -2864,6 +2864,48 @@ RB=$(first_result "$HF" big-src || true)
 [ "$(wc -c < "$RB" | tr -d ' ')" -le 100 ] || fail "output bound was not enforced"
 pass "oversized output is bounded rather than published whole or dropped"
 
+# A byte cap that cuts a one-item list inside its nested target leaves every
+# required field present, so only the runner's truncation bit can tell read
+# that the capture is partial.
+HF2="$TMP_ROOT/hf-target"; new_home "$HF2"
+CUT_SRC="$TMP_ROOT/cut-target.txt"
+cat > "$CUT_SRC" <<'EOF'
+session:
+  status: feedback
+prompts[1]:
+  - uid: "text-a"
+    prompt: "Change this phrase"
+    selector: "#intro"
+    tag: text
+    text: "Selected phrase"
+    target:
+      type: text-range
+      text: "Selected phrase"
+      selector: "#intro"
+      start:
+        selector: "#intro"
+        path[2]: 0,1
+        offset: 2
+      end:
+        selector: "#intro"
+        path[2]: 0,1
+        offset: 17
+EOF
+CUT_BYTES=$(( $(grep -n '      text: "Selected phrase"' "$CUT_SRC" | cut -d: -f1) ))
+CUT_BYTES=$(head -n "$CUT_BYTES" "$CUT_SRC" | wc -c | tr -d ' ')
+pe_register "$HF2" lavish cut-src -- /bin/cat "$CUT_SRC" >/dev/null
+FM_PROCEVENT_MAX_OUTPUT_BYTES=$CUT_BYTES FM_HOME="$HF2" "$ROOT/bin/fm-procevent.sh" start cut-src >/dev/null 2>&1
+RC_CUT=$(first_result "$HF2" cut-src || true)
+[ -n "$RC_CUT" ] || fail "the byte-capped target capture was not captured"
+[ "$(wc -c < "$RC_CUT" | tr -d ' ')" -eq "$CUT_BYTES" ] || fail "the target capture was not cut at the byte bound"
+cut_status=0
+cut_out=$("$ROOT/bin/fm-procevent-lavish.sh" read "$RC_CUT" 2>&1) || cut_status=$?
+assert_contains "$cut_out" "malformed_items: 0" "the cut-target fixture no longer isolates truncation from malformation"
+assert_contains "$cut_out" "truncated: yes" "read did not report the runner's truncation of the capture"
+assert_contains "$cut_out" "complete: no" "read certified a byte-capped one-item capture as complete"
+[ "$cut_status" -ne 0 ] || fail "read exited zero on a byte-capped capture"
+pass "read never certifies a capture the runner cut inside a nested target as complete"
+
 HG="$TMP_ROOT/hg-live"; new_home "$HG"
 NOISY="$TMP_ROOT/noisy.sh"
 NOISY_PID="$TMP_ROOT/noisy.pid"

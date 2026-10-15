@@ -27,8 +27,9 @@
 #            YAML-like item lists, including list items with nested target and
 #            attachment metadata. Declared and presented item counts, plus a
 #            completeness verdict, follow before all annotations so a partial
-#            read is obvious. A count mismatch or malformed row prints `complete: no`
-#            and exits nonzero. Each annotation retains its element uid,
+#            read is obvious. A count mismatch, a malformed row, or a capture
+#            the runner cut at its byte bound (`truncated: yes`) prints
+#            `complete: no` and exits nonzero. Each annotation retains its element uid,
 #            selector, tag, and text. A non-choice freeform comment (`prompt`)
 #            is printed as its own field even when a selector is also present
 #            and even when that comment matches the element text, so typed
@@ -839,22 +840,23 @@ cmd_reconciles() { cmd_choice_rows reconciles "$@"; }
 # comment matches the captured element text. Choice rows keep Context data
 # out of that field. A pure annotation has no prompt.
 cmd_read() {
-  local file=${1-} lifecycle session_ended parsed
+  local file=${1-} lifecycle session_ended parsed truncated=no
   [ -n "$file" ] || usage
   [ -f "$file" ] && [ ! -L "$file" ] || die "result file does not exist: $file"
+  ! fm_procevent_result_truncated "$file" || truncated=yes
   lifecycle=$(cmd_classify "$file")
   session_ended=$(session_field "$file" session_ended)
   parsed=$(prompt_rows_json "$file") || return 1
   printf '%s' "$parsed" | perl -MJSON::PP -e '
     use strict; use warnings;
     binmode STDOUT, ":encoding(UTF-8)";
-    my ($lifecycle, $session_ended) = @ARGV;
+    my ($lifecycle, $session_ended, $truncated) = @ARGV;
     my $doc = decode_json(do { local $/; <STDIN> });
     my $want = $doc->{declared} || 0;
     my @parsed = @{$doc->{rows} || []};
     my $malformed = $doc->{malformed} || 0;
     my $presented = scalar @parsed;
-    my $complete = ($presented == $want && !$malformed) ? "yes" : "no";
+    my $complete = ($presented == $want && !$malformed && $truncated ne "yes") ? "yes" : "no";
     my @messages;
     my @annotations;
     for my $f (@parsed) {
@@ -913,6 +915,7 @@ cmd_read() {
     print "declared_items: $want\n";
     print "presented_items: $presented\n";
     print "malformed_items: $malformed\n";
+    print "truncated: $truncated\n";
     print "complete: $complete\n";
     print "lifecycle: $lifecycle\n";
     print "session_ended: ", (length $session_ended ? $session_ended : "(unset)"), "\n";
@@ -949,7 +952,7 @@ cmd_read() {
     }
     print "END LAVISH RESULT ($presented of $want)\n";
     exit($complete eq "yes" ? 0 : 1);
-  ' "$lifecycle" "$session_ended"
+  ' "$lifecycle" "$session_ended" "$truncated"
 }
 
 case "${1-}" in

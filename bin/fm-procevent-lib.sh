@@ -1092,11 +1092,15 @@ fm_procevent_capture_reservation_remove_claim() {  # <state> <claim-token>
 # rename is the commit point; nothing referencing this result may be published
 # before it returns successfully. Extension captures retain immutable package
 # identity beside the legacy adapter sidecar, so later classification cannot
-# silently move to a replacement binding.
+# silently move to a replacement binding. A built-in capture whose output the
+# runner cut at its byte bound (FM_PROCEVENT_CAPTURE_TRUNCATED=1) also gets a
+# <source-id>.<seq>.truncated sidecar, committed before the result itself, so a
+# reader can never certify a byte-capped result as complete.
 fm_procevent_capture() {
   local state=$1 id=$2 adapter=$3 src=$4 extension_id=${5-} extension_version=${6-}
   local capability_version=${7-} package_digest=${8-} binding_digest=${9-} task_owner=${5-}
   local inbox seq dest tmp adapter_dest adapter_tmp owner_dest='' owner_tmp='' extension_dest='' extension_tmp=''
+  local truncated_dest=''
   [ "$#" -eq 4 ] || [ "$#" -eq 5 ] || [ "$#" -eq 9 ] || return 1
   fm_procevent_source_id_valid "$id" || return 1
   fm_procevent_adapter_valid "$adapter" || return 1
@@ -1181,9 +1185,21 @@ fm_procevent_capture() {
     rm -f -- "$tmp" "$adapter_tmp" "$owner_tmp" "$extension_tmp"
     return 1
   fi
-  if ! mv -f -- "$adapter_tmp" "$adapter_dest"; then rm -f -- "$tmp" "$adapter_tmp" "$owner_tmp" "$extension_tmp"; return 1; fi
+  if [ "$#" -ne 9 ] && [ "${FM_PROCEVENT_CAPTURE_TRUNCATED:-0}" = 1 ]; then
+    truncated_dest="$inbox/$id.$seq.truncated"
+    if ! (umask 077; : > "$truncated_dest"); then
+      rm -f -- "$tmp" "$adapter_tmp" "$owner_tmp" "$extension_tmp" "$truncated_dest"
+      return 1
+    fi
+  elif [ "$#" -ne 9 ] && ! rm -f -- "$inbox/$id.$seq.truncated"; then
+    # A crash between an earlier capture's sidecar and its rename can leave a
+    # stray marker on this unused sequence; it must not mark this result.
+    rm -f -- "$tmp" "$adapter_tmp" "$owner_tmp" "$extension_tmp"
+    return 1
+  fi
+  if ! mv -f -- "$adapter_tmp" "$adapter_dest"; then rm -f -- "$tmp" "$adapter_tmp" "$owner_tmp" "$extension_tmp" "$truncated_dest"; return 1; fi
   if [ "$#" -eq 5 ] && ! mv -f -- "$owner_tmp" "$owner_dest"; then
-    rm -f -- "$tmp" "$adapter_dest" "$owner_tmp" "$extension_tmp"
+    rm -f -- "$tmp" "$adapter_dest" "$owner_tmp" "$extension_tmp" "$truncated_dest"
     return 1
   fi
   if [ "$#" -eq 9 ] && ! mv -f -- "$extension_tmp" "$extension_dest"; then
@@ -1191,7 +1207,7 @@ fm_procevent_capture() {
     return 1
   fi
   if ! mv -f -- "$tmp" "$dest"; then
-    rm -f -- "$tmp" "$adapter_dest" "$owner_dest"
+    rm -f -- "$tmp" "$adapter_dest" "$owner_dest" "$truncated_dest"
     [ -z "$extension_dest" ] || rm -f -- "$extension_dest"
     return 1
   fi
@@ -1200,6 +1216,12 @@ fm_procevent_capture() {
   else
     printf '%s\n' "$dest"
   fi
+}
+
+# fm_procevent_result_truncated <result-path>
+# Succeed when the runner cut this captured result at its byte bound.
+fm_procevent_result_truncated() {  # <result-path>
+  [ -e "${1%.result}.truncated" ] || [ -L "${1%.result}.truncated" ]
 }
 
 fm_procevent_result_owner_task() {  # <result-path>
