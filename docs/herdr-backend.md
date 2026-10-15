@@ -460,7 +460,7 @@ Any of these preserves the candidate and lets session startup continue with at m
 
 - Grouping is best-effort; only an exact same-identity version 2 binding survives a Herdr restart in place.
 - A failed journal publication or projected workspace create stops that spawn.
-  An unavailable session server, contended presentation lock, or absent or ambiguous parent also refuses placement.
+  An unavailable session server, contended presentation lock, or ambiguous parent also refuses placement.
 - Recovery of an existing presentation journal refuses by default when the shared presentation lock is contended, rather than falling back flat.
   Pass `fm-spawn.sh --herdr-resume-lock-wait` to opt that recovery into waiting for the lock instead, so concurrent recoveries can serialize.
   The flag applies to a fresh ship or scout spawn that recovers a journal.

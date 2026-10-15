@@ -2198,7 +2198,7 @@ if [ "${1:-}" = status ] && [ "${2:-}" = --json ]; then
   if [ -f "$D/herdr-stopped" ]; then
     printf '{"client":{"version":"0.9.0","protocol":22},"server":{"running":false}}\n'
   else
-    printf '{"client":{"version":"0.9.0","protocol":22},"server":{"running":true}}\n'
+    printf '{"client":{"version":"0.9.0","protocol":22},"server":{"running":true,"version":"0.9.0","protocol":22}}\n'
   fi
   exit 0
 fi
@@ -2212,16 +2212,29 @@ if [ -f "$D/herdr-stopped" ]; then
   echo 'error: could not connect to the herdr server' >&2
   exit 1
 fi
+option() {
+  local want=$1
+  shift
+  while [ "$#" -gt 1 ]; do
+    if [ "$1" = "$want" ]; then printf '%s' "$2"; return; fi
+    shift
+  done
+}
+layout_update() {
+  jq "$@" "$D/herdr-layout.json" > "$D/herdr-layout.tmp" &&
+    mv "$D/herdr-layout.tmp" "$D/herdr-layout.json"
+}
 case "${1:-} ${2:-}" in
+  'session list')
+    jq -n --arg name "$(cat "$D/herdr-session")" --arg socket "$D/herdr.sock" \
+      '{sessions:[{name:$name,running:true,socket_path:$socket}]}'
+    exit 0 ;;
   'pane get')
-    if [ "${3:-}" = "$(cat "$D/herdr-pane")" ]; then
-      printf '{"result":{"pane":{"pane_id":"%s","foreground_cwd":"%s","tab_id":"tab1","workspace_id":"ws1"}}}\n' \
-        "${3:-}" "$(cat "$D/cwd")"
-    else
-      # Only the pane this case says survived can be read back. Any other pane
-      # id is structurally gone, which is herdr's `pane_not_found`.
-      printf '{"error":{"code":"pane_not_found"}}\n'
-    fi
+    jq --arg pane "${3:-}" --arg cwd "$(cat "$D/cwd")" '
+      [.panes[] | select(.pane_id == $pane)]
+      | if length == 1 then {result:{pane:(.[0] + {foreground_cwd:$cwd})}}
+        else {error:{code:"pane_not_found"}} end
+    ' "$D/herdr-layout.json"
     exit 0 ;;
   'agent get')
     if [ -f "$D/herdr-agent-registration" ]; then
@@ -2266,39 +2279,61 @@ case "${1:-} ${2:-}" in
     esac
     exit 0 ;;
   'workspace get')
-    printf '{"result":{"workspace":{"workspace_id":"ws1","label":"worker-owned"}}}\n'
+    jq --arg ws "${3:-}" '{result:{workspace:(.workspaces[] | select(.workspace_id == $ws))}}' "$D/herdr-layout.json"
     exit 0 ;;
   'tab get')
-    printf '{"result":{"tab":{"tab_id":"tab1","label":"fm-%s","workspace_id":"ws1"}}}\n' "$(cat "$D/herdr-task")"
+    jq --arg tab "${3:-}" '{result:{tab:(.tabs[] | select(.tab_id == $tab))}}' "$D/herdr-layout.json"
     exit 0 ;;
   'pane list')
-    printf '{"result":{"panes":[{"pane_id":"%s","tab_id":"tab1","workspace_id":"ws1"}]}}\n' "$(cat "$D/herdr-pane")"
+    ws=$(option --workspace "$@")
+    jq --arg ws "$ws" '{result:{panes:[.panes[] | select(.workspace_id == $ws)]}}' "$D/herdr-layout.json"
     exit 0 ;;
   'workspace list')
-    printf '{"result":{"workspaces":[]}}\n'
+    jq '{result:{workspaces:.workspaces}}' "$D/herdr-layout.json"
     exit 0 ;;
   'workspace create')
     if [ -f "$D/herdr-workspace-create-fails" ]; then
       echo 'error: workspace create failed' >&2
       exit 1
     fi
-    printf '{"result":{"workspace":{"workspace_id":"wsnew"},"tab":{"tab_id":"seedtab"}}}\n'
+    label=$(option --label "$@")
+    layout_update --arg label "$label" '
+      .workspaces += [{workspace_id:"wsnew",label:$label,focused:false,active_tab_id:"seedtab"}]
+      | .tabs += [{tab_id:"seedtab",workspace_id:"wsnew",label:"1",focused:true}]
+      | .panes += [{pane_id:"seedpane",tab_id:"seedtab",workspace_id:"wsnew"}]
+    ' || exit 1
+    jq '{result:{workspace:(.workspaces[] | select(.workspace_id == "wsnew")),
+      tab:(.tabs[] | select(.tab_id == "seedtab")),root_pane:(.panes[] | select(.pane_id == "seedpane"))}}' "$D/herdr-layout.json"
     exit 0 ;;
   'tab list')
-    if [ "${4:-}" = ws1 ]; then
-      printf '{"result":{"tabs":[{"tab_id":"tab1","label":"fm-%s","workspace_id":"ws1"}]}}\n' "$(cat "$D/herdr-task")"
-    else
-      printf '{"result":{"tabs":[]}}\n'
-    fi
+    ws=$(option --workspace "$@")
+    jq --arg ws "$ws" '{result:{tabs:[.tabs[] | select(.workspace_id == $ws)]}}' "$D/herdr-layout.json"
     exit 0 ;;
   'tab create')
-    # The re-created endpoint. Recording it lets a case prove the pane the
-    # record ends up naming is the one this call minted.
     printf '%s\n' "$*" >> "$D/herdr-created-tabs"
-    printf '{"result":{"tab":{"tab_id":"tabnew"},"root_pane":{"pane_id":"%%9"}}}\n'
-    # From here on the new pane is the one that reads back.
+    ws=$(option --workspace "$@")
+    label=$(option --label "$@")
+    layout_update --arg ws "$ws" --arg label "$label" '
+      .tabs += [{tab_id:"tabnew",workspace_id:$ws,label:$label,focused:false}]
+      | .panes += [{pane_id:"%9",tab_id:"tabnew",workspace_id:$ws}]
+    ' || exit 1
     printf '%s' '%9' > "$D/herdr-pane"
+    jq '{result:{tab:(.tabs[] | select(.tab_id == "tabnew")),root_pane:(.panes[] | select(.pane_id == "%9"))}}' "$D/herdr-layout.json"
     exit 0 ;;
+  'pane close')
+    layout_update --arg pane "${3:-}" '
+      [.panes[] | select(.pane_id == $pane)][0] as $closed
+      | .panes |= map(select(.pane_id != $pane))
+      | [.panes[].tab_id] as $remaining_tabs
+      | .tabs |= map(select(.tab_id as $tab | $remaining_tabs | index($tab)))
+      | [.tabs[].workspace_id] as $remaining_workspaces
+      | .workspaces |= map(select(.workspace_id as $ws | $remaining_workspaces | index($ws)))
+      | if $closed.tab_id == "seedtab" then
+          .workspaces |= map(if .workspace_id == $closed.workspace_id then .active_tab_id = "tabnew" else . end)
+        else . end
+    '
+    exit $? ;;
+
 esac
 exit 0
 SH
@@ -2358,7 +2393,17 @@ EOF
   } > "$home/state/$id.meta"
   printf '%s' "$wt" > "$dir/fake/cwd"
   printf '%s' "$survivor" > "$dir/fake/herdr-pane"
-  printf '%s' "$id" > "$dir/fake/herdr-task"
+  printf '%s' "$ses" > "$dir/fake/herdr-session"
+  jq -n --arg pane "$survivor" --arg task "fm-$id" '
+    {workspaces:[{workspace_id:"parentws",label:"firstmate",focused:true,active_tab_id:"parenttab"}],
+     tabs:[{tab_id:"parenttab",workspace_id:"parentws",label:"captain",focused:true}],
+     panes:[{pane_id:"parentpane",workspace_id:"parentws",tab_id:"parenttab"}]}
+    | if $pane == "%none" then . else
+        .workspaces += [{workspace_id:"ws1",label:"worker-owned",focused:false,active_tab_id:"tab1"}]
+        | .tabs += [{tab_id:"tab1",workspace_id:"ws1",label:$task,focused:true}]
+        | .panes += [{pane_id:$pane,workspace_id:"ws1",tab_id:"tab1"}]
+      end
+  ' > "$dir/fake/herdr-layout.json"
   : > "$dir/fake/herdr-log"
   : > "$dir/fake/herdr-stopped"
   TASK_TMPS+=("/tmp/fm-$id")
@@ -2489,6 +2534,16 @@ test_herdr_rebind_stays_in_the_recorded_session() {
     || fail "the rebound endpoint should be the new pane in the recorded session, got $(meta_field "$dir" rl73 window)"
   [ "$(meta_field "$dir" rl73 herdr_pane_id)" = '%9' ] \
     || fail "the rebound record should name the pane the reclaim minted, got $(meta_field "$dir" rl73 herdr_pane_id)"
+  [ "$(meta_field "$dir" rl73 herdr_workspace_id)" = wsnew ] \
+    || fail "rebind did not publish its disposable workspace"
+  [ "$(meta_field "$dir" rl73 herdr_tab_id)" = tabnew ] \
+    || fail "rebind did not publish its projected task tab"
+  jq -e '.workspaces | length == 2' "$dir/fake/herdr-layout.json" >/dev/null \
+    || fail "rebind did not retain the parent and isolated worker workspaces"
+  jq -e '.panes | map(.pane_id) | sort == ["%9","parentpane"]' "$dir/fake/herdr-layout.json" >/dev/null \
+    || fail "rebind did not remove the seeded pane"
+  [ "$(sed -n 's/^parent_workspace_id=//p' "$dir/home/state/rl73.herdr-presentation")" = parentws ] \
+    || fail "rebind did not journal the parent workspace"
   pass "reclaim: a herdr rebind is created in the session the record names, never the ambient one"
 }
 
@@ -2567,11 +2622,6 @@ test_herdr_reclaim_keeps_the_task_whole() {
 
 test_herdr_rebind_failure_from_a_plain_shell_names_the_real_cause() {
   local dir out rc
-  # No HERDR_* env at all, which is how an operator reclaims from ssh or cron.
-  # The adapter's ambient session then reads `default` while the record names
-  # `fmlab`, but the cross-session launcher guard was never consulted - this
-  # seat claims no launcher pane, so placement fell back to the recorded
-  # session's labeled container and the container failed for its own reason.
   herdr_case_or_skip gone-herdr-plain rl77 fmlab '%none' || {
     echo "skip - herdr reclaim needs jq (the herdr adapter parses JSON with it)"
     return 0
@@ -2581,7 +2631,8 @@ test_herdr_rebind_failure_from_a_plain_shell_names_the_real_cause() {
 
   out=$(run_spawn "$dir" rl77 --relaunch --harness claude); rc=$?
   expect_code 1 "$rc" "a container that cannot be ensured must refuse"$'\n'"$out"
-  assert_contains "$out" "fmlab" "the refusal should name the session the reclaim was targeting"
+  assert_contains "$out" "presentation workspace create failed" "the refusal should name the projection creation failure"
+  assert_contains "$(cat "$dir/fake/herdr-log")" "workspace create" "the fixture must reach projection creation"
   assert_not_contains "$out" "this seat is running in herdr session" \
     "a seat with no launcher pane never hit the cross-session guard, so the refusal must not blame one"
   assert_not_contains "$out" "a reclaim never moves a task to another session" \
@@ -2697,6 +2748,18 @@ SH
     || fail "the dialog file must be gone when the control lock is released, got: $(cat "$trace" 2>/dev/null)"
   pass "fm-control exit removes the dialog file before it releases the control lock"
 }
+
+if [ "${1:-}" = --herdr-recovery-regressions ]; then
+  test_herdr_relaunch_resumes_only_the_registered_pi_session
+  test_herdr_reclaim_adopts_a_pane_that_outlived_its_server
+  test_herdr_exit_reports_already_stopped_when_the_pane_outlived_its_server
+  test_herdr_rebind_stays_in_the_recorded_session
+  test_herdr_reclaim_refuses_an_agent_that_came_back
+  test_herdr_reclaim_keeps_the_task_whole
+  test_herdr_reclaim_of_a_secondmate_names_its_own_owner
+  test_herdr_rebind_failure_from_a_plain_shell_names_the_real_cause
+  exit 0
+fi
 
 if [ "${1:-}" = --recovery-regressions ]; then
   test_relaunch_keeps_worker_keys_in_settings_local

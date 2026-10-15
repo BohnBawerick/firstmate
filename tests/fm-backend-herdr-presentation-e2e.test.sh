@@ -615,20 +615,6 @@ assert_focus_is "$CAPTAIN_FOCUS" "focused secondmate fixture"
 # The historical presence-based opt-in was an empty file; it must still project,
 # so no home that had already enabled the projection is turned off by the default.
 : > "$HOME_DIR/config/herdr-presentation-spaces"
-lab workspace rename "$FIRSTMATE_WSID" parent-without-label >/dev/null \
-  || fail "could not hide the parent label"
-MISSING_PARENT_START=$(log_line_count)
-if spawn_task shape "$HOME_DIR" "$PROJECT_DIR" > "$TMP_ROOT/missing-parent.out" 2> "$TMP_ROOT/missing-parent.err"; then
-  fail "a missing parent allowed shared workspace placement"
-fi
-grep -F "parent is absent or ambiguous; refusing isolated workspace placement" "$TMP_ROOT/missing-parent.err" >/dev/null \
-  || fail "missing parent did not explain its placement refusal"
-[ ! -e "$HOME_DIR/state/shape.meta" ] && [ ! -e "$HOME_DIR/state/shape.herdr-presentation" ] \
-  || fail "missing parent published worker records"
-assert_no_projection_mutation_since "$MISSING_PARENT_START" "missing parent"
-lab workspace rename "$FIRSTMATE_WSID" firstmate >/dev/null \
-  || fail "could not restore the parent label"
-
 SHAPE_FOCUS_AUDIT_START=$(focus_audit_line_count)
 spawn_task shape "$HOME_DIR" "$PROJECT_DIR" > "$TMP_ROOT/on.out" 2> "$TMP_ROOT/on.err" \
   || fail "projected spawn failed: $(cat "$TMP_ROOT/on.err")"

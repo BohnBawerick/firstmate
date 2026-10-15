@@ -280,6 +280,26 @@ make_liveness_tmux() {
 set -u
 mode=${FM_TEST_PANE_CMD:-zsh}
 case "${1:-}" in
+  send-keys)
+    for arg in "$@"; do
+      case "$arg" in
+        ". '"*)
+          : > "${FM_TMUX_CALL_LOG}.launch-staged"
+          if [ "${FM_TEST_FAIL_LAUNCH_SEND:-}" = literal ]; then
+            printf 'launch literal refused\n' >> "$FM_TMUX_CALL_LOG"
+            exit 1
+          fi
+          ;;
+        Enter)
+          if [ "${FM_TEST_FAIL_LAUNCH_SEND:-}" = key ] && [ -f "${FM_TMUX_CALL_LOG}.launch-staged" ]; then
+            printf 'launch Enter refused\n' >> "$FM_TMUX_CALL_LOG"
+            exit 1
+          fi
+          ;;
+      esac
+    done
+    exit 0
+    ;;
   display-message)
     for a in "$@"; do
       case "$a" in
@@ -408,6 +428,40 @@ test_sweep_respawn_keeps_an_armed_pr_binding() {
     _ "$ROOT" "$meta" "$url" \
     || fail "the respawned record must still parse as the secondmate's PR identity:"$'\n'"$(cat "$meta")"
   pass "sweep: a respawned secondmate keeps its armed PR binding parseable"
+}
+
+test_sweep_failed_respawn_keeps_an_armed_pr_binding() {
+  local w fb tmuxfb log meta url head out stage failed_gen
+  for stage in literal key; do
+    w=$(new_world "sweep-pr-failure-$stage")
+    add_sm_home "$w" sm1 firstmate:fm-sm1
+    meta="$w/home/state/sm1.meta"
+    url='https://github.com/example/home/pull/6'
+    head='0123456789abcdef0123456789abcdef01234567'
+    printf 'custom=keep-me\npr=%s\npr_head=%s\n' "$url" "$head" >> "$meta"
+    fb=$(make_toolchain "$w"); tmuxfb=$(make_liveness_tmux "$w")
+    log="$w/calls.log"; : > "$log"
+
+    out=$(run_bootstrap "$tmuxfb:$fb" "$w/home" zsh "$log" "FM_TEST_FAIL_LAUNCH_SEND=$stage")
+    assert_contains "$out" 'respawn failed' "the injected send failure must fail the respawn ($stage)"
+    assert_contains "$(cat "$log")" 'refused' "the fixture did not reach launch delivery ($stage)"
+    assert_grep 'spawn_gen=' "$meta" "the failure must occur after replacement publication ($stage)"
+    assert_grep 'custom=keep-me' "$meta" "failed respawn dropped unowned metadata ($stage)"
+    assert_grep "pr_head=$head" "$meta" "failed respawn dropped the PR head ($stage)"
+    bash -c '. "$1/bin/fm-pr-lib.sh"; fm_pr_metadata_identity_parse "$2" && [ "$FM_PR_META_URL" = "$3" ]' \
+      _ "$ROOT" "$meta" "$url" || fail "failed respawn lost its PR binding ($stage)"
+
+    failed_gen=$(sed -n 's/^spawn_gen=//p' "$meta")
+    out=$(run_bootstrap "$tmuxfb:$fb" "$w/home" zsh "$log")
+    assert_not_contains "$out" 'respawn failed' "the retry must succeed ($stage)"
+    [ "$(sed -n 's/^spawn_gen=//p' "$meta")" != "$failed_gen" ] \
+      || fail "the retry did not publish a new spawn generation ($stage)"
+    assert_grep 'custom=keep-me' "$meta" "retry dropped unowned metadata ($stage)"
+    assert_grep "pr_head=$head" "$meta" "retry dropped the PR head ($stage)"
+    bash -c '. "$1/bin/fm-pr-lib.sh"; fm_pr_metadata_identity_parse "$2" && [ "$FM_PR_META_URL" = "$3" ]' \
+      _ "$ROOT" "$meta" "$url" || fail "retry lost its PR binding ($stage)"
+  done
+  pass "sweep: failed launch sends and retries preserve the secondmate record and PR binding"
 }
 
 test_sweep_relays_codex_max_downgrade_warning() {
@@ -819,12 +873,19 @@ test_remote_poll_probe_unreachable_preserves_route() {
   pass "poll probe: unreachable or inconclusive remote reads preserve the route"
 }
 
+if [ "${1:-}" = --respawn-regressions ]; then
+  test_sweep_respawn_keeps_an_armed_pr_binding
+  test_sweep_failed_respawn_keeps_an_armed_pr_binding
+  exit 0
+fi
+
 test_tmux_agent_state_classifies
 test_tmux_agent_state_rejects_malformed_targets_before_probe
 test_herdr_agent_state_preserves_husk_classifier
 test_agent_state_dispatcher_and_compatibility
 test_sweep_respawns_confirmed_dead_secondmate
 test_sweep_respawn_keeps_an_armed_pr_binding
+test_sweep_failed_respawn_keeps_an_armed_pr_binding
 test_sweep_relays_codex_max_downgrade_warning
 test_sweep_serializes_distinct_secondmate_relaunches
 test_sweep_leaves_alive_secondmate_untouched

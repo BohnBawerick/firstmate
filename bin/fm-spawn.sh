@@ -5598,7 +5598,6 @@ if [ "$RELAUNCH" -eq 1 ]; then
   SPAWN_META_TMP="$STATE/.$ID.meta.relaunch.${BASHPID:-$$}"
 else
   SPAWN_META_TMP="$STATE/.$ID.meta.spawn.${BASHPID:-$$}"
-  SPAWN_FRESH_COMMIT_PENDING=1
 fi
 SPAWN_META_PATH=$SPAWN_META_TMP
 # A relaunch, or a secondmate respawn over its existing record, rewrites the
@@ -5613,6 +5612,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
 elif [ "$KIND" = secondmate ] && [ -f "$STATE/$ID.meta" ] && [ ! -L "$STATE/$ID.meta" ]; then
   SPAWN_PRIOR_META="$STATE/$ID.meta"
 fi
+[ -n "$SPAWN_PRIOR_META" ] || SPAWN_FRESH_COMMIT_PENDING=1
 {
   echo "window=$META_WINDOW"
   echo "endpoint_task_id=$ID"
@@ -6289,7 +6289,7 @@ else
   fi
 fi
 if [ "$SPAWN_BACKLOG_COMMIT_STATUS" -ne 0 ]; then
-  if [ "$RELAUNCH" -eq 0 ]; then
+  if [ "$SPAWN_FRESH_COMMIT_PENDING" = 1 ]; then
     if spawn_fresh_commit_rollback; then
       echo "error: task $ID's backlog item could not be moved to In flight ($FM_BACKLOG_TRANSITION_ERROR); its record was removed so no worker is left that the backlog does not own - close out endpoint $T and local copy $WT by hand, then re-run the spawn" >&2
     else
