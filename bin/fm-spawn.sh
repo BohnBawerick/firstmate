@@ -418,20 +418,11 @@
 #   and its operator contract. Resolve it with bin/fm-exclude-tools-lib.sh
 #   before provisioning; __PIEXCLUDE__ below owns the Pi launch substitution.
 # Worker account pin (config/claude-account, config/pi-account):
-#   Opt-in. With no file, a Claude or Pi launch is unchanged: Claude still
-#   receives this process's own CLAUDE_CONFIG_DIR when it is set, and Pi the
-#   destination pane's ambient account. A present file pins every launch of
-#   that runner from this home - ship, scout, local secondmate, raw Claude
-#   command, and relaunch - to the declared account root, and the spawn
-#   refuses before any endpoint, worktree, or record exists when the file is
-#   malformed, the root is unusable, or the runner's own check says it is not
-#   signed in. A pinned Claude launch sheds the environment credentials Claude
-#   ranks above the root's login; a pinned Pi launch needs --model
-#   <provider>/<id> for a declared provider and also carries --provider, and a
-#   raw Pi command refuses. The pin is recorded as account= (and Pi's
-#   account_provider=) in the task record and on the spawned line. A local
-#   secondmate reads this launching home's file; pins are never inherited.
-#   bin/fm-worker-account-lib.sh owns parsing, the check, and the shed list.
+#   docs/configuration.md "Worker account pin" owns account selection,
+#   inheritance, and raw-launch restrictions. bin/fm-worker-account-lib.sh
+#   owns parsing, the sign-in check, and the shed list; resolve it before any
+#   endpoint, worktree, or record exists. The pin is recorded as account= (and
+#   Pi's account_provider=) in the task record and on the spawned line.
 #   Launch templates live in launch_template() below; placeholders replaced before launch:
 #     __BRIEF__    absolute path to data/<task-id>/brief.md
 #     __CLAUDEPERMFLAG__ the claude permission flag selected by config/claude-permission-mode

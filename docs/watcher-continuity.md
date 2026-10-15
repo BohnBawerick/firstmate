@@ -130,14 +130,15 @@ The host owns successive watcher cycles through the same arm.
 `bin/fm-session-lock-lib.sh` is the single owner of "does this process belong to the session that holds this home's fleet lock", and of the refusal a session that does not hold it prints.
 
 Ownership is either of two signals, and neither ever fails open.
-The recorded pid in `state/.lock` is a member of the current process's contiguous harness ancestry, which is the answer for every harness.
-Or the lock was recorded under this same trusted Claude session: `CLAUDE_CODE_SESSION_ID` counts only when `CLAUDE_PID` is a Claude-shaped member of that same ancestry, it must equal the id `bin/fm-lock.sh` recorded in `state/.lock-session`, and the recorded pid must still be a live harness.
+Both require the recorded pid in `state/.lock` to pass `fm_harness_pid_alive`; the [Codex App boundary](codex-app-backend.md#session-lock) owns its anchor restriction and recovery.
+The recorded pid is a member of the current process's contiguous harness ancestry.
+Or the lock was recorded under this same trusted Claude session: `CLAUDE_CODE_SESSION_ID` counts only when `CLAUDE_PID` is a Claude-shaped member of that same ancestry, and it must equal the id `bin/fm-lock.sh` recorded in `state/.lock-session`.
 That second signal keeps a background Claude session owning its lock after the transient helper chain between its hooks and its recorded owner is recycled, while a hand-started Pi or Codex primary inside a Claude pane, which inherits the pane's id and pid, never owns a lock with them.
 No id, no sidecar, an untrusted id, a different id, or a dead recorded pid leaves the ancestry verdict unchanged; a dead recorded pid is reclaimed through `bin/fm-lock.sh`'s ordinary stale-owner path.
 The library header owns the trust gate, and `bin/fm-lock.sh`'s header owns the sidecar and the line-1 anchor it records for a trusted session.
 A worker firstmate launches is a descendant of the spawning session, so `bin/fm-spawn.sh` clears both variables from every worker's launch environment, for every runtime.
 
-That one verdict now decides both halves of the contract, so no path can enforce a different answer than another.
+Auto-arm and fleet-mutation gates share this ownership check.
 `bin/fm-claude-stop-autoarm.sh` and `bin/fm-turnend-guard-cursor.sh` use it to decide whether they may arm, and every fleet-mutation entry point - `bin/fm-wake-drain.sh`, `bin/fm-send.sh`, `bin/fm-spawn.sh`, `bin/fm-teardown.sh`, `bin/fm-promote.sh`, `bin/fm-merge-local.sh`, `bin/fm-pr-merge.sh`, and `bin/fm-control.sh` - calls `fm_require_session_lock` before argument validation, so AGENTS.md section 3's read-only rule is enforced where the mutation happens rather than trusted to a banner the session may never have read.
 The refusal names the holder and what to do instead.
 

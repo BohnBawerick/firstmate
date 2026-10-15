@@ -8,6 +8,7 @@ A manual thread ledger is not a backend.
 
 A Codex App thread cannot hold a home's session lock because its tool shells run under an app-server shared by every thread, with no per-thread process to anchor the lock.
 `bin/fm-lock.sh` refuses that anchor, so a Firstmate supervisor running in Desktop stays read-only.
+An existing lock naming a shared App host is invalid, and a terminal session can reclaim it through normal lock acquisition even while that host remains alive.
 Take the helm from a terminal harness session.
 
 ## Acceptance contract

@@ -169,7 +169,7 @@ EOF
   printf '%s\n' "$outermost"
 }
 
-# True if $1 is a live process that looks like a verified harness.
+# True if $1 is live and eligible to anchor a session lock.
 fm_harness_pid_alive() {
   local pid=$1 comm args
   kill -0 "$pid" 2>/dev/null || return 1
@@ -316,15 +316,15 @@ fm_session_lock_codex_app_host() {  # <pid>
 }
 
 # True when state dir $1 holds a session lock that this process's session owns:
-# the recorded pid is ANY harness ancestor of the current process, or the lock
-# was recorded by this same trusted Claude session and its recorded pid is still
-# a live harness. Membership is the honest ancestry test, because the lock owner
+# both ownership signals require the recorded pid to pass fm_harness_pid_alive.
+# It is a harness ancestor of the current process, or the lock was recorded by
+# this same trusted Claude session. Membership is the honest ancestry test,
+# because the lock owner
 # sits at an unknown depth in a contiguous Claude run - it is the outermost pid
 # when the hook fires inside the session's own nested worker chain, and an inner
-# pid when a harness-named daemon parents the session. The same-session path
-# requires the recorded pid alive so that a dead one is reclaimed through
-# bin/fm-lock.sh's ordinary stale-owner path, which refreshes line 1, rather than
-# silently owned with a dead anchor. A missing lock, a malformed lock, a lock
+# pid when a harness-named daemon parents the session. A dead or ineligible
+# anchor must be reclaimed through bin/fm-lock.sh's ordinary stale-owner path,
+# which refreshes line 1. A missing lock, a malformed lock, a lock
 # held by a harness outside this ancestry under another (or no) session id, or
 # an ancestry that cannot be resolved all fail closed.
 fm_session_lock_owned_by_self() {
@@ -380,10 +380,10 @@ EOF
 #   FM_LOCK_INSPECT_PID           recorded pid, or empty
 #   FM_LOCK_INSPECT_LIVE_HARNESS  true|false|unknown
 #
-# held: the recorded pid is a live verified harness.
+# held: the recorded pid passes fm_harness_pid_alive.
 # stale: the recorded pid is gone.
 # unknown: the file or pid cannot be classified without guessing, including a
-# live process that is not a verified harness. Existence of a lock file, a
+# live process that is not eligible to anchor a lock. Existence of a lock file, a
 # session record, or a pane is never treated as liveness.
 # shellcheck disable=SC2034 # Output globals, read by lock status and inbox ready.
 FM_LOCK_INSPECT_STATE=unknown

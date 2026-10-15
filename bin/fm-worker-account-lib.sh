@@ -28,9 +28,7 @@
 # --model <provider>/<id>, and that provider must be declared; Firstmate never
 # guesses a provider for an unqualified model. The canonical launch also
 # passes --provider <that provider>, because without it Pi may resolve a
-# provider-prefixed model under another authenticated provider. A raw Pi
-# launch command is launched verbatim and cannot receive that flag, so a home
-# with config/pi-account refuses raw Pi launches.
+# provider-prefixed model under another authenticated provider.
 #
 # The sign-in check asks the runner itself, with only HOME, PATH, TMPDIR,
 # USER, LOGNAME, and the selected root in its environment, so a credential
@@ -215,8 +213,9 @@ fm_worker_account_check() {
 }
 
 # fm_worker_account_select <harness> <config-dir> <model> <executable> [<raw-command>]
-# The whole launch-time decision. Prints nothing for an unpinned runner, so
-# the caller keeps today's launch unchanged. For a pinned one prints
+# The whole launch-time decision. For a supported launch, prints nothing for
+# an unpinned runner, so the caller keeps today's launch unchanged. For a
+# pinned one prints
 # "declared<TAB>root<TAB>provider", where provider is the Pi launch model's
 # own (empty for Claude), after the model guard and the sign-in check pass. On
 # refusal prints one error and returns 1. bin/fm-spawn.sh runs it before any
@@ -224,6 +223,7 @@ fm_worker_account_check() {
 # agent.
 fm_worker_account_select() {
   local harness=$1 config=$2 model=$3 executable=$4 raw=${5:-} selection declared root providers provider=
+  # Raw shell syntax cannot prove the effective runner or account overrides.
   if [ -n "$raw" ] && { [ -e "$config/claude-account" ] || [ -L "$config/claude-account" ] ||
     [ -e "$config/pi-account" ] || [ -L "$config/pi-account" ]; }; then
     echo "error: this home pins worker accounts (config/claude-account or config/pi-account), so raw launch commands are unsupported; launch with --harness <name> instead" >&2
