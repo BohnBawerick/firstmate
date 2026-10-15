@@ -137,6 +137,32 @@ assert_no_grep 'harness=default' "$HOME_DIR/state/ios.meta" \
   "the parent record must not keep the unresolved request"
 pass "a remote relaunch records the identity the host confirmed"
 
+# --- an id-only relaunch resolves this primary's pin for that mate ----------
+# The fake host echoes what it was asked, so the parent record shows the
+# profile the wrapper resolved: the mate's own pin over the shared one, the
+# shared one for a mate with no pin, and explicit arguments over either.
+mkdir -p "$HOME_DIR/config/secondmate-harness.d"
+printf 'pi opencode-go/deepseek high\n' > "$HOME_DIR/config/secondmate-harness"
+printf 'codex gpt-6.1-sol xhigh\n' > "$HOME_DIR/config/secondmate-harness.d/ios"
+reset_meta
+OUT=$(run_relaunch ios); RC=$?
+expect_code 0 "$RC" "an id-only relaunch should resolve the mate's pin"$'\n'"$OUT"
+assert_grep 'harness=codex' "$HOME_DIR/state/ios.meta" "the id-only relaunch ignored the mate's own harness pin"
+assert_grep 'model=gpt-6.1-sol' "$HOME_DIR/state/ios.meta" "the id-only relaunch ignored the mate's own model pin"
+assert_grep 'effort=xhigh' "$HOME_DIR/state/ios.meta" "the id-only relaunch ignored the mate's own effort pin"
+rm "$HOME_DIR/config/secondmate-harness.d/ios"
+reset_meta
+OUT=$(run_relaunch ios); RC=$?
+expect_code 0 "$RC" "an id-only relaunch of an unpinned mate should use the shared pin"$'\n'"$OUT"
+assert_grep 'model=opencode-go/deepseek' "$HOME_DIR/state/ios.meta" "an unpinned mate did not resolve the shared pin"
+printf 'codex gpt-6.1-sol xhigh\n' > "$HOME_DIR/config/secondmate-harness.d/ios"
+reset_meta
+OUT=$(run_relaunch ios claude claude-opus-5-5 medium); RC=$?
+expect_code 0 "$RC" "an explicit relaunch should succeed beside a pin"$'\n'"$OUT"
+assert_grep 'harness=claude' "$HOME_DIR/state/ios.meta" "explicit arguments must win over the mate's pin"
+rm -rf "$HOME_DIR/config/secondmate-harness.d" "$HOME_DIR/config/secondmate-harness"
+pass "an id-only remote relaunch resolves the per-mate pin, then the shared pin; explicit arguments win"
+
 # --- a refused relaunch leaves the parent's record untouched -----------------
 reset_meta
 cp "$HOME_DIR/state/ios.meta" "$TMP/ios-before-refusal.meta"

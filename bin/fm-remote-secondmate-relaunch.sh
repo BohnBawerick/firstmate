@@ -2,7 +2,9 @@
 # Relaunch a REMOTE secondmate onto a new harness, model, or effort, then
 # republish this parent's own route record to match what the host confirmed.
 #
-# Usage: fm-remote-secondmate-relaunch.sh <id> <harness> <model|default|-> <effort|default|->
+# Usage: fm-remote-secondmate-relaunch.sh <id> [<harness> <model|default|-> <effort|default|->]
+#        With only <id>, the profile is this primary's pin for that mate
+#        (bin/fm-harness.sh secondmate <id>); explicit arguments always win.
 #
 # bin/fm-remote-secondmate-control.sh's relaunch verb runs entirely on the
 # secondmate's own host and can only rewrite that host's own endpoint record;
@@ -12,7 +14,7 @@
 # used to run, not the one it runs now.
 #
 # This wrapper is the missing other half. It runs the host-local relaunch
-# through bin/fm-on.sh exactly as secondmate-provisioning documents, then reads
+# through bin/fm-on.sh as docs/remote-secondmates.md documents, then reads
 # the confirmed harness, model, and effort back out of the endpoint's own
 # route report - the same read-back-from-the-endpoint shape bin/fm-spawn.sh
 # already uses when it first records a remote route - and republishes this
@@ -31,14 +33,27 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
-usage() { sed -n '2,4p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
-[ "$#" -eq 4 ] || usage
+[ "$#" -eq 1 ] || [ "$#" -eq 4 ] || usage
 ID=$1
-HARNESS=$2
-MODEL=$3
-EFFORT=$4
 case "$ID" in ''|*[!A-Za-z0-9._-]*) die "invalid secondmate id: $ID" ;; esac
+if [ "$#" -eq 4 ]; then
+  HARNESS=$2
+  MODEL=$3
+  EFFORT=$4
+else
+  # The pin is resolved HERE, on the primary that owns it: the host's own
+  # copies are a different home's files and are never consulted.
+  HARNESS=$("$SCRIPT_DIR/fm-harness.sh" secondmate "$ID") \
+    || die "cannot resolve the secondmate pin for $ID"
+  MODEL=$("$SCRIPT_DIR/fm-harness.sh" secondmate-model "$ID") \
+    || die "cannot resolve the secondmate pin for $ID"
+  EFFORT=$("$SCRIPT_DIR/fm-harness.sh" secondmate-effort "$ID") \
+    || die "cannot resolve the secondmate pin for $ID"
+  [ -n "$MODEL" ] || MODEL=default
+  [ -n "$EFFORT" ] || EFFORT=default
+fi
 
 META="$STATE/$ID.meta"
 [ -f "$META" ] && [ ! -L "$META" ] || die "no metadata for $ID at $META"

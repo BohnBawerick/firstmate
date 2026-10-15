@@ -16,6 +16,12 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 TMP_ROOT=$(fm_test_tmproot fm-remote-secondmate-e2e)
 mkdir -p "$TMP_ROOT"
 TMP_ROOT=$(cd "$TMP_ROOT" && pwd -P)
+# Keep remote worker tool discovery and Git configuration inside the fixture account.
+mkdir -p "$TMP_ROOT/account/.local/bin"
+if fixture_node=$(command -v node); then
+  ln -s "$fixture_node" "$TMP_ROOT/account/.local/bin/node"
+fi
+export HOME="$TMP_ROOT/account"
 PARENT="$TMP_ROOT/parent"
 REMOTE_ROOT="$TMP_ROOT/remote-root"
 REMOTE_HOME="$TMP_ROOT/remote-home"
@@ -1302,6 +1308,10 @@ jq --arg p "$ios_pane" \
 [ "$(remote_env "$ROOT/bin/fm-on.sh" ios fm-remote-secondmate-control.sh state ios)" = dead ] \
   || fail "the agent-free remote pane did not classify dead"
 
+# This mate carries its own pin beside the shared codex one, so the relaunch
+# must resolve that per-mate profile on the parent and carry it to the host.
+mkdir -p "$PARENT/config/secondmate-harness.d"
+printf 'codex pinned-mac-model high\n' > "$PARENT/config/secondmate-harness.d/ios"
 tabs_before=$(grep -c '^tab create' "$HERDR_LOG" || true)
 # exec keeps $! the watcher itself rather than the function's subshell, so a
 # kill reaches the process that probes and writes into the fixture root.
@@ -1310,14 +1320,14 @@ FM_STATE_OVERRIDE="$WATCH_STATE" FM_SECONDMATE_LIVENESS_SECS=1 FM_POLL=1 \
   remote_env exec "$ROOT/bin/fm-watch.sh" \
   > "$TMP_ROOT/watch-liveness.out" 2> "$TMP_ROOT/watch-liveness.err" &
 watch_pid=$!
-watch_wait=0
-while kill -0 "$watch_pid" 2>/dev/null && [ "$watch_wait" -lt 1500 ]; do
-  sleep 0.02
-  watch_wait=$((watch_wait + 1))
+# A relaunch includes remote inheritance and startup, so allow their setup window.
+watch_deadline=$(( $(date +%s) + 600 ))
+while kill -0 "$watch_pid" 2>/dev/null && [ "$(date +%s)" -lt "$watch_deadline" ]; do
+  sleep 0.1
 done
 if kill -0 "$watch_pid" 2>/dev/null; then
   kill "$watch_pid" 2>/dev/null || true
-  fail "the watcher did not exit on its auto-relaunch wake within the bound"
+  fail "the watcher did not exit on its auto-relaunch wake within the bound: $(cat "$TMP_ROOT/watch-liveness.out") $(cat "$TMP_ROOT/watch-liveness.err")"
 fi
 wait "$watch_pid" \
   || fail "the liveness watcher leg exited non-zero: $(cat "$TMP_ROOT/watch-liveness.err")"
@@ -1338,6 +1348,13 @@ assert_grep 'remote_host=remote-mac' "$WATCH_STATE/ios.meta" \
   "the watcher relaunch dropped the remote host route"
 assert_grep 'herdr_session=fm-remote' "$remote_route_meta" \
   "the watcher relaunch did not re-record the pinned remote Herdr session"
+assert_grep 'model=pinned-mac-model' "$WATCH_STATE/ios.meta" \
+  "the watcher relaunch did not apply the mate's own pinned model"
+assert_grep 'effort=high' "$WATCH_STATE/ios.meta" \
+  "the watcher relaunch did not apply the mate's own pinned effort"
+assert_grep 'model=pinned-mac-model' "$remote_route_meta" \
+  "the host did not launch on the mate's own pinned model"
+rm -rf "$PARENT/config/secondmate-harness.d"
 assert_grep '- ios ' "$PARENT/data/secondmates.md" \
   "the watcher relaunch changed the registry route"
 [ "$(remote_env "$ROOT/bin/fm-on.sh" ios fm-remote-secondmate-control.sh state ios)" = alive ] \
@@ -1347,7 +1364,7 @@ assert_grep '- ios ' "$PARENT/data/secondmates.md" \
 # parent state out of scope, so fold both records back now.
 cp "$WATCH_STATE/ios.meta" "$PARENT/state/ios.meta"
 cp "$WATCH_STATE/.remote-inherit-ios.generation" "$PARENT/state/" 2>/dev/null || true
-pass "watch liveness: a dead remote secondmate is auto-relaunched on its own host with one wake"
+pass "watch liveness: a dead remote secondmate is auto-relaunched on its own host with one wake, on its own pin"
 
 # Host loss mid-supervision is never evidence of death: the same tick on an
 # unreachable route probes, preserves, and stays silent.
