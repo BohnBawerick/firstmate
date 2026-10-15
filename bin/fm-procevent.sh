@@ -80,11 +80,14 @@
 #            otherwise, and any failure also makes this command exit non-zero.
 #            One bounded window covers a whole cycle's launches
 #            (FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS; docs/configuration.md).
-#            A launch that fails to confirm is also announced as a durable
-#            `check` wake, once per failure episode - keyed by the registration
-#            identity it ran under and ended by a later launch of that source
-#            confirming - because the supervision cycle discards the `failed=`
-#            count. The launch itself is retried every cycle exactly as before.
+#            A launch that fails to confirm on two consecutive cycles is also
+#            announced as a durable `check` wake, once per failure episode -
+#            keyed by the registration identity it ran under and ended by a
+#            later launch of that source confirming or the source being found
+#            owned - because the supervision cycle discards the `failed=`
+#            count. A lone unconfirmed launch is held, because a runner merely
+#            slow to claim on a loaded host looks the same inside one window.
+#            The launch itself is retried every cycle exactly as before.
 #            A source whose claim nothing may automatically displace is not
 #            relaunched at all; it is counted `uncertain` and announced once per
 #            stranded claim generation as a durable `check` wake, because the
@@ -1638,6 +1641,14 @@ report_stranded_source() {  # <source-id> <claim-token> <why-and-recovery>
 # announces a new one. Nothing here changes what reconcile does about the launch
 # itself: it keeps relaunching exactly as before, and this only says so once.
 #
+# The first unconfirmed launch of an episode is only recorded, as
+# `unconfirmed-<episode>` in the marker, and the episode is announced when the
+# next consecutive launch of that same registration also fails to confirm. The
+# detached runner takes its claim before its source command runs, so the window
+# measures only the runner's own start, which a heavily loaded host can stretch
+# past it; such a runner is found owned by the next cycle, which removes the
+# marker and closes the episode with no wake at all.
+#
 # The queue key carries a nonce beyond the episode: the watcher remembers every
 # key it has surfaced for good, so a key made of the registration identity alone
 # would be surfaced for the first episode only and every later episode of the
@@ -1645,10 +1656,17 @@ report_stranded_source() {  # <source-id> <claim-token> <why-and-recovery>
 # episode and that nonce together, and the episode alone decides whether to
 # announce.
 report_launch_failure() {  # <source-id> <registration-identity>
-  local id=$1 identity=$2 episode nonce
+  local id=$1 identity=$2 episode nonce marker previous
   case "$identity" in ''|*[!0-9:]*) episode=unreadable ;; *) episode=${identity//:/-} ;; esac
+  marker=$(launch_failed_file "$id")
+  previous=$(cat -- "$marker" 2>/dev/null || true)
+  previous=${previous%%[[:space:]]*}
+  if [ "$previous" != "$episode" ] && [ "$previous" != "unconfirmed-$episode" ]; then
+    (umask 077; printf 'unconfirmed-%s\n' "$episode" > "$marker") || return 1
+    return 1
+  fi
   nonce="$RANDOM$RANDOM"
-  announce_source_once "$(launch_failed_file "$id")" "$episode" \
+  announce_source_once "$marker" "$episode" \
     "procevent:$id:launch-failed:$episode-$nonce" \
     "check: process-event source $id is registered but its launch did not prove it took the source's claim within FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS, so nothing is confirmed to be collecting from it; reconcile reports that as failed= and keeps launching it every supervision cycle. If it stays that way, check the source command and the adapter binary the registration names, and run an attached bin/fm-procevent.sh start $id to reproduce a refusal on its stderr - the detached launch discards it, and a hand-run reconcile only counts it as failed=. A later cycle that finds the source owned ends this episode on its own, so a runner that was merely slow to claim needs nothing from you." \
     "$episode $nonce"

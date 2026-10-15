@@ -2298,7 +2298,10 @@ pass "start reclaims a reused-pid claim whose leftovers can still be tidied"
 # `bin/fm-watch.sh` discards reconcile's `failed=` count and exit status, so a
 # runner that dies before claiming - for any cause, not only the claim wedge -
 # would be relaunched and reported failed every cycle with nobody told: armed
-# in appearance, a dead drop in fact. The episode is keyed by the registration
+# in appearance, a dead drop in fact. A runner merely slow to claim on a loaded
+# host looks identical inside one window and is found owned by the next cycle,
+# so the episode is announced only when the next consecutive cycle also fails
+# to confirm. The episode is keyed by the registration
 # identity the launch ran under and ends when a launch of that source confirms,
 # so the registration below is damaged and repaired IN PLACE to keep that
 # identity fixed across the whole sequence. The wake changes nothing about the
@@ -2317,9 +2320,12 @@ awk '/^argv:$/ { print; exit } { print }' "$EP_SOURCE" > "$TMP_ROOT/episode-bad.
   || fail "could not prepare the damaged episode registration"
 ep_damage() { cat "$TMP_ROOT/episode-bad.source" > "$EP_SOURCE"; }
 ep_repair() { cat "$TMP_ROOT/episode-good.source" > "$EP_SOURCE"; }
+# A launch expected to confirm gets a wide window, which costs nothing once it
+# confirms, so a loaded host cannot turn a healthy start into a failure.
 ep_reconcile() {  # <expected-fragment> <expected-exit-nonzero:0|1> <msg>; sets ep_out
-  local rc=0
-  ep_out=$(FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=2 pe "$HEP" reconcile) || rc=$?
+  local rc=0 window=2
+  [ "$2" -eq 1 ] || window=15
+  ep_out=$(FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS="$window" pe "$HEP" reconcile) || rc=$?
   assert_contains "$ep_out" "$1" "$3: $ep_out"
   if [ "$2" -eq 1 ]; then
     [ "$rc" -ne 0 ] || fail "$3 (reconcile exited 0): $ep_out"
@@ -2329,8 +2335,11 @@ ep_reconcile() {  # <expected-fragment> <expected-exit-nonzero:0|1> <msg>; sets 
 }
 ep_damage
 ep_reconcile "failed=1" 1 "a launch that never proved its claim was not reported failed"
+[ "$(launch_failed_wake_count "$HEP" episode-src)" = 0 ] \
+  || fail "a lone unconfirmed launch, which a slow runner also produces, was announced: $ep_out"
+ep_reconcile "failed=1" 1 "the second consecutive unconfirmed launch was not reported failed"
 [ "$(launch_failed_wake_count "$HEP" episode-src)" = 1 ] \
-  || fail "a launch that could not confirm was not announced: $ep_out"
+  || fail "a launch that could not confirm on two consecutive cycles was not announced: $ep_out"
 ep_key=$(launch_failed_wake_keys "$HEP" episode-src)
 # <registration identity>-<per-episode nonce>: the watcher remembers every key
 # it has surfaced for good, so the identity alone would announce only the first
@@ -2373,6 +2382,9 @@ done
   || fail "the confirmed episode runner never released its claim"
 ep_damage
 ep_reconcile "failed=1" 1 "a source that failed again after recovering was not reported failed"
+[ "$(launch_failed_wake_count "$HEP" episode-src)" = 1 ] \
+  || fail "a lone unconfirmed launch after recovery was announced: $ep_out"
+ep_reconcile "failed=1" 1 "a source that kept failing after recovering was not reported failed"
 [ "$(launch_failed_wake_count "$HEP" episode-src)" = 2 ] \
   || fail "a new failure episode after a confirmed launch was not announced: $ep_out"
 # The earlier version of this assertion locked in ONE key for both episodes,
@@ -2390,6 +2402,53 @@ ep_repair
 pe "$HEP" retire episode-src >/dev/null 2>&1 || true
 pass "a launch that cannot confirm is announced once per failure episode"
 
+# --- a runner slow to claim never wakes anyone -------------------------------
+# The detached runner takes its claim before its source command runs, so the
+# confirm window measures only the runner's own start. On a loaded host that
+# start can outlast the window, and the next cycle then finds the source owned.
+# That lone unconfirmed launch must close its episode with no wake at all.
+HSL="$TMP_ROOT/hsl"; new_home "$HSL"
+SL_TRIGGER="$TMP_ROOT/slow-claim-trigger"
+pe_register "$HSL" lavish slow-src -- "$BLOCKER" "$SL_TRIGGER" "slow" >/dev/null
+SL_SOURCE="$HSL/state/procevent/slow-src.source"
+cp "$SL_SOURCE" "$TMP_ROOT/slow-good.source"
+awk '/^argv:$/ { print; exit } { print }' "$SL_SOURCE" > "$TMP_ROOT/slow-bad.source" \
+  || fail "could not prepare the unconfirmable slow registration"
+cat "$TMP_ROOT/slow-bad.source" > "$SL_SOURCE"
+sl_out=$(FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=2 pe "$HSL" reconcile) || true
+assert_contains "$sl_out" "failed=1" "fixture invalid: the first launch confirmed: $sl_out"
+[ "$(launch_failed_wake_count "$HSL" slow-src)" = 0 ] \
+  || fail "a single unconfirmed launch woke firstmate: $sl_out"
+cat "$TMP_ROOT/slow-good.source" > "$SL_SOURCE"
+pe "$HSL" start slow-src >/dev/null 2>&1 &
+SL_RUNNER=$!
+for _ in $(seq 1 150); do
+  [ "$(pe "$HSL" list 2>/dev/null | awk '$1 == "slow-src" { print $3 }')" = live ] && break
+  sleep 0.1
+done
+[ "$(pe "$HSL" list 2>/dev/null | awk '$1 == "slow-src" { print $3 }')" = live ] \
+  || fail "fixture invalid: the late runner never claimed slow-src"
+sl_out=$(FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=2 pe "$HSL" reconcile) || true
+assert_contains "$sl_out" "failed=0" "a source found owned on the next cycle was reported failed: $sl_out"
+[ "$(launch_failed_wake_count "$HSL" slow-src)" = 0 ] \
+  || fail "a runner that claimed late was announced as failing to start: $sl_out"
+: > "$SL_TRIGGER"
+wait "$SL_RUNNER" 2>/dev/null || true
+for _ in $(seq 1 100); do
+  [ -e "$FM_PROCEVENT_CLAIM_ROOT/slow-src.claim" ] || break
+  sleep 0.1
+done
+rm -f -- "$SL_TRIGGER"
+cat "$TMP_ROOT/slow-bad.source" > "$SL_SOURCE"
+sl_out=$(FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=2 pe "$HSL" reconcile) || true
+assert_contains "$sl_out" "failed=1" "fixture invalid: the relaunch after the late runner confirmed: $sl_out"
+[ "$(launch_failed_wake_count "$HSL" slow-src)" = 0 ] \
+  || fail "an owned observation did not close the earlier unconfirmed launch: $sl_out"
+cat "$TMP_ROOT/slow-good.source" > "$SL_SOURCE"
+: > "$SL_TRIGGER"
+pe "$HSL" retire slow-src >/dev/null 2>&1 || true
+pass "a runner slow to claim is found owned on the next cycle without a wake"
+
 # --- the launch-failed key fits the watcher's seen marker at the id limit ----
 # bin/fm-watch.sh names the marker for a surfaced key `.seen-procevent-<hex>`,
 # 16 + 2 * keylen bytes against NAME_MAX 255, so a key longer than 119 chars
@@ -2404,6 +2463,7 @@ if ! { awk '/^argv:$/ { print; exit } { print }' "$LK_SOURCE" > "$LK_SOURCE.tmp"
   && cat "$LK_SOURCE.tmp" > "$LK_SOURCE" && rm -f -- "$LK_SOURCE.tmp"; }; then
   fail "could not damage the long-id registration"
 fi
+lk_out=$(FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=2 pe "$HLK" reconcile) || true
 lk_out=$(FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=2 pe "$HLK" reconcile) || true
 assert_contains "$lk_out" "failed=1" "the long-id launch was not reported failed: $lk_out"
 lk_key=$(launch_failed_wake_keys "$HLK" "$LK_ID")

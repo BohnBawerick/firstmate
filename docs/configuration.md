@@ -2442,7 +2442,9 @@ Raising the confirm window lengthens every supervision cycle and delays wake del
 A source that can never start is reported as `failed=` with a non-zero exit on every `reconcile`, rather than counted as `started` and retried silently as though it were healthy, so a wedged source stays visible instead of presenting as armed.
 The `failed=` count reaches only the command's caller because `bin/fm-watch.sh` discards `reconcile` output and exit status.
 For that reason, `reconcile` also publishes a durable `check` wake once per failure episode, with key `procevent:<id>:launch-failed:<registration-identity>-<episode-nonce>`.
-Later cycles stay silent for that episode until a launch confirms.
+The episode is announced only when the next consecutive launch of the same registration also fails to confirm.
+The runner takes its claim before its source command runs, so the window measures only the runner's own start, which a heavily loaded host can stretch past the window; such a runner is found owned by the next cycle, which closes the episode with no wake.
+Later cycles stay silent for that episode until a launch confirms or the source is found owned.
 A later fresh failure gets a fresh key, because the watcher never re-surfaces a key it has already surfaced.
 
 - The announcement changes nothing about the launch: `reconcile` keeps relaunching the source every cycle exactly as before, and nothing is retried differently, throttled, or recovered from that signal.
