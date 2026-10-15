@@ -7,11 +7,12 @@
 #   bin/fm-dot-mailbox.sh list [--queue <q>] [--status <pending|replied|all>] [--cursor <c>] [--limit <n>]
 #   bin/fm-dot-mailbox.sh reply <message_id> <reply_text | -> [--correlation-id <id>]
 #   bin/fm-dot-mailbox.sh status
-#   bin/fm-dot-mailbox.sh serve [--host <host>] [--port <port>] [--stdio] [--allow-local-callbacks]
+#   bin/fm-dot-mailbox.sh serve [--host <host>] [--port <port>] [--allow-local-callbacks]
 #   bin/fm-dot-mailbox.sh --help
 #
 # Environment:
-#   FM_DOT_MAILBOX_DB              Path to SQLite database file.
+#   FM_DOT_MAILBOX_DB              Explicit SQLite database path.
+#   FM_HOME                        Owning home when no database path is supplied.
 #   FM_DOT_MCP_ALLOW_LOCAL_CALLBACK Allow loopback callback URLs (testing).
 #   FM_DOT_MCP_PORT                Default HTTP listen port (default: 8765).
 #   FM_DOT_MCP_HOST                Default HTTP host (default: 127.0.0.1).
@@ -28,7 +29,7 @@ Usage:
   fm-dot-mailbox.sh list [--queue <q>] [--status <pending|replied|all>] [--cursor <c>] [--limit <n>]
   fm-dot-mailbox.sh reply <message_id> <reply_text | -> [--correlation-id <id>]
   fm-dot-mailbox.sh status
-  fm-dot-mailbox.sh serve [--host <host>] [--port <port>] [--stdio] [--allow-local-callbacks]
+  fm-dot-mailbox.sh serve [--host <host>] [--port <port>] [--allow-local-callbacks]
   fm-dot-mailbox.sh --help
 
 Commands:
@@ -37,21 +38,11 @@ Commands:
   list     List messages with optional queue/status filters and pagination cursor.
   reply    Record an answer or completion report for a message.
   status   Show summary counts for messages and active subscriptions.
-  serve    Start the MCP HTTP or stdio server.
+  serve    Start the MCP HTTP server.
 EOF
 }
 
-resolve_db() {
-  if [ -n "${FM_DOT_MAILBOX_DB:-}" ]; then
-    printf '%s\n' "$FM_DOT_MAILBOX_DB"
-  elif [ -n "${FM_HOME:-}" ]; then
-    printf '%s\n' "$FM_HOME/data/dot-mcp/mailbox.sqlite3"
-  else
-    printf '%s\n' "${HOME}/.local/share/firstmate/dot-mcp/mailbox.sqlite3"
-  fi
-}
-
-DB_PATH="$(resolve_db)"
+DB_ARGS=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -60,11 +51,11 @@ while [ $# -gt 0 ]; do
         echo "fm-dot-mailbox.sh: --db requires an argument" >&2
         exit 1
       fi
-      DB_PATH="$2"
+      DB_ARGS=(--db "$2")
       shift 2
       ;;
     --db=*)
-      DB_PATH="${1#*=}"
+      DB_ARGS=(--db "${1#*=}")
       shift
       ;;
     --help|-h|help)
@@ -72,7 +63,7 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     submit|get|list|reply|status|serve)
-      exec python3 "$PYTHON_ENGINE" --db "$DB_PATH" "$@"
+      exec python3 "$PYTHON_ENGINE" "${DB_ARGS[@]}" "$@"
       ;;
     *)
       echo "fm-dot-mailbox.sh: unknown command '$1'" >&2

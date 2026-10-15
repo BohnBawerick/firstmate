@@ -14,7 +14,6 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 MAILBOX="$ROOT/bin/fm-dot-mailbox.sh"
-PYTHON_ENGINE="$ROOT/bin/fm-dot-mailbox.py"
 TMP_ROOT=$(fm_test_tmproot fm-dot-mailbox)
 DB_PATH="$TMP_ROOT/mailbox.sqlite3"
 
@@ -38,7 +37,9 @@ test_help_plumbing() {
 
 test_unknown_command_fails() {
   local out rc
-  out=$("$MAILBOX" bogus 2>&1 || true)
+  out=$("$MAILBOX" bogus 2>&1)
+  rc=$?
+  expect_code 1 "$rc" "unknown command exits non-zero"
   assert_contains "$out" "unknown command 'bogus'" "unknown command reports error"
   pass "fm-dot-mailbox: unknown command exits non-zero"
 }
@@ -145,7 +146,7 @@ server.serve_forever()
   fm_test_track_pid "$rcv_pid"
 
   # Start mailbox MCP server in background
-  python3 "$PYTHON_ENGINE" --db "$srv_db" --allow-local-callbacks serve --host 127.0.0.1 --port "$srv_port" >"$log_dir/srv.log" 2>&1 &
+  "$MAILBOX" --db "$srv_db" serve --allow-local-callbacks --host 127.0.0.1 --port "$srv_port" >"$log_dir/srv.log" 2>&1 &
   srv_pid=$!
   fm_test_track_pid "$srv_pid"
 
@@ -290,7 +291,7 @@ test_security_callback_contract() {
   mkdir -p "$log_dir"
 
   # Start mailbox MCP server in default strict security mode
-  python3 "$PYTHON_ENGINE" --db "$srv_db" serve --host 127.0.0.1 --port "$srv_port" >"$log_dir/srv.log" 2>&1 &
+  "$MAILBOX" --db "$srv_db" serve --host 127.0.0.1 --port "$srv_port" >"$log_dir/srv.log" 2>&1 &
   srv_pid=$!
   fm_test_track_pid "$srv_pid"
 
@@ -395,3 +396,411 @@ test_mailbox_crud_and_idempotency
 test_mcp_http_and_event_callback_delivery
 test_security_callback_contract
 test_server_restart_persistence
+
+python3 - "$ROOT" "$TMP_ROOT" <<'PY'
+import base64
+import concurrent.futures
+import datetime
+import http.client
+import http.server
+import importlib.util
+import json
+import os
+from pathlib import Path
+import socket
+import sqlite3
+import ssl
+import subprocess
+import sys
+import threading
+import time
+import unittest
+from unittest.mock import patch
+
+root, temporary = map(Path, sys.argv[1:])
+spec = importlib.util.spec_from_file_location("mailbox", root / "bin/fm-dot-mailbox.py")
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+cli = ["bash", str(root / "bin/fm-dot-mailbox.sh")]
+secret1 = "whsec_" + base64.b64encode(b"a" * 32).decode()
+secret2 = "whsec_" + base64.b64encode(b"b" * 32).decode()
+secret3 = "whsec_" + base64.b64encode(b"c" * 32).decode()
+
+
+class Receiver(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers["Content-Length"]))
+        payload = json.loads(body)
+        record = {"payload": payload, "body": body, "headers": dict(self.headers)}
+        with self.server.guard:
+            self.server.received.append(record)
+            status = 200 if payload.get("type") == "verification" else self.server.event_status
+        self.send_response(status)
+        self.end_headers()
+        if payload.get("type") == "verification":
+            self.wfile.write(json.dumps({"challenge": payload["challenge"]}).encode())
+
+
+class MailboxRegressionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Receiver)
+        cls.server.received = []
+        cls.server.guard = threading.Lock()
+        cls.server.event_status = 200
+        cls.receiver_thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.receiver_thread.start()
+        cls.url = f"http://127.0.0.1:{cls.server.server_port}/callback"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.receiver_thread.join()
+
+    def setUp(self):
+        self.directory = temporary / self._testMethodName
+        self.directory.mkdir(mode=0o700)
+        self.box = m.Mailbox(str(self.directory / "mailbox.db"), allow_local_callbacks=True)
+        self.addCleanup(self.box.conn.close)
+        with self.server.guard:
+            self.server.received.clear()
+            self.server.event_status = 200
+
+    def subscribe(self, **overrides):
+        params = {"name": "message.created", "arguments": {"queue": "work"},
+                  "delivery": {"mode": "webhook", "url": self.url, "secret": secret1}}
+        params.update(overrides)
+        response = m.MCPDispatcher(self.box).dispatch({"jsonrpc": "2.0", "id": 1, "method": "events/subscribe", "params": params})
+        self.assertNotIn("error", response)
+        return response["result"]
+
+    def events(self):
+        with self.server.guard:
+            return [record for record in self.server.received if "eventId" in record["payload"]]
+
+    def test_atomic_submission_restart_and_stable_retries(self):
+        self.subscribe()
+        self.server.event_status = 503
+        original = self.box.submit_message("nonce", "work", idempotency_key="one")
+        duplicate = self.box.submit_message("nonce", "work", idempotency_key="one")
+        self.assertEqual(original["id"], duplicate["id"])
+        self.assertEqual(original["delivery"], {"pending": 1, "delivered": 0, "undelivered": 0})
+        self.assertEqual(self.events(), [])
+        self.box.conn.close()
+        self.box = m.Mailbox(str(self.directory / "mailbox.db"), allow_local_callbacks=True)
+        self.addCleanup(self.box.conn.close)
+        self.box.deliver_pending_events()
+        event = self.events()[0]
+        self.assertNotIn("correlation_id", event["payload"]["data"])
+        catalog = m.MCPDispatcher(self.box).dispatch({"jsonrpc": "2.0", "id": 2, "method": "events/list"})
+        schema = catalog["result"]["events"][0]["payloadSchema"]
+        data = event["payload"]["data"]
+        self.assertTrue(set(schema["required"]) <= data.keys())
+        self.assertTrue(data.keys() <= schema["properties"].keys())
+        self.assertTrue(all(isinstance(value, str) for value in data.values()))
+        self.assertEqual(self.box.get_status()["events"]["pending"], 1)
+        self.server.event_status = 200
+        time.sleep(1.05)
+        self.box.deliver_pending_events()
+        repeated = self.events()[1]
+        self.assertEqual(event["body"], repeated["body"])
+        self.assertEqual(event["headers"]["webhook-id"], repeated["headers"]["webhook-id"])
+        self.assertNotEqual(event["headers"]["webhook-timestamp"], repeated["headers"]["webhook-timestamp"])
+        self.assertEqual(self.box.get_message_by_id(original["id"])["delivery"]["delivered"], 1)
+        self.box.deliver_pending_events()
+        self.assertEqual(len(self.events()), 2)
+        self.assertEqual(self.box.get_messages(queue="work")["messages"][0]["id"], original["id"])
+
+    def test_bounded_retries_and_terminal_responses(self):
+        self.subscribe()
+        self.server.event_status = 503
+        message = self.box.submit_message("permanent failure", "work")
+        self.box.deliver_pending_events()
+        self.box.deliver_pending_events()
+        self.assertEqual(len(self.events()), 1)
+        for delay in (1.05, 2.05, 4.05):
+            time.sleep(delay)
+            self.box.deliver_pending_events()
+        self.box.deliver_pending_events()
+        self.assertEqual(len(self.events()), 4)
+        self.assertEqual(self.box.get_message_by_id(message["id"])["delivery"]["undelivered"], 1)
+        self.assertEqual(len({event["payload"]["eventId"] for event in self.events()}), 1)
+        for status in (410, 413):
+            self.server.event_status = status
+            message = self.box.submit_message(f"terminal-{status}", "work")
+            self.box.deliver_pending_events()
+            self.box.deliver_pending_events()
+            self.assertEqual(self.box.get_message_by_id(message["id"])["delivery"]["undelivered"], 1)
+        self.assertEqual(len(self.events()), 6)
+
+    def test_transaction_rolls_back_message_with_failed_event(self):
+        self.subscribe()
+        with self.box.conn:
+            self.box.conn.execute("CREATE TRIGGER reject_event BEFORE INSERT ON pending_events BEGIN SELECT RAISE(ABORT, 'event failure'); END")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.box.submit_message("must roll back", "work", idempotency_key="rollback")
+        self.assertEqual(self.box.get_messages()["messages"], [])
+        with self.box.conn:
+            self.box.conn.execute("DROP TRIGGER reject_event")
+        self.box.submit_message("must commit", "work", idempotency_key="rollback")
+        self.assertEqual(self.box.get_status()["events"]["pending"], 1)
+
+    def test_concurrent_threads_and_connections(self):
+        self.subscribe()
+        second = m.Mailbox(str(self.directory / "mailbox.db"), allow_local_callbacks=True)
+        self.addCleanup(second.conn.close)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
+            futures = [pool.submit((self.box if i % 2 else second).submit_message,
+                                   "one assignment", "work", "correlation", "one-key") for i in range(64)]
+            ids = {future.result()["id"] for future in futures}
+        self.assertEqual(len(ids), 1)
+        self.assertEqual(self.box.get_status()["total_messages"], 1)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            list(pool.map(lambda box: box.deliver_pending_events(), (self.box, second)))
+        self.assertEqual(len(self.events()), 1)
+        self.assertEqual(self.box.get_status()["events"]["delivered"], 1)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(lambda i: (self.box if i % 2 else second).reply_message(next(iter(ids)), "result"), range(24)))
+        self.assertEqual(self.box.get_message_by_id(next(iter(ids)))["reply"], "result")
+        commands = [cli + ["--db", str(self.directory / "process.db"), "submit", "--idempotency-key", "same", "parallel"] for _ in range(12)]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            processes = list(pool.map(lambda command: subprocess.run(command, capture_output=True, text=True), commands))
+        self.assertTrue(all(process.returncode == 0 for process in processes), [p.stderr for p in processes])
+        self.assertEqual(len({json.loads(p.stdout)["id"] for p in processes}), 1)
+
+    def test_shared_byte_limits_pagination_and_exact_replies(self):
+        for field in ("queue", "correlation_id", "idempotency_key"):
+            with self.assertRaises(ValueError):
+                self.box.submit_message("valid", **{field: "é" * 129})
+        dispatcher = m.MCPDispatcher(self.box)
+        response = dispatcher.dispatch({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+            "name": "submit_message", "arguments": {"content": "x" * (16 * 1024 + 1)}}})
+        self.assertIn("error", response)
+        oversized = subprocess.run(cli + ["--db", self.box.db_path, "submit", "-"], input=b"x" * (300 * 1024), capture_output=True)
+        self.assertNotEqual(oversized.returncode, 0)
+        self.assertEqual(self.box.get_status()["total_messages"], 0)
+        self.subscribe()
+        ids = []
+        for i in range(4):
+            message = self.box.submit_message("\x00" * (16 * 1024), "work", "shared")
+            ids.append(message["id"])
+            self.box.reply_message(message["id"], "\x00" * (16 * 1024), "shared")
+        with self.assertRaises(ValueError):
+            self.box.reply_message("shared", "must not target a correlation")
+        with self.assertRaises(ValueError):
+            self.box.reply_message(ids[0], "wrong correlation", "different")
+        with self.assertRaises(ValueError):
+            self.box.reply_message(ids[0], "x" * (16 * 1024 + 1))
+        oversized = subprocess.run(cli + ["--db", self.box.db_path, "reply", ids[0], "-"], input=b"x" * (300 * 1024), capture_output=True)
+        self.assertNotEqual(oversized.returncode, 0)
+        seen = []
+        cursor = None
+        while True:
+            response = dispatcher.dispatch({"jsonrpc": "2.0", "id": "request", "method": "tools/call", "params": {
+                "name": "get_messages", "arguments": {"cursor": cursor, "limit": 50}}})
+            self.assertLessEqual(len(m.json_bytes(response)), 256 * 1024)
+            page = json.loads(response["result"]["content"][0]["text"])
+            if not page["messages"]:
+                break
+            seen += [msg["id"] for msg in page["messages"]]
+            cursor = page["next_cursor"]
+        self.assertEqual(seen, ids)
+        self.box.deliver_pending_events()
+        for event in self.events():
+            self.assertLessEqual(len(event["body"]), 256 * 1024)
+            self.assertEqual(event["payload"]["data"]["correlation_id"], "shared")
+
+    def test_owner_only_storage_and_no_home_fallback(self):
+        self.assertEqual((self.directory / "mailbox.db").stat().st_mode & 0o777, 0o600)
+        for suffix in ("-wal", "-shm"):
+            self.assertEqual(Path(self.box.db_path + suffix).stat().st_mode & 0o777, 0o600)
+        for kind in ("directory", "database", "sidecar", "symlink"):
+            storage = self.directory / kind
+            storage.mkdir(mode=0o700)
+            path = storage / "unsafe.db"
+            if kind == "directory":
+                storage.chmod(0o755)
+            elif kind == "database":
+                path.touch(mode=0o644)
+            elif kind == "sidecar":
+                path.touch(mode=0o600)
+                Path(str(path) + "-wal").touch(mode=0o644)
+            else:
+                path.symlink_to(self.box.db_path)
+            process = subprocess.run(cli + ["--db", str(path), "status"], capture_output=True, text=True)
+            self.assertNotEqual(process.returncode, 0)
+            self.assertIn("Unsafe mailbox storage", process.stderr)
+        env = {key: value for key, value in os.environ.items() if key not in ("FM_HOME", "FM_DOT_MAILBOX_DB")}
+        process = subprocess.run(cli + ["status"], env=env, capture_output=True, text=True)
+        self.assertNotEqual(process.returncode, 0)
+        self.assertIn("Set --db", process.stderr)
+        env["FM_HOME"] = str(self.directory / "home")
+        process = subprocess.run(cli + ["status"], env=env, capture_output=True, text=True)
+        self.assertEqual(process.returncode, 0, process.stderr)
+        self.assertTrue((Path(env["FM_HOME"]) / "data/dot-mcp/mailbox.sqlite3").is_file())
+
+    def test_lifetime_rotation_and_expiration(self):
+        started = datetime.datetime.now(datetime.timezone.utc)
+        subscription = self.subscribe(ttlMs=1000)
+        expiration = datetime.datetime.fromisoformat(subscription["refreshBefore"].replace("Z", "+00:00"))
+        self.assertGreater((expiration - started).total_seconds(), 0)
+        self.assertLess((expiration - started).total_seconds(), 1.5)
+        for secret in (secret2, secret3):
+            renewed = self.subscribe(ttlMs=2000, delivery={"mode": "webhook", "url": self.url, "secret": secret})
+            self.assertEqual(renewed["id"], subscription["id"])
+        self.box.conn.close()
+        self.box = m.Mailbox(str(self.directory / "mailbox.db"), allow_local_callbacks=True)
+        self.addCleanup(self.box.conn.close)
+        self.box.submit_message("rotated", "work")
+        self.box.deliver_pending_events()
+        event = self.events()[0]
+        for secret in (secret1, secret2, secret3):
+            expected = m.sign_standard_webhook(base64.b64decode(secret[6:]), event["headers"]["webhook-id"],
+                                              event["headers"]["webhook-timestamp"], event["body"])
+            self.assertIn(expected, event["headers"]["webhook-signature"].split())
+        future = time.time() + 301
+        renewed = self.subscribe(ttlMs=86400 * 1000 * 100)
+        expiration = datetime.datetime.fromisoformat(renewed["refreshBefore"].replace("Z", "+00:00"))
+        self.assertLessEqual((expiration - datetime.datetime.now(datetime.timezone.utc)).total_seconds(), 86400)
+        with patch.object(m.time, "time", return_value=future):
+            self.box.submit_message("after rotation", "work")
+            self.box.deliver_pending_events()
+        self.assertEqual(len(self.events()[-1]["headers"]["webhook-signature"].split()), 1)
+        self.subscribe(ttlMs=1)
+        self.box.submit_message("expired", "work")
+        time.sleep(.02)
+        self.box.deliver_pending_events()
+        self.assertEqual(len(self.events()), 2)
+        self.box.submit_message("no active subscriber", "work")
+        self.assertEqual(self.box.get_messages()["messages"][-1]["delivery"]["pending"], 0)
+
+    def test_unsubscribe_stops_queued_delivery(self):
+        self.subscribe()
+        message = self.box.submit_message("queued", "work")
+        for _ in range(2):
+            self.box.unsubscribe_event("message.created", {"queue": "work"}, {"url": self.url})
+        self.box.deliver_pending_events()
+        self.assertEqual(self.events(), [])
+        self.assertEqual(self.box.get_message_by_id(message["id"])["delivery"]["undelivered"], 1)
+
+    def test_http_startup_recovery_routes_and_round_trip(self):
+        self.subscribe()
+        nonce = "hello-" + os.urandom(12).hex()
+        message = self.box.submit_message(nonce, "work", nonce, nonce)
+        self.box.conn.close()
+        port_socket = socket.socket()
+        port_socket.bind(("127.0.0.1", 0))
+        port = port_socket.getsockname()[1]
+        port_socket.close()
+        process = subprocess.Popen(cli + ["--db", str(self.directory / "mailbox.db"), "serve",
+                                          "--allow-local-callbacks", "--port", str(port)],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+
+        def request(method, path, body=None):
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            try:
+                connection.request(method, path, body=json.dumps(body) if body is not None else None,
+                                   headers={"Content-Type": "application/json"})
+                response = connection.getresponse()
+                data = response.read()
+                return response.status, data
+            finally:
+                connection.close()
+
+        try:
+            for _ in range(100):
+                try:
+                    if request("GET", "/health")[0] == 200 and self.events():
+                        break
+                except OSError:
+                    pass
+                if process.poll() is not None:
+                    self.fail(process.stderr.read())
+                time.sleep(.05)
+            else:
+                self.fail("foreground server did not recover the pending event")
+            for method, path in (("GET", "/"), ("GET", "/mcp"), ("POST", "/")):
+                self.assertEqual(request(method, path, {})[0], 404)
+            for method in ("server/discover", "initialize"):
+                status, data = request("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": method})
+                self.assertEqual(status, 200)
+                self.assertIn("result", json.loads(data))
+            status, _ = request("POST", "/mcp", {"jsonrpc": "2.0", "method": "notifications/initialized"})
+            self.assertEqual(status, 204)
+            _, data = request("POST", "/mcp", {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
+                "name": "get_messages", "arguments": {"queue": "work"}}})
+            assignments = json.loads(json.loads(data)["result"]["content"][0]["text"])["messages"]
+            self.assertEqual(assignments[0]["content"], nonce)
+            self.assertEqual(assignments[0]["id"], message["id"])
+            _, data = request("POST", "/mcp", {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
+                "name": "reply", "arguments": {"message_id": message["id"], "correlation_id": nonce, "reply": nonce}}})
+            self.assertFalse(json.loads(data)["result"]["isError"])
+            result = subprocess.run(cli + ["--db", str(self.directory / "mailbox.db"), "get", message["id"]],
+                                    capture_output=True, text=True, check=True)
+            self.assertEqual(json.loads(result.stdout)["reply"], nonce)
+            self.assertEqual(len(self.events()), 1)
+        finally:
+            process.terminate()
+            process.communicate(timeout=10)
+
+    def test_tls_destination_pinning_rebinding_and_no_redirects(self):
+        certificate, key = self.directory / "cert.pem", self.directory / "key.pem"
+        command = ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+                   "-subj", "/CN=callback.test", "-addext", "subjectAltName=DNS:callback.test",
+                   "-keyout", str(key), "-out", str(certificate)]
+        subprocess.run(command, check=True, capture_output=True)
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Receiver)
+        server.received, server.guard, server.event_status = [], threading.Lock(), 200
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(certificate, key)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        client_context = ssl.create_default_context(cafile=str(certificate))
+        real_socket = socket.socket
+        connections = []
+
+        class PinnedSocket(real_socket):
+            def connect(self, address):
+                connections.append(address)
+                return super().connect(("127.0.0.1", address[1]))
+
+        public = [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("93.184.216.34", server.server_port))]
+        private = [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", server.server_port))]
+        self.box.allow_local_callbacks = False
+        destination = {"mode": "webhook", "url": f"https://callback.test:{server.server_port}/callback", "secret": secret1}
+        try:
+            with patch.object(m.socket, "socket", PinnedSocket), patch.object(m.ssl, "create_default_context", return_value=client_context):
+                with patch.object(m.socket, "getaddrinfo", side_effect=[public, private]) as dns:
+                    self.subscribe(delivery=destination)
+                    self.assertEqual(dns.call_count, 1)
+                    self.box.submit_message("private delivery blocked", "work")
+                    self.box.deliver_pending_events()
+                    self.assertEqual(dns.call_count, 2)
+                    self.assertEqual(len(server.received), 1)
+                with patch.object(m.socket, "getaddrinfo", return_value=public):
+                    server.event_status = 302
+                    status, _ = m.post_callback(destination["url"], b'{"eventId":"redirect"}', {})
+                    self.assertEqual(status, 302)
+                    with self.assertRaises(ssl.SSLCertVerificationError):
+                        m.post_callback(destination["url"].replace("callback.test", "wrong.test"), b'{}', {})
+            self.assertTrue(connections)
+            self.assertTrue(all(address[0] == "93.184.216.34" for address in connections))
+            for address in ("100.64.0.1", "10.0.0.1", "127.0.0.1", "169.254.1.1", "::1", "::ffff:100.64.0.1"):
+                blocked = [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (address, 443))]
+                with patch.object(m.socket, "getaddrinfo", return_value=blocked):
+                    with self.assertRaises(ValueError):
+                        m.post_callback(destination["url"], b'{}', {})
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+
+unittest.main(argv=[sys.argv[0]], verbosity=2)
+PY
+[ "$?" -eq 0 ] || fail "mailbox regression cases failed"

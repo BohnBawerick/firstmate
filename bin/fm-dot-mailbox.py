@@ -7,10 +7,11 @@
 #   fm-dot-mailbox.py list [--queue <q>] [--status <pending|replied|all>] [--cursor <c>] [--limit <n>]
 #   fm-dot-mailbox.py reply <message_id> <reply_text | -> [--correlation-id <id>]
 #   fm-dot-mailbox.py status
-#   fm-dot-mailbox.py serve [--host <host>] [--port <port>] [--stdio] [--allow-local-callbacks]
+#   fm-dot-mailbox.py serve [--host <host>] [--port <port>] [--allow-local-callbacks]
 #
 # Environment:
-#   FM_DOT_MAILBOX_DB             Path to SQLite database file.
+#   FM_DOT_MAILBOX_DB             Explicit SQLite database path.
+#   FM_HOME                       Owning home when no database path is supplied.
 #   FM_DOT_MCP_ALLOW_LOCAL_CALLBACK  Allow loopback/http callback URLs (for tests).
 #   FM_DOT_MCP_PORT               Default port for serve (default: 8765).
 #   FM_DOT_MCP_HOST               Default host for serve (default: 127.0.0.1).
@@ -19,25 +20,32 @@ import base64
 import datetime
 import hashlib
 import hmac
+import http.client
 import http.server
 import ipaddress
 import json
 import os
 import secrets
-import select
 import socket
 import sqlite3
+import ssl
+import stat
+import threading
+from contextlib import contextmanager
 import sys
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
-import uuid
 
 PROTOCOL_VERSION = "2026-07-28"
 DEFAULT_QUEUE = "default"
 MAX_BODY_BYTES = 256 * 1024  # 256 KiB
-DEFAULT_SUB_LIFETIME_SEC = 86400  # 24 hours
+MAX_TEXT_BYTES = 16 * 1024
+MAX_FIELD_BYTES = 256
+DEFAULT_SUB_LIFETIME_MS = 24 * 60 * 60 * 1000
+MAX_SUB_LIFETIME_MS = DEFAULT_SUB_LIFETIME_MS
+SECRET_ROTATION_SEC = 300
+MAX_DELIVERY_ATTEMPTS = 4
+CALLBACK_TIMEOUT_SEC = 10
 
 
 def default_db_path():
@@ -48,23 +56,72 @@ def default_db_path():
     fm_home = os.environ.get("FM_HOME")
     if fm_home:
         return os.path.join(fm_home, "data", "dot-mcp", "mailbox.sqlite3")
-    return os.path.join(os.path.expanduser("~"), ".local", "share", "firstmate", "dot-mcp", "mailbox.sqlite3")
+    raise ValueError("Set --db, FM_DOT_MAILBOX_DB, or FM_HOME")
 
 
 def now_iso():
-    return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def now_unix():
     return int(time.time())
 
 
+def json_bytes(value):
+    return json.dumps(value, ensure_ascii=False).encode("utf-8")
+
+
+def bounded_json(value):
+    result = json_bytes(value)
+    if len(result) > MAX_BODY_BYTES:
+        raise ValueError("Serialized result exceeds 256 KiB")
+    return result
+
+
+def validate_text(name, value, limit=MAX_FIELD_BYTES, optional=False, allow_empty=False):
+    if optional and value is None:
+        return
+    if not isinstance(value, str) or (not value and not allow_empty):
+        raise ValueError(f"{name} must be a {'nonempty ' if not allow_empty else ''}string")
+    if len(value.encode("utf-8")) > limit:
+        raise ValueError(f"{name} exceeds {limit} UTF-8 bytes")
+
+
+def tool_result(value, req_id=None):
+    return {
+        "jsonrpc": "2.0", "id": req_id,
+        "result": {"content": [{"type": "text", "text": json_bytes(value).decode("utf-8")}], "isError": False},
+    }
+
+
+def check_private_path(path, directory=False):
+    info = os.lstat(path)
+    expected_type = stat.S_ISDIR if directory else stat.S_ISREG
+    if (not expected_type(info.st_mode) or info.st_uid != os.getuid()
+            or info.st_mode & 0o077 or (not directory and info.st_nlink != 1)):
+        raise ValueError(f"Unsafe mailbox storage permissions or ownership: {path}")
+
+
 def init_db(db_path):
-    os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+    db_path = os.path.abspath(db_path)
+    parent = os.path.dirname(db_path)
+    os.makedirs(parent, mode=0o700, exist_ok=True)
+    check_private_path(parent, directory=True)
+    try:
+        fd = os.open(db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        check_private_path(db_path)
+    else:
+        os.close(fd)
+    for suffix in ("-wal", "-shm", "-journal"):
+        if os.path.lexists(db_path + suffix):
+            check_private_path(db_path + suffix)
     conn = sqlite3.connect(db_path, timeout=10.0, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=10000")
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
     with conn:
+        conn.execute("BEGIN IMMEDIATE")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,7 +137,6 @@ def init_db(db_path):
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_queue_status ON messages(queue, status)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_id ON messages(id)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS subscriptions (
                 id TEXT PRIMARY KEY,
@@ -95,6 +151,28 @@ def init_db(db_path):
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_subscriptions_event ON subscriptions(event_name, filter_queue)")
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS retired_signing_keys (
+                subscription_id TEXT NOT NULL,
+                signing_secret TEXT NOT NULL,
+                expires_at REAL NOT NULL,
+                PRIMARY KEY (subscription_id, signing_secret)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pending_events (
+                id TEXT PRIMARY KEY,
+                subscription_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                body TEXT NOT NULL,
+                state TEXT NOT NULL DEFAULT 'pending',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                next_attempt_at REAL NOT NULL DEFAULT 0,
+                last_error TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_events_due ON pending_events(state, next_attempt_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_events_message ON pending_events(message_id)")
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS delivery_attempts (
                 id TEXT PRIMARY KEY,
                 event_id TEXT NOT NULL,
@@ -108,58 +186,61 @@ def init_db(db_path):
     return conn
 
 
-# --- Security and Webhook Helpers ---
-
-class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise urllib.error.HTTPError(req.full_url, code, f"Redirects not permitted ({code})", headers, fp)
-
-
 def check_ip_allowed(ip_str, allow_local=False):
     try:
         ip = ipaddress.ip_address(ip_str)
     except ValueError:
         return False, f"Invalid IP address: {ip_str}"
-    if allow_local:
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    if allow_local and ip.is_loopback:
         return True, None
-    if ip.is_loopback:
-        return False, f"Loopback address blocked: {ip_str}"
-    if ip.is_private:
-        return False, f"Private network address blocked: {ip_str}"
-    if ip.is_link_local:
-        return False, f"Link-local address blocked: {ip_str}"
-    if ip.is_multicast:
-        return False, f"Multicast address blocked: {ip_str}"
-    if ip.is_reserved or ip.is_unspecified:
-        return False, f"Reserved/unspecified address blocked: {ip_str}"
+    if not ip.is_global or ip.is_multicast or ip.is_reserved:
+        return False, f"Non-public address blocked: {ip_str}"
     return True, None
 
 
-def validate_destination_url(url, allow_local=False):
+def post_callback(url, body, headers, allow_local=False):
+    validate_text("delivery.url", url, 4096)
+    if len(body) > MAX_BODY_BYTES:
+        raise ValueError("Event payload exceeds 256 KiB")
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in (("https", "http") if allow_local else ("https",)):
+        raise ValueError("Destination URL must use HTTPS")
+    if not parsed.hostname or parsed.username is not None or parsed.password is not None or parsed.fragment:
+        raise ValueError("Destination URL requires a hostname without credentials or fragment")
+    hostname = parsed.hostname.encode("idna").decode("ascii")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    addresses = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
+    if not addresses:
+        raise ValueError("Destination has no addresses")
+    for _, _, _, _, address in addresses:
+        ok, error = check_ip_allowed(address[0], allow_local)
+        if not ok:
+            raise ValueError(error)
+    family, kind, proto, _, address = addresses[0]
+    conn = http.client.HTTPConnection(hostname, port, timeout=CALLBACK_TIMEOUT_SEC)
+    sock = socket.socket(family, kind, proto)
     try:
-        parsed = urllib.parse.urlsplit(url)
-    except Exception as e:
-        return False, f"Invalid URL: {e}"
-    if not allow_local:
-        if parsed.scheme.lower() != "https":
-            return False, "Destination URL must use HTTPS"
-    else:
-        if parsed.scheme.lower() not in ("http", "https"):
-            return False, "Destination URL must use HTTP or HTTPS"
-    hostname = parsed.hostname
-    if not hostname:
-        return False, "Destination URL missing hostname"
-    try:
-        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
-        addrs = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
-        for _, _, _, _, sockaddr in addrs:
-            ip_str = sockaddr[0]
-            ok, err = check_ip_allowed(ip_str, allow_local=allow_local)
-            if not ok:
-                return False, err
-    except socket.gaierror as e:
-        return False, f"Cannot resolve destination host {hostname}: {e}"
-    return True, None
+        sock.settimeout(CALLBACK_TIMEOUT_SEC)
+        sock.connect(address)
+        if parsed.scheme == "https":
+            sock = ssl.create_default_context().wrap_socket(sock, server_hostname=hostname)
+        conn.sock = sock
+        target = parsed.path or "/"
+        if parsed.query:
+            target += "?" + parsed.query
+        conn.request("POST", target, body=body, headers=headers)
+        response = conn.getresponse()
+        if not 200 <= response.status < 300:
+            return response.status, b""
+        response_body = response.read(MAX_BODY_BYTES + 1)
+        if len(response_body) > MAX_BODY_BYTES:
+            raise ValueError("Callback response exceeds 256 KiB")
+        return response.status, response_body
+    finally:
+        conn.close()
+        sock.close()
 
 
 def validate_signing_secret(secret_str):
@@ -169,10 +250,7 @@ def validate_signing_secret(secret_str):
     try:
         raw_key = base64.b64decode(b64_part, validate=True)
     except Exception:
-        try:
-            raw_key = base64.b64decode(b64_part + "===")
-        except Exception:
-            return None, "Signing secret contains invalid base64 encoding"
+        return None, "Signing secret contains invalid base64 encoding"
     if not (24 <= len(raw_key) <= 64):
         return None, f"Signing secret decoded length must be 24-64 bytes (got {len(raw_key)})"
     return raw_key, None
@@ -196,258 +274,262 @@ class Mailbox:
     def __init__(self, db_path, allow_local_callbacks=False):
         self.db_path = db_path
         self.allow_local_callbacks = allow_local_callbacks
+        self.lock = threading.RLock()
         self.conn = init_db(db_path)
 
+    @contextmanager
+    def transaction(self):
+        with self.lock, self.conn:
+            self.conn.execute("BEGIN IMMEDIATE")
+            yield
+
     def submit_message(self, content, queue=DEFAULT_QUEUE, correlation_id=None, idempotency_key=None):
-        if not content:
-            raise ValueError("content is required")
-        queue = queue or DEFAULT_QUEUE
-        with self.conn:
-            if idempotency_key:
-                cur = self.conn.execute("SELECT seq, id, queue, content, correlation_id, idempotency_key, status, reply, created_at, updated_at FROM messages WHERE idempotency_key = ?", (idempotency_key,))
-                row = cur.fetchone()
+        validate_text("content", content, MAX_TEXT_BYTES)
+        validate_text("queue", queue)
+        validate_text("correlation_id", correlation_id, optional=True)
+        validate_text("idempotency_key", idempotency_key, optional=True)
+        with self.transaction():
+            if idempotency_key is not None:
+                row = self.conn.execute("SELECT * FROM messages WHERE idempotency_key = ?", (idempotency_key,)).fetchone()
                 if row:
                     return self._row_to_msg(row)
             msg_id = f"msg_{secrets.token_hex(8)}"
             ts = now_iso()
             self.conn.execute(
                 """
-                INSERT INTO messages (id, queue, content, correlation_id, idempotency_key, status, reply, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, 'pending', NULL, ?, ?)
+                INSERT INTO messages (id, queue, content, correlation_id, idempotency_key, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (msg_id, queue, content, correlation_id, idempotency_key, ts, ts),
             )
-            cur = self.conn.execute("SELECT seq, id, queue, content, correlation_id, idempotency_key, status, reply, created_at, updated_at FROM messages WHERE id = ?", (msg_id,))
-            msg = self._row_to_msg(cur.fetchone())
-
-        # Trigger event delivery for matching subscriptions
-        self.deliver_message_created_event(msg)
-        return msg
+            msg = self._row_to_msg(self.conn.execute("SELECT * FROM messages WHERE id = ?", (msg_id,)).fetchone())
+            body = self._event_body(msg)
+            subscriptions = self.conn.execute(
+                """SELECT id FROM subscriptions WHERE event_name = 'message.created' AND refresh_before > ?
+                   AND (filter_queue IS NULL OR filter_queue = ?)""", (ts, queue),
+            ).fetchall()
+            for sub in subscriptions:
+                event_id = f"evt_{secrets.token_hex(8)}"
+                body["eventId"] = event_id
+                self.conn.execute(
+                    "INSERT INTO pending_events (id, subscription_id, message_id, body) VALUES (?, ?, ?, ?)",
+                    (event_id, sub["id"], msg_id, bounded_json(body).decode("utf-8")),
+                )
+            msg = self._row_to_msg(self.conn.execute("SELECT * FROM messages WHERE id = ?", (msg_id,)).fetchone())
+            bounded_json(tool_result(msg))
+            return msg
 
     def get_messages(self, queue=None, status=None, cursor=None, limit=10):
-        limit = max(1, min(int(limit or 10), 50))
-        query = "SELECT seq, id, queue, content, correlation_id, idempotency_key, status, reply, created_at, updated_at FROM messages WHERE 1=1"
+        validate_text("queue", queue, optional=True)
+        if status not in (None, "pending", "replied", "all"):
+            raise ValueError("Invalid message status")
+        limit = max(1, min(int(limit), 50))
+        query = "SELECT * FROM messages WHERE 1=1"
         params = []
-        if queue:
+        if queue is not None:
             query += " AND queue = ?"
             params.append(queue)
         if status and status != "all":
             query += " AND status = ?"
             params.append(status)
-        if cursor is not None and str(cursor).strip():
-            try:
-                seq_cursor = int(cursor)
-                query += " AND seq > ?"
-                params.append(seq_cursor)
-            except ValueError:
-                pass
+        if cursor is not None:
+            validate_text("cursor", cursor)
+            query += " AND seq > ?"
+            params.append(int(cursor))
         query += " ORDER BY seq ASC LIMIT ?"
         params.append(limit)
-
-        cur = self.conn.execute(query, params)
-        rows = cur.fetchall()
-        messages = [self._row_to_msg(r) for r in rows]
-        next_cursor = str(messages[-1]["seq"]) if messages else None
-        return {"messages": messages, "next_cursor": next_cursor}
+        result = {"messages": [], "next_cursor": None}
+        with self.lock:
+            rows = self.conn.execute(query, params).fetchall()
+            for row in rows:
+                msg = self._row_to_msg(row)
+                candidate = {"messages": result["messages"] + [msg], "next_cursor": str(msg["seq"])}
+                if len(json_bytes(tool_result(candidate))) > MAX_BODY_BYTES - 4096:
+                    if not result["messages"]:
+                        raise ValueError("Stored message exceeds the response byte limit")
+                    break
+                result = candidate
+        return result
 
     def get_message_by_id(self, msg_id):
-        cur = self.conn.execute("SELECT seq, id, queue, content, correlation_id, idempotency_key, status, reply, created_at, updated_at FROM messages WHERE id = ?", (msg_id,))
-        row = cur.fetchone()
-        return self._row_to_msg(row) if row else None
+        validate_text("message_id", msg_id)
+        with self.lock:
+            row = self.conn.execute("SELECT * FROM messages WHERE id = ?", (msg_id,)).fetchone()
+            result = self._row_to_msg(row) if row else None
+            bounded_json(tool_result(result))
+            return result
 
     def reply_message(self, msg_id, reply_text, correlation_id=None):
-        if not msg_id or reply_text is None:
-            raise ValueError("msg_id and reply_text are required")
-        with self.conn:
-            cur = self.conn.execute("SELECT seq, id, queue, content, correlation_id, idempotency_key, status, reply, created_at, updated_at FROM messages WHERE id = ? OR (correlation_id = ? AND ? != '')", (msg_id, msg_id, msg_id))
-            row = cur.fetchone()
+        validate_text("message_id", msg_id)
+        validate_text("reply", reply_text, MAX_TEXT_BYTES, allow_empty=True)
+        validate_text("correlation_id", correlation_id, optional=True)
+        with self.transaction():
+            row = self.conn.execute("SELECT * FROM messages WHERE id = ?", (msg_id,)).fetchone()
             if not row:
                 raise ValueError(f"Message not found: {msg_id}")
-            msg = self._row_to_msg(row)
-            if msg["status"] == "replied" and msg["reply"] == reply_text:
-                return {"status": "ok", "message_id": msg["id"], "idempotent": True}
-            ts = now_iso()
-            self.conn.execute("UPDATE messages SET reply = ?, status = 'replied', updated_at = ? WHERE id = ?", (reply_text, ts, msg["id"]))
-            return {"status": "ok", "message_id": msg["id"]}
+            if correlation_id is not None and correlation_id != row["correlation_id"]:
+                raise ValueError("correlation_id does not match the message")
+            if row["status"] == "replied" and row["reply"] == reply_text:
+                return {"status": "ok", "message_id": row["id"], "idempotent": True}
+            self.conn.execute("UPDATE messages SET reply = ?, status = 'replied', updated_at = ? WHERE id = ?", (reply_text, now_iso(), msg_id))
+            bounded_json(tool_result(self._row_to_msg(self.conn.execute("SELECT * FROM messages WHERE id = ?", (msg_id,)).fetchone())))
+            return {"status": "ok", "message_id": msg_id}
 
     def get_status(self):
-        cur = self.conn.execute("SELECT COUNT(*), SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END), SUM(CASE WHEN status='replied' THEN 1 ELSE 0 END) FROM messages")
-        row = cur.fetchone()
-        total, pending, replied = row[0] or 0, row[1] or 0, row[2] or 0
-        cur = self.conn.execute("SELECT COUNT(*) FROM subscriptions WHERE refresh_before > ?", (now_iso(),))
-        active_subs = cur.fetchone()[0] or 0
-        return {
-            "database": self.db_path,
-            "total_messages": total,
-            "pending_messages": pending,
-            "replied_messages": replied,
-            "active_subscriptions": active_subs,
-        }
+        with self.lock:
+            row = self.conn.execute("SELECT COUNT(*), SUM(status='pending'), SUM(status='replied') FROM messages").fetchone()
+            active = self.conn.execute("SELECT COUNT(*) FROM subscriptions WHERE refresh_before > ?", (now_iso(),)).fetchone()[0]
+            return {
+                "database": self.db_path,
+                "total_messages": row[0] or 0, "pending_messages": row[1] or 0, "replied_messages": row[2] or 0,
+                "active_subscriptions": active, "events": self._event_counts(),
+            }
 
-    def _row_to_msg(self, r):
-        return {
-            "seq": r[0],
-            "id": r[1],
-            "queue": r[2],
-            "content": r[3],
-            "correlation_id": r[4],
-            "idempotency_key": r[5],
-            "status": r[6],
-            "reply": r[7],
-            "created_at": r[8],
-            "updated_at": r[9],
-        }
+    def _event_counts(self, message_id=None):
+        query = "SELECT state, COUNT(*) FROM pending_events"
+        params = ()
+        if message_id is not None:
+            query += " WHERE message_id = ?"
+            params = (message_id,)
+        counts = {"pending": 0, "delivered": 0, "undelivered": 0}
+        counts.update(dict(self.conn.execute(query + " GROUP BY state", params).fetchall()))
+        return counts
 
-    # --- Subscription and Event Delivery ---
+    def _row_to_msg(self, row):
+        msg = dict(row)
+        msg["delivery"] = self._event_counts(msg["id"])
+        return msg
 
-    def subscribe_event(self, name, arguments, delivery, principal="dot-worker"):
+    def _event_body(self, msg):
+        data = {key: msg[key] for key in ("queue", "content", "created_at")}
+        data["message_id"] = msg["id"]
+        if msg["correlation_id"] is not None:
+            data["correlation_id"] = msg["correlation_id"]
+        return {"name": "message.created", "timestamp": msg["created_at"], "data": data, "cursor": None}
+
+    def subscribe_event(self, name, arguments, delivery, principal="dot-worker", ttl_ms=DEFAULT_SUB_LIFETIME_MS):
         if name != "message.created":
             raise ValueError(f"Unsupported event: {name}")
+        if arguments is None:
+            arguments = {}
+        if not isinstance(arguments, dict) or set(arguments) - {"queue"}:
+            raise ValueError("Event arguments support only queue")
+        filter_queue = arguments.get("queue")
+        validate_text("queue", filter_queue, optional=True)
+        if "queue" in arguments and filter_queue is None:
+            raise ValueError("queue must be a string")
         if not isinstance(delivery, dict) or delivery.get("mode") != "webhook":
             raise ValueError("delivery.mode must be 'webhook'")
+        if ttl_ms is None:
+            ttl_ms = DEFAULT_SUB_LIFETIME_MS
+        if type(ttl_ms) is not int or ttl_ms <= 0:
+            raise ValueError("ttlMs must be a positive integer or null")
+        ttl_ms = min(ttl_ms, MAX_SUB_LIFETIME_MS)
         url = delivery.get("url")
         secret = delivery.get("secret")
-        if not url:
-            raise ValueError("delivery.url is required")
-        raw_key, err = validate_signing_secret(secret)
-        if err:
-            raise ValueError(err)
-
-        ok, url_err = validate_destination_url(url, allow_local=self.allow_local_callbacks)
-        if not ok:
-            raise ValueError(f"Callback destination rejected: {url_err}")
-
-        filter_queue = (arguments or {}).get("queue")
+        raw_key, error = validate_signing_secret(secret)
+        if error:
+            raise ValueError(error)
+        validate_text("delivery.url", url, 4096)
         sub_id = derive_subscription_id(principal, url, name, arguments)
-
-        # Callback verification challenge
-        challenge_token = secrets.token_hex(16)
-        verification_body = json.dumps({"type": "verification", "challenge": challenge_token}).encode("utf-8")
+        challenge = secrets.token_hex(16)
+        body = json_bytes({"type": "verification", "challenge": challenge})
         webhook_id = f"msg_verification_{secrets.token_hex(8)}"
-        ts_str = str(now_unix())
-        sig = sign_standard_webhook(raw_key, webhook_id, ts_str, verification_body)
-
+        timestamp = str(now_unix())
         headers = {
-            "Content-Type": "application/json",
-            "webhook-id": webhook_id,
-            "webhook-timestamp": ts_str,
-            "webhook-signature": sig,
+            "Content-Type": "application/json", "webhook-id": webhook_id, "webhook-timestamp": timestamp,
+            "webhook-signature": sign_standard_webhook(raw_key, webhook_id, timestamp, body),
             "X-MCP-Subscription-Id": sub_id,
         }
-
-        opener = urllib.request.build_opener(NoRedirectHandler)
-        req = urllib.request.Request(url, data=verification_body, headers=headers, method="POST")
         try:
-            with opener.open(req, timeout=10.0) as resp:
-                if not (200 <= resp.status < 300):
-                    raise ValueError(f"Verification challenge returned status {resp.status}")
-                resp_bytes = resp.read(MAX_BODY_BYTES)
-                resp_data = json.loads(resp_bytes.decode("utf-8"))
-                returned_challenge = resp_data.get("challenge", "")
-                if not hmac.compare_digest(returned_challenge, challenge_token):
-                    raise ValueError("Verification challenge echo mismatch")
-        except urllib.error.HTTPError as e:
-            raise ValueError(f"Verification challenge HTTP error {e.code}: {e.reason}")
-        except urllib.error.URLError as e:
-            raise ValueError(f"Verification challenge network error: {e.reason}")
-        except Exception as e:
-            raise ValueError(f"Verification challenge failed: {e}")
-
-        # Store subscription
-        refresh_before = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=DEFAULT_SUB_LIFETIME_SEC)).isoformat().replace("+00:00", "Z")
-        now_ts = now_iso()
-        with self.conn:
+            status, response = post_callback(url, body, headers, self.allow_local_callbacks)
+            if not 200 <= status < 300:
+                raise ValueError(f"Verification challenge returned status {status}")
+            returned = json.loads(response).get("challenge")
+            if not isinstance(returned, str) or not hmac.compare_digest(returned, challenge):
+                raise ValueError("Verification challenge echo mismatch")
+        except Exception as error:
+            raise ValueError(f"Verification challenge failed: {error}") from error
+        refresh_before = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(milliseconds=ttl_ms)).isoformat(timespec="microseconds").replace("+00:00", "Z")
+        ts = now_iso()
+        with self.transaction():
+            old = self.conn.execute("SELECT signing_secret, refresh_before FROM subscriptions WHERE id = ?", (sub_id,)).fetchone()
+            if old and old["signing_secret"] != secret and old["refresh_before"] > ts:
+                self.conn.execute(
+                    """INSERT INTO retired_signing_keys VALUES (?, ?, ?)
+                       ON CONFLICT(subscription_id, signing_secret) DO UPDATE SET expires_at=excluded.expires_at""",
+                    (sub_id, old["signing_secret"], time.time() + SECRET_ROTATION_SEC),
+                )
+            self.conn.execute("DELETE FROM retired_signing_keys WHERE expires_at <= ?", (time.time(),))
             self.conn.execute(
-                """
-                INSERT INTO subscriptions (id, event_name, filter_queue, callback_url, signing_secret, refresh_before, created_at, verified_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    signing_secret = excluded.signing_secret,
-                    refresh_before = excluded.refresh_before,
-                    verified_at = excluded.verified_at
-                """,
-                (sub_id, name, filter_queue, url, secret, refresh_before, now_ts, now_ts),
+                """INSERT INTO subscriptions (id, event_name, filter_queue, callback_url, signing_secret, refresh_before, created_at, verified_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET signing_secret=excluded.signing_secret,
+                       refresh_before=excluded.refresh_before, verified_at=excluded.verified_at""",
+                (sub_id, name, filter_queue, url, secret, refresh_before, ts, ts),
             )
-
-        return {
-            "id": sub_id,
-            "refreshBefore": refresh_before,
-            "cursor": None,
-            "truncated": False,
-        }
+        return {"id": sub_id, "refreshBefore": refresh_before, "cursor": None, "truncated": False}
 
     def unsubscribe_event(self, name, arguments, delivery, principal="dot-worker"):
         url = (delivery or {}).get("url") if isinstance(delivery, dict) else None
         if not url:
             return {}
         sub_id = derive_subscription_id(principal, url, name, arguments)
-        with self.conn:
+        with self.transaction():
             self.conn.execute("DELETE FROM subscriptions WHERE id = ?", (sub_id,))
+            self.conn.execute("DELETE FROM retired_signing_keys WHERE subscription_id = ?", (sub_id,))
+            self.conn.execute("UPDATE pending_events SET state='undelivered', last_error='Subscription stopped' WHERE subscription_id=? AND state='pending'", (sub_id,))
         return {}
 
-    def deliver_message_created_event(self, msg):
-        cur = self.conn.execute(
-            """
-            SELECT id, callback_url, signing_secret, filter_queue
-            FROM subscriptions
-            WHERE event_name = 'message.created' AND refresh_before > ?
-            """,
-            (now_iso(),),
-        )
-        subs = cur.fetchall()
-        for sub_id, url, secret, filter_q in subs:
-            if filter_q and filter_q != msg["queue"]:
-                continue
-            raw_key, err = validate_signing_secret(secret)
-            if err:
-                continue
-            event_id = f"evt_{secrets.token_hex(8)}"
-            ts_iso = now_iso()
-            payload = {
-                "eventId": event_id,
-                "name": "message.created",
-                "timestamp": ts_iso,
-                "data": {
-                    "message_id": msg["id"],
-                    "queue": msg["queue"],
-                    "content": msg["content"],
-                    "correlation_id": msg["correlation_id"],
-                    "created_at": msg["created_at"],
-                },
-                "cursor": None,
-            }
-            body_bytes = json.dumps(payload).encode("utf-8")
-            ts_str = str(now_unix())
-            sig = sign_standard_webhook(raw_key, event_id, ts_str, body_bytes)
-            headers = {
-                "Content-Type": "application/json",
-                "webhook-id": event_id,
-                "webhook-timestamp": ts_str,
-                "webhook-signature": sig,
-                "X-MCP-Subscription-Id": sub_id,
-            }
-
-            status_code = None
-            error_str = None
-            try:
-                opener = urllib.request.build_opener(NoRedirectHandler)
-                req = urllib.request.Request(url, data=body_bytes, headers=headers, method="POST")
-                with opener.open(req, timeout=10.0) as resp:
-                    status_code = resp.status
-            except urllib.error.HTTPError as e:
-                status_code = e.code
-                error_str = f"HTTP {e.code}"
-            except Exception as e:
-                error_str = str(e)
-
-            with self.conn:
-                attempt_id = f"att_{secrets.token_hex(8)}"
+    def deliver_pending_events(self):
+        for _ in range(16):
+            with self.transaction():
                 self.conn.execute(
-                    """
-                    INSERT INTO delivery_attempts (id, event_id, subscription_id, message_id, status_code, error, attempted_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (attempt_id, event_id, sub_id, msg["id"], status_code, error_str, now_iso()),
+                    """UPDATE pending_events SET state='undelivered', last_error=COALESCE(last_error, 'Delivery interrupted or subscription expired')
+                       WHERE state='pending' AND ((attempts >= ? AND next_attempt_at <= ?) OR NOT EXISTS
+                       (SELECT 1 FROM subscriptions WHERE id=subscription_id AND refresh_before > ?))""",
+                    (MAX_DELIVERY_ATTEMPTS, time.time(), now_iso()),
+                )
+                event = self.conn.execute(
+                    """SELECT e.*, s.callback_url, s.signing_secret FROM pending_events e
+                       JOIN subscriptions s ON s.id=e.subscription_id
+                       WHERE e.state='pending' AND e.attempts < ? AND e.next_attempt_at <= ? AND s.refresh_before > ?
+                       ORDER BY e.next_attempt_at LIMIT 1""", (MAX_DELIVERY_ATTEMPTS, time.time(), now_iso()),
+                ).fetchone()
+                if not event:
+                    return
+                self.conn.execute("UPDATE pending_events SET attempts=attempts+1, next_attempt_at=? WHERE id=?", (time.time() + CALLBACK_TIMEOUT_SEC + 1, event["id"]))
+                old_keys = self.conn.execute("SELECT signing_secret FROM retired_signing_keys WHERE subscription_id=? AND expires_at>?", (event["subscription_id"], time.time())).fetchall()
+            body = event["body"].encode("utf-8")
+            timestamp = str(now_unix())
+            signatures = []
+            for secret in dict.fromkeys([event["signing_secret"]] + [row[0] for row in old_keys]):
+                key, error = validate_signing_secret(secret)
+                if error:
+                    raise ValueError(error)
+                signatures.append(sign_standard_webhook(key, event["id"], timestamp, body))
+            headers = {
+                "Content-Type": "application/json", "webhook-id": event["id"], "webhook-timestamp": timestamp,
+                "webhook-signature": " ".join(signatures), "X-MCP-Subscription-Id": event["subscription_id"],
+            }
+            status = None
+            error = None
+            try:
+                status, _ = post_callback(event["callback_url"], body, headers, self.allow_local_callbacks)
+                if not 200 <= status < 300:
+                    error = f"HTTP {status}"
+            except Exception as failure:
+                error = str(failure)[:512]
+            attempts = event["attempts"] + 1
+            state = "delivered" if error is None else "undelivered" if status in (410, 413) or attempts >= MAX_DELIVERY_ATTEMPTS else "pending"
+            with self.transaction():
+                self.conn.execute(
+                    "UPDATE pending_events SET state=?, next_attempt_at=?, last_error=? WHERE id=? AND state='pending' AND attempts=?",
+                    (state, time.time() + 2 ** (attempts - 1), error, event["id"], attempts),
+                )
+                self.conn.execute(
+                    "INSERT INTO delivery_attempts VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (f"att_{secrets.token_hex(8)}", event["id"], event["subscription_id"], event["message_id"], status, error, now_iso()),
                 )
 
 
@@ -464,6 +546,10 @@ class MCPDispatcher:
         req_id = req.get("id")
         method = req.get("method")
         params = req.get("params") or {}
+        if not isinstance(params, dict) or (req_id is not None and type(req_id) not in (str, int)):
+            return {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "Invalid Request"}}
+        if len(json_bytes(req_id)) > MAX_FIELD_BYTES:
+            return {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "Request ID exceeds byte limit"}}
 
         try:
             if method == "server/discover":
@@ -568,14 +654,7 @@ class MCPDispatcher:
                         correlation_id=args.get("correlation_id"),
                         idempotency_key=args.get("idempotency_key"),
                     )
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": req_id,
-                        "result": {
-                            "content": [{"type": "text", "text": json.dumps(res)}],
-                            "isError": False,
-                        },
-                    }
+                    return tool_result(res, req_id)
                 elif tool_name == "get_messages":
                     res = self.mailbox.get_messages(
                         queue=args.get("queue"),
@@ -583,28 +662,14 @@ class MCPDispatcher:
                         cursor=args.get("cursor"),
                         limit=args.get("limit", 10),
                     )
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": req_id,
-                        "result": {
-                            "content": [{"type": "text", "text": json.dumps(res)}],
-                            "isError": False,
-                        },
-                    }
+                    return tool_result(res, req_id)
                 elif tool_name == "reply":
                     res = self.mailbox.reply_message(
                         msg_id=args.get("message_id"),
                         reply_text=args.get("reply"),
                         correlation_id=args.get("correlation_id"),
                     )
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": req_id,
-                        "result": {
-                            "content": [{"type": "text", "text": json.dumps(res)}],
-                            "isError": False,
-                        },
-                    }
+                    return tool_result(res, req_id)
                 else:
                     return {
                         "jsonrpc": "2.0",
@@ -655,6 +720,7 @@ class MCPDispatcher:
                         name=params.get("name"),
                         arguments=params.get("arguments"),
                         delivery=params.get("delivery"),
+                        ttl_ms=params.get("ttlMs", DEFAULT_SUB_LIFETIME_MS),
                     )
                     return {"jsonrpc": "2.0", "id": req_id, "result": sub_res}
                 except ValueError as e:
@@ -701,7 +767,7 @@ class MCPHTTPHandler(http.server.BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        if self.path in ("/mcp", "/health", "/"):
+        if self.path == "/health":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -716,12 +782,16 @@ class MCPHTTPHandler(http.server.BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
-        if self.path not in ("/mcp", "/"):
+        if self.path != "/mcp":
             self.send_error(404)
             return
 
-        content_length = int(self.headers.get("Content-Length", 0))
-        if content_length > MAX_BODY_BYTES:
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            self.send_error(400, "Invalid Content-Length")
+            return
+        if content_length < 0 or content_length > MAX_BODY_BYTES:
             self.send_error(413, "Payload Too Large")
             return
 
@@ -738,7 +808,10 @@ class MCPHTTPHandler(http.server.BaseHTTPRequestHandler):
 
         resp = self.dispatcher.dispatch(req_data)
         if resp is not None:
-            resp_bytes = json.dumps(resp).encode("utf-8")
+            try:
+                resp_bytes = bounded_json(resp)
+            except ValueError:
+                resp_bytes = json_bytes({"jsonrpc": "2.0", "id": None, "error": {"code": -32603, "message": "Response exceeds 256 KiB"}})
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(resp_bytes)))
@@ -753,6 +826,15 @@ def run_http_server(mailbox, host="127.0.0.1", port=8765):
     dispatcher = MCPDispatcher(mailbox)
     handler_cls = type("BoundHandler", (MCPHTTPHandler,), {"dispatcher": dispatcher})
     server = http.server.ThreadingHTTPServer((host, port), handler_cls)
+    stop = threading.Event()
+
+    def delivery_worker():
+        while not stop.is_set():
+            mailbox.deliver_pending_events()
+            stop.wait(0.25)
+
+    worker = threading.Thread(target=delivery_worker, daemon=True)
+    worker.start()
     print(f"fm-dot-mailbox: listening on http://{host}:{port}/mcp (database: {mailbox.db_path})", file=sys.stderr)
     try:
         server.serve_forever()
@@ -760,35 +842,22 @@ def run_http_server(mailbox, host="127.0.0.1", port=8765):
         pass
     finally:
         server.server_close()
-
-
-def run_stdio_server(mailbox):
-    dispatcher = MCPDispatcher(mailbox)
-    print("fm-dot-mailbox: stdio mode ready", file=sys.stderr)
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            req_data = json.loads(line)
-        except Exception:
-            err_resp = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}
-            sys.stdout.write(json.dumps(err_resp) + "\n")
-            sys.stdout.flush()
-            continue
-
-        resp = dispatcher.dispatch(req_data)
-        if resp is not None:
-            sys.stdout.write(json.dumps(resp) + "\n")
-            sys.stdout.flush()
+        stop.set()
+        worker.join()
 
 
 # --- CLI Commands ---
 
+def read_stdin_text():
+    data = sys.stdin.buffer.read(MAX_TEXT_BYTES + 1)
+    if len(data) > MAX_TEXT_BYTES:
+        raise ValueError(f"stdin exceeds {MAX_TEXT_BYTES} UTF-8 bytes")
+    return data.decode("utf-8").strip()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Firstmate dot MCP Mailbox & Event Bridge")
-    parser.add_argument("--db", default=default_db_path(), help="SQLite database path")
-    parser.add_argument("--allow-local-callbacks", action="store_true", default=bool(os.environ.get("FM_DOT_MCP_ALLOW_LOCAL_CALLBACK")), help="Allow local/loopback callback destinations (testing)")
+    parser.add_argument("--db", help="SQLite database path; otherwise FM_DOT_MAILBOX_DB or FM_HOME is required")
 
     subparsers = parser.add_subparsers(dest="command")
 
@@ -812,7 +881,7 @@ def main():
 
     # reply
     p_reply = subparsers.add_parser("reply", help="Reply to a message")
-    p_reply.add_argument("message_id", help="Message ID or correlation ID")
+    p_reply.add_argument("message_id", help="Exact message ID")
     p_reply.add_argument("reply_text", help="Reply content, or '-' to read from stdin")
     p_reply.add_argument("--correlation-id", help="Optional correlation ID")
 
@@ -823,33 +892,38 @@ def main():
     p_serve = subparsers.add_parser("serve", help="Run the MCP server")
     p_serve.add_argument("--host", default=os.environ.get("FM_DOT_MCP_HOST", "127.0.0.1"), help="Host to bind (default 127.0.0.1)")
     p_serve.add_argument("--port", type=int, default=int(os.environ.get("FM_DOT_MCP_PORT", 8765)), help="Port to listen (default 8765)")
-    p_serve.add_argument("--stdio", action="store_true", help="Run in stdio mode instead of HTTP")
+    p_serve.add_argument("--allow-local-callbacks", action="store_true", help="Allow HTTP and loopback callbacks for local testing")
 
     args = parser.parse_args()
     if not args.command:
         parser.print_help(sys.stderr)
         sys.exit(1)
 
-    mailbox = Mailbox(args.db, allow_local_callbacks=args.allow_local_callbacks)
+    try:
+        db_path = args.db or default_db_path()
+        allow_local = getattr(args, "allow_local_callbacks", False) or os.environ.get("FM_DOT_MCP_ALLOW_LOCAL_CALLBACK") == "1"
+        mailbox = Mailbox(db_path, allow_local_callbacks=allow_local)
+    except (ValueError, OSError, sqlite3.Error) as error:
+        parser.error(str(error))
 
     if args.command == "submit":
         content = args.content
         if content == "-":
-            content = sys.stdin.read().strip()
+            content = read_stdin_text()
         msg = mailbox.submit_message(
             content=content,
             queue=args.queue,
             correlation_id=args.correlation_id,
             idempotency_key=args.idempotency_key,
         )
-        print(json.dumps(msg, indent=2))
+        print(bounded_json(msg).decode("utf-8"))
 
     elif args.command == "get":
         msg = mailbox.get_message_by_id(args.message_id)
         if not msg:
             print(f"Error: message {args.message_id} not found", file=sys.stderr)
             sys.exit(1)
-        print(json.dumps(msg, indent=2))
+        print(bounded_json(msg).decode("utf-8"))
 
     elif args.command == "list":
         res = mailbox.get_messages(
@@ -858,31 +932,33 @@ def main():
             cursor=args.cursor,
             limit=args.limit,
         )
-        print(json.dumps(res, indent=2))
+        print(bounded_json(res).decode("utf-8"))
 
     elif args.command == "reply":
         reply_text = args.reply_text
         if reply_text == "-":
-            reply_text = sys.stdin.read().strip()
+            reply_text = read_stdin_text()
         res = mailbox.reply_message(
             msg_id=args.message_id,
             reply_text=reply_text,
             correlation_id=args.correlation_id,
         )
-        print(json.dumps(res, indent=2))
+        print(bounded_json(res).decode("utf-8"))
 
     elif args.command == "status":
         st = mailbox.get_status()
         print(f"database: {st['database']}")
         print(f"messages: total={st['total_messages']} pending={st['pending_messages']} replied={st['replied_messages']}")
         print(f"subscriptions: active={st['active_subscriptions']}")
+        print("events: " + " ".join(f"{key}={value}" for key, value in st["events"].items()))
 
     elif args.command == "serve":
-        if args.stdio:
-            run_stdio_server(mailbox)
-        else:
-            run_http_server(mailbox, host=args.host, port=args.port)
+        run_http_server(mailbox, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (ValueError, OSError, sqlite3.Error) as error:
+        print(f"fm-dot-mailbox: {error}", file=sys.stderr)
+        sys.exit(1)
