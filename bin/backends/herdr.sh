@@ -1002,6 +1002,7 @@ fm_backend_herdr_projection_target_tab_mutation_allowed() {  # <session> <tab-id
   fi
   if [ "$foreground_rc" -eq 0 ]; then
     echo "warning: herdr presentation cleanup target is the captain's active tab; refusing a close that cannot preserve focus" >&2
+    return 3
   else
     echo "warning: herdr presentation cleanup could not verify whether a foreground client is viewing the target tab; refusing a focus-unsafe mutation" >&2
   fi
@@ -1068,6 +1069,9 @@ fm_backend_herdr_projection_close_pane_focus_preserving() {  # <session> <pane-i
         plan_shell_pid=${plan#death }
         plan=death
         ;;
+      refuse-focus)
+        return 3
+        ;;
       refuse)
         return 1
         ;;
@@ -1097,7 +1101,7 @@ fm_backend_herdr_projection_close_pane_focus_preserving() {  # <session> <pane-i
         close_status=1
       fi
     else
-      close_status=1
+      close_status=$?
     fi
   elif fm_backend_herdr_projection_target_tab_mutation_allowed "$session" "$target_tab"; then
     if [ -n "${FM_BACKEND_HERDR_PROJECTION_MUTATION_FOCUS:-}" ]; then
@@ -1110,7 +1114,7 @@ fm_backend_herdr_projection_close_pane_focus_preserving() {  # <session> <pane-i
       close_status=1
     fi
   else
-    close_status=1
+    close_status=$?
   fi
   if [ "$close_status" -eq 0 ] && [ -n "$plan_move_record" ]; then
     workspace_presence=$(fm_backend_herdr_workspace_presence_state "$session" "$target_ws")
@@ -1120,12 +1124,12 @@ fm_backend_herdr_projection_close_pane_focus_preserving() {  # <session> <pane-i
     fi
   fi
   if [ "$close_status" -ne 0 ]; then
-    fm_backend_herdr_emptying_move_rollback "$plan_move_record" "$session" "$target_tab" || true
+    fm_backend_herdr_emptying_move_rollback "$plan_move_record" "$session" "$target_tab" || close_status=1
   fi
   if [ "$skip_restore" -eq 0 ]; then
     fm_backend_herdr_projection_focus_restore "$session" "$before" "pane close" || return 2
   fi
-  [ "$close_status" -eq 0 ]
+  return "$close_status"
 }
 
 # Herdr 0.7.5 workspace-removal focus rules (verified against the installed
@@ -1266,10 +1270,13 @@ fm_backend_herdr_emptying_close_plan() {  # <session> <pane-id> <workspace-id> <
     }
     mover=${FM_BACKEND_HERDR_WORKSPACE_MOVER:-$FM_BACKEND_HERDR_ROOT/bin/backends/herdr-workspace-move.py}
     before_order=$(printf '%s' "$list" | jq -c '[.result.workspaces[].workspace_id]' 2>/dev/null)
-    if [ -n "$guard_tab" ] \
-      && ! fm_backend_herdr_projection_target_tab_mutation_allowed "$session" "$guard_tab"; then
-      printf 'refuse\n'
-      return 0
+    if [ -n "$guard_tab" ]; then
+      if fm_backend_herdr_projection_target_tab_mutation_allowed "$session" "$guard_tab"; then
+        :
+      else
+        if [ "$?" -eq 3 ]; then printf 'refuse-focus\n'; else printf 'refuse\n'; fi
+        return 0
+      fi
     fi
     if response=$("$mover" "$socket" "$ws_id" "$len" 2>/dev/null); then
       move_status=0

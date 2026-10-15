@@ -1934,8 +1934,10 @@ secondmate_current_json() {  # <parent-tasks-json-file> <output-file>
          spawn_gen:($spawn_gen | if . == "" then null else . end),
          current:(if $task.backend == "dot-mcp" then
            {state:(if $dot[0].unavailable or $dot[0].ready == false then "unknown"
+                   elif any($decisions[]; .verb == "needs-decision" or .verb == "captain-hold") then "captain_decision"
+                   elif any($decisions[]; .verb == "blocked") then "externally_held"
                    elif any($dot[0].children[]?; .terminal == false and .current_state == "unknown") then "unknown"
-                   elif any($dot[0].children[]?; .terminal == false) then "active_child_work"
+                   elif any($dot[0].children[]?; .terminal == false and .current_state == "working") then "active_child_work"
                    else ($task.current_state.state // "unknown") end),
             reason:(($task.current_state.detail // "mailbox health unknown") + (if $dot[0].unavailable then "; reported cloud inventory unavailable" else "; cloud activity is dot-reported, not directly observed" end))}
            else {state:"unknown",reason:(if $summary_sampled then "structured home state invalid: " + ($summary.reason // "unknown reason") else $reason end)} end),invalidity:null,
@@ -1946,8 +1948,8 @@ secondmate_current_json() {  # <parent-tasks-json-file> <output-file>
            | .activity_kind=.kind | .kind="reported-cloud" | .reported_state=.state | .state=.current_state
            | .doing=(.summary + " (reported " + (.age_seconds | tostring) + "s ago; current " + .current_state + ")")],
          reported_children:($dot[0].children // []),
-         decisions_open:[],holds:[],queued:[],landed:[],endpoints:[],
-         counts:{active_children:([$dot[0].children[]? | select(.terminal == false)] | length),decisions_open:0,holds:0,queued:0,landed:0,endpoints:0},
+         decisions_open:(if $task.backend == "dot-mcp" then $decisions else [] end),holds:[],queued:[],landed:[],endpoints:[],
+         counts:{active_children:([$dot[0].children[]? | select(.terminal == false)] | length),decisions_open:(if $task.backend == "dot-mcp" then $decisions | length else 0 end),holds:0,queued:0,landed:0,endpoints:0},
          omitted:(if $dot[0].children_truncated then [{surface:"reported_children",reason:"bounded current display inventory"}] else [] end),
          parent_event:{raw:$event_raw,note:$event_note,age_seconds:$event_age,open_activities:$activities,open_decisions:$decisions,activity_scan:$activity_scan},
          terminal_evidence:$terminal,contradiction:false}' >> "$records_file" || return 1

@@ -221,8 +221,52 @@ spec = importlib.util.spec_from_file_location('mailbox', Path(sys.argv[1]) / 'bi
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 m.Mailbox(os.environ['DB']).publish_mate_replies()
 PY
-sync_view
-[ "$(jq '.displays | length' "$BINDING")" = 1 ] || fail 'delivered terminal display was not retired'
+env PATH="$ORIGINAL_PATH" "$HERDR_LAB_HELPER" viewer start "$HERDR_LAB_SESSION"
+child_tab=$(jq -r --arg c "$child" '.displays[$c].tab' "$BINDING")
+protected_binding=$(jq -c --arg c "$child" '.displays[$c]' "$BINDING")
+lab tab focus "$child_tab" >/dev/null
+if sync_view > "$TMP/focus-sync.log" 2>&1; then fail 'sync did not report protected focus refusal'; fi
+lab pane get "$pane" >/dev/null || fail 'sync removed the viewed child'
+bash "$ROOT/bin/fm-dot-view.sh" watch dot-test "$HERDR_LAB_SESSION" > "$TMP/focus-watch.log" 2>&1 &
+WATCH_PID=$!
+for _ in {1..100}; do
+  grep -q "captain's active tab" "$TMP/focus-watch.log" && break
+  kill -0 "$WATCH_PID" 2>/dev/null || fail 'watch exited during protected focus refusal'
+  sleep .2
+done
+grep -q "captain's active tab" "$TMP/focus-watch.log" || fail 'watch never encountered the protected focus'
+kill -0 "$WATCH_PID" 2>/dev/null || fail 'watch exited during protected focus refusal'
+focus_lock=$(fm_backend_herdr_presentation_session_lock_path "$HERDR_LAB_SESSION")
+for _ in {1..100}; do
+  if [ "$(jq '.displays | length' "$BINDING")" = 2 ] && fm_lock_try_acquire "$focus_lock"; then
+    HELD_LOCK=$focus_lock
+    break
+  fi
+  kill -0 "$WATCH_PID" 2>/dev/null || fail 'watch stopped while deferring protected cleanup'
+  sleep .2
+done
+[ -n "$HELD_LOCK" ] || fail 'watch did not finish the protected cleanup pass'
+[ "$(jq -c --arg c "$child" '.displays[$c]' "$BINDING")" = "$protected_binding" ] || fail 'watch discarded protected cleanup binding'
+lab pane get "$pane" >/dev/null || fail 'watch removed the viewed child'
+focus=$(lab workspace get "$ws")
+jq -e --arg tab "$child_tab" '.result.workspace.focused==true and .result.workspace.active_tab_id==$tab' <<< "$focus" >/dev/null || fail 'protected cleanup changed viewer focus'
+lab tab focus "$other_tab" >/dev/null
+fm_lock_release "$HELD_LOCK"
+HELD_LOCK=''
+for _ in {1..100}; do
+  [ "$(jq '.displays | length' "$BINDING")" = 1 ] && break
+  kill -0 "$WATCH_PID" 2>/dev/null || fail 'watch stopped before retrying terminal cleanup'
+  sleep .2
+done
+if [ "$(jq '.displays | length' "$BINDING")" != 1 ]; then
+  cat "$TMP/focus-watch.log" >&2
+  cat "$BINDING" >&2
+  fail 'delivered terminal display was not retired'
+fi
+kill -0 "$WATCH_PID" 2>/dev/null || fail 'watch stopped after protected focus cleared'
+kill -TERM "$WATCH_PID"
+wait "$WATCH_PID"
+WATCH_PID=''
 lab pane get "$console" >/dev/null || fail 'closed the mate console'
 focus=$(lab workspace get "$other_ws")
 jq -e --arg tab "$other_tab" '.result.workspace.focused==true and .result.workspace.active_tab_id==$tab' <<< "$focus" >/dev/null || fail 'display reconciliation changed unrelated focus'
@@ -231,5 +275,14 @@ jq -e --arg tab "$other_tab" '.result.workspace.focused==true and .result.worksp
 console_tab=$(jq -r '.displays.console.tab' "$BINDING")
 lab tab rename "$console_tab" renamed-display >/dev/null
 if sync_view >/dev/null 2>&1; then fail 'renamed display was adopted'; fi
+bash "$ROOT/bin/fm-dot-view.sh" watch dot-test "$HERDR_LAB_SESSION" > "$TMP/ownership-watch.log" 2>&1 &
+WATCH_PID=$!
+for _ in {1..100}; do
+  kill -0 "$WATCH_PID" 2>/dev/null || break
+  sleep .1
+done
+if kill -0 "$WATCH_PID" 2>/dev/null; then fail 'watch retried an ownership error'; fi
+if wait "$WATCH_PID"; then fail 'watch hid an ownership error'; fi
+WATCH_PID=''
 lab pane get "$console" >/dev/null || fail 'renamed display was removed'
 pass 'real Herdr: read-only replay, idempotent restart, exact ownership, focus, and delivered-result cleanup'

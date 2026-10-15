@@ -89,7 +89,7 @@ matches() { # <tab> <pane> <label>
 }
 
 sync_view() {
-  local lock record_home record_session presence label info child tab pane focus pair row
+  local lock record_home record_session presence label info child tab pane focus pair row close_status
   local -a retained=()
   "$SCRIPT_DIR/fm-dot-secondmate.sh" validate "$ID"
   if [ -e "$BINDING" ]; then
@@ -153,7 +153,13 @@ sync_view() {
     fi
     ensure_reader "$pane" "$child"
     if [ "$child" != console ] && jq -e --arg c "$child" 'any(.children[]; .id==$c and .terminal and .parent_delivered)' "$SNAPSHOT" >/dev/null; then
-      fm_backend_herdr_projection_close_pane_focus_preserving "$SESSION" "$pane" || fail 'display close refused'
+      if fm_backend_herdr_projection_close_pane_focus_preserving "$SESSION" "$pane"; then
+        :
+      else
+        close_status=$?
+        if [ "$COMMAND" = watch ] && [ "$close_status" -eq 3 ]; then continue; fi
+        fail 'display close refused'
+      fi
       [ "$(fm_backend_herdr_pane_presence_state "$SESSION" "$pane")" = dead ] || fail 'display close not confirmed'
       RECORD=$(jq --arg c "$child" 'del(.displays[$c])' <<< "$RECORD")
       save

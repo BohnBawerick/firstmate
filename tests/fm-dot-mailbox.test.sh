@@ -961,6 +961,68 @@ class MailboxRegressionTests(unittest.TestCase):
         self.box.publish_mate_replies()
         self.assertIn("state: working", run("fm-crew-state.sh", "dot-test"))
 
+    def test_dot_fleet_waiting_state_uses_folded_parent_decisions(self):
+        class Health(http.server.BaseHTTPRequestHandler):
+            ready = True
+            def log_message(self, *args):
+                pass
+            def do_GET(self):
+                self.send_response(200 if self.ready else 503)
+                self.end_headers()
+                self.wfile.write(b'ready' if self.path == '/readyz' else b'{"status":"ok","name":"fm-dot-mailbox"}')
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Health)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        urls = (f"http://127.0.0.1:{server.server_port}/health", f"http://127.0.0.1:{server.server_port}/readyz")
+        parent, home, env, run, message = self.routed_dot(urls)
+        self.subscribe()
+        def reply(text):
+            outcome = self.box.reply_message(message["id"], text, message["correlation_id"])
+            self.box.publish_mate_replies()
+            return outcome
+        def fleet():
+            snapshot = json.loads(run("fm-fleet-snapshot.sh", "--json"))
+            return next(row for row in snapshot["secondmate_current"]["records"] if row["id"] == "dot-test")
+        def check(state, keys):
+            row = fleet()
+            self.assertEqual(row["current"]["state"], state)
+            self.assertEqual({d["key"] for d in row["decisions_open"]}, keys)
+            self.assertEqual(row["counts"]["decisions_open"], len(keys))
+            self.assertEqual(row["decisions_open"], row["parent_event"]["open_decisions"])
+        note = {"schema": "fm.activity-note.v1", "event_id": "created", "kind": "task-created",
+            "observed_at": m.now_iso(), "summary": "waiting state proof", "task_id": "waiting-task", "turn_id": "turn"}
+        reply("activity-note: " + json.dumps(note))
+        check("active_child_work", set())
+        for typed in (True, False):
+            with self.subTest(typed=typed):
+                note.update(event_id="typed-blocker", kind="blocked", observed_at=m.now_iso())
+                outcome = reply("activity-note: " + json.dumps(note) if typed else "blocked: setup unavailable")
+                self.assertIn("state: blocked", run("fm-crew-state.sh", "dot-test"))
+                check("externally_held", {outcome["blocker_key"]})
+                reply(f"resolved: [key={outcome['blocker_key']}] setup repaired")
+                note.update(event_id=f"progress-{typed}", kind="milestone", observed_at=m.now_iso())
+                reply("activity-note: " + json.dumps(note))
+                check("active_child_work", set())
+        note.update(event_id="owner-question", kind="needs-decision", observed_at=m.now_iso())
+        reply("activity-note: " + json.dumps(note))
+        row = fleet()
+        keys = {d["key"] for d in row["parent_event"]["open_decisions"]}
+        self.assertEqual(len(keys), 1)
+        self.assertIn("state: parked", run("fm-crew-state.sh", "dot-test"))
+        check("captain_decision", keys)
+        reply("needs-decision: account choice required")
+        keys.add("dot-" + message["id"])
+        check("captain_decision", keys)
+        note.update(event_id="other-progress", kind="milestone", observed_at=m.now_iso())
+        reply("activity-note: " + json.dumps(note))
+        check("captain_decision", keys)
+        Health.ready = False
+        self.assertIn("state: unknown", run("fm-crew-state.sh", "dot-test"))
+        check("unknown", keys)
+
     def test_dot_secondmate_routes_replies_and_reports_health_without_a_pane(self):
         parent, home = self.directory / "parent", self.directory / "mate"
         (parent / "state").mkdir(parents=True)
