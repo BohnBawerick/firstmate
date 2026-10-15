@@ -532,7 +532,7 @@ family_for_basename() {
     fm-classify-decision-key.test.sh|\
     fm-composer-ghost.test.sh|fm-composer-lib.test.sh|\
     fm-crew-state.test.sh|fm-captain-hold-lifecycle.test.sh|\
-    fm-documentation-audiences.test.sh|fm-ensure-agents-md.test.sh|fm-forge-detect.test.sh|fm-grok-harness.test.sh|\
+    fm-documentation-audiences.test.sh|fm-dot-mailbox.test.sh|fm-ensure-agents-md.test.sh|fm-forge-detect.test.sh|fm-grok-harness.test.sh|\
     fm-fork-free-helpers.test.sh|\
     fm-hindsight.test.sh|\
     fm-quality-receipt.test.sh|fm-quality.test.sh|\
@@ -995,6 +995,7 @@ tests/fm-devin-signals-live-e2e.test.sh 49
 tests/fm-dispatch-resolve.test.sh 10051
 tests/fm-documentation-audiences.test.sh 1301
 tests/fm-dod-lib.test.sh 2035
+tests/fm-dot-mailbox.test.sh 2800
 tests/fm-dreamer.test.sh 1714
 tests/fm-extension-binding.test.sh 11105
 tests/fm-fleet-ledger.test.sh 19980
@@ -1702,6 +1703,9 @@ families_for_changed_path() {
       # Same reason as the runner above: the proof drives every
       # pure-contract-unit script. It runs each candidate directly, never
       # through run_script_contained, so it cannot regress fixture Git isolation.
+      printf '%s\n' pure-contract-unit
+      ;;
+    bin/fm-dot-mailbox*|tests/fm-dot-mailbox*)
       printf '%s\n' pure-contract-unit
       ;;
     bin/backends/herdr*|bin/fm-herdr-lab.sh|tests/herdr-test-safety.sh|tests/herdr-client-pair-fixture.sh)
