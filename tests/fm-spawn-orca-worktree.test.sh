@@ -307,6 +307,9 @@ EOF
     fi
     if [ "$setting" = sendfail ]; then
       expect_code 1 "$status" "undelivered controlled-source launch must fail: $out"
+      assert_contains "$out" "launch command could not be delivered" "the failure must name launch delivery"
+      assert_contains "$(cat "$home/state/$id.status")" "launch command could not be delivered" "the delivery failure must reach the task status"
+      [ -e "$case_dir/terminal-closed" ] || fail "a failed launch delivery left the Orca terminal open"
       for staged in /tmp/fm-"$id"+*/launch.*.sh; do
         [ ! -e "$staged" ] || fail "undelivered launch left credentials in $staged"
       done
