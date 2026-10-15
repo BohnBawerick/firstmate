@@ -131,10 +131,8 @@ What a reclaim is not:
 - It is **not** a peer seat's operation. `fm-control` resolves an exact task id against **this** home's `state/`, so only the home that owns the task can reclaim it.
 - It does **not** cover a secondmate. A secondmate whose endpoint is gone already has one recovery path - `bin/fm-spawn.sh <id> --secondmate`, driven by the session-start sweep or the watcher's liveness tick - so control-plane reclaim refuses and names it rather than becoming a second path to the same outcome.
 
-A ship or scout relaunch on Herdr reuses a surviving endpoint only after verifying that its workspace holds exactly that task and no other tabs or panes. It refuses a shared workspace before launching the replacement.
-A Herdr reclaim creates the replacement in a fresh one-task workspace in the recorded session, with the same journal and abort cleanup as a fresh spawn.
-Placement follows the [isolated workspace contract](herdr-backend.md#presentation-spaces).
-The pane id changes, and the republished record follows it while preserving the task's other metadata.
+Herdr relaunch and reclaim follow the [workspace placement and isolation rules](herdr-backend.md#recovery-and-existing-tasks) in the recorded session.
+On reclaim, the pane id changes, and the republished record follows it while preserving the task's other metadata.
 
 ### Failure and rollback
 

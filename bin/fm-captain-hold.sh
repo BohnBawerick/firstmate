@@ -742,11 +742,6 @@ resolve_migrated_entry() {  # <origin-or-empty> <entry>
   return 2
 }
 
-# Resolve one inventory entry or channel key to the task that carries it: the
-# exact task id when it exists, else the legacy derived identity, else - on the
-# beads backend - the migrated row the markdown-to-beads hold migration wrote.
-# Prints "<resolved id> <how>", where <how> is exact, legacy, migrated-note or
-# migrated-prefix, so a caller can record which evidence carried the attestation.
 # --- archived answered calls on the markdown backend ------------------------
 #
 # Done retention ([markdown] done_keep in .tasks.toml) moves a closed row out of
@@ -781,6 +776,10 @@ captain_archived_entry_body() {  # <task-id>
   ' "$archive"
 }
 
+# Resolve an inventory entry or channel key through its task id, legacy derived
+# identity, migrated Beads row, or archived markdown row.
+# Prints "<resolved id> <how>", where <how> is exact, legacy, migrated-note,
+# migrated-prefix, or archived, so the caller can record the attestation source.
 resolve_entry() {  # <origin-or-empty> <entry>; prints "<id> <how>" or fails
   local origin=$1 entry=$2 legacy migrated rc
   if task_show "$entry"; then

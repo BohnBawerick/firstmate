@@ -1576,7 +1576,8 @@ HERDR_LAB_HELPER=bin/fm-herdr-lab.sh \
   tests/fm-backend-herdr-workspace-per-home-e2e.test.sh
 ```
 
-Observed guarantee: the primary and secondmate used distinct home workspaces, a child launched by the secondmate stayed in that secondmate workspace, list-live remained home-scoped, and exact cleanup did not affect sibling homes.
+Earlier per-home runs placed the primary and secondmate in distinct home workspaces and a secondmate's child in that secondmate workspace, with home-scoped list-live and cleanup that did not affect sibling homes.
+That placement predates required worker isolation; [Presentation spaces](../herdr-backend.md#presentation-spaces) owns the current placement contract.
 
 The complete projection suite ran on 2026-07-21 against Herdr 0.7.4 protocol 16:
 
@@ -1615,7 +1616,7 @@ ok - real Herdr lab: missing, renamed, and duplicate tokens trigger zero destruc
 ok - real Herdr lab validation completed on Herdr 0.7.5 with the default-session tripwire intact
 ```
 
-The projection suite ran again on 2026-08-04 against Herdr 0.8.0 protocol 19 for the default-on flip, where an absent `config/herdr-presentation-spaces` enables the projection and the value `off` opts out; since 2026-08-05 an absent file enables the projection only at or above the 0.8.0 floor recorded under "Presentation version floor" below, and `on` is the explicit opt-in that survives the floor:
+The projection suite ran again on 2026-08-04 against Herdr 0.8.0 protocol 19 for the then-current default-on and opt-out behavior:
 
 ```sh
 HERDR_LAB_HELPER=bin/fm-herdr-lab.sh \
@@ -1631,11 +1632,9 @@ ok - real Herdr lab: the primary presentation setting inherits into real secondm
 ok - real Herdr lab validation completed on Herdr 0.8.0 with the default-session tripwire intact
 ```
 
-The projected spawn in that run used the historical empty opt-in file, so a home that had already enabled the projection keeps it without any migration step.
-One concurrent cross-home recovery case refused under contention on a loaded machine and passed on an immediate rerun; recovery-path presentation lock contention remains a deliberate hard refusal by default rather than a flat fallback, which default-on makes reachable from any Herdr home.
-Callers that need concurrent recoveries to serialize can pass `fm-spawn.sh --herdr-resume-lock-wait`.
-The flag applies to a fresh ship or scout spawn, and the multi-task path forwards it to each per-pair spawn.
-It has no effect on `--relaunch` and `--secondmate`, because those paths take no exact-resume presentation-order lock.
+The projected spawn in that run used the historical empty opt-in file.
+One concurrent cross-home recovery case refused under contention on a loaded machine and passed on an immediate rerun.
+[The spawn header](../../bin/fm-spawn.sh) owns current lock-wait bounds and the exact-resume wait opt-in.
 That run measured the default-on projection on Herdr 0.8.0 only, while the focus-flash regression below was last run on 0.7.5 before the flip, so neither run covered a defective release under default-on projection; the version floor and the focus-flash suite's Part C close that gap.
 
 The restored-shell session-start cleanup ran on 2026-07-24 against Herdr 0.7.5 protocol 17:
@@ -1752,7 +1751,10 @@ The classifier itself, the config preference it composes with, and the one-warni
 tests/fm-backend-herdr.test.sh
 ```
 
-Observed guarantees: every measured release classifies as the table records; either the protocol or the version signal alone carries an at-or-above verdict, and each divergent pair flips once the carrying signal is removed; client and running selected-session server verdicts compose conservatively, an unreadable server-running state and losing both release signals report indeterminate and fall back flat, the default is rechecked after server ensure before projection publication, an unconfigured home is projected only at or above the floor, an explicit `on`, including the historical empty opt-in file, is honored below it, and the below-floor warning is emitted once per home per detected release rather than once per spawn.
+Every measured release classified as the table records.
+Either the protocol or the version signal alone carried an at-or-above verdict, and each divergent pair flipped once the carrying signal was removed.
+Client and running selected-session server verdicts composed conservatively; an unreadable server-running state or losing both release signals reported indeterminate.
+The run rechecked the default after server ensure and before journal publication, projected an unconfigured home only at or above the floor, honored explicit below-floor opt-in including the historical empty file, and emitted one warning per home per detected release rather than per spawn.
 
 The whole real-Herdr lane was run on 2026-08-05 against both the CI-pinned Herdr 0.7.4 protocol 16, which is below the floor, and Herdr 0.8.0 protocol 19, which is at it:
 
@@ -1761,14 +1763,14 @@ HERDR_LAB_HELPER=bin/fm-herdr-lab.sh bin/fm-test-run.sh --lane real-herdr-gated
 ```
 
 Both runs reported `family=real-herdr-gated count=11 failed=0`.
-The projection suite's unconfigured-home case is release-aware rather than pinned to one outcome, so it proves the projected default on 0.8.0 and the flat fallback with its naming warning on 0.7.4:
+At that time, the projection suite's release-aware unconfigured-home case proved the projected default on 0.8.0 and the flat fallback with its naming warning on 0.7.4:
 
 ```text
 ok - real Herdr lab: a home that configured nothing is projected by default on herdr 0.8.0
 ok - real Herdr lab: a home that configured nothing falls back flat on below-floor herdr 0.7.4 with one naming warning
 ```
 
-Every other case in that suite uses an explicit opt-in or opt-out, so the floor leaves them unchanged on both releases.
+The remaining cases then used an explicit opt-in or opt-out.
 
 Direct lab probes on 2026-07-28 established the removal rules the emptying-close plan relies on, each verified with `workspace list` focus reads around one mutation in a guarded `fm-lab-` session:
 

@@ -532,7 +532,7 @@ Legacy tmux metadata remains cleanup-compatible when its exact window name is `f
 `FM_HOME` determines Herdr's home label: the primary home uses `firstmate`, and a secondmate home marked by `.fm-secondmate-home` uses `2ndmate-<secondmate-id>`.
 [`herdr-backend.md`](herdr-backend.md#watching-and-task-containers) owns launcher-bound workspace placement, the label-only fallback, collision handling, and recovery behavior.
 
-The local `config/herdr-presentation-spaces` file instead opts a home out of, or explicitly in to, Herdr's default-on disposable single-task visual projection; [Presentation spaces](herdr-backend.md#presentation-spaces) owns its accepted values, default, Herdr version floor, migration, behavior, safety limits, recovery contract, and narrow locked session-start cleanup of exact restored idle-shell children.
+For `config/herdr-presentation-spaces` values, version requirements, worker placement, and locked session-start cleanup, see [Presentation spaces](herdr-backend.md#presentation-spaces).
 The setting is inherited into secondmate homes under the primary-authoritative contract owned by [`secondmate-provisioning`](../.agents/skills/secondmate-provisioning/SKILL.md).
 
 For normal herdr operations, `HERDR_SESSION` selects the named session, but destructive test cleanup must not rely on `HERDR_SESSION` alone.
@@ -965,12 +965,12 @@ Pi-family secondmates can start unattended in Firstmate-seeded homes without acc
 For omp secondmate launches, `fm-spawn.sh` names only the parent home's `state/<id>.omp-ext.ts` busy extension with `-e`: omp auto-discovers the home's tracked `.omp/extensions/` with no trust gate, and naming a discovered file with `-e` as well loads it twice; every omp launch also carries the tracked `.omp/fm-worker-overlay.yml` posture overlay through `--config`, which [`fm-spawn.sh --help`](../bin/fm-spawn.sh) owns.
 
 For every Claude launch from the launch template, worker or secondmate, `fm-spawn.sh` writes the busy hooks into the parent home's `state/<id>.claude-settings.json` and passes that file as Claude Code's one `--settings` value.
-The same file carries `feedbackDrafts` and, unless `config/keep-ai-trailers` is present, the attribution policy.
+The same file carries `feedbackDrafts` and the [commit attribution policy](#commit-attribution).
 Claude Code applies `--settings` for that session and does not write the file into the worktree or mate home.
 A key the file sets overrides the same key in user, project, and local settings.
 A key it omits keeps the file-based value, so a `.claude/settings.local.json` already in the worktree or home, tracked or not, is left untouched.
 Hook entries merge across settings files rather than replacing each other, so a project's or home's own hooks, such as a secondmate home's tracked Stop guard, still run beside these hooks.
-A raw `claude ...` launch command carries no `--settings` value, so it is not armed with busy hooks.
+A raw `claude ...` launch command bypasses this wiring and receives no Firstmate busy hooks.
 The CLI reference documents the one file-or-JSON flag, the settings page documents session precedence, and the hooks page documents the hooks merge: <https://code.claude.com/docs/en/cli-reference>, <https://code.claude.com/docs/en/settings>, <https://code.claude.com/docs/en/hooks>.
 [`fm-spawn.sh`](../bin/fm-spawn.sh) owns the file and the flag.
 
@@ -1207,7 +1207,7 @@ This applies only to agents Firstmate launches; the captain's own primary Firstm
 ### Commit attribution
 
 The optional local, gitignored `config/keep-ai-trailers` presence flag opts this home into keeping AI co-author trailers on its launched workers.
-With the flag absent, every Claude launch's inline `--settings` JSON carries `"attribution":{"commit":"","pr":"","sessionUrl":false}`, every Devin worker config sets `"attribution": false`, and every fleet launch appends a pane-scoped `GIT_CONFIG` `core.hooksPath` entry pointing at `state/<id>.git-hooks`, where git's `commit-msg` hook strips known AI trailers even when a runtime injects them after the typed message.
+With the flag absent, every Claude template launch's session settings carry `"attribution":{"commit":"","pr":"","sessionUrl":false}`, every Devin worker config sets `"attribution": false`, and every fleet launch appends a pane-scoped `GIT_CONFIG` `core.hooksPath` entry pointing at `state/<id>.git-hooks`, where git's `commit-msg` hook strips known AI trailers even when a runtime injects them after the typed message.
 The entry follows any `GIT_CONFIG_*` entries the worker inherits, so an inherited scoped `credential.helper` still applies to the worker and to the repository's own hooks, such as a git-lfs `pre-push`; an inherited `GIT_CONFIG_COUNT` that is not a decimal number, or that leaves no room for another entry within Git's signed int, stops the launch before the worker runs.
 When the flag is present, Claude launches omit those attribution-off settings, Devin worker configs keep the user config's `attribution` setting (Devin's default is on), and fleet launches do not install or select the strip hooks, so Git uses the repository's configured hooks directly.
 `bin/fm-git-strip-ai-trailers.sh` owns the identities, the install, and chaining the hooks of whichever repository git is running in, including when `git -c core.hooksPath` supplies the pane's hook override, so a project hook such as husky still runs when stripping is enabled.

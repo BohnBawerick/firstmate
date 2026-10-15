@@ -144,7 +144,7 @@ That covers:
 
 ### Firstmate running outside Herdr
 
-Firstmate running outside Herdr entirely has no launcher workspace to inherit, so its workers use this home's own labeled workspace, created on first use.
+Firstmate running outside Herdr entirely has no launcher workspace to inherit, so it uses this home's labeled workspace as the parent for [isolated worker placement](#presentation-spaces), creating that parent on first use.
 That path needs the home label to identify exactly one workspace.
 Two workspaces sharing it are an unresolvable placement and refuse rather than adopting either.
 
@@ -162,13 +162,15 @@ It pins the herdr session the task's record names and follows the same [isolated
 
 Existing task operations use recorded endpoint ids and do not move a live task when labels change.
 Existing shared workspaces remain until their recorded tasks are closed.
+Relaunch of a surviving ship or scout endpoint requires exactly one task-labeled tab and one pane in its workspace.
+The workspace must be outside the top-level `firstmate` and `2ndmate-<id>` parents; isolated legacy child workspaces such as `2ndmate-<id>/<task> · p:<token>` remain supported.
 
 ## Presentation spaces
 
 Every new or recreated crewmate or scout requires a disposable one-task workspace.
 This section calls that one-task workspace the projection.
 If Firstmate cannot establish that placement, it refuses launch with a diagnostic and creates no shared task tab.
-Fresh creation and dead-endpoint reclaim wait up to 180 seconds for the session presentation lock before refusing.
+Fresh creation and dead-endpoint reclaim wait for the session presentation lock up to the bound in [the spawn header](../bin/fm-spawn.sh), refusing if it stays contended.
 Workspace ordering remains best-effort after isolated placement succeeds.
 
 ### Setting values
@@ -462,12 +464,7 @@ Any of these preserves the candidate and lets session startup continue with at m
 - A failed journal publication or projected workspace create stops that spawn.
   An unavailable session server, contended presentation lock, or ambiguous parent also refuses placement.
 - Recovery of an existing presentation journal refuses by default when the shared presentation lock is contended, rather than falling back flat.
-  Pass `fm-spawn.sh --herdr-resume-lock-wait` to opt that recovery into waiting for the lock instead, so concurrent recoveries can serialize.
-  The flag applies to a fresh ship or scout spawn that recovers a journal.
-  The multi-task path forwards the flag to each per-pair spawn.
-  `fm-spawn.sh --relaunch` and `--secondmate` take no exact-resume presentation-order lock, so the flag has no effect there.
-  Dead-owner reclaim still stops the wait when a holder crashed.
-  Unbounded blocking on the session lock is never the default.
+  [The spawn header](../bin/fm-spawn.sh) owns lock-wait bounds and the exact-resume wait opt-in.
 - Existing layouts are not force-renamed or rearranged.
 - Missing or ambiguous restart bindings refuse launch while the old projection remains untouched.
 - Crashes, lost responses, failed exact-pane cleanup, or human renames can leave quarantined spaces.

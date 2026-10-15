@@ -158,9 +158,9 @@
 #   hard failure). Pass --herdr-resume-lock-wait to opt that
 #   resume into waiting for the lock instead, so two concurrent recoveries
 #   can serialize and each still replace its own exact husk. The flag acts
-#   only on that fresh ship or scout spawn path: --relaunch reuses the
-#   recorded endpoint without taking this lock, so the flag has no effect
-#   there, and a secondmate spawn never projects. Unbounded
+#   only on that fresh ship or scout spawn path. --relaunch takes no lock
+#   for a surviving endpoint; proven-gone reclaim uses the bounded create wait,
+#   so the flag has no effect there. A secondmate spawn never projects. Unbounded
 #   blocking on a third-party session lock is never the default. The exact
 #   response-derived new workspace is inserted immediately after its owning
 #   parent (firstmate or 2ndmate-<id>) contiguous child block. Ordering never
@@ -566,6 +566,9 @@
 # A ship task records the explicit mode/yolo it was passed; a secondmate spawn records
 # mode=secondmate, yolo=off, home=, and projects=; a scout records neither, and both the
 # success line and state/<id>.meta omit them.
+# A relaunch or secondmate respawn preserves metadata keys this writer does not
+# own, including armed PR bindings. An existing secondmate record survives a
+# failed replacement launch so a retry retains those keys.
 # A ship task additionally records quality= (the resolved posture) and base_sha= (the
 # commit its worktree starts from). base_sha is captured ONCE, at the fresh spawn, and
 # a relaunch reads it back rather than recapturing it: the hardened quality loop commits
@@ -2530,8 +2533,8 @@ launch_template() {
   # is trusted.
   # GEMINI_CLI_SYSTEM_SETTINGS_PATH points gemini at the firstmate-owned
   # per-task settings file written below. It is deliberately NOT the
-  # worktree's .gemini/settings.json: unlike claude's settings.local.json,
-  # that path is the PROJECT's own committed settings file, so writing it
+  # worktree's .gemini/settings.json: that path can be the project's own
+  # committed settings file, so writing it
   # would clobber a project's configuration and removing it at teardown
   # would delete a tracked file. The system layer also makes the busy
   # contract independent of the trust decision above (its hooks were

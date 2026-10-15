@@ -11,22 +11,14 @@
 # normal operation; the unit tests source it directly, so the FM_HOME fallback
 # below keeps that path sane without fm-backend.sh's preamble.
 #
-# Default container shape (D4, decided empirically - see
-# herdr-verification-p2.md "Task container shape", refined by
-# docs/herdr-backend.md "Default task container shape"): ONE herdr workspace PER
-# FIRSTMATE HOME (the primary, and each secondmate, gets its own), ONE herdr TAB
-# per task inside its home's workspace. The default-on presentation projection
-# creates a disposable workspace for a clean fresh task instead unless the home
-# opts out. That
-# workspace is a non-authoritative visual projection containing only the normal
-# task pane. Its random token and mutable label never authorize lookup,
+# Worker placement follows docs/herdr-backend.md "Presentation spaces".
+# A projected workspace's random token and mutable label never authorize lookup,
 # adoption, reuse, closure, deletion, task ownership, or endpoint selection.
 # A version 2 journal can participate in replacing only its exact same-identity
 # endpoint after metadata, home, session, workspace, tab, pane, parent, shape,
 # focus, and agent-absence checks all agree under the session lock.
-# Every ambiguous recovered launch uses the default flat home workspace when
-# duplicate-agent risk is independently absent.
-# Target resolution stays parallel to the tmux adapter in both layouts.
+# Ambiguous recovery refuses launch even when duplicate-agent risk is absent.
+# Target resolution stays parallel to the tmux adapter in new and legacy layouts.
 # Projected create, move, and cleanup operations capture the named session's
 # exact active workspace and tab. On Herdr 0.7.5, an explicit close that
 # empties a non-focused workspace moves focus to that workspace's neighbor
@@ -2092,10 +2084,10 @@ fm_backend_herdr_workspace_prune_seeded_default_tab() {  # <session> <workspace_
   fi
 }
 
-# fm_backend_herdr_workspace_ensure: the workspace this spawn's task tab
-# belongs in inside <session> - the launching agent's own exact workspace when
-# it has one, otherwise this HOME's persistent workspace, created in <cwd> if
-# absent. Must be called as a PLAIN STATEMENT, never through command
+# fm_backend_herdr_workspace_ensure: resolve the home parent inside <session>
+# from the launching agent's exact workspace, otherwise this HOME's persistent
+# workspace, created in <cwd> if absent. Must be called as a PLAIN STATEMENT,
+# never through command
 # substitution ($(...)) - it communicates through these globals, not solely
 # through stdout, and a command substitution forks a subshell that would
 # discard them:
@@ -2138,9 +2130,9 @@ fm_backend_herdr_workspace_prune_seeded_default_tab() {  # <session> <workspace_
 # <launcher-relationship> (3rd arg, default "launcher-home") says whether the
 # container being ensured belongs to the SAME firstmate home as the process
 # calling this:
-#   launcher-home - a crewmate or scout for the caller's own home. When the
-#                   caller is itself running in a herdr pane, the worker MUST
-#                   land in that exact workspace
+#   launcher-home - the parent for a crewmate or scout in the caller's home.
+#                   When the caller is itself running in a herdr pane, the
+#                   parent MUST be that exact workspace
 #                   (fm_backend_herdr_launcher_identity), never in whichever
 #                   same-labeled workspace happens to sort first.
 #   other-home    - a --secondmate launch, which stands up a DIFFERENT home's
