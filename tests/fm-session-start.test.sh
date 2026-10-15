@@ -698,6 +698,17 @@ wait_for_network_stage() {
     "$ROOT/bin/fm-startup-network.sh" wait "$limit"
 }
 
+# wait_for_home_summary <home> [seconds]
+# Block until the detached home-summary refresh a locked session start launched
+# has published its ledger. The digest itself never waits for it.
+wait_for_home_summary() {
+  local home=$1 limit=${2:-60} waited=0
+  while [ ! -s "$home/state/home-summary.json" ] && [ "$waited" -lt "$limit" ]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+}
+
 wait_for_network_wake() {
   local home=$1 limit=${2:-30} waited=0
   while ! grep -Fq $'check\tstartup-network' "$home/state/.wake-queue" 2>/dev/null \
@@ -769,6 +780,46 @@ write_omp_loaded_markers() {
   printf '%s\n%s\n' "$version" "$pid" > "$home/state/.omp-turnend-extension-loaded"
 }
 
+# A home-summary refresh stalled for its whole deadline must not hold the
+# digest: session start launches it detached and returns, and the refresh still
+# publishes once the stall clears.
+test_slow_home_summary_refresh_does_not_hold_session_start() {
+  local rec root home fakebin holder started elapsed waited=0
+  rec=$(new_world slow-home-summary)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+
+  # Hold the home-local refresh lock from a live process, so the refresh waits
+  # on it for its full deadline exactly like a producer that is slow under load.
+  ( FM_HOME="$home" bash -c '. "$1/bin/fm-wake-lib.sh"; fm_lock_acquire_wait "$2" || exit 1; : > "$2.held"; sleep 120' \
+      _ "$ROOT" "$home/state/.home-summary-refresh.lock" ) >/dev/null 2>&1 &
+  holder=$!
+  while [ ! -e "$home/state/.home-summary-refresh.lock.held" ] && [ "$waited" -lt 20 ]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+  [ -e "$home/state/.home-summary-refresh.lock.held" ] \
+    || { kill "$holder" 2>/dev/null; fail "the test could not hold the refresh lock"; }
+
+  started=$(date +%s)
+  FM_HOME_SUMMARY_TIMEOUT=60 run_session_start "$home" "$root" "$fakebin:$BASE_PATH" >/dev/null
+  elapsed=$(( $(date +%s) - started ))
+  [ ! -s "$home/state/home-summary.json" ] \
+    || { kill "$holder" 2>/dev/null; fail "the refresh published while its lock was still held"; }
+  kill "$holder" 2>/dev/null
+  wait "$holder" 2>/dev/null
+  [ "$elapsed" -lt 45 ] \
+    || fail "session start waited ${elapsed}s on a stalled home-summary refresh instead of detaching it"
+
+  wait_for_home_summary "$home"
+  jq -e '.schema == "fm-secondmate-home-summary.v1"' "$home/state/home-summary.json" >/dev/null \
+    || fail "the detached refresh did not publish once its lock cleared"
+  pass "a stalled home-summary refresh does not hold session start"
+}
+
 # --- context digest: absent vs empty vs present -----------------------------
 
 test_context_digest_absent_empty_present() {
@@ -786,6 +837,7 @@ EOF
 
   out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
 
+  wait_for_home_summary "$home"
   jq -e --arg home "$home" '
     .schema == "fm-secondmate-home-summary.v1"
     and .home == $home
@@ -3163,6 +3215,7 @@ EOF
 }
 
 test_context_digest_absent_empty_present
+test_slow_home_summary_refresh_does_not_hold_session_start
 test_context_digest_compiles_curated_memory_when_the_layout_exists
 test_context_digest_keeps_whole_files_when_no_memory_layout_exists
 test_context_digest_falls_back_when_the_compiler_cannot_run
