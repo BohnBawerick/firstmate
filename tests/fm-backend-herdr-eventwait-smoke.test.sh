@@ -179,5 +179,32 @@ FM_ESCALATE_BATCH_SECS=999 handle_wake "$MISSING_REASON" "$STATE"
 [ -e "$STATE/.subsuper-paused-a" ] || fail "the missing endpoint notification was attributed to the current pane owner"
 pass "real herdr: notification delivery preserves live and missing task identities at a reused address"
 
+printf 'working: continuing the task\n' > "$STATE/evwait1.status"
+INITIAL_STALE=$(( $(date +%s) - 100 ))
+printf '%s\n' "$INITIAL_STALE" > "$STATE/.subsuper-stale-evwait1"
+printf '%s\n' "$INITIAL_STALE" > "$STATE/.stale-since-$key"
+printf 'watcher-hash\n' > "$STATE/.stale-$key"
+for _ in 1 2; do
+  FM_ESCALATE_BATCH_SECS=999999 FM_HEARTBEAT_SCAN_SECS=999999 FM_STALE_ESCALATE_SECS=240 \
+    FM_PAUSE_RESURFACE_SECS=3600 housekeeping "$STATE"
+  [ "$(cat "$STATE/.subsuper-stale-evwait1" 2>/dev/null)" = "$INITIAL_STALE" ] \
+    || fail "a stale task's pause reset the live task's wedge timer during housekeeping"
+  [ "$(cat "$STATE/.stale-since-$key" 2>/dev/null)" = "$INITIAL_STALE" ] \
+    || fail "a stale task's pause removed the live task's watcher timer"
+  [ ! -e "$STATE/.subsuper-paused-evwait1" ] || fail "the live task inherited the stale task's pause"
+done
+sync_pause_markers_from_signal "$STATE" "$STATE/a.status"
+[ "$(cat "$STATE/.subsuper-stale-evwait1" 2>/dev/null)" = "$INITIAL_STALE" ] \
+  || fail "signal reconciliation discarded the live task's timer"
+printf '%s\n' "$(( $(date +%s) - 500 ))" > "$STATE/.subsuper-stale-evwait1"
+: > "$STATE/.subsuper-escalations"
+FM_ESCALATE_BATCH_SECS=999999 FM_HEARTBEAT_SCAN_SECS=999999 FM_STALE_ESCALATE_SECS=240 \
+  FM_PAUSE_RESURFACE_SECS=3600 housekeeping "$STATE"
+grep -F 'possible wedge' "$STATE/.subsuper-escalations" >/dev/null \
+  || fail "the live task's preserved timer did not mature into an escalation"
+[ ! -e "$STATE/.subsuper-stale-evwait1" ] || fail "the delivered live-task wedge retained its timer"
+[ -e "$STATE/.subsuper-paused-a" ] || fail "housekeeping lost the stale task's own pause"
+pass "real herdr: housekeeping and signal reconciliation preserve each task's timers at a reused address"
+
 cleanup_all
 trap - EXIT

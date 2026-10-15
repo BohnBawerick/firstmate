@@ -598,30 +598,29 @@ pause_marker_remove() {  # <window> <state>
   rm -f "$state/.subsuper-paused-$key" "$state/.subsuper-pause-until-due-$key"
 }
 
-clear_pause_tracking() {  # <window> <state>
-  local win=$1 state=$2 task key watcher_key
-  task=$(window_to_task "$win" "$state")
+clear_pause_tracking() {  # <window> <state> <task>
+  local win=$1 state=$2 task=$3 key watcher_key
   key=$(_stale_key "$task")
   watcher_key=$(_stale_key "$win")
   rm -f "$state/.subsuper-paused-$key" "$state/.subsuper-pause-until-due-$key" "$state/.subsuper-stale-$key" \
-    "$state/.subsuper-dialog-$key" \
-    "$state/.paused-$watcher_key" "$state/.paused-rechecked-$watcher_key" "$state/.paused-resurfaced-$watcher_key" \
+    "$state/.subsuper-dialog-$key"
+  [ "$(window_to_task "$win" "$state")" = "$task" ] || return 0
+  rm -f "$state/.paused-$watcher_key" "$state/.paused-rechecked-$watcher_key" "$state/.paused-resurfaced-$watcher_key" \
     "$state/.stale-$watcher_key" "$state/.stale-since-$watcher_key" "$state/.wedge-escalations-$watcher_key" \
     "$state/.writing-since-$watcher_key" "$state/.writing-resurfaced-$watcher_key" \
     "$state/.waiting-resurfaced-$watcher_key"
 }
 
-reconcile_pause_tracking() {  # <window> <state> <last-status-line>
-  local win=$1 state=$2 last=$3 task key marker watcher_key
-  task=$(window_to_task "$win" "$state")
+reconcile_pause_tracking() {  # <window> <state> <last-status-line> <task>
+  local win=$1 state=$2 last=$3 task=$4 key marker watcher_key
   key=$(_stale_key "$task")
   marker="$state/.subsuper-paused-$key"
   watcher_key=$(_stale_key "$win")
   if status_is_paused_or_captain_held "$last"; then
-    stale_marker_remove "$win" "$state"
-    pause_marker_record "$win" "$state"
+    stale_marker_remove "$task" "$state"
+    pause_marker_record "$task" "$state"
   elif [ -e "$marker" ] || [ -e "$state/.paused-$watcher_key" ]; then
-    clear_pause_tracking "$win" "$state"
+    clear_pause_tracking "$win" "$state" "$task"
   fi
 }
 
@@ -636,13 +635,13 @@ migrate_watcher_pause_markers() {  # <state>
     watcher_key=$(_stale_key "$win")
     last=$(status_declared_wait_line "$state/$task.status")
     if status_is_paused_or_captain_held "$last" || [ -e "$state/.subsuper-paused-$key" ] || [ -e "$state/.paused-$watcher_key" ]; then
-      reconcile_pause_tracking "$win" "$state" "$last"
+      reconcile_pause_tracking "$win" "$state" "$last" "$task"
     fi
   done
 }
 
 sync_pause_markers_from_signal() {  # <state> <signal files>
-  local state=$1 paths=$2 f last task win
+  local state=$1 paths=$2 f last task win owner
   local -a files
   read -r -a files <<<"$paths"
   for f in "${files[@]}"; do
@@ -650,9 +649,9 @@ sync_pause_markers_from_signal() {  # <state> <signal files>
     [ -e "$f" ] || continue
     last=$(status_declared_wait_line "$f")
     task=$(basename "$f"); task=${task%.status}
-    win=$(window_for_task "$task" "$state" 2>/dev/null || true)
-    [ -n "$win" ] || continue
-    reconcile_pause_tracking "$win" "$state" "$last"
+    IFS=$'\t' read -r owner win < <(window_for_task "$(_stale_key "$task")" "$state" 2>/dev/null) || continue
+    [ "$owner" = "$task" ] && [ -n "$win" ] || continue
+    reconcile_pause_tracking "$win" "$state" "$last" "$task"
   done
 }
 
@@ -751,31 +750,16 @@ pane_input_pending() {  # <target> [backend]
   [ "$(fm_backend_composer_state "$backend" "$target" 2>/dev/null)" != empty ]
 }
 
-task_window_backend() {  # <window> <state>
-  local win=$1 state=$2 task meta
-  task=$(window_to_task "$win" "$state")
-  meta="$state/$task.meta"
-  fm_backend_of_meta "$meta"
-}
-
-task_window_harness() {  # <window> <state>
-  local win=$1 state=$2 task meta
-  task=$(window_to_task "$win" "$state")
-  meta="$state/$task.meta"
-  grep '^harness=' "$meta" 2>/dev/null | cut -d= -f2- || true
-}
-
 # stale_window_is_busy: one capture. 0 when the task is PROVABLY working
 # through the semantic busy-state contract (bin/fm-busy-lib.sh), 1 when it is
 # not, and 2 when the endpoint could not be read at all. Only an exact busy
 # verdict is working: unknown semantic state never becomes busy and never
 # becomes a silent idle. Housekeeping must not treat 2 as gone; that split is
 # owned by stale_window_recheck below.
-stale_window_is_busy() {  # <window> <state>
-  local win=$1 state=$2 backend harness label task tail40 verdict
-  backend=$(task_window_backend "$win" "$state")
-  harness=$(task_window_harness "$win" "$state")
-  task=$(window_to_task "$win" "$state")
+stale_window_is_busy() {  # <window> <state> <task>
+  local win=$1 state=$2 backend harness label task=$3 tail40 verdict
+  backend=$(fm_backend_of_meta "$state/$task.meta")
+  harness=$(fm_meta_get "$state/$task.meta" harness)
   label="fm-$task"
   tail40=$(fm_backend_capture "$backend" "$win" 40 "$label" 2>/dev/null) || return 2
   verdict=$(fm_busy_classify "$backend" "$win" "$harness" "$task" "$state" "$tail40")
@@ -793,9 +777,9 @@ stale_window_is_busy() {  # <window> <state>
 # probe - is unreadable, never a second silent-drop. target_exists is not
 # consulted: on tmux it can fall back to the active window, and on Orca it is
 # itself a capture, so a failed existence read cannot prove the pane is gone.
-stale_window_recheck() {  # <window> <state> -> busy|idle|gone|unreadable
-  local win=$1 state=$2 backend retries sleep_s attempts attempt rc agent_state
-  backend=$(task_window_backend "$win" "$state")
+stale_window_recheck() {  # <window> <state> <task> -> busy|idle|gone|unreadable
+  local win=$1 state=$2 task=$3 backend retries sleep_s attempts attempt rc agent_state
+  backend=$(fm_backend_of_meta "$state/$task.meta")
   retries=${FM_STALE_CAPTURE_RETRIES:-$STALE_CAPTURE_RETRIES_DEFAULT}
   case "$retries" in
     ''|*[!0-9]*) retries=$STALE_CAPTURE_RETRIES_DEFAULT ;;
@@ -805,7 +789,7 @@ stale_window_recheck() {  # <window> <state> -> busy|idle|gone|unreadable
   attempts=$((retries + 1))
   attempt=1
   while [ "$attempt" -le "$attempts" ]; do
-    stale_window_is_busy "$win" "$state"
+    stale_window_is_busy "$win" "$state" "$task"
     rc=$?
     case "$rc" in
       0) printf 'busy\n'; return 0 ;;
@@ -820,7 +804,7 @@ stale_window_recheck() {  # <window> <state> -> busy|idle|gone|unreadable
     esac
     break
   done
-  agent_state=$(fm_backend_agent_state "$backend" "$win" 2>/dev/null || printf 'unreadable')
+  agent_state=$(fm_backend_agent_state "$backend" "$win" "fm-$task" 2>/dev/null || printf 'unreadable')
   [ -n "$agent_state" ] || agent_state=unreadable
   case "$agent_state" in
     missing)
@@ -1326,15 +1310,14 @@ housekeeping() {  # <state>
     key="${marker##*.subsuper-stale-}"
     # Reconstruct the backend target from metadata, with the live tmux list as the
     # legacy fallback for old markers that predate meta lookup.
-    win=$(window_for_task "$key" "$state" 2>/dev/null || true)
+    IFS=$'\t' read -r task win < <(window_for_task "$key" "$state" 2>/dev/null) || win=
     if [ -z "$win" ]; then
       # Window gone (task torn down): drop the marker, nothing to escalate.
       rm -f "$marker" "$state/.subsuper-dialog-$key"; continue
     fi
-    task=$(window_to_task "$win" "$state")
     last=$(status_declared_wait_line "$state/$task.status")
     if [ -n "$last" ] && status_is_paused_or_captain_held "$last"; then
-      reconcile_pause_tracking "$win" "$state" "$last"
+      reconcile_pause_tracking "$win" "$state" "$last" "$task"
       continue
     fi
     age=$(( now - $(cat "$marker" 2>/dev/null || echo "$now") ))
@@ -1343,7 +1326,7 @@ housekeeping() {  # <state>
       _now > "$marker"
       log "suppressed stale persistence recheck (provably working): $win"
     else
-      verdict=$(stale_window_recheck "$win" "$state")
+      verdict=$(stale_window_recheck "$win" "$state" "$task")
       case "$verdict" in
         busy|gone) rm -f "$marker" "$state/.subsuper-dialog-$key" ;;
         unreadable)
@@ -1359,7 +1342,7 @@ housekeeping() {  # <state>
             persisted="stale persisted ${age}s (possible wedge): $win"
           fi
           if escalate_add "$state" "$persisted"; then
-            stale_marker_remove "$win" "$state"
+            stale_marker_remove "$task" "$state"
           fi
           ;;
       esac
@@ -1387,14 +1370,13 @@ housekeeping() {  # <state>
   for marker in "$state"/.subsuper-paused-*; do
     [ -e "$marker" ] || continue
     key="${marker##*.subsuper-paused-}"
-    win=$(window_for_task "$key" "$state" 2>/dev/null || true)
+    IFS=$'\t' read -r task win < <(window_for_task "$key" "$state" 2>/dev/null) || win=
     if [ -z "$win" ]; then
       rm -f "$marker"; continue
     fi
-    task=$(window_to_task "$win" "$state")
     last=$(status_declared_wait_line "$state/$task.status")
     if [ -z "$last" ] || ! status_is_paused_or_captain_held "$last"; then
-      reconcile_pause_tracking "$win" "$state" "$last"
+      reconcile_pause_tracking "$win" "$state" "$last" "$task"
       continue
     fi
     marker_epoch=$(cat "$marker" 2>/dev/null || echo "$now")
@@ -1425,7 +1407,7 @@ housekeeping() {  # <state>
     # would never mature into its one recheck. Do NOT reinstate a `busy)` arm.
     # An unreadable pane is kept and named, because the watcher cannot recapture
     # it and dropping the marker would forget it.
-    verdict=$(stale_window_recheck "$win" "$state")
+    verdict=$(stale_window_recheck "$win" "$state" "$task")
     case "$verdict" in
       gone) rm -f "$marker" ;;
       *)
@@ -1501,18 +1483,18 @@ housekeeping() {  # <state>
 }
 
 # Find a recorded or live window target whose task id matches the marker key.
-window_for_task() {  # <task-key> [state]
+window_for_task() {  # <task-key> [state] -> <task>\t<window>
   local key=$1 state=${2:-$(_state_root)} meta task w t
   for meta in "$state"/*.meta; do
     [ -e "$meta" ] || continue
     task=$(basename "$meta"); task=${task%.meta}
     [ "$(_stale_key "$task")" = "$key" ] || continue
     w=$(fm_backend_target_of_meta "$meta")
-    [ -n "$w" ] && { printf '%s' "$w"; return 0; }
+    [ -n "$w" ] && { printf '%s\t%s\n' "$task" "$w"; return 0; }
   done
   for w in $(tmux list-windows -a -F '#{session_name}:#{window_name}' 2>/dev/null | grep ':fm-' || true); do
     t=$(window_to_task "$w" "$state")
-    [ "$(_stale_key "$t")" = "$key" ] && { printf '%s' "$w"; return 0; }
+    [ "$(_stale_key "$t")" = "$key" ] && { printf '%s\t%s\n' "$t" "$w"; return 0; }
   done
   return 1
 }
@@ -1773,7 +1755,7 @@ handle_wake() {  # <reason> <state>
   if [ "$kind" = stale ] && [ "$action" = escalate ]; then
     task=$(window_to_task "$arg" "$state")
     last=$(status_declared_wait_line "$state/$task.status")
-    reconcile_pause_tracking "$arg" "$state" "$last"
+    reconcile_pause_tracking "$arg" "$state" "$last" "$task"
   fi
   case "$action" in
     escalate)

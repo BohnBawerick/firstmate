@@ -371,7 +371,7 @@ test_busy_inbox_escalation_reaches_supervision() {
     --source claude-hook --event UserPromptSubmit
   printf 'Question awaiting an answer\n' > "$pane"
   PATH="$dir/fakebin:$PATH" FM_FAKE_TMUX_CAPTURE="$pane" \
-    stale_window_is_busy "$win" "$state" || fail "inbox consumer fixture is not busy"
+    stale_window_is_busy "$win" "$state" "$task" || fail "inbox consumer fixture is not busy"
   case "$variant" in
     stuck)
       detail="unread firstmate instruction: stuck-busy after 2 consecutive busy-deferred due doorbells; $state/$task.inbox/001.msg stays unhandled and no doorbell was typed; inspect the worker"
@@ -1252,7 +1252,7 @@ test_housekeeping_paused_resumed_cleared() {
   key=$(printf '%s' "held-w12" | tr ':/.' '___')
   echo $(( $(date +%s) - 5000 )) > "$state/.subsuper-paused-$key"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
-    FM_STATE_OVERRIDE="$state" stale_window_is_busy "$win" "$state" \
+    FM_STATE_OVERRIDE="$state" stale_window_is_busy "$win" "$state" held-w12 \
     || fail "the resumed-pause fixture does not actually read busy, so it pins nothing about busy state"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
     FM_STATE_OVERRIDE="$state" FM_PAUSE_RESURFACE_SECS=240 housekeeping "$state"
@@ -1290,7 +1290,7 @@ test_housekeeping_busy_declared_wait_matures_its_window() {
       --source pi-ext --event agent-start
     key=$(printf '%s' "$task" | tr ':/.' '___')
     PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
-      FM_STATE_OVERRIDE="$state" stale_window_is_busy "$win" "$state" \
+      FM_STATE_OVERRIDE="$state" stale_window_is_busy "$win" "$state" "$task" \
       || fail "the $case_name fixture does not actually read busy, so it pins nothing about busy state"
 
     # Immature window: ticks inside PAUSE_RESURFACE_SECS neither escalate nor let the
