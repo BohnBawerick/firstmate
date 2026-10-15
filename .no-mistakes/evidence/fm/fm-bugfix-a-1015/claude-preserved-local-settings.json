@@ -1,0 +1,1 @@
+{"env": {"FIXTURE_KEY": "keep", "WORKER_KEY": "preserve-on-relaunch"}, "hooks": {"UserPromptSubmit": [{"hooks": [{"type": "command", "command": "printf user-hook-fired"}]}]}}

@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT=$PWD
+EVIDENCE=/home/bohn/.no-mistakes/evidence/01M50CT45BXDZ23N5NRP9RSPP0
+BADLAB=
+LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-lab.XXXXXX")
+cleanup() {
+  rc=$?
+  trap - EXIT
+  TMUX_TMPDIR="$LAB/tmux" tmux -L fm-lab kill-server 2>/dev/null || true
+  chmod -R u+w "$LAB"
+  rm -rf "$LAB"
+  [ -z "$BADLAB" ] || { chmod -R u+w "$BADLAB"; rm -rf "$BADLAB"; }
+  exit "$rc"
+}
+trap cleanup EXIT
+bin/fm-lab-home.sh create "$LAB"
+mkdir -p "$LAB/tmux" "$LAB/gh"
+TMUX_TMPDIR="$LAB/tmux" tmux -L fm-lab new-session -d -s firstmate -x 120 -y 40 -c "$ROOT" '/bin/bash --noprofile --norc'
+export TMUX_TMPDIR="$LAB/tmux"
+SOCKET=$(tmux -L fm-lab display-message -p '#{socket_path}')
+PID=$(tmux -L fm-lab display-message -p '#{pid}')
+export TMUX="$SOCKET,$PID,0" FM_HOME="$LAB" GH_CONFIG_DIR="$LAB/gh"
+unset FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE FM_GATE_REFUSE_BYPASS GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
+bin/fm-lock.sh
+. bin/fm-pr-lib.sh
+printf 'window=firstmate:fm-remount\npr=https://github.com/example/home/pull/6\n' > "$LAB/state/remount.meta"
+fm_pr_poll_prepare "$LAB/state" remount github https://github.com/example/home/pull/6 github.com example/home 6 "$ROOT/bin/fm-pr-poll.sh"
+fm_pr_poll_publish_prepared
+python3 - "$LAB/state/remount.pr-poll-registration" <<'PYSHIFT'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]); lines=p.read_text().splitlines()
+for n in (9,10):
+    d,ino=lines[n].split(':'); lines[n]=f'{int(d)+1}:{ino}'
+p.write_text('\n'.join(lines)+'\n')
+PYSHIFT
+! fm_pr_poll_artifacts_valid "$LAB/state" remount "$ROOT/bin/fm-pr-poll.sh"
+printf 'before live watcher: shifted device registration is untrusted\n'
+PATH=/usr/bin:/bin FM_POLL=0.05 FM_CHECK_INTERVAL=0 FM_CHECK_TIMEOUT=1 FM_HEARTBEAT=999999 FM_SIGNAL_GRACE=0 FM_HOME_SUMMARY_INTERVAL=999999 \
+  timeout 4 bin/fm-watch.sh > "$EVIDENCE/poll-live-watcher.log" 2>&1 || [ "$?" = 124 ]
+fm_pr_poll_artifacts_valid "$LAB/state" remount "$ROOT/bin/fm-pr-poll.sh"
+printf 'after live watcher: registration trusted on current device\n'
+cp "$LAB/state/remount.pr-poll-registration" "$EVIDENCE/poll-after-remount.registration"
+BADLAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-lab.XXXXXX")
+bin/fm-lab-home.sh create "$BADLAB"
+FM_HOME="$BADLAB" bin/fm-lock.sh
+mkdir "$BADLAB/foreign"
+cp "$LAB/state/remount.meta" "$BADLAB/state/remount.meta"
+fm_pr_poll_prepare "$BADLAB/state" remount github https://github.com/example/home/pull/6 github.com example/home 6 "$ROOT/bin/fm-pr-poll.sh"
+fm_pr_poll_publish_prepared
+fm_pr_poll_artifacts_valid "$BADLAB/state" remount "$ROOT/bin/fm-pr-poll.sh"
+printf 'foreign-device fixture initially has a valid registration\n'
+cp "$BADLAB/state/remount.check.sh" "$BADLAB/check-copy"
+export FM_HOME="$BADLAB"
+set +e
+PATH=/usr/bin:/bin FM_POLL=0.05 FM_CHECK_INTERVAL=0 FM_CHECK_TIMEOUT=1 FM_HEARTBEAT=999999 FM_SIGNAL_GRACE=0 \
+bwrap --ro-bind / / --bind "$BADLAB" "$BADLAB" --tmpfs "$BADLAB/foreign" --proc /proc --dev /dev \
+  bash -c 'cp "$1/check-copy" "$1/foreign/check"; bwrap --ro-bind / / --bind "$1" "$1" --ro-bind "$1/foreign/check" "$1/state/remount.check.sh" --proc /proc --dev /dev bash -c '\''stat -c "parent device=%d" "$1/state"; stat -c "check device=%d" "$1/state/remount.check.sh"; timeout 4 "$2/bin/fm-watch.sh"'\'' _ "$1" "$2"' _ "$BADLAB" "$ROOT" > "$EVIDENCE/poll-foreign-device.log" 2>&1
+rc=$?
+set -e
+printf 'foreign-device watcher exit: %s\n' "$rc"
+cat "$EVIDENCE/poll-foreign-device.log"
+rg -q 'rejected unauthenticated state checks' "$EVIDENCE/poll-foreign-device.log"
+printf 'actual foreign-device bind mount was refused by the live watcher\n'

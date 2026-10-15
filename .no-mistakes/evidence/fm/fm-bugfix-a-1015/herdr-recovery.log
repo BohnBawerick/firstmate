@@ -1,0 +1,8 @@
+ok - fm-spawn --relaunch: resumes the bound Pi session only for a Pi registration
+ok - reclaim: a herdr pane that outlived its stopped server is adopted, never orphaned beside a new tab
+ok - fm-control exit: a herdr pane that outlived its stopped server is already-stopped, not gone
+ok - reclaim: a herdr rebind is created in the session the record names, never the ambient one
+ok - reclaim: a herdr agent that came back with its server refuses, so one worktree keeps one agent
+ok - reclaim: a herdr reclaim rebinds the endpoint and leaves the whole rest of the task alone
+ok - reclaim: a herdr secondmate whose endpoint is gone is sent to its own respawn owner
+ok - reclaim: a rebind refused from a plain shell reports the real cause, not a fabricated session mismatch

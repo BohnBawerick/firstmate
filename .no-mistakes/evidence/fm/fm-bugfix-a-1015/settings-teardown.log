@@ -1,0 +1,2 @@
+ok - teardown preserves hook-only user settings and refuses their removal
+ok - dirty worktree is refused even when its committed work has landed (dirty always wins)

@@ -1,0 +1,6 @@
+ok - fm-control relaunch: a worker's settings.local.json keys survive the relaunch
+ok - fm-control relaunch: switching harness is one ordinary relaunch, and the old wiring goes with the old agent
+not ok - a claude secondmate relaunch should retire wiring without touching local settings
+error: secondmate home cannot be inside the firstmate repo: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/tmp/fm-control-relaunch.sZVCSw/smlocal-23317/smhome
+error: the replacement agent for sml could not be launched on codex
+error: sml's agent was stopped but the replacement did not launch; no agent is running, and its work plus the recorded progress note are preserved at /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/tmp/fm-control-relaunch.sZVCSw/smlocal-23317/smhome: expected exit 0, got 1

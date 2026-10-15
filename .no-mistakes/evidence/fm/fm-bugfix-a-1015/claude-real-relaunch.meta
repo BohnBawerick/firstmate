@@ -1,0 +1,16 @@
+window=fm-lab-claude-reclaim-1894753-358:w2:p2
+endpoint_task_id=native-claude
+worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/claude-pool/.treehouse/claude-project-e9fbae/1/claude-project
+project=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/claude-project
+harness=claude
+kind=scout
+tasktmp=/tmp/fm-native-claude
+model=default
+effort=default
+busy_gen=g1792105713.1911322.29745
+spawn_gen=s1792105713.1909365.8681
+backend=herdr
+herdr_session=fm-lab-claude-reclaim-1894753-358
+herdr_workspace_id=w2
+herdr_tab_id=w2:t2
+herdr_pane_id=w2:p2

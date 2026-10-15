@@ -1,0 +1,73 @@
+/tmp/fm-lab.XiPB16
+lock acquired: THIS session holds the fleet lock (harness pid 4166072)
+true
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.XiPB16
+spawned native-codex harness=codex kind=scout window=fm-lab-codex-reclaim-1317492-20100:w2:p2 worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/codex-pool/.treehouse/codex-project-b3b1d4/1/codex-project
+true
+true
+fresh worker: workspace=w2 tab=w2:t2 pane=w2:p2
+viewer attached to fm-lab-codex-reclaim-1317492-20100 (pid 1328051)
+
+  >_ OpenAI Codex (v0.163.0)
+     ~/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/…/1/codex-project
+
+
+
+
+
+
+
+
+                                         ⣀⣤⣤⣤⣀⣀
+                                      ⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣦⣤⣤⣤⣤⣤⣤⡀
+                                    ⢀⣾⣿⣿⠿⠋⠉⠉⢉⣭⣿⣿⣿⣿⣿⠿⣿⣿⣿⣿⣷⣄
+                                   ⣀⣾⣿⣿⠃ ⣀⣴⣾⣿⣿⡿⠟⠋ ⣀⡀ ⠈⠙⢿⣿⣿⣧
+                                ⣀⣶⣿⣿⣿⣿⡇ ⢸⣿⣿⡿⠛⠉⢀⣠⣴⣿⣿⣿⣷⣦⣀⠈⢻⣿⣿⡇
+                               ⣰⣿⣿⡿⢿⣿⣿⡇ ⢸⣿⣿⢀⣤⣶⣿⣿⣿⠟⠛⠻⣿⣿⣿⣿⣮⣿⣿⡷
+                              ⢰⣿⣿⡟⠁⢸⣿⣿⡇ ⢸⣿⣿⣿⣿⠿⠿⣿⣿⣿⣦⣄⡀⠈⠛⠿⣿⣿⣿⣧⡀
+                              ⣾⣿⣿⠃ ⢸⣿⣿⡇ ⢸⣿⣿⠋⠁  ⠈⠙⢻⣿⣿⣿⣶⣤⡀ ⠹⢿⣿⣷⡄
+                              ⢸⣿⣿⣇ ⠸⣿⣿⣷⣦⣼⣿⣿      ⢸⣿⣿⠻⢿⣿⣿⡇ ⠘⣿⣿⣿
+                              ⠈⢿⣿⣿⣦⡀⠈⠛⠿⣿⣿⣿⣿⣄⡀  ⢀⣠⣼⣿⣿  ⣿⣿⡇  ⣿⣿⣿⠇
+                                ⢻⣿⣿⣿⣷⣦⣀⠈⠙⠻⣿⣿⣿⣶⣶⣿⣿⣿⣿⣿  ⣿⣿⡇ ⣠⣿⣿⣿
+                                ⢸⣿⣿⡿⢿⣿⣿⣿⣦⣠⣴⣿⣿⣿⡿⠟⠋⢸⣿⣿  ⣿⣿⣷⣴⣿⣿⣿⠃
+                                ⠘⣿⣿⣷ ⠈⠛⢿⣿⣿⣿⠿⠋⠉ ⣠⣴⣿⣿⣿  ⣿⣿⣿⣿⣿⠟⠁
+                                 ⠻⣿⣿⣿⣤⣀ ⠈⠉ ⢀⣤⣶⣿⣿⣿⠿⠟⠁ ⣰⣿⣿⡟⠋⠁
+                                  ⠈⠿⣿⣿⣿⣿⣶⣾⣿⣿⣿⣿⠟⠋⠁  ⣠⣼⣿⣿⡟
+                                     ⠙⠛⠛⠛⠻⠛⢿⣿⣿⣿⣿⣷⣾⣿⣿⣿⡿⠏
+                                            ⠈⠙⠛⠿⠿⠿⠿⠛⠉
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+
+  ? for shortcuts
+closed recorded endpoint before public control relaunch
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.XiPB16
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.XiPB16
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+relaunched native-codex harness=codex from=codex model=default effort=default backend=herdr endpoint=fm-lab-codex-reclaim-1317492-20100:w3:p2 worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/codex-pool/.treehouse/codex-project-b3b1d4/1/codex-project
+true
+true
+control reclaimed missing endpoint: workspace=w3 pane=w3:p2
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.XiPB16
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+teardown: reaping leaked worktree process(es) for native-codex: 1333829 1336418 1338989 1338992 1338994
+teardown: force-killing leaked worktree process(es) for native-codex: 1333829
+A new version of treehouse is available: v3.1.3 → v3.1.4
+Run "treehouse update" to update
+
+🌳 Worktree returned to pool.
+warning: herdr presentation journal for native-codex was not retired by its close; no workspace cleanup was attempted
+teardown native-codex complete (window fm-lab-codex-reclaim-1317492-20100:w3:p2, worktree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/codex-pool/.treehouse/codex-project-b3b1d4/1/codex-project)
+Backlog: native-codex just finished (this home keeps no markdown backlog at /tmp/fm-lab.XiPB16/data/backlog.md). Update /tmp/fm-lab.XiPB16/data/backlog.md - move native-codex to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.

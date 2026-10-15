@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT=$PWD
+EVIDENCE=/home/bohn/.no-mistakes/evidence/01M50CT45BXDZ23N5NRP9RSPP0
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+export TREEHOUSE_ROOT="$ROOT/.test-work/slot-pool"
+LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-lab.XXXXXX")
+WT=
+cleanup() {
+  rc=$?
+  trap - EXIT
+  TMUX_TMPDIR="$LAB/tmux" tmux -L fm-lab kill-server 2>/dev/null || true
+  if [ -n "$WT" ] && [ -d "$WT" ]; then (cd "$PROJ" && treehouse return --force "$WT") >/dev/null 2>&1 || true; fi
+  chmod -R u+w "$LAB"
+  rm -rf "$LAB"
+  exit "$rc"
+}
+trap cleanup EXIT
+bin/fm-lab-home.sh create "$LAB"
+mkdir -p "$LAB/tmux"
+PROJ="$ROOT/.test-work/slot-project"
+mkdir -p "$PROJ"
+git -C "$PROJ" init -q -b main
+printf 'Fixture\n' > "$PROJ/README.md"
+mkdir -p "$PROJ/.claude"
+printf '%s\n' '{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"printf user-config"}]}]}}' > "$PROJ/.claude/settings.local.json"
+git -C "$PROJ" add -f README.md .claude/settings.local.json
+git -C "$PROJ" -c user.name=fixture -c user.email=fixture@example.invalid commit -qm fixture
+git clone -q --bare "$PROJ" "$PROJ.origin.git"
+git -C "$PROJ" remote add origin "file://$PROJ.origin.git"
+git -C "$PROJ" fetch -q origin main
+git -C "$PROJ" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+WT=$(cd "$PROJ" && treehouse get --lease --no-fetch)
+TMUX_TMPDIR="$LAB/tmux" tmux -L fm-lab new-session -d -s firstmate -x 120 -y 40 -c "$ROOT" '/bin/bash --noprofile --norc'
+export TMUX_TMPDIR="$LAB/tmux"
+SOCKET=$(tmux -L fm-lab display-message -p '#{socket_path}')
+PID=$(tmux -L fm-lab display-message -p '#{pid}')
+export TMUX="$SOCKET,$PID,0" FM_HOME="$LAB"
+unset FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE FM_GATE_REFUSE_BYPASS
+bin/fm-lock.sh
+tmux -L fm-lab new-window -d -t firstmate -n fm-live -c "$WT" '/bin/bash --noprofile --norc'
+printf 'untouched fixture work\n' > "$WT/sentinel"
+for id in stale live; do
+cat > "$LAB/state/$id.meta" <<EOF
+window=firstmate:fm-$id
+endpoint_task_id=$id
+worktree=$WT
+project=$PROJ
+kind=ship
+mode=direct-PR
+yolo=off
+backend=tmux
+EOF
+done
+rc=0
+bin/fm-teardown.sh stale --force > "$EVIDENCE/slot-shared-refusal.log" 2>&1 || rc=$?
+cat "$EVIDENCE/slot-shared-refusal.log"
+[ "$rc" != 0 ]
+rg -q 'live' "$EVIDENCE/slot-shared-refusal.log"
+[ "$(cat "$WT/sentinel")" = 'untouched fixture work' ]
+[ -f "$LAB/state/stale.meta" ] && [ -f "$LAB/state/live.meta" ]
+tmux -L fm-lab display-message -p -t firstmate:fm-live 'preserved worker pane=#{pane_id} pid=#{pane_pid}'
+printf 'task=live\nhome=%s\n' "$LAB" > "$(dirname "$WT")/.fm-slot-owner"
+timeout 10 bin/fm-teardown.sh stale --force
+[ ! -f "$LAB/state/stale.meta" ] && [ -f "$LAB/state/live.meta" ]
+[ "$(cat "$WT/sentinel")" = 'untouched fixture work' ]
+tmux -L fm-lab display-message -p -t firstmate:fm-live 'after stale cleanup: worker pane=#{pane_id} pid=#{pane_pid}'
+printf 'stale record retired without returning the claimant slot\n'
+rm "$WT/sentinel"
+timeout 15 bin/fm-teardown.sh live
+cmp "$PROJ/.claude/settings.local.json" "$WT/.claude/settings.local.json"
+[ -z "$(git -C "$WT" status --porcelain)" ]
+printf 'ordinary ship teardown preserved tracked hook-only settings and returned a clean slot\n' 
+[ ! -f "$LAB/state/live.meta" ]
+[ ! -e "$(dirname "$WT")/.fm-slot-owner" ]
+(cd "$PROJ" && treehouse status)
+printf 'claimant teardown completed after stale cleanup without deadlock\n'

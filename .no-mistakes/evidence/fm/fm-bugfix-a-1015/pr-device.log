@@ -1,0 +1,4 @@
+ok - a poll armed before a volume renumber is re-recorded under the control lock and keeps detecting merges
+ok - a renumbered registration is never re-recorded around a tampered artifact: swapped-check altered-check swapped-sidecar altered-sidecar altered-template-hash wrong-mode hardlinked-check split-device foreign-device, or a pending retirement
+ok - direct re-arm publication waits without replacing an armed poll
+ok - device re-record publication waits without rewriting its registration

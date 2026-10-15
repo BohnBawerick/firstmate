@@ -1,0 +1,112 @@
+/tmp/fm-lab.0Bprnx
+/tmp/fm-lab.zOmrSX
+lock acquired: THIS session holds the fleet lock (harness pid 4166072)
+before live respawn: armed poll valid
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.0Bprnx
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: secondmate sm-live sync skipped before launch: primary default-branch commit cannot be resolved
+spawned sm-live harness=sh kind=secondmate mode=secondmate yolo=off window=firstmate:fm-sm-live worktree=/tmp/fm-lab.zOmrSX
+
+fm-lab.zOmrSX on  main [?]
+❯ export GOTMPDIR=/tmp/fm-sm-live/gotmp
+export COMPACT_ADVISER_DISABLE=1
+
+fm-lab.zOmrSX on  main [?]
+❯ export COMPACT_ADVISER_DISABLE=1
+
+fm-lab.zOmrSX on  main [?]
+❯ . '/tmp/fm-sm-live+ad5d08e18f7f0b18de7d4d74f7314361f9dd020c36e0a869f3e2bff1757671f9/launch.s1792104650.948678.19308.sh
+'
+live-worker-running
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+after live respawn: armed poll valid
+harness=sh
+kind=secondmate
+spawn_gen=s1792104650.948678.19308
+custom=preserve-this
+pr=https://github.com/example/home/pull/6
+pr_head=0123456789abcdef0123456789abcdef01234567
+real launch-delivery interruption exit: 1
+after interrupted live delivery: record retained and armed poll valid
+spawn_gen=s1792104653.953423.4954
+custom=preserve-this
+pr=https://github.com/example/home/pull/6
+pr_head=0123456789abcdef0123456789abcdef01234567
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.0Bprnx
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+warning: secondmate sm-live sync skipped before launch: primary default-branch commit cannot be resolved
+spawned sm-live harness=sh kind=secondmate mode=secondmate yolo=off window=firstmate:fm-sm-live worktree=/tmp/fm-lab.zOmrSX
+after retry: armed poll valid
+
+fm-lab.zOmrSX on  main [?]
+❯ export GOTMPDIR=/tmp/fm-sm-live/gotmp
+export COMPACT_ADVISER_DISABLE=1
+
+fm-lab.zOmrSX on  main [?]
+❯ export COMPACT_ADVISER_DISABLE=1
+
+fm-lab.zOmrSX on  main [?]
+❯ . '/tmp/fm-sm-live+ad5d08e18f7f0b18de7d4d74f7314361f9dd020c36e0a869f3e2bff1757671f9/launch.s1792104655.957934.13045.sh
+'
+final-retry-running
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

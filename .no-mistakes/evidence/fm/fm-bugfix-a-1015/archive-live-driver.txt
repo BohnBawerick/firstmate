@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT=$PWD
+EVIDENCE=/home/bohn/.no-mistakes/evidence/01M50CT45BXDZ23N5NRP9RSPP0
+LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-lab.XXXXXX")
+cleanup() {
+  rc=$?
+  trap - EXIT
+  TMUX_TMPDIR="$LAB/tmux" tmux -L fm-lab kill-server 2>/dev/null || true
+  chmod -R u+w "$LAB"
+  rm -rf "$LAB"
+  exit "$rc"
+}
+trap cleanup EXIT
+bin/fm-lab-home.sh create "$LAB"
+mkdir -p "$LAB/tmux" "$LAB/data/archive-origin"
+TMUX_TMPDIR="$LAB/tmux" tmux -L fm-lab new-session -d -s firstmate -x 120 -y 40 -c "$ROOT" '/bin/bash --noprofile --norc'
+export TMUX_TMPDIR="$LAB/tmux"
+SOCKET=$(tmux -L fm-lab display-message -p '#{socket_path}')
+PID=$(tmux -L fm-lab display-message -p '#{pid}')
+export TMUX="$SOCKET,$PID,0" FM_HOME="$LAB"
+unset FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE FM_GATE_REFUSE_BYPASS TASKS_AXI_FILE TASKS_AXI_BACKEND
+bin/fm-lock.sh
+cat > "$LAB/.tasks.toml" <<'EOF'
+backend = "markdown"
+[markdown]
+path = "data/backlog.md"
+archive = "data/done-archive.md"
+done_keep = 10
+EOF
+printf '## In flight\n\n## Queued\n\n## Done\n' > "$LAB/data/backlog.md"
+tasks() { (cd "$LAB" && tasks-axi "$@"); }
+cap() { "$ROOT/bin/fm-captain-hold.sh" "$@"; }
+tasks add archive-origin 'Disposable archive verification' --kind scout --repo sample --start
+cat > "$LAB/state/archive-origin.meta" <<EOF
+window=firstmate:fm-archive-origin
+endpoint_task_id=archive-origin
+worktree=$LAB/projects/fixture
+project=$LAB/projects/sample
+harness=codex
+kind=scout
+spawn_gen=archive-fixture
+EOF
+printf 'done: disposable report complete\n' > "$LAB/state/archive-origin.status"
+printf '# Disposable review\n\nTwo fixture calls.\n' > "$LAB/data/archive-origin/report.md"
+cap hold answered-call --title 'Answered fixture' --reason 'fixture decision' --repo sample
+cap hold unanswered-call --title 'Unanswered fixture' --reason 'fixture decision' --repo sample
+cap complete archive-origin answered-call
+printf 'Use fixture option one.\n' > "$LAB/decision.txt"
+cap answer answered-call --decision-file "$LAB/decision.txt"
+tasks prune --keep 0
+if tasks show answered-call; then printf 'answered row was not archived\n'; exit 1; fi
+cap verify archive-origin
+printf 'answered archived call accepted by the real completion gate\n'
+tasks unhold unanswered-call || true
+tasks done unanswered-call
+tasks prune --keep 0
+python3 - "$LAB/state/archive-origin.meta" <<'PYMETA'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]); lines=p.read_text().splitlines()
+lines=[x for x in lines if not x.startswith('decision_keys=')]
+lines.append('decision_keys=answered-call,unanswered-call')
+p.write_text('\n'.join(lines)+'\n')
+PYMETA
+rc=0
+cap verify archive-origin > "$EVIDENCE/archive-unanswered-refusal.log" 2>&1 || rc=$?
+cat "$EVIDENCE/archive-unanswered-refusal.log"
+[ "$rc" != 0 ]
+rg -q 'archived without a recorded captain answer' "$EVIDENCE/archive-unanswered-refusal.log"
+cp "$LAB/data/done-archive.md" "$EVIDENCE/captain-call-done-archive.md"
+printf 'unanswered archived call refused by the real completion gate\n'

@@ -1,0 +1,38 @@
+from pathlib import Path
+import re
+import subprocess
+import sys
+import pyte
+from PIL import Image, ImageDraw, ImageFont
+root = Path('/home/bohn/.no-mistakes/evidence/01M50CT45BXDZ23N5NRP9RSPP0')
+for name in sys.argv[1:]:
+    ansi = (root / (name + '-screen.ansi')).read_text()
+    plain = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', ansi)
+    width = max(map(len, plain.splitlines()))
+    height = len(plain.splitlines())
+    screen = pyte.Screen(width, height)
+    pyte.Stream(screen).feed(ansi.replace('\n', '\r\n'))
+    font_path = subprocess.check_output(['fc-match', '-f', '%{file}', 'monospace'], text=True)
+    font = ImageFont.truetype(font_path, 18)
+    cell_w, cell_h, pad = 12, 24, 18
+    image = Image.new('RGB', (width * cell_w + 2 * pad, height * cell_h + 2 * pad), '#0a0a0a')
+    draw = ImageDraw.Draw(image)
+    colors = {'black': '#000000', 'red': '#cc5555', 'green': '#55cc55', 'brown': '#caaa55', 'yellow': '#caaa55', 'blue': '#5577cc', 'magenta': '#cc55cc', 'cyan': '#55cccc', 'white': '#eeeeee', 'brightblack': '#777777', 'brightwhite': '#ffffff'}
+    def color(value, default):
+        if value == 'default':
+            return default
+        if len(value) == 6 and all(c in '0123456789abcdefABCDEF' for c in value):
+            return '#' + value
+        return colors.get(value, default)
+    for row in range(height):
+        for column in range(width):
+            character = screen.buffer[row][column]
+            foreground = color(character.fg, '#ffffff')
+            background = color(character.bg, '#0a0a0a')
+            if character.reverse:
+                foreground, background = background, foreground
+            x, y = pad + column * cell_w, pad + row * cell_h
+            draw.rectangle((x, y, x + cell_w, y + cell_h), fill=background)
+            draw.text((x, y), character.data, font=font, fill=foreground)
+    image.save(root / (name + '-terminal.png'))
+    print(f'{name}: rendered the captured {width}x{height} terminal viewport')

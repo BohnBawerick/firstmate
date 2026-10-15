@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT=$PWD
+EVIDENCE=/home/bohn/.no-mistakes/evidence/01M50CT45BXDZ23N5NRP9RSPP0
+export FM_HERDR_LAB_STATE_DIR="$ROOT/.test-work/native-lab-state"
+LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-lab.XXXXXX")
+SESSION=$(bin/fm-herdr-lab.sh name native-exit)
+READY=0
+cleanup() {
+  rc=$?
+  trap - EXIT
+  if [ "$READY" = 1 ]; then
+    bin/fm-herdr-lab.sh teardown "$SESSION" || rc=1
+  fi
+  if [ -n "${WT:-}" ] && [ -d "$WT" ]; then git -C "$PROJECT" worktree remove --force "$WT" || rc=1; fi
+  chmod -R u+w "$LAB"
+  rm -rf "$LAB"
+  exit "$rc"
+}
+trap cleanup EXIT
+bin/fm-lab-home.sh create "$LAB"
+export FM_HOME="$LAB"
+unset FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE FM_GATE_REFUSE_BYPASS
+unset HERDR_PANE_ID HERDR_TAB_ID HERDR_WORKSPACE_ID HERDR_SOCKET_PATH HERDR_ENV
+bin/fm-lock.sh
+READY=1
+bin/fm-herdr-lab.sh provision "$SESSION"
+lab() { "$ROOT/bin/fm-herdr-lab.sh" run "$SESSION" "$@"; }
+lab pane --help > "$EVIDENCE/herdr-pane-help.txt"
+lab --help > "$EVIDENCE/herdr-help-attempt.txt" 2>&1 || true
+PROJECT="$ROOT/.test-work/native-project"
+mkdir -p "$PROJECT" "$ROOT/.test-work/opencode-config" "$ROOT/.test-work/opencode-data" "$ROOT/.test-work/opencode-cache" "$ROOT/.test-work/opencode-state"
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+git -C "$PROJECT" init -q
+printf 'Disposable native lifecycle fixture.\n' > "$PROJECT/README.md"
+git -C "$PROJECT" add README.md
+git -C "$PROJECT" -c user.name=fixture -c user.email=fixture@example.invalid commit --allow-empty -qm fixture
+WT="$ROOT/.test-work/native-wt"
+git -C "$PROJECT" worktree add -q --detach "$WT" HEAD
+out=$(lab workspace create --cwd "$WT" --label '2ndmate-alpha/native-exit · p:AbCdEfGhIjKlMnOpQrStUv' --focus)
+PANE=$(jq -r '.result.root_pane.pane_id' <<< "$out")
+TAB=$(jq -r '.result.tab.tab_id' <<< "$out")
+WS=$(jq -r '.result.workspace.workspace_id' <<< "$out")
+lab tab rename "$TAB" fm-native-exit
+bin/fm-herdr-lab.sh viewer start "$SESSION"
+. "$ROOT/bin/fm-backend.sh"
+fm_backend_source herdr
+lab pane read --help > "$EVIDENCE/herdr-read-help.txt"
+lab pane send-text --help > "$EVIDENCE/herdr-send-text-help.txt"
+lab pane send-keys --help > "$EVIDENCE/herdr-send-keys-help.txt"
+fm_backend_herdr_send_text_line "$SESSION:$PANE" "env XDG_CONFIG_HOME='$ROOT/.test-work/opencode-config' XDG_DATA_HOME='$ROOT/.test-work/opencode-data' XDG_CACHE_HOME='$ROOT/.test-work/opencode-cache' XDG_STATE_HOME='$ROOT/.test-work/opencode-state' '$ROOT/.test-work/worker-runtimes/node_modules/.bin/opencode'"
+printf '%s\n' "$SESSION" > "$ROOT/.test-work/native-session"
+printf '%s\n' "$PANE" > "$ROOT/.test-work/native-pane"
+for i in $(seq 1 60); do
+  lab pane read "$PANE" --source visible > "$EVIDENCE/opencode-live-screen.txt"
+  if rg -q 'Ask anything|Type a message|Build|OpenCode'  "$EVIDENCE/opencode-live-screen.txt"; then
+    sleep 1
+    break
+  fi
+  sleep 0.5
+done
+lab pane read "$PANE" --source visible
+lab pane process-info --pane "$PANE" > "$EVIDENCE/opencode-live-process.json"
+lab agent get "$PANE" > "$EVIDENCE/opencode-live-agent.json" || true
+. "$ROOT/bin/fm-backend.sh"
+fm_backend_source herdr
+for i in $(seq 1 40); do
+  state=$(fm_backend_agent_state herdr "$SESSION:$PANE")
+  [ "$state" != alive ] || break
+  sleep 0.5
+done
+printf 'native opencode recovery state: %s\n' "$state"
+[ "$state" = alive ]
+fm_backend_herdr_send_key "$SESSION:$PANE" Escape
+sleep 0.3
+lab pane read "$PANE" --source visible --format ansi > "$EVIDENCE/opencode-live-screen.ansi"
+lab workspace list > "$EVIDENCE/native-workspaces.json"
+printf 'pane=%s tab=%s workspace=%s\n' "$PANE" "$TAB" "$WS"
+lab pane get "$PANE" > "$EVIDENCE/opencode-live-pane.json"
+fm_backend_herdr_send_literal "$SESSION:$PANE" /exit
+sleep 1
+fm_backend_herdr_send_key "$SESSION:$PANE" Enter
+sleep 2
+if [ "$(fm_backend_agent_state herdr "$SESSION:$PANE")" = alive ]; then
+  fm_backend_herdr_send_key "$SESSION:$PANE" Enter
+fi
+for i in $(seq 1 30); do
+  state=$(fm_backend_agent_state herdr "$SESSION:$PANE")
+  [ "$state" != dead ] || break
+  sleep 0.5
+done
+printf 'after native /exit recovery state: %s\n' "$state"
+lab pane process-info --pane "$PANE" > "$EVIDENCE/opencode-exited-process.json"
+lab agent get "$PANE" > "$EVIDENCE/opencode-exited-agent.json" || true
+lab pane read "$PANE" --source visible > "$EVIDENCE/opencode-exited-screen.txt"
+[ "$state" = dead ]
+
+fm_backend_herdr_task_workspace_isolated "$SESSION:$PANE" fm-native-exit
+printf 'legacy secondmate child workspace accepted as isolated\n'
+lab workspace rename "$WS" 2ndmate-alpha >/dev/null
+if fm_backend_herdr_task_workspace_isolated "$SESSION:$PANE" fm-native-exit; then
+  printf 'unexpectedly accepted a parent workspace\n'; exit 1
+fi
+printf 'top-level secondmate parent workspace refused as isolated\n'
+
+lab workspace rename "$WS" '2ndmate-alpha/native-exit · p:AbCdEfGhIjKlMnOpQrStUv' >/dev/null
+mkdir -p "$LAB/data/native-exit" "$ROOT/.test-work/legacy-bin" "$ROOT/.test-work/legacy-codex-home"
+cat > "$LAB/data/native-exit/brief.md" <<'EOF'
+# Task
+## Captain's intent
+Recover this disposable native worker in its legacy isolated workspace.
+
+## Firstmate spec
+Read the fixture README and report readiness without modifying files.
+EOF
+cat > "$LAB/state/native-exit.meta" <<EOF
+window=$SESSION:$PANE
+endpoint_task_id=native-exit
+worktree=$WT
+project=$PROJECT
+kind=scout
+harness=opencode
+backend=herdr
+herdr_session=$SESSION
+herdr_workspace_id=$WS
+herdr_tab_id=$TAB
+herdr_pane_id=$PANE
+EOF
+fm_backend_herdr_send_text_line "$SESSION:$PANE" "export PATH='$ROOT/.test-work/legacy-bin:$ROOT/.test-work/worker-runtimes/node_modules/.bin:/usr/bin:/bin'; export XDG_CONFIG_HOME='$ROOT/.test-work/opencode-config' XDG_DATA_HOME='$ROOT/.test-work/opencode-data' XDG_CACHE_HOME='$ROOT/.test-work/opencode-cache' XDG_STATE_HOME='$ROOT/.test-work/opencode-state'"
+bin/fm-spawn.sh native-exit --relaunch --harness opencode
+[ "$(sed -n 's/^window=//p' "$LAB/state/native-exit.meta")" = "$SESSION:$PANE" ]
+printf 'public direct relaunch reused the native worker legacy endpoint\\n'
+sleep 3
+fm_backend_herdr_send_key "$SESSION:$PANE" Escape
+fm_backend_herdr_send_key "$SESSION:$PANE" Escape
+fm_backend_herdr_send_literal "$SESSION:$PANE" /exit
+sleep 1
+fm_backend_herdr_send_key "$SESSION:$PANE" Enter
+sleep 2
+if [ "$(fm_backend_agent_state herdr "$SESSION:$PANE")" = alive ]; then fm_backend_herdr_send_key "$SESSION:$PANE" Enter; fi
+for i in $(seq 1 30); do
+  state=$(fm_backend_agent_state herdr "$SESSION:$PANE")
+  [ "$state" != dead ] || break
+  sleep 0.5
+done
+[ "$state" = dead ]
+printf '' > "$ROOT/.test-work/legacy-codex-home/auth.json"
+cat > "$ROOT/.test-work/legacy-bin/codex" <<EOF
+#!/usr/bin/env bash
+exec env CODEX_HOME='$ROOT/.test-work/legacy-codex-home' bwrap --ro-bind / / --bind '$ROOT/.test-work' '$ROOT/.test-work' --bind '$LAB' '$LAB' --ro-bind '$HOME/.codex/auth.json' '$ROOT/.test-work/legacy-codex-home/auth.json' --proc /proc --dev /dev '$ROOT/.test-work/worker-runtimes/node_modules/.bin/codex' "\$@"
+EOF
+chmod +x "$ROOT/.test-work/legacy-bin/codex"
+FM_CONTROL_LAUNCH_WAIT=20 bin/fm-control.sh native-exit relaunch --harness codex --note 'Continue only this disposable legacy-workspace proof.'
+[ "$(sed -n 's/^window=//p' "$LAB/state/native-exit.meta")" = "$SESSION:$PANE" ]
+printf 'public control relaunch reused the legacy endpoint with a real native Codex process\\n'
+lab agent get "$PANE" > "$EVIDENCE/legacy-control-native-agent.json"
+cp "$LAB/state/native-exit.meta" "$EVIDENCE/legacy-control-native.meta"

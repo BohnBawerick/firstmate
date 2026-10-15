@@ -1,0 +1,63 @@
+/tmp/fm-lab.JyQtJF
+lock acquired: THIS session holds the fleet lock (harness pid 4166072)
+{"id":"cli:tab:rename","result":{"tab":{"agent_status":"unknown","focused":true,"label":"fm-native-exit","number":1,"pane_count":1,"tab_id":"w1:t1","workspace_id":"w1"},"type":"tab_info"}}
+viewer attached to fm-lab-native-exit-1630990-21042 (pid 1631590)
+
+                                ┃                                                          ┃
+                                ┃  5 plugins failed                        › Open plugins  ┃
+                                ┃                                                          ┃
+                                ┃  /home/bohn/.no-mistakes/worktrees/842a31c92d33/         ┃
+                                ┃  01M50CT45BXDZ23N5NRP9RSPP0/.opencode/plugins/fm-        ┃
+                                ┃  primary-cd-check.js, /home/bohn/.no-mistakes/           ┃
+                                ┃  worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.     ┃
+                                ┃  opencode/plugins/fm-primary-pretool-check.js, /home/    ┃
+                                ┃  bohn/.no-mistakes/worktrees/842a31c92d33/               ┃
+                                ┃  01M50CT45BXDZ23N5NRP9RSPP0/.opencode/plugins/fm-        ┃
+                                ┃  primary-sessionstart-nudge.js, /home/bohn/.no-          ┃
+                                ┃  mistakes/worktrees/842a31c92d33/                        ┃
+                                ┃  01M50CT45BXDZ23N5NRP9RSPP0/.opencode/plugins/fm-        ┃
+                                ┃  primary-turnend-guard.js, /home/bohn/.no-mistakes/      ┃
+                            █▀▀█┃  worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.     ┃
+                            █  █┃  opencode/plugins/fm-primary-watch-arm.js                ┃
+                            ▀▀▀▀┃  Run /plugins to view details.                           ┃
+                                ┃                                                          ┃
+
+          ┃
+          ┃  Ask anything… "Fix a TODO in the codebase"
+          ┃
+          ┃  Build · Muse Spark Open OpenRouter
+          ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+          …/01M50CT45BXDZ23N…/.test-work/native-wt  shift+tab agents  ctrl+p commands
+
+
+
+
+
+
+
+
+
+
+
+
+  ⊙ 5 plugins failed /plugins                                                         2.0.30
+native opencode recovery state: alive
+pane=w1:p1 tab=w1:t1 workspace=w1
+after native /exit recovery state: dead
+{"error":{"code":"agent_not_found","message":"agent target w1:p1 not found"},"id":"cli:agent:get"}
+legacy secondmate child workspace accepted as isolated
+top-level secondmate parent workspace refused as isolated
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.JyQtJF
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+spawned native-exit harness=opencode kind=scout window=fm-lab-native-exit-1630990-21042:w1:p1 worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/native-wt
+public direct relaunch reused the native worker legacy endpoint\nfm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.JyQtJF
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.JyQtJF
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+relaunched native-exit harness=codex from=opencode model=default effort=default backend=herdr endpoint=fm-lab-native-exit-1630990-21042:w1:p1 worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/native-wt
+public control relaunch reused the legacy endpoint with a real native Codex process\n

@@ -1,0 +1,5 @@
+ok - fm-control relaunch: a worker's settings.local.json keys survive the relaunch
+ok - fm-control relaunch: switching harness is one ordinary relaunch, and the old wiring goes with the old agent
+ok - fm-control relaunch: a claude secondmate keeps settings.local.json and retires the state settings file and the Stop pointer
+ok - reclaim: a herdr pane that outlived its stopped server is adopted, never orphaned beside a new tab
+ok - fm-spawn --relaunch: resumes the bound Pi session only for a Pi registration

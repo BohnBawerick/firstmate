@@ -1,0 +1,17 @@
+window=firstmate:fm-sm-live
+endpoint_task_id=sm-live
+worktree=/tmp/fm-lab.zOmrSX
+project=/tmp/fm-lab.zOmrSX
+harness=sh
+kind=secondmate
+mode=secondmate
+yolo=off
+tasktmp=/tmp/fm-sm-live
+model=default
+effort=default
+spawn_gen=s1792104650.948678.19308
+home=/tmp/fm-lab.zOmrSX
+projects=
+custom=preserve-this
+pr=https://github.com/example/home/pull/6
+pr_head=0123456789abcdef0123456789abcdef01234567

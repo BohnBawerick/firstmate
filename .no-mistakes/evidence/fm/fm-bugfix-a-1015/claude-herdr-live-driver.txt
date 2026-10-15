@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT=$PWD
+EVIDENCE=/home/bohn/.no-mistakes/evidence/01M50CT45BXDZ23N5NRP9RSPP0
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+export TREEHOUSE_ROOT="$ROOT/.test-work/claude-pool"
+export FM_HERDR_LAB_STATE_DIR="$ROOT/.test-work/claude-lab-state"
+LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-lab.XXXXXX")
+SESSION=$(bin/fm-herdr-lab.sh name claude-reclaim)
+READY=0
+WT=
+cleanup() {
+  rc=$?
+  trap - EXIT
+  if [ "$READY" = 1 ]; then bin/fm-herdr-lab.sh teardown "$SESSION" || rc=1; fi
+  if [ -n "$WT" ] && [ -d "$WT" ]; then (cd "$PROJ" && treehouse return --force "$WT") >/dev/null 2>&1 || true; fi
+  chmod -R u+w "$LAB"
+  rm -rf "$LAB"
+  exit "$rc"
+}
+trap cleanup EXIT
+bin/fm-lab-home.sh create "$LAB"
+export FM_HOME="$LAB" HERDR_SESSION="$SESSION" CLAUDE_CONFIG_DIR="$ROOT/.test-work/claude-home"
+unset FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE FM_GATE_REFUSE_BYPASS
+unset HERDR_PANE_ID HERDR_TAB_ID HERDR_WORKSPACE_ID HERDR_SOCKET_PATH HERDR_ENV
+bin/fm-lock.sh
+PROJ="$ROOT/.test-work/claude-project"
+mkdir -p "$PROJ" "$LAB/data/native-claude" "$ROOT/.test-work/sandbox-bin" "$ROOT/.test-work/claude-home"
+printf '' > "$ROOT/.test-work/claude-home/.credentials.json"
+git -C "$PROJ" init -q -b main
+printf 'Disposable CLI placement fixture.\n' > "$PROJ/README.md"
+mkdir -p "$PROJ/.claude"
+printf '%s\n' '{"env":{"FIXTURE_KEY":"keep"},"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"printf user-hook-fired"}]}]}}' > "$PROJ/.claude/settings.local.json"
+git -C "$PROJ" add -f README.md .claude/settings.local.json
+git -C "$PROJ" -c user.name=fixture -c user.email=fixture@example.invalid commit -qm fixture
+git clone -q --bare "$PROJ" "$PROJ.origin.git"
+git -C "$PROJ" remote add origin "file://$PROJ.origin.git"
+cat > "$LAB/data/native-claude/brief.md" <<'EOF'
+# Task
+## Captain's intent
+Prove that a disposable Codex scout gets an isolated Herdr workspace.
+
+## Firstmate spec
+Reply READY only. Do not use tools or modify files.
+EOF
+cat > "$ROOT/.test-work/sandbox-bin/claude" <<EOF
+#!/usr/bin/env bash
+exec env CLAUDE_CONFIG_DIR='$ROOT/.test-work/claude-home' bwrap --ro-bind / / --bind '$ROOT/.test-work' '$ROOT/.test-work' --bind '$LAB' '$LAB' --ro-bind '$HOME/.claude/.credentials.json' '$ROOT/.test-work/claude-home/.credentials.json' --proc /proc --dev /dev '$ROOT/.test-work/claude-runtime/node_modules/.bin/claude' --print --output-format json "\$@"
+EOF
+chmod +x "$ROOT/.test-work/sandbox-bin/claude"
+cat > "$ROOT/.test-work/sandbox-bin/lab-shell" <<EOF
+#!/usr/bin/env bash
+export PATH='$ROOT/.test-work/sandbox-bin:$ROOT/.test-work/worker-runtimes/node_modules/.bin:/usr/bin:/bin'
+exec /bin/bash --noprofile --norc "\$@"
+EOF
+chmod +x "$ROOT/.test-work/sandbox-bin/lab-shell"
+export SHELL="$ROOT/.test-work/sandbox-bin/lab-shell"
+export PATH="$ROOT/.test-work/sandbox-bin:$PATH"
+READY=1
+bin/fm-herdr-lab.sh provision "$SESSION"
+lab() { "$ROOT/bin/fm-herdr-lab.sh" run "$SESSION" "$@"; }
+lab workspace list > "$EVIDENCE/claude-before-first-use.json"
+jq -e '[.result.workspaces[] | select(.label=="firstmate")]|length==0' "$EVIDENCE/claude-before-first-use.json"
+bin/fm-spawn.sh native-claude "$PROJ" claude --model haiku --scout --backend herdr
+META="$LAB/state/native-claude.meta"
+WT=$(sed -n 's/^worktree=//p' "$META")
+PANE=$(sed -n 's/^herdr_pane_id=//p' "$META")
+WS=$(sed -n 's/^herdr_workspace_id=//p' "$META")
+TAB=$(sed -n 's/^herdr_tab_id=//p' "$META")
+lab workspace list > "$EVIDENCE/claude-after-first-use.json"
+lab tab list --workspace "$WS" > "$EVIDENCE/claude-task-tabs.json"
+lab pane list --workspace "$WS" > "$EVIDENCE/claude-task-panes.json"
+jq -e '.result.tabs|length==1' "$EVIDENCE/claude-task-tabs.json"
+jq -e '.result.panes|length==1' "$EVIDENCE/claude-task-panes.json"
+printf 'fresh worker: workspace=%s tab=%s pane=%s\n' "$WS" "$TAB" "$PANE"
+
+for i in $(seq 1 120); do
+  if [ -f "$LAB/state/native-claude.busy-state" ] && grep -q 'state=idle source=claude-hook' "$LAB/state/native-claude.busy-state"; then break; fi
+  sleep 0.25
+done
+cat "$LAB/state/native-claude.busy-state"
+grep -q 'state=idle source=claude-hook' "$LAB/state/native-claude.busy-state"
+printf 'actual first native Claude launch completed and closed its hook state\n'
+lab pane read "$PANE" --source recent --lines 120 > "$EVIDENCE/claude-first-launch-pane.txt"
+cmp "$PROJ/.claude/settings.local.json" "$WT/.claude/settings.local.json"
+python3 - "$WT/.claude/settings.local.json" <<'PYSET'
+import json,sys
+from pathlib import Path
+p=Path(sys.argv[1]); d=json.loads(p.read_text()); d['env']['WORKER_KEY']='preserve-on-relaunch'; p.write_text(json.dumps(d)+'\n')
+PYSET
+before=$(sha256sum "$WT/.claude/settings.local.json" | cut -d' ' -f1)
+oldgen=$(cat "$LAB/state/native-claude.busy-gen")
+bin/fm-spawn.sh native-claude --relaunch --harness claude
+[ "$(cat "$LAB/state/native-claude.busy-gen")" != "$oldgen" ]
+for i in $(seq 1 120); do
+  if grep -q 'state=idle source=claude-hook' "$LAB/state/native-claude.busy-state"; then break; fi
+  sleep 0.25
+done
+grep -q 'state=idle source=claude-hook' "$LAB/state/native-claude.busy-state"
+[ "$(sha256sum "$WT/.claude/settings.local.json" | cut -d' ' -f1)" = "$before" ]
+cat "$LAB/state/native-claude.busy-state"
+printf 'actual native Claude relaunch preserved tracked settings plus the worker-added key\n'
+lab pane read "$PANE" --source recent --lines 120 > "$EVIDENCE/claude-relaunch-pane.txt"
+cp "$WT/.claude/settings.local.json" "$EVIDENCE/claude-preserved-local-settings.json"
+cp "$LAB/state/native-claude.claude-settings.json" "$EVIDENCE/claude-real-launch-settings.json"
+cp "$META" "$EVIDENCE/claude-real-relaunch.meta"

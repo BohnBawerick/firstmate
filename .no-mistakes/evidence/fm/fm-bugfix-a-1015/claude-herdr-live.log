@@ -1,0 +1,21 @@
+/tmp/fm-lab.ts4JLD
+lock acquired: THIS session holds the fleet lock (harness pid 4166072)
+true
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.ts4JLD
+spawned native-claude harness=claude kind=scout window=fm-lab-claude-reclaim-1894753-358:w2:p2 worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/claude-pool/.treehouse/claude-project-e9fbae/1/claude-project
+true
+true
+fresh worker: workspace=w2 tab=w2:t2 pane=w2:p2
+v1 gen=g1792105703.1901255.2601 seq=4 state=idle source=claude-hook event=session-end ts=1792105711
+actual first native Claude launch completed and closed its hook state
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.ts4JLD
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+spawned native-claude harness=claude kind=scout window=fm-lab-claude-reclaim-1894753-358:w2:p2 worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/claude-pool/.treehouse/claude-project-e9fbae/1/claude-project
+v1 gen=g1792105713.1911322.29745 seq=4 state=idle source=claude-hook event=session-end ts=1792105721
+actual native Claude relaunch preserved tracked settings plus the worker-added key

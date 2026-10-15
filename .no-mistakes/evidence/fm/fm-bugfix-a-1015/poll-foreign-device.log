@@ -1,0 +1,3 @@
+parent device=66
+check device=108
+check: rejected unauthenticated state checks: /tmp/fm-lab.g0PzYG/state/remount.check.sh

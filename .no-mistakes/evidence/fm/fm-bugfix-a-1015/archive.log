@@ -1,0 +1,4 @@
+ok - verify accepts an answered captain call that Done retention archived
+ok - verify still refuses an archived captain call that was never answered
+ok - archived legacy identities verify with explicit, default, and absent local archive configuration
+ok - legacy identities, metadata, bindings, and the shim keep working

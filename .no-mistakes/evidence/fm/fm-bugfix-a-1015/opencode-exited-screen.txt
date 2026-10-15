@@ -1,0 +1,12 @@
+
+native-wt on  HEAD
+❯ env XDG_CONFIG_HOME='/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RS
+PP0/.test-work/opencode-config' XDG_DATA_HOME='/home/bohn/.no-mistakes/worktrees/842a31c92d33
+/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/opencode-data' XDG_CACHE_HOME='/home/bohn/.no-mistakes
+/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/opencode-cache' XDG_STATE_HOME=
+'/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/opencod
+e-state' '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-wor
+k/worker-runtimes/node_modules/.bin/opencode'
+
+native-wt on  HEAD took 5s
+❯

@@ -1,0 +1,47 @@
+/tmp/fm-lab.2gRnsI
+warning: re-init: ignored --initial-branch=main
+A new version of treehouse is available: v3.1.3 → v3.1.4
+Run "treehouse update" to update
+
+🌳 Setting up worktree...
+🌳 Leased worktree at ~/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/slot-pool/.treehouse/slot-project-19d1c0/1/slot-project. Run 'treehouse return ~/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/slot-pool/.treehouse/slot-project-19d1c0/1/slot-project' to release it.
+lock acquired: THIS session holds the fleet lock (harness pid 4166072)
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.2gRnsI
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  2 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REFUSED: task stale's recorded worktree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/slot-pool/.treehouse/slot-project-19d1c0/1/slot-project is also task live's recorded worktree.
+Returning that pool slot would kill live's processes and reset its copy, so nothing was changed - not even with --force.
+Reconcile whichever record is wrong (bin/fm-crew-state.sh stale; bin/fm-crew-state.sh live), then re-run teardown.
+preserved worker pane=%1 pid=1667777
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.2gRnsI
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+warning: task stale's recorded worktree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/slot-pool/.treehouse/slot-project-19d1c0/1/slot-project was reassigned to task live (home /tmp/fm-lab.2gRnsI), which claimed that pool slot after this record was written; that slot is no longer stale's, so its processes, copy, and claim are left untouched and only stale's own cleanup runs.
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/slot-project: already current
+teardown stale complete (window firstmate:fm-stale; pool slot /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/slot-pool/.treehouse/slot-project-19d1c0/1/slot-project left to task live (home /tmp/fm-lab.2gRnsI), which it was reassigned to)
+Backlog: stale just finished (this home keeps no markdown backlog at /tmp/fm-lab.2gRnsI/data/backlog.md). Update /tmp/fm-lab.2gRnsI/data/backlog.md - move stale to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+after stale cleanup: worker pane=%1 pid=1667777
+stale record retired without returning the claimant slot
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.2gRnsI
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+teardown: reaping leaked worktree process(es) for live: 1667777 1671840
+teardown: force-killing leaked worktree process(es) for live: 1667777
+A new version of treehouse is available: v3.1.3 → v3.1.4
+Run "treehouse update" to update
+
+🌳 Worktree returned to pool.
+/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/slot-project: already current
+teardown live complete (window firstmate:fm-live, worktree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/slot-pool/.treehouse/slot-project-19d1c0/1/slot-project)
+Backlog: live just finished (this home keeps no markdown backlog at /tmp/fm-lab.2gRnsI/data/backlog.md). Update /tmp/fm-lab.2gRnsI/data/backlog.md - move live to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+ordinary ship teardown preserved tracked hook-only settings and returned a clean slot
+A new version of treehouse is available: v3.1.3 → v3.1.4
+Run "treehouse update" to update
+
+base  main  (repository default)
+1     available    ~/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/slot-pool/.treehouse/slot-project-19d1c0/1/slot-project  (detached)
+claimant teardown completed after stale cleanup without deadlock

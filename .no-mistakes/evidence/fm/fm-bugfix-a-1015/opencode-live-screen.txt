@@ -1,0 +1,39 @@
+
+                                ┃                                                          ┃
+                                ┃  5 plugins failed                        › Open plugins  ┃
+                                ┃                                                          ┃
+                                ┃  /home/bohn/.no-mistakes/worktrees/842a31c92d33/         ┃
+                                ┃  01M50CT45BXDZ23N5NRP9RSPP0/.opencode/plugins/fm-        ┃
+                                ┃  primary-cd-check.js, /home/bohn/.no-mistakes/           ┃
+                                ┃  worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.     ┃
+                                ┃  opencode/plugins/fm-primary-pretool-check.js, /home/    ┃
+                                ┃  bohn/.no-mistakes/worktrees/842a31c92d33/               ┃
+                                ┃  01M50CT45BXDZ23N5NRP9RSPP0/.opencode/plugins/fm-        ┃
+                                ┃  primary-sessionstart-nudge.js, /home/bohn/.no-          ┃
+                                ┃  mistakes/worktrees/842a31c92d33/                        ┃
+                                ┃  01M50CT45BXDZ23N5NRP9RSPP0/.opencode/plugins/fm-        ┃
+                                ┃  primary-turnend-guard.js, /home/bohn/.no-mistakes/      ┃
+                            █▀▀█┃  worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.     ┃
+                            █  █┃  opencode/plugins/fm-primary-watch-arm.js                ┃
+                            ▀▀▀▀┃  Run /plugins to view details.                           ┃
+                                ┃                                                          ┃
+
+          ┃
+          ┃  Ask anything… "Fix a TODO in the codebase"
+          ┃
+          ┃  Build · Muse Spark Open OpenRouter
+          ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+          …/01M50CT45BXDZ23N…/.test-work/native-wt  shift+tab agents  ctrl+p commands
+
+
+
+
+
+
+
+
+
+
+
+
+  ⊙ 5 plugins failed /plugins                                                         2.0.30

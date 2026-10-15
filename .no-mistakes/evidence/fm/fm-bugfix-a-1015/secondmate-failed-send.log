@@ -1,0 +1,4 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.0Bprnx
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+warning: secondmate sm-live sync skipped before launch: primary default-branch commit cannot be resolved
+can't find window: fm-sm-live

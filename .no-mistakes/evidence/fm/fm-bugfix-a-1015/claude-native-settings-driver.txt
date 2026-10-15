@@ -1,0 +1,48 @@
+
+rec=$(make_spawn_case native-consumer claude live-settings)
+read_case_record "$rec"
+mkdir -p "$PROJ_DIR/.claude"
+python3 - "$PROJ_DIR" <<'PYLOCAL'
+import json,sys
+from pathlib import Path
+wt=Path(sys.argv[1])
+settings={'env':{'FM_SETTINGS_LOCAL_SENTINEL':'retained'}, 'hooks':{'UserPromptSubmit':[{'hooks':[{'type':'command','command':f"printf 'project-user-hook\\n' >> '{wt}/user-hook.log'"}]}]}}
+(wt/'.claude/settings.local.json').write_text(json.dumps(settings)+'\n')
+PYLOCAL
+git -C "$PROJ_DIR" add -f .claude/settings.local.json
+git -C "$PROJ_DIR" -c user.name=fixture -c user.email=fixture@example.invalid commit -qm 'fixture settings'
+git -C "$PROJ_DIR" push -q origin HEAD
+before=$(sha256sum "$PROJ_DIR/.claude/settings.local.json" | cut -d' ' -f1)
+run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" live-settings "$PROJ_DIR"
+after=$(sha256sum "$WT_DIR/.claude/settings.local.json" | cut -d' ' -f1)
+[ "$before" = "$after" ] || fail 'spawn changed tracked local settings'
+printf 'tracked settings sha256 before and after spawn: %s\n' "$after"
+settings="$HOME_DIR/state/live-settings.claude-settings.json"
+printf 'before real Claude: '
+classify claude live-settings "$HOME_DIR/state"
+(
+ cd "$WT_DIR"
+ env -u CLAUDECODE -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+  CLAUDE_CONFIG_DIR="$ROOT/.test-work/claude-config" \
+  bwrap --ro-bind / / --bind "$ROOT/.test-work" "$ROOT/.test-work" \
+  --ro-bind "$HOME/.claude/.credentials.json" "$ROOT/.test-work/claude-config/.credentials.json" \
+  --proc /proc --dev /dev \
+  "$ROOT/.test-work/claude-runtime/node_modules/.bin/claude" -p \
+  --setting-sources project,local --settings "$settings" \
+  --dangerously-skip-permissions --output-format json --max-turns 1 \
+  'Reply with SETTINGS_OK only. Do not use tools.'
+)
+rc=$?
+printf 'real Claude exit: %s\n' "$rc"
+printf 'after real Claude: '
+classify claude live-settings "$HOME_DIR/state"
+printf 'project hook output: '
+cat "$PROJ_DIR/user-hook.log"
+[ "$(cat "$PROJ_DIR/user-hook.log")" = project-user-hook ] || fail 'native consumer skipped user hook'
+printf 'persisted busy record:\n'
+cat "$HOME_DIR/state/live-settings.busy-state"
+[ "$(sha256sum "$WT_DIR/.claude/settings.local.json" | cut -d' ' -f1)" = "$before" ] || fail 'Claude changed tracked settings'
+[ -f "$HOME_DIR/state/live-settings.turn-ended" ] || fail 'native Stop did not publish turn ended'
+[ "$(classify claude live-settings "$HOME_DIR/state")" = 'idle claude-hook' ] || fail 'native lifecycle did not close busy state'
+[ "$rc" = 0 ] || fail 'native Claude request failed'
+pass 'native Claude consumes --settings, runs both user and Firstmate hooks, and preserves tracked settings'

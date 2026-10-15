@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT=$PWD
+EVIDENCE=/home/bohn/.no-mistakes/evidence/01M50CT45BXDZ23N5NRP9RSPP0
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+export TREEHOUSE_ROOT="$ROOT/.test-work/codex-pool"
+export FM_HERDR_LAB_STATE_DIR="$ROOT/.test-work/codex-lab-state"
+LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-lab.XXXXXX")
+SESSION=$(bin/fm-herdr-lab.sh name codex-reclaim)
+READY=0
+WT=
+cleanup() {
+  rc=$?
+  trap - EXIT
+  if [ "$READY" = 1 ]; then bin/fm-herdr-lab.sh teardown "$SESSION" || rc=1; fi
+  if [ -n "$WT" ] && [ -d "$WT" ]; then (cd "$PROJ" && treehouse return --force "$WT") >/dev/null 2>&1 || true; fi
+  chmod -R u+w "$LAB"
+  rm -rf "$LAB"
+  exit "$rc"
+}
+trap cleanup EXIT
+bin/fm-lab-home.sh create "$LAB"
+export FM_HOME="$LAB" HERDR_SESSION="$SESSION"
+unset FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE FM_GATE_REFUSE_BYPASS
+unset HERDR_PANE_ID HERDR_TAB_ID HERDR_WORKSPACE_ID HERDR_SOCKET_PATH HERDR_ENV
+bin/fm-lock.sh
+PROJ="$ROOT/.test-work/codex-project"
+mkdir -p "$PROJ" "$LAB/data/native-codex" "$ROOT/.test-work/sandbox-bin" "$ROOT/.test-work/codex-home"
+printf '' > "$ROOT/.test-work/codex-home/auth.json"
+git -C "$PROJ" init -q -b main
+printf 'Disposable CLI placement fixture.\n' > "$PROJ/README.md"
+git -C "$PROJ" add README.md
+git -C "$PROJ" -c user.name=fixture -c user.email=fixture@example.invalid commit -qm fixture
+git clone -q --bare "$PROJ" "$PROJ.origin.git"
+git -C "$PROJ" remote add origin "file://$PROJ.origin.git"
+cat > "$LAB/data/native-codex/brief.md" <<'EOF'
+# Task
+## Captain's intent
+Prove that a disposable Codex scout gets an isolated Herdr workspace.
+
+## Firstmate spec
+Read the fixture README and report readiness without modifying files.
+EOF
+cat > "$ROOT/.test-work/sandbox-bin/codex" <<EOF
+#!/usr/bin/env bash
+exec env CODEX_HOME='$ROOT/.test-work/codex-home' bwrap --ro-bind / / --bind '$ROOT/.test-work' '$ROOT/.test-work' --bind '$LAB' '$LAB' --ro-bind '$HOME/.codex/auth.json' '$ROOT/.test-work/codex-home/auth.json' --proc /proc --dev /dev '$ROOT/.test-work/worker-runtimes/node_modules/.bin/codex' "\$@"
+EOF
+chmod +x "$ROOT/.test-work/sandbox-bin/codex"
+cat > "$ROOT/.test-work/sandbox-bin/lab-shell" <<EOF
+#!/usr/bin/env bash
+export PATH='$ROOT/.test-work/sandbox-bin:$ROOT/.test-work/worker-runtimes/node_modules/.bin:/usr/bin:/bin'
+exec /bin/bash --noprofile --norc "\$@"
+EOF
+chmod +x "$ROOT/.test-work/sandbox-bin/lab-shell"
+export SHELL="$ROOT/.test-work/sandbox-bin/lab-shell"
+export PATH="$ROOT/.test-work/sandbox-bin:$PATH"
+READY=1
+bin/fm-herdr-lab.sh provision "$SESSION"
+lab() { "$ROOT/bin/fm-herdr-lab.sh" run "$SESSION" "$@"; }
+lab workspace list > "$EVIDENCE/codex-before-first-use.json"
+jq -e '[.result.workspaces[] | select(.label=="firstmate")]|length==0' "$EVIDENCE/codex-before-first-use.json"
+bin/fm-spawn.sh native-codex "$PROJ" codex --scout --backend herdr
+META="$LAB/state/native-codex.meta"
+WT=$(sed -n 's/^worktree=//p' "$META")
+PANE=$(sed -n 's/^herdr_pane_id=//p' "$META")
+WS=$(sed -n 's/^herdr_workspace_id=//p' "$META")
+TAB=$(sed -n 's/^herdr_tab_id=//p' "$META")
+lab workspace list > "$EVIDENCE/codex-after-first-use.json"
+lab tab list --workspace "$WS" > "$EVIDENCE/codex-task-tabs.json"
+lab pane list --workspace "$WS" > "$EVIDENCE/codex-task-panes.json"
+jq -e '.result.tabs|length==1' "$EVIDENCE/codex-task-tabs.json"
+jq -e '.result.panes|length==1' "$EVIDENCE/codex-task-panes.json"
+printf 'fresh worker: workspace=%s tab=%s pane=%s\n' "$WS" "$TAB" "$PANE"
+lab tab focus "$TAB" >/dev/null
+bin/fm-herdr-lab.sh viewer start "$SESSION"
+sleep 2
+lab pane read "$PANE" --source visible > "$EVIDENCE/codex-live-screen.txt"
+cat "$EVIDENCE/codex-live-screen.txt"
+lab pane process-info --pane "$PANE" > "$EVIDENCE/codex-live-process.json"
+lab pane send-keys "$PANE" enter >/dev/null
+sleep 2
+lab pane read "$PANE" --source visible > "$EVIDENCE/codex-live-screen.txt"
+lab pane read "$PANE" --source visible --format ansi > "$EVIDENCE/codex-live-screen.ansi"
+lab agent get "$PANE" > "$EVIDENCE/codex-live-agent.json" || true
+lab pane close "$PANE" >/dev/null
+printf 'closed recorded endpoint before public control relaunch\n'
+FM_CONTROL_LAUNCH_WAIT=20 bin/fm-control.sh native-codex relaunch --harness codex --note 'Continue the disposable placement proof without modifying files.'
+NEWPANE=$(sed -n 's/^herdr_pane_id=//p' "$META")
+NEWWS=$(sed -n 's/^herdr_workspace_id=//p' "$META")
+[ "$NEWPANE" != "$PANE" ] && [ "$NEWWS" != "$WS" ]
+lab workspace get "$NEWWS" > "$EVIDENCE/codex-control-reclaimed-workspace.json"
+lab tab list --workspace "$NEWWS" > "$EVIDENCE/codex-control-reclaimed-tabs.json"
+lab pane list --workspace "$NEWWS" > "$EVIDENCE/codex-control-reclaimed-panes.json"
+jq -e '.result.tabs|length==1' "$EVIDENCE/codex-control-reclaimed-tabs.json"
+jq -e '.result.panes|length==1' "$EVIDENCE/codex-control-reclaimed-panes.json"
+printf 'control reclaimed missing endpoint: workspace=%s pane=%s\n' "$NEWWS" "$NEWPANE"
+cp "$META" "$EVIDENCE/codex-control-reclaimed.meta"
+bin/fm-teardown.sh native-codex --force

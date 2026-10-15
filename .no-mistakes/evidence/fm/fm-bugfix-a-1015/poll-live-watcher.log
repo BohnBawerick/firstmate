@@ -1,0 +1,1 @@
+Terminated                 ln -s "$ownerdir" "$lockdir" 2> /dev/null

@@ -1,0 +1,16 @@
+window=fm-lab-codex-reclaim-1317492-20100:w3:p2
+endpoint_task_id=native-codex
+worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/codex-pool/.treehouse/codex-project-b3b1d4/1/codex-project
+project=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/codex-project
+harness=codex
+kind=scout
+tasktmp=/tmp/fm-native-codex
+model=default
+effort=default
+spawn_gen=s1792105061.1332270.26648
+backend=herdr
+herdr_session=fm-lab-codex-reclaim-1317492-20100
+herdr_workspace_id=w3
+herdr_tab_id=w3:t2
+herdr_pane_id=w3:p2
+control_relaunch_tx=1331728.20261015T225739Z.25096

@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT=$PWD
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+EVIDENCE=/home/bohn/.no-mistakes/evidence/01M50CT45BXDZ23N5NRP9RSPP0
+LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-lab.XXXXXX")
+MATE=$(mktemp -d "${TMPDIR:-/tmp}/fm-lab.XXXXXX")
+cleanup() {
+  rc=$?
+  trap - EXIT
+  TMUX_TMPDIR="$LAB/tmux" tmux -L fm-lab kill-server 2>/dev/null || true
+  chmod -R u+w "$LAB" "$MATE"
+  rm -rf "$LAB" "$MATE"
+  exit "$rc"
+}
+trap cleanup EXIT
+bin/fm-lab-home.sh create "$LAB"
+bin/fm-lab-home.sh create "$MATE"
+mkdir -p "$LAB/tmux" "$MATE/bin"
+ln -s "$ROOT/AGENTS.md" "$MATE/AGENTS.md"
+git -C "$MATE" init -q -b main
+git -C "$MATE" -c user.name=fixture -c user.email=fixture@example.invalid commit --allow-empty -qm fixture
+printf 'sm-live\n' > "$MATE/.fm-secondmate-home"
+printf 'A disposable shell worker for lifecycle validation.\n' > "$MATE/data/charter.md"
+env -u NO_MISTAKES_GATE -u FM_GATE_REFUSE_BYPASS -u FM_ROOT_OVERRIDE -u FM_STATE_OVERRIDE -u FM_DATA_OVERRIDE -u FM_CONFIG_OVERRIDE -u FM_PROJECTS_OVERRIDE \
+  TMUX_TMPDIR="$LAB/tmux" tmux -L fm-lab new-session -d -s firstmate -x 120 -y 40 -c "$PWD" -e FM_HOME="$LAB" '/bin/bash --noprofile --norc'
+export TMUX_TMPDIR="$LAB/tmux"
+SOCKET=$(tmux -L fm-lab display-message -p '#{socket_path}')
+PID=$(tmux -L fm-lab display-message -p '#{pid}')
+export TMUX="$SOCKET,$PID,0" FM_HOME="$LAB"
+unset FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE FM_GATE_REFUSE_BYPASS
+bin/fm-lock.sh
+META="$LAB/state/sm-live.meta"
+cat > "$META" <<EOF
+window=firstmate:fm-sm-live
+kind=secondmate
+harness=codex
+home=$MATE
+worktree=$MATE
+project=$MATE
+custom=preserve-this
+pr=https://github.com/example/home/pull/6
+pr_head=0123456789abcdef0123456789abcdef01234567
+EOF
+. bin/fm-pr-lib.sh
+fm_pr_poll_prepare "$LAB/state" sm-live github https://github.com/example/home/pull/6 github.com example/home 6 "$ROOT/bin/fm-pr-poll.sh"
+fm_pr_poll_publish_prepared
+fm_pr_poll_artifacts_valid "$LAB/state" sm-live "$ROOT/bin/fm-pr-poll.sh"
+printf 'before live respawn: armed poll valid\n'
+bin/fm-spawn.sh sm-live "$MATE" "sh -c 'printf live-worker-running; sleep 120'" --secondmate --backend tmux
+sleep 0.5
+tmux -L fm-lab capture-pane -p -t firstmate:fm-sm-live
+fm_pr_poll_artifacts_valid "$LAB/state" sm-live "$ROOT/bin/fm-pr-poll.sh"
+printf 'after live respawn: armed poll valid\n'
+grep -E '^(kind|harness|custom|pr|pr_head|spawn_gen)=' "$META"
+cp "$META" "$EVIDENCE/secondmate-after-respawn.meta"
+oldgen=$(sed -n 's/^spawn_gen=//p' "$META")
+tmux -L fm-lab kill-window -t firstmate:fm-sm-live
+bin/fm-spawn.sh sm-live "$MATE" "sh -c 'printf retry-worker-running; sleep 120'" --secondmate --backend tmux > "$EVIDENCE/secondmate-failed-send.log" 2>&1 &
+child=$!
+for i in $(seq 1 3000); do
+  gen=$(sed -n 's/^spawn_gen=//p' "$META" 2>/dev/null || true)
+  if [ -n "$gen" ] && [ "$gen" != "$oldgen" ]; then
+    tmux -L fm-lab kill-window -t firstmate:fm-sm-live
+    break
+  fi
+  kill -0 "$child" 2>/dev/null || break
+  sleep 0.002
+done
+rc=0
+wait "$child" || rc=$?
+printf 'real launch-delivery interruption exit: %s\n' "$rc"
+[ "$rc" != 0 ]
+[ -f "$META" ]
+fm_pr_poll_artifacts_valid "$LAB/state" sm-live "$ROOT/bin/fm-pr-poll.sh"
+printf 'after interrupted live delivery: record retained and armed poll valid\n'
+grep -E '^(custom|pr|pr_head|spawn_gen)=' "$META"
+bin/fm-spawn.sh sm-live "$MATE" "sh -c 'printf final-retry-running; sleep 120'" --secondmate --backend tmux
+fm_pr_poll_artifacts_valid "$LAB/state" sm-live "$ROOT/bin/fm-pr-poll.sh"
+printf 'after retry: armed poll valid\n'
+sleep 0.5
+tmux -L fm-lab capture-pane -p -t firstmate:fm-sm-live

@@ -1,0 +1,12 @@
+/tmp/fm-lab.NQfrJv
+lock acquired: THIS session holds the fleet lock (harness pid 4166072)
+before live watcher: shifted device registration is untrusted
+after live watcher: registration trusted on current device
+/tmp/fm-lab.g0PzYG
+lock acquired: THIS session holds the fleet lock (harness pid 4166072)
+foreign-device fixture initially has a valid registration
+foreign-device watcher exit: 0
+parent device=66
+check device=108
+check: rejected unauthenticated state checks: /tmp/fm-lab.g0PzYG/state/remount.check.sh
+actual foreign-device bind mount was refused by the live watcher

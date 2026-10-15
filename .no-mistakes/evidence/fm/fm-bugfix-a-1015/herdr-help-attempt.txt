@@ -1,0 +1,1 @@
+fm-herdr-lab: run forbids a leading option before the Herdr subcommand; it could shift a server or session lifecycle operation past the guard or subvert session isolation

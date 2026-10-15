@@ -1,0 +1,65 @@
+/tmp/fm-lab.kfD8a1
+lock acquired: THIS session holds the fleet lock (harness pid 4166072)
+ok: added archive-origin (scout, repo sample) -> In flight
+task:
+  id: archive-origin
+  title: Disposable archive verification
+  state: in_flight
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: scout
+  repo: sample
+  priority: "-"
+  created: 2026-10-16
+  closed: "-"
+  deps: none
+  links: none
+  body: ""
+help[2]:
+  - Run `tasks-axi done archive-origin --pr <url>` when it ships
+  - Run `tasks-axi block archive-origin --by <other>` to record a dependency
+answered-call
+unanswered-call
+complete: archive-origin captain-call inventory reviewed (answered-call) [no recorded origin on: answered-call; not checked against archive-origin]
+answered: answered-call
+ok: prune done -> archived 1 (kept 0)
+help[1]:
+  - Run `tasks-axi list --state done` to see retained Done items
+error: "Task \"answered-call\" not found in this backlog"
+code: NOT_FOUND
+help[1]: Run `tasks-axi list` to see existing tasks
+verified: archive-origin captain-call inventory
+answered archived call accepted by the real completion gate
+ok: unhold unanswered-call -> cleared
+task:
+  id: unanswered-call
+  title: Unanswered fixture
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: captain
+  repo: sample
+  priority: "-"
+  created: 2026-10-16
+  closed: "-"
+  deps: none
+  links: none
+  body: "Captain hold set: 2026-10-15T23:04:24Z"
+help[1]:
+  - Run `tasks-axi ready` to see dispatchable work
+ok: done unanswered-call -> Done
+help[1]:
+  - Run `tasks-axi ready` to dispatch work unblocked by this
+ok: prune done -> archived 1 (kept 0)
+help[1]:
+  - Run `tasks-axi list --state done` to see retained Done items
+fm-captain-hold: captain-held task unanswered-call was archived without a recorded captain answer
+unanswered archived call refused by the real completion gate
