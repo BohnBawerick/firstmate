@@ -538,6 +538,7 @@ test_default_budget_fits_a_slow_healthy_server() {
   local home out slow_server
   home=$(make_home default-budget)
   write_env "$home"
+  # shellcheck disable=SC2016 # The fake poll expands its own environment.
   slow_server='if [ "${FM_MAIL_POLL_BUDGET_MS:-0}" -lt 10000 ]; then
   printf "fm-mail poll error: mail poll deadline reached\\n" >&2
   exit 1
