@@ -56,8 +56,8 @@ mkdir -p ~/.local/bin
 ln -s /absolute/path/to/firstmate/bin/fm-remote-entrypoint.sh ~/.local/bin/fm-remote-entrypoint.sh
 ```
 
-On macOS, a plain SSH command does not put `~/.local/bin` on `PATH`, so the symlink alone is not enough there.
-zsh reads only `~/.zshenv` for such a command, so add the directory there:
+A non-interactive SSH command may omit `~/.local/bin` from `PATH`, so the symlink alone may not be enough.
+On macOS hosts using zsh, add the directory in `~/.zshenv`, which non-interactive shells read:
 
 ```sh
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH" ;; esac

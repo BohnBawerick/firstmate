@@ -1446,7 +1446,7 @@ In a 35-column, 22-row pane the 180-character inbox doorbell wrapped to seven ro
 Ctrl+A brought `❯ : Firstmate instruction` back into view with the last row hidden, and Ctrl+E restored the tail view, so the composer held every byte.
 In a 35-column, 38-row pane all seven rows showed.
 The pre-Enter payload proof read the tail view as the head-truncation shape and refused every doorbell, which is the field failure on a 46-column, 16-row pane.
-The adapter now scrolls such a composer to its head with Ctrl+A, reads it, and restores the cursor with Ctrl+E; the payload is proven when the head read is a prefix of it and the two reads together span it.
+The current [Claude composer proof](../herdr-backend.md#claude-composer-proof) owns the acceptance criteria, including rejection of ambiguous overlaps.
 
 Portable regressions:
 

@@ -557,10 +557,12 @@ That comparison ignores whitespace and U+2063, the invisible mark that starts op
 It ignores U+2063 because Claude's Herdr read-back never shows it.
 
 A composer whose read shows only a suffix of the payload is scrolled to its head with Ctrl+A, read again, and returned to its end with Ctrl+E, because Claude caps its composer at a few visible rows in a narrow or short pane.
-That composer is proven when the head read is a prefix of the payload and the two reads together span it.
+Proof requires matching head and tail reads that cover the normalized payload without also fitting a shorter buffer.
+Repetitive text with an ambiguous larger overlap is refused.
+This fallback covers a single logical line because Ctrl+A reaches only the start of the current line.
 Dated measurement: docs/verification/runtime-backends.md "Claude composer scrolled in a narrow pane".
 
-A composer that holds a shorter suffix, or a placeholder plus a literal remainder, does not receive Enter.
+A composer that still cannot prove the full payload, or shows a placeholder plus a literal remainder, does not receive Enter.
 Instead:
 
 1. The adapter presses Ctrl+U until the shared classifier reads the composer as empty.

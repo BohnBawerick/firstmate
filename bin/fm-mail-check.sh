@@ -24,23 +24,14 @@
 # for the missing value until the .env is fixed, which makes a partially
 # configured channel a wake instead of a silent gap.
 #
-# Reporting keeps state/.mail-check as the news key, but prints whenever
-# the poll is not a proven no-op. A proven no-op is a repeated identical
-# line, not a timeout, with no publication evidence. Publication evidence
+# Reporting keeps state/.mail-check as the news key. Publication evidence
 # is a timeout, fail-closed-after-queue diagnostics, a queued mail: check
-# key, or growth of state/.mail-woken. Same-line silence is only for a
-# proven no-op: successful poll with no new mail, or a repeated pre-wake
-# failure (missing env, connection refused before wake_for, missing
-# python3, missing fm-mail.sh, heal could not record a uid) that cannot
-# have queued mail. Fail-closed after a queued wake and timeout always
-# doorbell.
+# key, or growth of state/.mail-woken. docs/configuration.md "Mail plane"
+# owns the reporting policy; publication evidence must never be silenced.
 #
-# A lone poll deadline miss (the IMAP server answered too slowly for the
-# poll's own deadline) is held quietly in the record as deferred=, because a
-# slow-but-healthy server misses once and answers on the next poll. The same
-# miss on the next consecutive poll is reported once like any other failure.
-# The hold never applies when the poll has publication evidence, and any
-# other failure still reports at once.
+# The deferred= field records an unreported IMAP deadline miss without
+# replacing reported=, so a consecutive identical miss can be detected.
+# Publication evidence bypasses deferral.
 #
 # The poll must finish inside the watcher's per-check bound
 # (FM_CHECK_TIMEOUT, default 30, read from this check's own environment

@@ -3527,7 +3527,7 @@ fm_backend_herdr_rendered_busy_state() {  # <target> [harness] -> busy|idle|unkn
 # after the composer shows the payload (fm_backend_herdr_composer_payload_shown,
 # or fm_backend_herdr_composer_scrolled_payload_shown for a composer scrolled
 # past its visible row cap).
-# A missing read, a shorter suffix, or a paste placeholder followed by a
+# A missing read, an unproven suffix, or a paste placeholder followed by a
 # literal remainder does not press Enter: the composer is cleared back to
 # empty and the verdict is send-failed, or unknown when the clear cannot be
 # verified. Other harnesses skip this proof. Verified hazard
@@ -3708,14 +3708,15 @@ fm_backend_herdr_composer_payload_shown() {  # <text> <after>
 # whose read <tail> showed only a proper suffix of <text> is scrolled, not
 # head-truncated. Claude caps its composer at a few visible rows and keeps the
 # cursor row in view, so a payload wrapped past that cap in a narrow or short
-# pane reads as its tail even though the composer holds every byte (verified
-# live: Claude Code 2.1.300 on Herdr 0.9.3, a 35x22 pane showed six of seven
-# wrapped doorbell rows). Ctrl+A moves the cursor to the start of the line,
+# pane can read as its tail even when the composer holds every byte.
+# Live evidence: docs/verification/runtime-backends.md, "Claude composer
+# scrolled in a narrow pane". Ctrl+A moves the cursor to the start of the line,
 # which scrolls the head into view; Ctrl+E then puts the cursor back at the
-# end. The composer is proven to hold the payload only when the head read is a
-# prefix of <text> and the two reads together span it. A truncated composer
-# shows the same suffix after Ctrl+A, so it still fails. A multi-line literal
-# is not covered: Ctrl+A reaches only the start of the current line.
+# end. Matching head and tail reads must span the payload and rule out a
+# larger overlap that would also fit a shorter buffer. Repeated text can make
+# the same truncated bytes match both ends, so length sums alone are unsafe.
+# A multi-line literal is not covered: Ctrl+A reaches only the start of the
+# current line.
 fm_backend_herdr_composer_scrolled_payload_shown() {  # <target> <text> <tail>
   local target=$1 text=$2 tail=$3 head overlap rc=1
   fm_backend_herdr_payload_norm_var text

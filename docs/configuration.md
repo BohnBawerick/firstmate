@@ -1698,11 +1698,13 @@ A later poll retries that fetch and, on success, surfaces the real sender and su
 **Arm unattended polling**
 
 A home that wants mail polled unattended arms the standing check in the live home: `bin/fm-mail-check.sh arm`.
-Arming writes `state/mail.check.sh` and registers it with the watcher's slow-check cadence (`FM_CHECK_INTERVAL`), so the plane's `poll` runs on its own: new mail still surfaces as `check: mail <uid>` wakes from the poll, and the standing check itself also prints a line (and the watcher turns that line into a wake) unless the poll is a proven no-op.
+Arming writes `state/mail.check.sh` and registers it with the watcher's slow-check cadence (`FM_CHECK_INTERVAL`).
+New mail surfaces as `check: mail <uid>` wakes from the poll, and the standing check prints a line when the watcher needs to wake firstmate to drain them.
 
-Same-line silence is only for a proven no-op: a successful poll with no new mail, or a repeated identical pre-wake failure that cannot have queued mail.
-A fail-closed poll that already queued a wake, and a timeout, always print so the watcher wakes to drain it.
-A lone poll deadline miss, where a slow IMAP server answers too late for the poll's own deadline, stays quiet; the same miss on the next consecutive poll reports once.
+A successful poll with no new mail stays silent.
+An IMAP deadline miss without evidence of queued mail stays quiet once; an identical miss on the next consecutive poll reports once.
+Other failures report as soon as they appear, then identical failures stay silent only when there is no evidence of queued mail.
+A poll that may have queued mail, or one killed at the standing check's outer time budget, always prints so the watcher wakes to drain it.
 
 `FM_MAIL_CHECK_BUDGET` (default 25, valid 5..25) bounds one standing poll and is cut down to fit `FM_CHECK_TIMEOUT`.
 `bin/fm-mail-check.sh disarm` removes the standing check.
@@ -2465,6 +2467,7 @@ A value this command cannot use is refused by name before anything is launched, 
 **Limit captured output**
 
 `FM_PROCEVENT_MAX_OUTPUT_BYTES` (default 1048576) bounds a single captured result while the source runs; oversized output is drained but truncated with a stderr notice rather than staged or published whole or dropped.
+Built-in captures retain the truncation verdict beside the result, so a later adapter read can detect a byte-capped payload even when its declared item count matches.
 
 **Durability guarantees and limits**
 

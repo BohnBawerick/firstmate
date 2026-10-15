@@ -17,9 +17,7 @@ The current supported shape is Desktop host-tool choreography plus an explicit s
 
 ## Boundary
 
-Codex Desktop visible threads are companion host-tool workflows, not a selectable Firstmate backend.
-A Codex Desktop thread also cannot hold a home's session lock: its shells run under the app-server every thread shares, so `bin/fm-lock.sh` refuses and the thread operates read-only; take the helm from a terminal harness session.
-Read `docs/codex-app-backend.md` when it exists in this checkout; that document owns the acceptance contract, bridge requirement, status-return requirement, and staged rollout.
+Read the [Codex App boundary](../../../docs/codex-app-backend.md) before using Desktop for Firstmate work; it owns the session-lock restriction, backend acceptance contract, bridge requirement, status-return requirement, and staged rollout.
 
 If local helper scripts exist for Codex App work, use only helpers explicitly provided by the operator or maintained by Firstmate.
 For helpers outside `bin/`, inspect the source or header before running `--help`.

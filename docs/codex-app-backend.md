@@ -4,6 +4,12 @@ Codex App is not a selectable Firstmate runtime backend.
 Codex Desktop host tools can create and supervise visible threads and those threads can write Firstmate status files when given an authorized path, but Firstmate has no supported shell-callable bridge to those host tools.
 A manual thread ledger is not a backend.
 
+## Session lock
+
+A Codex App thread cannot hold a home's session lock because its tool shells run under an app-server shared by every thread, with no per-thread process to anchor the lock.
+`bin/fm-lock.sh` refuses that anchor, so a Firstmate supervisor running in Desktop stays read-only.
+Take the helm from a terminal harness session.
+
 ## Acceptance contract
 
 A future Codex App backend must satisfy the same lifecycle contract as terminal-backed adapters:

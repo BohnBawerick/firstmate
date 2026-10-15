@@ -1255,6 +1255,9 @@ fm_recovery_marker_handover_restore() {  # <marker> <snapshot-token> <snapshot-s
 # successor's link. A reaper that died after winning leaves its tombstone; a
 # later reaper re-elects itself by renaming that dead reaper's tombstone, and a
 # reaper whose own election a trap interrupted resumes it from its tombstone.
+# A dangling link with no owner or tomb is reclaimed only after atomically
+# claiming its shared owner path; separate reaper claims could let a delayed
+# reaper unlink a successor's live mutex.
 fm_lock_reap_dead_link() {
   local lockdir=$1 owner pid token tomb current
   [ -L "$lockdir" ] || return 1
