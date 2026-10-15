@@ -959,6 +959,112 @@ SH
 # dangling with no pid to read and no reap tomb. Both the claim micro-mutex and
 # its steal mutex must still be reclaimed, or every later Stop firing exits 0
 # silently and supervision stays off for good.
+test_dead_dangling_reaper_claim_keeps_its_election_until_unlink() {
+  local dir
+  dir="$TMP_ROOT/dead-dangling-reaper"
+  mkdir -p "$dir"
+  ln -s "$dir/owner.GONE" "$dir/claim.steal"
+  touch -h -t 202001010000 "$dir/claim.steal"
+  FM_HOME="$dir" bash -c '
+    . "$1/bin/fm-wake-lib.sh"
+    fm_lock_try_create "$2/owner.GONE"
+  ' _ "$ROOT" "$dir" || fail "could not leave an interrupted dangling-link claim"
+  FM_HOME="$dir" bash -c '
+    . "$1/bin/fm-wake-lib.sh"
+    dir=$2
+    fm_lock_points_to_owner() {
+      local actual
+      actual=$(readlink "$1" 2>/dev/null) || return 1
+      [ "$actual" = "$2" ] || return 1
+      if [ "$1" = "$dir/claim.steal" ] && [ -L "$dir/owner.GONE" ] && [ ! -e "$dir/owner.GONE" ]; then
+        fm_lock_try_create "$dir/owner.GONE" && exit 20
+        : > "$dir/election-held"
+      fi
+      return 0
+    }
+    fm_lock_reap_dead_link "$dir/claim.steal" || exit 21
+    [ -f "$dir/election-held" ] || exit 22
+    [ ! -L "$dir/claim.steal" ] && [ ! -L "$dir/owner.GONE" ] || exit 23
+    fm_lock_try_create "$dir/claim.steal" || exit 24
+    fm_lock_release "$dir/claim.steal"
+  ' _ "$ROOT" "$dir" || fail "an interrupted reaper lost its shared election before unlinking"
+  pass "an interrupted dangling-link reaper is recovered without reopening its election"
+}
+
+test_dangling_reapers_preserve_a_live_successor() {
+  local dir lock pid_a pid_b rc=0
+  dir="$TMP_ROOT/dangling-reaper-race"
+  mkdir -p "$dir"
+  lock="$dir/claim.steal"
+  ln -s "$dir/owner.GONE" "$lock"
+  touch -h -t 202001010000 "$lock"
+  cat > "$dir/reaper.sh" <<'SH'
+set -u
+root=$1 dir=$2 role=$3
+lock="$dir/claim.steal"
+owner="$dir/owner.GONE"
+FM_HOME=$dir
+. "$root/bin/fm-wake-lib.sh"
+wait_for_file() {
+  local i=0
+  while [ "$i" -lt 500 ]; do
+    [ -e "$dir/$1" ] && return 0
+    sleep 0.01
+    i=$((i + 1))
+  done
+  return 1
+}
+eval "$(declare -f fm_lock_mid_acquire_is_fresh | sed '1s/fm_lock_mid_acquire_is_fresh/original_fresh/')"
+fm_lock_mid_acquire_is_fresh() {
+  if [ "$1" = "$lock" ] && [ -z "$2" ]; then
+    : > "$dir/ready.$role"
+    wait_for_file ready.a && wait_for_file ready.b || exit 10
+    [ "$role" = a ] || wait_for_file checked.a || exit 11
+  fi
+  original_fresh "$@"
+}
+fm_lock_points_to_owner() {
+  local actual
+  actual=$(readlink "$1" 2>/dev/null) || return 1
+  [ "$actual" = "$2" ] || return 1
+  if [ "$1" = "$lock" ] && [ "$2" = "$owner" ]; then
+    : > "$dir/checked.$role"
+    if [ "$role" = a ]; then
+      local i=0
+      while [ ! -e "$dir/checked.b" ] && [ ! -e "$dir/done.b" ] && [ "$i" -lt 500 ]; do
+        sleep 0.01
+        i=$((i + 1))
+      done
+      [ "$i" -lt 500 ] || exit 12
+    else
+      wait_for_file successor.a || exit 13
+    fi
+  fi
+  return 0
+}
+fm_lock_reap_dead_link "$lock" || true
+if [ "$role" = a ]; then
+  fm_lock_try_create "$lock" || exit 14
+  successor=$FM_LOCK_OWNER_DIR
+  : > "$dir/successor.a"
+  wait_for_file done.b || exit 15
+  [ "$(readlink "$lock" 2>/dev/null)" = "$successor" ] || exit 16
+  fm_lock_release "$lock"
+fi
+: > "$dir/done.$role"
+SH
+  bash "$dir/reaper.sh" "$ROOT" "$dir" a &
+  pid_a=$!
+  fm_test_track_pid "$pid_a"
+  bash "$dir/reaper.sh" "$ROOT" "$dir" b &
+  pid_b=$!
+  fm_test_track_pid "$pid_b"
+  wait "$pid_a" || rc=$?
+  wait "$pid_b" || rc=$?
+  [ "$rc" -eq 0 ] || fail "overlapping dangling-link reapers removed a live successor or failed to reclaim: $rc"
+  pass "overlapping dangling-link reapers preserve the live successor mutex"
+}
+
 test_dangling_owner_links_are_reclaimed_and_rearm() {
   local dir out status link
   dir=$(make_primary_dir "$TMP_ROOT/dangling-owner-links")
@@ -1761,6 +1867,8 @@ test_term_mid_arm_commits_failure_and_rewakes
 test_abandoned_owner_claim_is_reclaimed_and_rearms
 test_abandoned_claim_reclaim_reaps_dead_steal_without_nesting
 test_dangling_owner_links_are_reclaimed_and_rearm
+test_dangling_reapers_preserve_a_live_successor
+test_dead_dangling_reaper_claim_keeps_its_election_until_unlink
 test_arming_claim_with_fresh_beacon_is_never_reclaimed
 test_fresh_arming_claim_with_stale_beacon_is_never_reclaimed
 test_claim_not_named_by_the_ledger_is_never_reclaimed

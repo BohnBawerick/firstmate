@@ -1264,6 +1264,9 @@ fm_lock_reap_dead_link() {
     pid=$(cat "$owner/pid" 2>/dev/null || true)
     fm_lock_recheck_stale_owner "$lockdir" "$owner" "$pid" || return 1
     token=$owner
+    if [ -L "$owner" ]; then
+      token=$(fm_lock_link_owner "$owner" 2>/dev/null) || return 1
+    fi
   else
     token=
     for tomb in "$owner".reaped.*; do
@@ -1274,14 +1277,13 @@ fm_lock_reap_dead_link() {
       token=$tomb
     done
     if [ -z "$token" ]; then
-      # A dangling link with no tomb has no owner left to race: every lock
-      # path removes the link before its owner directory, so only a crash or
-      # an outside deletion leaves this shape, and nothing would ever clear it.
-      # Past the pid-less freshness window, claim it with a fresh tomb, which
-      # is exclusive against a concurrent reaper exactly like the rename above.
       fm_lock_mid_acquire_is_fresh "$lockdir" "" && return 1
-      mkdir -- "$owner.reaped.$current" 2>/dev/null || return 1
-      token="$owner.reaped.$current"
+      fm_lock_try_create "$owner" || return 1
+      if fm_lock_points_to_owner "$lockdir" "$owner"; then
+        rm -f "$lockdir" 2>/dev/null || true
+      fi
+      fm_lock_remove_path "$owner"
+      return
     fi
   fi
   tomb="$owner.reaped.$current"
@@ -1292,6 +1294,7 @@ fm_lock_reap_dead_link() {
     rm -f "$lockdir" 2>/dev/null || true
   fi
   fm_lock_discard_owner "$tomb"
+  [ ! -L "$owner" ] || fm_lock_remove_path "$owner"
 }
 
 # Acquire the short-lived steal mutex without recursively creating another

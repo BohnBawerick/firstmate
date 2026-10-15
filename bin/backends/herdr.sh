@@ -3717,7 +3717,7 @@ fm_backend_herdr_composer_payload_shown() {  # <text> <after>
 # shows the same suffix after Ctrl+A, so it still fails. A multi-line literal
 # is not covered: Ctrl+A reaches only the start of the current line.
 fm_backend_herdr_composer_scrolled_payload_shown() {  # <target> <text> <tail>
-  local target=$1 text=$2 tail=$3 head rc=1
+  local target=$1 text=$2 tail=$3 head overlap rc=1
   fm_backend_herdr_payload_norm_var text
   fm_backend_herdr_payload_norm_var tail
   [ -n "$text" ] && [ -n "$tail" ] || return 1
@@ -3729,6 +3729,12 @@ fm_backend_herdr_composer_scrolled_payload_shown() {  # <target> <text> <tail>
       && [ "${text:0:${#head}}" = "$head" ] \
       && [ $(( ${#head} + ${#tail} )) -ge "${#text}" ]; then
       rc=0
+      for ((overlap = ${#head} + ${#tail} - ${#text} + 1; overlap <= ${#head} && overlap <= ${#tail}; overlap++)); do
+        if [ "${head: -overlap}" = "${tail:0:overlap}" ]; then
+          rc=1
+          break
+        fi
+      done
     fi
   fi
   fm_backend_herdr_send_key "$target" C-e || rc=1

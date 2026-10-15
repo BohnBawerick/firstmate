@@ -5389,6 +5389,60 @@ test_send_text_submit_scrolls_a_capped_claude_composer_to_prove_its_head() {
 
 # A composer scrolled to its head that shows a different start is not the
 # payload, even when its tail matches; the send is cleared, not submitted.
+test_scrolled_payload_proof_rejects_shorter_overlapping_buffers() {
+  local dir
+  dir="$TMP_ROOT/scrolled-overlap-matrix"
+  mkdir -p "$dir"
+  FM_HOME="$dir" bash -c '
+    . "$1/bin/backends/herdr.sh"
+    fm_backend_herdr_send_key() { printf "%s\n" "$2" >> "$log"; }
+    fm_backend_herdr_composer_content() { printf "%s" "$observed_head"; }
+    check() {
+      local label=$1 text=$2 observed_head=$3 tail=$4 expected=$5 rc=0
+      : > "$log"
+      fm_backend_herdr_composer_scrolled_payload_shown fm-lab-overlap:w1:p2 "$text" "$tail" || rc=$?
+      [ "$rc" -eq "$expected" ] || { printf "%s: expected %s, got %s\n" "$label" "$expected" "$rc" >&2; exit 1; }
+      [ "$(cat "$log")" = "$(printf "C-a\nC-e")" ] || exit 2
+    }
+    log=$2/keys
+    periodic=$(printf "abcdefgh%.0s" $(seq 1 30))
+    unique=abcdefghijklmnopqrstuvwx
+    check identical "$periodic" "${periodic:0:160}" "${periodic: -160}" 1
+    check shifted "$periodic" "${periodic:0:157}" "${periodic: -160}" 1
+    check shorter-head "$periodic" "${periodic:0:120}" "${periodic: -160}" 1
+    check shorter-tail "$periodic" "${periodic:0:160}" "${periodic: -120}" 1
+    check periodic-disjoint "$periodic" "${periodic:0:120}" "${periodic: -120}" 1
+    check complete-periodic-head "$periodic" "$periodic" "${periodic: -160}" 0
+    check unique-overlap "$unique" "${unique:0:16}" "${unique: -16}" 0
+    check unique-disjoint "$unique" "${unique:0:12}" "${unique: -12}" 0
+    check unequal-overlap "$unique" "${unique:0:18}" "${unique: -12}" 0
+    check complete-head "$unique" "$unique" "${unique: -16}" 0
+    check normalized "ab cd ef gh ij kl mn op qr st uv wx" "ab cd ef gh ij kl mn op" "ij kl mn op qr st uv wx" 0
+  ' _ "$ROOT" "$dir" || fail "the scrolled-payload overlap proof accepted truncation or refused a complete unambiguous payload"
+  pass "scrolled-payload proof rejects every ambiguous overlap and keeps complete unambiguous payloads"
+}
+
+test_send_text_submit_refuses_ambiguous_periodic_composer() {
+  local dir log resp fb out enter_count text retained
+  dir="$TMP_ROOT/submit-periodic-composer"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  text=$(printf 'abcdefgh%.0s' $(seq 1 30))
+  retained=${text:0:160}
+  printf '{"result":{"agent":{"agent_status":"idle"}}}\n' > "$resp/2.out"
+  printf '{"result":{"agent":{"agent_status":"working"}}}\n' > "$resp/4.out"
+  herdr_submit_claude_prefix "$resp" "$text"
+  printf '  \xe2\x9d\xaf %s\n' "$retained" > "$resp/4.out"
+  printf '  \xe2\x9d\xaf\n' > "$resp/6.out"
+  herdr_submit_scroll_probe "$resp" "$(printf '  \xe2\x9d\xaf %s' "$retained")"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" FM_BACKEND_HERDR_SUBMIT_POLLS=1 \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_send_text_submit fm-lab-periodic:w1:p2 "$1" 3 0.01 0.01' "$ROOT" "$text" )
+  [ "$out" = send-failed ] || fail "a periodic payload with an ambiguous shorter composer must be refused, got '$out'"
+  enter_count=$(grep -c $'\x1f''pane'$'\x1f''send-keys'$'\x1f''w1:p2'$'\x1f''enter' "$log")
+  [ "$enter_count" -eq 0 ] || fail "an ambiguous periodic payload received Enter"
+  [ "$(herdr_ctrl_u_count "$log")" -eq 1 ] || fail "an ambiguous periodic payload was not cleared"
+  pass "an ambiguous periodic composer is cleared without Enter"
+}
+
 test_send_text_submit_refuses_a_scrolled_composer_whose_head_differs() {
   local dir log resp fb out enter_count text other
   dir="$TMP_ROOT/submit-scrolled-mismatch"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
@@ -6561,6 +6615,8 @@ test_send_text_submit_unknown_on_composer_capture_failure
 test_send_text_submit_long_literal_submits_when_composer_holds_every_byte
 test_send_text_submit_refuses_enter_when_composer_holds_only_the_suffix
 test_send_text_submit_scrolls_a_capped_claude_composer_to_prove_its_head
+test_send_text_submit_refuses_ambiguous_periodic_composer
+test_scrolled_payload_proof_rejects_shorter_overlapping_buffers
 test_send_text_submit_refuses_a_scrolled_composer_whose_head_differs
 test_send_text_submit_refused_suffix_that_will_not_clear_is_unknown
 test_send_text_submit_clears_a_wrapped_suffix_one_row_per_press

@@ -45,7 +45,13 @@ MATE_ID="labt$$-mate"
 WORKER_ID="labt$$-worker"
 NONCE=abc12345
 
-digest() { shasum -a 256 "$1" | awk '{print $1}'; }
+digest() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1"
+  else
+    sha256sum "$1"
+  fi | awk '{print $1}'
+}
 
 # make_lab <name> <harness> [<claude-config-dir>]: a lab root in the shape up
 # builds, with a live private tmux server. Every readiness input starts in its
@@ -625,7 +631,11 @@ for dir in "${path_dirs[@]}"; do
   done
 done
 [ ! -e "$NOSHA_BIN/shasum" ] || fail "the no-shasum PATH still offers shasum"
-[ -e "$NOSHA_BIN/sha256sum" ] || fail "the no-shasum PATH needs sha256sum to exercise the fallback"
+if [ ! -e "$NOSHA_BIN/sha256sum" ]; then
+  hash_tool=$(command -v shasum) || fail "the hash fixture needs shasum or sha256sum"
+  printf '#!/usr/bin/env bash\nexec %q -a 256 "$@"\n' "$hash_tool" > "$NOSHA_BIN/sha256sum"
+  chmod +x "$NOSHA_BIN/sha256sum"
+fi
 NOSHA="$TMP_ROOT/nosha-lab"
 out=$(PATH="$NOSHA_BIN" "$LIVE_LAB" up --harness claude --source "$TMP_ROOT/missing-origin" "$NOSHA" 2>&1)
 expect_code 1 "$?" "an unavailable source still stops up before launch without shasum"

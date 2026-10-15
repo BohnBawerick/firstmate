@@ -797,20 +797,20 @@ EOF
   ( FM_HOME="$home" bash -c '. "$1/bin/fm-wake-lib.sh"; fm_lock_acquire_wait "$2" || exit 1; : > "$2.held"; sleep 120' \
       _ "$ROOT" "$home/state/.home-summary-refresh.lock" ) >/dev/null 2>&1 &
   holder=$!
+  fm_test_track_pid "$holder"
   while [ ! -e "$home/state/.home-summary-refresh.lock.held" ] && [ "$waited" -lt 20 ]; do
     sleep 1
     waited=$((waited + 1))
   done
   [ -e "$home/state/.home-summary-refresh.lock.held" ] \
-    || { kill "$holder" 2>/dev/null; fail "the test could not hold the refresh lock"; }
+    || { fm_test_reap_pid "$holder"; fail "the test could not hold the refresh lock"; }
 
   started=$(date +%s)
   FM_HOME_SUMMARY_TIMEOUT=60 run_session_start "$home" "$root" "$fakebin:$BASE_PATH" >/dev/null
   elapsed=$(( $(date +%s) - started ))
   [ ! -s "$home/state/home-summary.json" ] \
-    || { kill "$holder" 2>/dev/null; fail "the refresh published while its lock was still held"; }
-  kill "$holder" 2>/dev/null
-  wait "$holder" 2>/dev/null
+    || { fm_test_reap_pid "$holder"; fail "the refresh published while its lock was still held"; }
+  fm_test_reap_pid "$holder"
   [ "$elapsed" -lt 45 ] \
     || fail "session start waited ${elapsed}s on a stalled home-summary refresh instead of detaching it"
 
