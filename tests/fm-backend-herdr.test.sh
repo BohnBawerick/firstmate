@@ -12,6 +12,8 @@ set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=bin/fm-timeout-lib.sh
+. "$ROOT/bin/fm-timeout-lib.sh"
 # shellcheck source=tests/herdr-test-safety.sh
 . "$(dirname "${BASH_SOURCE[0]}")/herdr-test-safety.sh"
 # shellcheck source=tests/herdr-client-pair-fixture.sh
@@ -4171,11 +4173,31 @@ test_composer_state_inactive_session_fails_fast_without_server_autostart() {
 
 # shellcheck disable=SC2016
 test_composer_state_piped_reader_does_not_hang() {
-  local out rc=0
-  out=$( timeout 3s bash -c '. "$0/bin/fm-backend.sh"; ( fm_backend_composer_state herdr nonexistent-session:p2 ) 2>&1 | head -20' "$ROOT" ) || rc=$?
+  local dir log resp fb out rc=0
+  dir="$TMP_ROOT/composer-piped-reader"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  rm -f "$resp/.count"
+  printf '{"client":{"version":"0.7.1","protocol":14},"server":{"running":false}}\n' > "$resp/1.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" FM_HERDR_SCRIPT_STATUS=1 \
+    fm_run_timed 3 bash -c '. "$0/bin/fm-backend.sh"; ( fm_backend_composer_state herdr nonexistent-session:p2 ) 2>&1 | head -20' "$ROOT" ) || rc=$?
   [ "$rc" -eq 0 ] || fail "piped composer probe on bad target hung or failed with rc=$rc"
   [ "$out" = unknown ] || fail "piped composer probe should print unknown, got '$out'"
+  assert_contains "$(cat "$log")" $'\x1fstatus\x1f--json' "piped probe did not reach the stubbed Herdr CLI"
   pass "fm_backend_composer_state (herdr): piped probe on bad target does not hang EOF-sensitive readers"
+}
+
+test_composer_state_piped_reader_without_timeout() {
+  local path_dir tool resolved
+  path_dir="$TMP_ROOT/piped-reader-perl-bin"
+  mkdir -p "$path_dir"
+  for tool in awk bash cat chmod cut dirname grep head jq mkdir mktemp perl rm sed sleep tail tr uname; do
+    resolved=$(command -v "$tool") || fail "piped probe fallback requires $tool"
+    ln -s "$resolved" "$path_dir/$tool"
+  done
+  [ "$(PATH="$path_dir" fm_timeout_mechanism)" = perl ] \
+    || fail "piped probe fallback fixture did not exclude timeout and gtimeout"
+  PATH="$path_dir" test_composer_state_piped_reader_does_not_hang
+  pass "piped composer probe runs with Perl and no timeout command"
 }
 
 test_composer_state_unknown_when_no_composer_row_found() {
@@ -6381,6 +6403,7 @@ test_composer_state_popup_placeholder_fill_is_pending
 test_composer_state_unknown_on_capture_failure
 test_composer_state_inactive_session_fails_fast_without_server_autostart
 test_composer_state_piped_reader_does_not_hang
+test_composer_state_piped_reader_without_timeout
 test_composer_state_unknown_when_no_composer_row_found
 test_composer_state_pi_parked_prompt_is_not_empty
 test_composer_state_pi_separator_idle_is_empty

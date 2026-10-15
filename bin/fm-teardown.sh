@@ -1524,31 +1524,10 @@ pr_number_from_branch() {
   printf '%s' "$n"
 }
 
-pr_number_from_target() {
-  local target=$1 n
-  case "$target" in
-    '' ) return 1 ;;
-    *"/pull/"*)
-      n=${target##*/pull/}
-      n=${n%%[!0-9]*}
-      ;;
-    *"/pulls/"*)  # Forgejo addresses pulls as /pulls/<n> and serves refs/pull/<n>/head.
-      n=${target##*/pulls/}
-      n=${n%%[!0-9]*}
-      ;;
-    [0-9]*)
-      n=${target%%[!0-9]*}
-      ;;
-    *) return 1 ;;
-  esac
-  [ -n "$n" ] || return 1
-  printf '%s' "$n"
-}
-
 ensure_commit_object() {
   local target=$1 commit=$2 n
   git -C "$WT" cat-file -e "$commit^{commit}" 2>/dev/null && return 0
-  n=$(pr_number_from_target "$target") || return 1
+  n=$(fm_pr_pull_number_from_target "$target") || return 1
   git -C "$WT" remote get-url origin >/dev/null 2>&1 || return 1
   git -C "$WT" fetch --quiet origin "refs/pull/$n/head" >/dev/null 2>&1 || return 1
   git -C "$WT" cat-file -e "$commit^{commit}" 2>/dev/null

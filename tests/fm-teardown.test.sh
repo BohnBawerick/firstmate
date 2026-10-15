@@ -1100,6 +1100,57 @@ test_squash_merged_forgejo_pr_allows_when_main_moved_on() {
   pass "teardown proves a Forgejo task landed from the merged pull request when the content check is inconclusive"
 }
 
+test_merged_pull_fetch_uses_terminal_route() {
+  local case_dir kind target tmp local_head pr_head rc
+  for kind in forgejo forgejo-repo-pull github github-repo-pulls number; do
+    case "$kind" in
+      forgejo) target=https://git.example.org/pull/123/pulls/7 ;;
+      forgejo-repo-pull) target=https://git.example.org/team/pull/pulls/7 ;;
+      github) target=https://github.com/pulls/123/pull/7 ;;
+      github-repo-pulls) target=https://github.com/team/pulls/pull/7 ;;
+      number) target=7 ;;
+    esac
+    case_dir=$(make_case "terminal-route-$kind")
+    write_meta "$case_dir" no-mistakes ship
+    wt_commit_file "$case_dir" feature.txt hello
+    local_head=$(git -C "$case_dir/wt" rev-parse HEAD)
+    tmp="$case_dir/_pipeline"
+    git clone -q --no-local "$case_dir/wt" "$tmp"
+    printf 'remote fix\n' > "$tmp/fix.txt"
+    git -C "$tmp" add fix.txt
+    git -C "$tmp" commit -qm "PR follow-up"
+    pr_head=$(git -C "$tmp" rev-parse HEAD)
+    git -C "$tmp" push -q "$case_dir/origin.git" HEAD:refs/pull/7/head
+    git -C "$tmp" checkout -q -B main origin/main
+    git -C "$tmp" push -q "$case_dir/origin.git" HEAD:refs/pull/123/head
+    printf 'reworded landed feature\n' > "$tmp/feature.txt"
+    git -C "$tmp" add feature.txt
+    git -C "$tmp" commit -qm "main rewords landed feature"
+    git -C "$tmp" push -q "$case_dir/origin.git" main
+    rm -rf "$tmp"
+    ! git -C "$case_dir/wt" cat-file -e "$pr_head^{commit}" 2>/dev/null \
+      || fail "$target: fixture already has the PR head"
+    printf '%s\n' "pr=$target" "pr_head=$pr_head" >> "$case_dir/state/task-x1.meta"
+    case "$kind" in
+      forgejo*) add_tea_pull_for_head "$case_dir" true "$pr_head" ;;
+      *) add_gh_pr_merged_for_head "$case_dir" "$pr_head" ;;
+    esac
+
+    rc=0
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+    expect_code 0 "$rc" "$target: merged PR head was not fetched"$'\n'"$(cat "$case_dir/stderr")"
+    git -C "$case_dir/project" cat-file -e "$pr_head^{commit}" 2>/dev/null \
+      || fail "$target: teardown did not fetch the missing PR head"
+    git -C "$case_dir/project" merge-base --is-ancestor "$local_head" "$pr_head" \
+      || fail "$target: fixture PR does not contain the local work"
+    assert_absent "$case_dir/state/task-x1.meta" "$target: teardown left the task record"
+    ! git -C "$case_dir/project" show-ref --verify --quiet refs/heads/fm/task-x1 \
+      || fail "$target: teardown left the task branch"
+  done
+  pass "teardown fetches the terminal pull ref before proving local work landed"
+}
+
 test_squash_merged_same_file_different_content_refuses() {
   local case_dir rc pr_head local_head
   case_dir=$(make_case squash-same-path-diverged)
@@ -5225,6 +5276,7 @@ test_squash_merged_pr_allows_replayed_unpushed_patch
 test_merged_pr_with_later_local_commit_refuses
 test_squash_merged_rebased_branch_allows
 test_squash_merged_forgejo_pr_allows_when_main_moved_on
+test_merged_pull_fetch_uses_terminal_route
 test_squash_merged_same_file_different_content_refuses
 test_squash_merged_rebased_local_with_unlanded_commit_refuses
 test_squash_merged_stale_local_refuses_when_forge_unreachable

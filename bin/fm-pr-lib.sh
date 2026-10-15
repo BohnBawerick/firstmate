@@ -293,6 +293,20 @@ fm_pr_url_parse() {
   FM_PR_NUMBER=${BASH_REMATCH[4]}
 }
 
+fm_pr_pull_number_from_target() {
+  local target=${1-}
+  local LC_ALL=C
+  if [[ "$target" =~ ^[1-9][0-9]*$ ]]; then
+    printf '%s' "$target"
+    return 0
+  fi
+  fm_pr_url_parse "$target" || return 1
+  case "$FM_PR_PROVIDER" in
+    github|forgejo) printf '%s' "$FM_PR_NUMBER" ;;
+    *) return 1 ;;
+  esac
+}
+
 fm_pr_head_valid() {
   local head=${1-}
   local LC_ALL=C

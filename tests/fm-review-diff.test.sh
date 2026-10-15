@@ -294,6 +294,59 @@ test_forgejo_pr_url_falls_back_to_recorded_head() {
   pass "fm-review-diff falls back to a recorded Forgejo pr_head when the pull ref cannot be fetched"
 }
 
+test_pull_head_uses_terminal_route() {
+  local case_dir target out index=0
+  for target in \
+    https://git.example.org/pull/123/pulls/7 \
+    https://git.example.org/team/pull/pulls/7 \
+    https://git.example.org/pulls/123/pulls/7 \
+    https://github.com/pulls/123/pull/7 \
+    https://github.com/team/pulls/pull/7 \
+    https://github.com/pull/123/pull/7 \
+    7; do
+    index=$((index + 1))
+    case_dir=$(make_case "terminal-route-$index")
+    stale_and_pr_commits "$case_dir"
+    git -C "$case_dir/wt" push -q origin \
+      "pr-head-tmp:refs/pull/7/head" "fm/task-x1:refs/pull/123/head"
+    write_task_meta "$case_dir" "pr=$target"
+
+    out=$(run_review_diff "$case_dir" task-x1 2> "$case_dir/stderr")
+
+    assert_contains "$out" '+pr-fixed' "$target: review did not use the terminal PR number"
+    assert_not_contains "$out" 'stale-local' "$target: review used the wrong PR or local branch"
+    assert_not_contains "$(cat "$case_dir/stderr")" 'warning: PR head unavailable' \
+      "$target: the terminal PR ref was not fetched"
+  done
+  pass "review resolves both forge routes independently of owner and repository names"
+}
+
+test_non_pull_targets_do_not_select_pull_refs() {
+  local case_dir target out
+  case_dir=$(make_case non-pull-targets)
+  stale_and_pr_commits "$case_dir"
+  git -C "$case_dir/wt" push -q origin \
+    "pr-head-tmp:refs/pull/7/head" "pr-head-tmp:refs/pull/123/head"
+  for target in \
+    https://github.com/team/repo/pull/7/files \
+    https://git.example.org/team/repo/pulls/7/ \
+    'https://github.com/team/repo/pull/7?query=1' \
+    'https://git.example.org/team/repo/pulls/7#fragment' \
+    https://git.example.org/pull/123/-/merge_requests/7 \
+    https://review.example.org/c/pull/123/+/7 \
+    7suffix; do
+    write_task_meta "$case_dir" "pr=$target"
+
+    out=$(run_review_diff "$case_dir" task-x1 2> "$case_dir/stderr")
+
+    assert_contains "$out" '+stale-local' "$target: review should use the local fallback"
+    assert_not_contains "$out" '+pr-fixed' "$target: review fetched an unrelated pull ref"
+    assert_contains "$(cat "$case_dir/stderr")" 'warning: PR head unavailable' \
+      "$target: review did not warn about the unavailable PR head"
+  done
+  pass "noncanonical and non-pull targets cannot select a pull ref"
+}
+
 test_pr_meta_uses_pr_head_not_stale_local
 test_pr_meta_fetches_pull_head_without_recorded_sha
 test_stale_recorded_pr_head_loses_to_fetched_pull_head
@@ -305,3 +358,5 @@ test_recorded_base_branch_is_the_review_base
 test_forgejo_pr_url_fetches_pull_head
 test_forgejo_repo_named_pulls_resolves_by_last_segment
 test_forgejo_pr_url_falls_back_to_recorded_head
+test_pull_head_uses_terminal_route
+test_non_pull_targets_do_not_select_pull_refs
