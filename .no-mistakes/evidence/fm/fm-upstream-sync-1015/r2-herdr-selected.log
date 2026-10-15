@@ -1,0 +1,2 @@
+selected: test_send_text_submit_selected_claude_slash_popup
+.no-mistakes/select-tests.sh: line 31: test_send_text_submit_selected_claude_slash_popup: command not found

@@ -1,0 +1,2 @@
+selected: test_composer_state_piped_reader_does_not_hang
+ok - fm_backend_composer_state (herdr): piped probe on bad target does not hang EOF-sensitive readers

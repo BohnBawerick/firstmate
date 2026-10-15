@@ -1,0 +1,3 @@
+fm-control draft exit: exit=1
+REFUSED: legacy Herdr endpoint metadata for task draft lacks an exact task binding; preserving task state.
+not ok - unexpected refusal: REFUSED: legacy Herdr endpoint metadata for task draft lacks an exact task binding; preserving task state.

@@ -1,0 +1,39 @@
+{
+  "base": "70a59aa8499601638bf0a868dc8ded6929703fd1",
+  "target": "c048c3f59015a7be7133de5c274968319c0cc699",
+  "phase": "test",
+  "source_changes": {
+    "tests/fm-turnend-foreign-owner-repro.py": "Use marked lab homes with copied scripts and stock data paths. The unmarked, symlinked fixture was refused by the validation-checkout watcher guard.",
+    "tests/fm-herdr-submit-confirm-live-e2e.test.sh": "Wait for two empty composer reads before the first steer. A startup send failed during an initial redraw; settled live reruns passed."
+  },
+  "partial_and_setup_results": [
+    "The combined composer/Herdr subject run used a 180-second limit. Composer completed successfully; the large portable Herdr suite timed out. Four slash-popup cases and the piped-reader case passed when selected directly. No full Herdr-suite pass is claimed.",
+    "Two mistyped selector names exited 127 and were corrected. The initial suite selector also executed parameterized entry loops; the stricter selector replaced it for ledger checks.",
+    "The first workspace-local Claude install omitted its native postinstall step. Running that step inside node_modules fixed the launcher. The host Claude wrapper invokes global mise selection, so final controlled runs used the absolute workspace-local native executable.",
+    "A generated live-test copy initially retained its bare Claude launch command. Its three live assertions passed, but an external cleanup overlapped the script cleanup and made cleanup exit 1. The corrected isolated driver, with inherited overrides removed, passed and tore down its lab.",
+    "The draft-control fixture first lacked a worktree identity and exact Herdr task binding. Those refusals were fixture setup failures. Complete metadata reached the intended pending-composer refusal, preserved the draft, and then exited the real agent after clearing it.",
+    "A nested private project hit Claude external-import consent. No consent was granted. Reusing the already trusted gate worktree avoided changing trust configuration.",
+    "tea 0.11.1 lacks api. The current development client changed its login interface. tea 0.16.0 supplied the documented API and login contract, and the complete real Forgejo run passed.",
+    "The first positive landing fixture used an unmanaged Git worktree. Its safety refusal was expected. Real Treehouse leases, an isolated pool, and a clean local-main working copy completed both ancestry and squash cases.",
+    "The cleanup driver initially appended to a prior evidence PID file. Fresh per-round files fixed that driver assertion, and all six failure/interruption cases passed."
+  ],
+  "baseline_comparisons": [
+    "Previous-round claude-baseline-exit-trace.log and upstream-claude-current.log reproduced the original Claude 2.1.300 popup failure on unmodified a24f4cb8. Current live runs and before/after extraction now pass.",
+    "The ownership fixture also fails on unmodified upstream a24f4cb8 in this gate path: r2-foreign-upstream-baseline.log. The marked/copied fixture passes: r2-foreign-fixed.log."
+  ],
+  "remaining_live_limits": [
+    "Command Code was absent on PATH. Workspace-local command-code 1.74.1 runs, but its disposable HOME is unauthenticated. No disposable account or credential was provided, and production credential copying is outside the boundary.",
+    "Orca and launchctl are absent on this Linux host. Their real macOS surfaces need a disposable macOS host with the application and permissions.",
+    "A real closed/reopened GitHub contribution needs a mutable sandbox GitHub repository and explicit authority. The provided shared repositories were not mutated. The executable fixture regression passed.",
+    "A real no-mistakes ledger continuation needs an owner-controlled disposable validation run. Starting or controlling another pipeline is forbidden in this test phase. The focused ledger fixtures passed."
+  ],
+  "visual_evidence": "r2-claude-popup.png renders the real captured Herdr terminal frame from the successful target run. It shows the actual composer and selected slash menu. The CLI transcripts prove the agent then exited.",
+  "tool_versions": {
+    "claude": "2.1.300",
+    "herdr": "0.9.3",
+    "forgejo": "7.0.14",
+    "tea": "0.16.0",
+    "commandcode": "1.74.1"
+  },
+  "cleanup": "Every named Herdr lab was torn down through fm-herdr-lab.sh; the lab tripwire directory is empty. Disposable services, pools, browsers and tool downloads are removed before completion. Two intentional test-source fixes remain."
+}

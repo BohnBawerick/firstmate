@@ -1,0 +1,6 @@
+1.74.1
+- Checking authentication status...
+✖ Not authenticated
+
+Run cmd auth login to authenticate.
+

@@ -1,0 +1,2 @@
+selected: test_closed_contributions_expire_and_reopen
+ok - closed PRs and issues expire and are observed again after reopening

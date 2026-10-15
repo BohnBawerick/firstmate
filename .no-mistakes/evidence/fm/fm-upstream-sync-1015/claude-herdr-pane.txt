@@ -1,0 +1,46 @@
+ ▐▛███▛█   Claude Code v2.1.283
+▝▜██████▀  Opus 5.5 · Claude Max
+ ▝▝   ▝▝   ~/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV
+
+
+❯ Reply with exactly FMHERDRPONG3768954_8091 and nothing else.
+
+● FMHERDRPONG3768954_8091
+
+✻ Crunched for 3s · done 11:43 PM
+
+❯ FIRSTMATE_OP: v1 away-supervisor: Reply with exactly FMHERDROPPONG3768954_28509 and nothing else.
+
+● FMHERDROPPONG3768954_28509
+
+✻ Crunched for 3s · done 11:43 PM
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ /exit
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  /exit                         Exit the CLI
+  /quiet                        Enter quiet supervision mode when the captain invokes /quiet or asks for quiet mode,
+                                quiet-while-present, or fewer routine wake turns while they stay in the session. Whe…
+  /context                      Visualize current context usage as a colored grid
+  /usage-credits                Configure usage credits or request them from your admin when you hit a limit
+  /ponytail:ponytail-review     (ponytail) Code review focused exclusively on over-engineering. Finds what to delete:
+                                reinvented standard library, unneeded dependencies, speculative abstractions, dead f…
+  /doctor                       Health-check the user's Claude Code setup and fix issues: diagnose installation
+                                health — what the `claude doctor` terminal diagnostics cover — from local data (dupl…
+  /stow                         Sweep the current session for uncaptured durable knowledge, file it to disk, persist
+                                the open work records this session knows are unfiled or now wrong, and curate the ho…
+  /afk                          Enter the away posture when the captain invokes /afk, says they are going afk,
+                                `state/.afk-contract` or `state/.afk` exists, an incoming message starts with `FM_IN…
+  /ponytail:ponytail            (ponytail) Forces the laziest solution that actually works, simplest, shortest, most
+                                minimal. Channels a senior dev who has seen everything: question whether the task ne…
+  /verify                       Verify that a code change actually does what it's supposed to by exercising it
+                                end-to-end and observing behavior — drive the affected flow, not just tests or typec…
+  /memory                       Edit CLAUDE.md files and memory settings
+  /passes                       Share a free week of Claude Code with friends and earn usage credits
+  /autocompact                  Set how full the context gets before auto-summarizing
+
+Resume this session with:
+claude --resume 6b16f227-317b-418e-8469-88a435a67e4b
+
+01M4ZWV8H0KM2V907GBD81WBZV on  HEAD [?] took 22s
+❯

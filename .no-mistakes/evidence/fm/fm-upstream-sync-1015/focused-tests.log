@@ -1,0 +1,170 @@
+FM_TEST_BEGIN 2026-10-15T15:30:17Z tests/fm-self-repo-role.test.sh family=unclassified expected_gate_skip=none
+ok - fm-role.sh report: default, user, and maintainer directives resolve
+ok - fm-role.sh report: malformed, unknown, and unsafe input fails closed
+ok - fm-role.sh check: the default user/operator home cannot publish to firstmate upstream
+ok - fm-role.sh check: a task on an ordinary project is untouched by the boundary
+ok - fm-role.sh check: a matching maintainer scope authorizes the self-repository publication
+ok - fm-role.sh check: scope mismatch and mere upstream remote presence never authorize
+ok - fm-role.sh check: equivalent remote spellings resolve to one publication target
+ok - fm-role.sh check: repository lineage, not remotes, identifies firstmate across forks
+ok - remapped forks authorize only their verified publication destination and refuse remap drift
+ok - fm-role.sh check: undeterminable lineage or publication target refuses
+ok - fm-role.sh check: recorded one-task consent authorizes its named repository only
+ok - secondmate home: a role file without an inheritance receipt grants nothing
+ok - secondmate home: inherited grants need a matching receipt; receipt-less and revoked grants are dead
+ok - secondmate home: a primary role its own resolver rejects propagates as revocation
+ok - fm_dod_block: upstream consent renders on publishing contracts and is refused on local-only
+ok - fm-brief.sh: --upstream-consent validates, scopes to ship tasks, and renders normalized
+ok - fm-brief.sh: --project applies the self-repository gate at scaffold time
+ok - fm-spawn.sh: the launch gate refuses a user/operator home and passes a matching maintainer
+ok - fm-spawn.sh: consent must agree between flag and brief, and is refused on local-only
+ok - fm-promote.sh: the self-repository gate governs promotion identically to spawn
+ok - fm-spawn.sh: --upstream-consent is refused on secondmate charters
+# all fm-self-repo-role tests passed
+FM_TEST_END 2026-10-15T15:30:55Z tests/fm-self-repo-role.test.sh exit=0 duration_ms=37937 gate_skip=false
+FM_TEST_BEGIN 2026-10-15T15:30:55Z tests/fm-test-fixture-cleanup.test.sh family=standalone expected_gate_skip=none
+ok - fm_test_tmproot cleans up its fixture root on normal exit
+ok - fm_test_tmproot cleans up its fixture root on SIGTERM
+ok - the cleanup registry cannot be injected through path precreation
+ok - failed fixture registration rolls back the new root
+ok - the orphan sweep reaps only old fixtures without a live owner
+ok - the orphan sweep reaps read-only package fixtures
+ok - test registries and fixture roots stay out of a git worktree TMPDIR
+FM_TEST_END 2026-10-15T15:31:02Z tests/fm-test-fixture-cleanup.test.sh exit=0 duration_ms=6619 gate_skip=false
+FM_TEST_BEGIN 2026-10-15T15:31:02Z tests/fm-commandcode-harness.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - Command Code native identity; anchored liveness
+ok - worker-only resolution, single-press interrupt, rewind-picker hazard, and lifecycle capabilities
+ok - composer placeholder, draft safety, identity-scoped ceiling, and independent delivery signals
+ok - busy mod: run_start busy, run_end and session end idle, stale and unconfigured writes refused
+ok - scout launch carries model, verified effort only, autonomy, typed brief, and the per-process mod
+ok - Command Code launches are refused on zellij, cmux, and orca
+ok - Command Code found through a relative PATH launches after changing to the task worktree
+FM_TEST_END 2026-10-15T15:32:07Z tests/fm-commandcode-harness.test.sh exit=0 duration_ms=65632 gate_skip=false
+FM_TEST_BEGIN 2026-10-15T15:32:08Z tests/fm-review-diff.test.sh family=pr-forge expected_gate_skip=none
+ok - fm-review-diff falls back to recorded pr_head when pull head cannot be fetched
+ok - fm-review-diff fetches refs/pull/<n>/head when pr_head= is absent
+ok - fm-review-diff prefers freshly fetched PR head over a stale recorded pr_head=
+ok - fm-review-diff without pr= keeps the worktree-branch diff
+ok - fm-review-diff falls back to local branch with a warning when PR head is unreachable
+ok - fm-review-diff reviews the meta-recorded ship branch even when the worktree HEAD moved off it
+ok - fm-review-diff refuses a corrupt recorded ship branch instead of reviewing the wrong content
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 0s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ok - fm-review-diff compares a task against its recorded base branch
+ok - fm-review-diff fetches refs/pull/<n>/head for a Forgejo /pulls/<n> pr= URL
+ok - fm-review-diff resolves a Forgejo repo literally named pulls by the last /pulls/ segment
+ok - fm-review-diff falls back to a recorded Forgejo pr_head when the pull ref cannot be fetched
+ok - review resolves both forge routes independently of owner and repository names
+ok - noncanonical and non-pull targets cannot select a pull ref
+FM_TEST_END 2026-10-15T15:33:15Z tests/fm-review-diff.test.sh exit=0 duration_ms=67681 gate_skip=false
+FM_TEST_BEGIN 2026-10-15T15:33:16Z tests/fm-contributions.test.sh family=snapshot-bearings expected_gate_skip=optional-binary
+ok - a large backlog does not blind the contribution poll
+ok - poll stops with a named error when the contribution input cannot be read
+ok - settled history leaves poll budget for active contributions and unfinished recovery
+ok - merged observations recover across existing owners without resetting acknowledgments
+ok - an interrupted merged signal publication replays exactly once
+ok - only required-captain contributions are rows; other actors are counted
+ok - replaced-head verdict is stale and cannot create a captain requirement
+ok - unchecked ownership is disclosed and cannot prove silence
+ok - newest check with no verdict is distinct from passing and pending
+ok - new maintainer comment wakes once and stays pending until acknowledged
+ok - new maintainer review wakes once and stays pending until acknowledged
+ok - new maintainer inline wakes once and stays pending until acknowledged
+ok - ready-for-pr on a filed issue becomes a planning wake
+ok - a fresh open issue remains measured maintainer triage
+ok - an absent check lane remains missing across repeated observations
+ok - mixed freshness retains measured captain work and discloses the gap
+ok - malformed durable evidence cannot prove silence
+ok - a transient ready-for-pr label wakes and its exact acknowledgement survives replay
+ok - recorded judgment keeps its exact head and is stale immediately on a published replacement
+ok - verdict help and refusal name exactly the actors the command accepts
+ok - a current forge observation refreshes a verdict after a replacement
+ok - an unavailable current head leaves verdict freshness unknown
+ok - away yolo delivery is fleet work without granting merge authority
+fm-test-run: per-script budget of 240s exceeded, terminating: tests/fm-contributions.test.sh
+not ok - tests/fm-contributions.test.sh exceeded the per-script budget of 240s and was terminated
+rent channel (rc=3)
+fm-test-run: reaping processes tests/fm-contributions.test.sh left behind (group 3071007)
+FM_TEST_LEAK tests/fm-contributions.test.sh pgid=3071007
+FM_TEST_END 2026-10-15T15:37:22Z tests/fm-contributions.test.sh exit=124 duration_ms=246404 gate_skip=false
+FM_TEST_BEGIN 2026-10-15T15:37:22Z tests/fm-project-capacity.test.sh family=backend-dispatch expected_gate_skip=none
+ok - a project with no declared capacity keeps today's uncapped dispatch
+ok - a spawn is admitted while its project still has a free place
+ok - a spawn beyond capacity is deferred before any record, brief, endpoint, worktree, or backlog move exists
+ok - a project name with spaces is declared by taking the capacity from the last field
+ok - a project name beginning with # is declared, and a # comment stays a comment
+ok - a home reached through a symlink counts each of its workers once
+ok - a recorded PR handoff or a cleanup each frees exactly one place
+ok - a restart of a task id does not count that task's own record
+ok - only this project's ship and scout records hold places
+ok - every local home shares one declared capacity per project origin, and remote homes do not count
+fm-test-run: per-script budget of 240s exceeded, terminating: tests/fm-project-capacity.test.sh
+not ok - tests/fm-project-capacity.test.sh exceeded the per-script budget of 240s and was terminated
+FM_TEST_END 2026-10-15T15:41:23Z tests/fm-project-capacity.test.sh exit=124 duration_ms=240528 gate_skip=false
+FM_TEST_BEGIN 2026-10-15T15:41:23Z tests/fm-timeout-lib.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - fm_exec_timed passes a command's status and output through unchanged
+ok - system Bash top-level and subshell calls preserve success, failure, and signal status
+Terminated                 "$@"
+ok - fm_run_timed reports 124 when the bound TERMs a read whose wrapper recorded 143
+ok - fm_run_timed passes a natural exit through when the bound fired after completion
+ok - fm_exec_timed sends TERM at the bound and a cooperative command ends there
+ok - fm_exec_timed kills a TERM-ignoring command once the grace has passed
+ok - fm_exec_timed replaces the calling shell instead of wrapping it
+ok - fm_exec_timed reaps a descendant that would otherwise hold the output past the bound
+ok - fm_exec_timed forwards a TERM it receives to the bounded command
+ok - fm_exec_timed ends the command when its named owner is already gone
+ok - fm_exec_timed ends the command when its owner dies during watchdog startup
+ok - fm_exec_timed preserves a top-level shell's parent across exec startup
+ok - fm_exec_timed prefers its perl watchdog over timeout
+ok - fm_exec_timed refuses instead of running unbounded when no mechanism exists
+ok - fm_exec_timed rejects a zero, padded, non-numeric, or missing bound and a missing command
+tests/fm-timeout-lib.test.sh: line 28: 3636042 Killed                     ( . "$ROOT/bin/fm-timeout-lib.sh"; PATH=$path fm_exec_timed "$@" )
+ok - fm_exec_timed's GNU timeout fallback kills a TERM-ignoring command once the grace has passed
+ok - fm_timed_out accepts 124 and 137 and nothing else
+FM_TEST_END 2026-10-15T15:41:38Z tests/fm-timeout-lib.test.sh exit=0 duration_ms=15117 gate_skip=false
+FM_TEST_BEGIN 2026-10-15T15:41:38Z tests/fm-secondmate-harness.test.sh family=secondmate expected_gate_skip=none
+ok - A1 fm-harness.sh secondmate resolves the fallback chain; crew mode unchanged
+ok - fm-harness detects only Cursor Agent CLI's exact invocation marker
+ok - C1 fm-harness.sh secondmate-model/secondmate-effort resolve the optional tokens; bare harness stays empty (backward-compat)
+ok - D1 fm-harness.sh resolves per-mate pin -> shared pin -> crew; bad ids refused; pins never inherited
+ok - pi-signed identity: authoritative launch selection distinguishes shared wrapper ancestry
+ok - harness identity: dash-leading ps command names are basename operands, not options
+ok - B1 propagate_inheritable_config: copy, idempotence, convergence, absence-mirror, exclusion, no-op, skip diagnostics
+not ok - split: no meta written
+FM_TEST_END 2026-10-15T15:42:08Z tests/fm-secondmate-harness.test.sh exit=1 duration_ms=29920 gate_skip=false
+FM_TEST_BEGIN 2026-10-15T15:42:08Z tests/fm-gate-refuse.test.sh family=session-bootstrap expected_gate_skip=none
+ok - fm-gate-refuse-lib: refuses when NO_MISTAKES_GATE is set
+ok - fm-gate-refuse-lib: refuses when NO_MISTAKES_GATE is set empty
+ok - fm-gate-refuse-lib: refuses from a gate worktree via git-common-dir (marker unset)
+ok - fm-gate-refuse-lib: no-op for a normal session (neither signal, set -eu clean)
+ok - fm-gate-refuse-lib: production lab paths permitted; relocated paths and invalid identities refused
+ok - fm-lab-home: create mints marked stock homes only on fresh empty dirs; anything else is refused
+ok - fm-lab-home: a primary starts on a private short tmux socket from a long lab path and teardown removes it
+ok - fm-spawn: refuses on marker and gate-worktree backstop; a normal crew spawn is unaffected
+ok - fm-send: refuses on marker and gate-worktree backstop; a normal steer uses the inbox
+ok - fm-teardown: refuses on marker and gate-worktree backstop; a normal teardown is unaffected
+FM_TEST_END 2026-10-15T15:43:06Z tests/fm-gate-refuse.test.sh exit=0 duration_ms=57502 gate_skip=false
+FM_TEST_SUMMARY total=9 failed=3 skipped_gate=0 duration_ms=769139
+FM_TEST_SUMMARY_FAMILY family=backend-dispatch count=1 duration_ms=240528 failed=1
+FM_TEST_SUMMARY_FAMILY family=pr-forge count=1 duration_ms=67681 failed=0
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=2 duration_ms=80749 failed=0
+FM_TEST_SUMMARY_FAMILY family=secondmate count=1 duration_ms=29920 failed=1
+FM_TEST_SUMMARY_FAMILY family=session-bootstrap count=1 duration_ms=57502 failed=0
+FM_TEST_SUMMARY_FAMILY family=snapshot-bearings count=1 duration_ms=246404 failed=1
+FM_TEST_SUMMARY_FAMILY family=standalone count=1 duration_ms=6619 failed=0
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=37937 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-contributions.test.sh duration_ms=246404
+FM_TEST_SLOWEST rank=2 script=tests/fm-project-capacity.test.sh duration_ms=240528
+FM_TEST_SLOWEST rank=3 script=tests/fm-review-diff.test.sh duration_ms=67681
+FM_TEST_SLOWEST rank=4 script=tests/fm-commandcode-harness.test.sh duration_ms=65632
+FM_TEST_SLOWEST rank=5 script=tests/fm-gate-refuse.test.sh duration_ms=57502
+FM_TEST_SLOWEST rank=6 script=tests/fm-self-repo-role.test.sh duration_ms=37937
+FM_TEST_SLOWEST rank=7 script=tests/fm-secondmate-harness.test.sh duration_ms=29920
+FM_TEST_SLOWEST rank=8 script=tests/fm-timeout-lib.test.sh duration_ms=15117
+FM_TEST_SLOWEST rank=9 script=tests/fm-test-fixture-cleanup.test.sh duration_ms=6619
+fm-test-run: wrote timing artifact: /home/bohn/.no-mistakes/evidence/01M4ZWV8H0KM2V907GBD81WBZV/focused-tests.json

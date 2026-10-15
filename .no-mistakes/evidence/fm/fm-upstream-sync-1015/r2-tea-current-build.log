@@ -1,0 +1,6 @@
+go: downloading gitea.com/gitea/tea v0.16.1-0.20261012005634-33bb12729e6d
+go: gitea.com/gitea/tea@v0.16.1-0.20261012005634-33bb12729e6d requires go >= 1.27.0; switching to go1.27.2
+go: gitea.com/gitea/tea@main: version constraints conflict:
+	gitea.com/gitea/tea@v0.16.1-0.20261012005634-33bb12729e6d: parsing go.mod:
+	module declares its path as: gitea.dev/tea
+	        but was required as: gitea.com/gitea/tea

@@ -1,0 +1,2 @@
+firstmate watcher auto-arm INTERRUPTED by TERM - the Stop-owned automatic supervision mechanism did not reach a terminal watcher outcome.
+Do not launch a manual background arm from this notice; investigate the automatic Stop hook and watcher startup before ending blind.

@@ -1,0 +1,3 @@
+# all fm-secondmate-harness tests passed
+selected: test_spawn_split_and_inherit
+not ok - split: no meta written

@@ -1,0 +1,70 @@
+Forgejo version 7.0.14+gitea-1.21.11 (release name 7.0.14) built with GNU Make 4.4.1, go1.23.4 : bindata, timetzdata, sqlite, sqlite_unlock_notify
+Version: [1m0.16.0[0m	golang: 1.26.6	go-sdk: v1.2.0
+$ /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/live-tools/tea login list --output json
+[
+  {
+    "name": "lab",
+    "url": "http://localhost:35007",
+    "ssh_host": "localhost:35007",
+    "user": "fixture",
+    "default": "false"
+  }
+]
+exit=0
+
+A failing status on page 2 must refuse the merge
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-pr-merge.sh task https://localhost/fixture/repo/pulls/1 --attended-override
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+armed: state/task.check.sh
+error: refusing to merge https://localhost/fixture/repo/pulls/1
+  - the combined commit status is "failure", not success
+exit=1
+PR remains unmerged; no merge request was sent.
+
+Fault injected after two real successful status pages: {"message": "unavailable"}
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-pr-merge.sh task https://localhost/fixture/repo/pulls/1 --attended-override
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+armed: state/task.check.sh
+error: refusing to merge https://localhost/fixture/repo/pulls/1
+  - the combined commit status is "unreadable", not success
+exit=1
+PR remains unmerged; no merge request was sent.
+
+Fault injected after two real successful status pages: {"statuses": []}
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-pr-merge.sh task https://localhost/fixture/repo/pulls/1 --attended-override
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+armed: state/task.check.sh
+error: refusing to merge https://localhost/fixture/repo/pulls/1
+  - the combined commit status is "unreadable", not success
+exit=1
+PR remains unmerged; no merge request was sent.
+
+Fault injected after two real successful status pages: {"statuses": [], "state": "success"}
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-pr-merge.sh task https://localhost/fixture/repo/pulls/1 --attended-override
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+armed: state/task.check.sh
+error: refusing to merge https://localhost/fixture/repo/pulls/1
+  - the combined commit status is "unreadable", not success
+exit=1
+PR remains unmerged; no merge request was sent.
+
+Every status page is valid and green
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-pr-merge.sh task https://localhost/fixture/repo/pulls/1 --attended-override
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+armed: state/task.check.sh
+verified: https://localhost/fixture/repo/pulls/1 is open and mergeable, with a successful combined status at head 65c962ea7dff2db2526a18cbe33252907145fa4d
+exit=0
+{
+  "number": 1,
+  "state": "closed",
+  "merged": true,
+  "head": "65c962ea7dff2db2526a18cbe33252907145fa4d",
+  "merge_commit_sha": "9b33cf95e73e1ba147f967f01aadd97749f16193"
+}
+Real Forgejo read-back confirms the merge.

@@ -1,0 +1,21 @@
+
+Only local main contains the task work: ancestry
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-teardown.sh task --legacy-record
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/landing.s57u50bk/ancestry/home
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REFUSED: worktree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/landing.s57u50bk/ancestry/worktree has work not on any remote and not landed.
+unpushed commits:
+8139d22 task work
+Push the branch, land its PR, or get the captain's explicit OK to discard, then --force.
+exit=1
+Traceback (most recent call last):
+  File "/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/live-landing.py", line 51, in <module>
+    assert 'REFUSED' in p and 'unpushed' in p,p
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

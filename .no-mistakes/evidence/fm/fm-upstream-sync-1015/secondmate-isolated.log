@@ -1,0 +1,7 @@
+# all fm-secondmate-harness tests passed
+selected: test_spawn_split_and_inherit
+ok - B2 spawn: secondmate runs the secondmate harness; its home inherits declared config
+selected: test_spawn_per_mate_pin_precedence
+ok - D2 spawn: a per-mate pin governs its mate, others keep the shared pin, explicit flags still win
+selected: test_spawn_per_mate_pin_refusals
+ok - D3 spawn: an unverified or invalid per-mate pin meets the shared pin's guards, naming its file

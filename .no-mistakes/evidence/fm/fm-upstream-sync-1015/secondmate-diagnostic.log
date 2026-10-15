@@ -1,0 +1,4 @@
+# all fm-secondmate-harness tests passed
+selected: test_spawn_split_and_inherit
+error: secondmate home cannot be inside the firstmate repo: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/fm-secondmate-harness.5blIgu/spawn-split/sm
+not ok - split: no meta written

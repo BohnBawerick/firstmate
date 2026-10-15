@@ -1,0 +1,129 @@
+FM_TEST_BEGIN 2026-10-15T15:31:37Z tests/.gate-fm-pr-merge.test.sh family=unclassified expected_gate_skip=none
+ok - fm-pr-merge merges a Forgejo pull request through tea api instead of refusing it
+ok - fm-pr-merge reads every Forgejo combined-status page before merging
+fm-test-run: per-script budget of 180s exceeded, terminating: tests/.gate-fm-pr-merge.test.sh
+not ok - tests/.gate-fm-pr-merge.test.sh exceeded the per-script budget of 180s and was terminated
+fm-test-run: reaping processes tests/.gate-fm-pr-merge.test.sh left behind (group 2960992)
+FM_TEST_LEAK tests/.gate-fm-pr-merge.test.sh pgid=2960992
+FM_TEST_END 2026-10-15T15:34:44Z tests/.gate-fm-pr-merge.test.sh exit=124 duration_ms=186197 gate_skip=false
+FM_TEST_BEGIN 2026-10-15T15:34:44Z tests/.gate-fm-teardown.test.sh family=unclassified expected_gate_skip=none
+ok - worktree whose content already landed in the default branch is torn down (content fallback)
+ok - the content-landed fallback checks a task's recorded base branch, not the default branch
+ok - named-base tasks retain work contained only in local main, by ancestry or equivalent content
+ok - teardown fetches the terminal pull ref before proving local work landed
+fm-test-run: per-script budget of 180s exceeded, terminating: tests/.gate-fm-teardown.test.sh
+not ok - tests/.gate-fm-teardown.test.sh exceeded the per-script budget of 180s and was terminated
+FM_TEST_END 2026-10-15T15:37:49Z tests/.gate-fm-teardown.test.sh exit=124 duration_ms=185414 gate_skip=false
+FM_TEST_BEGIN 2026-10-15T15:37:49Z tests/.gate-fm-watcher-lock.test.sh family=unclassified expected_gate_skip=none
+ok - disposable watcher refuses inherited state outside its marked lab
+ok - concurrent stale-lock steal yields exactly one winner
+FM_TEST_END 2026-10-15T15:37:52Z tests/.gate-fm-watcher-lock.test.sh exit=0 duration_ms=2712 gate_skip=false
+FM_TEST_BEGIN 2026-10-15T15:37:52Z tests/.gate-fm-wake-queue.test.sh family=unclassified expected_gate_skip=none
+ok - TERM stops a watcher blocked in the drain-ring idle capture and runs its cleanup
+FM_TEST_END 2026-10-15T15:38:02Z tests/.gate-fm-wake-queue.test.sh exit=0 duration_ms=9562 gate_skip=false
+FM_TEST_BEGIN 2026-10-15T15:38:02Z tests/.gate-fm-crew-state.test.sh family=unclassified expected_gate_skip=none
+ok - captured cancelled run leaves fleet inventory unverified without a failure contradiction
+ok - failed-outcome/github/open: terminal delivery uses current disposition
+ok - failed-outcome/github/merged: terminal delivery uses current disposition
+ok - failed-outcome/github/closed: terminal delivery uses current disposition
+ok - failed-outcome/github/unreadable: terminal delivery uses current disposition
+ok - failed-outcome/github/skipped: terminal delivery uses current disposition
+ok - failed-outcome/github/no-identity: terminal delivery uses current disposition
+ok - failed-outcome/gitlab/open: terminal delivery uses current disposition
+ok - failed-outcome/gitlab/merged: terminal delivery uses current disposition
+ok - failed-outcome/gitlab/closed: terminal delivery uses current disposition
+ok - failed-outcome/gitlab/unreadable: terminal delivery uses current disposition
+ok - failed-outcome/gitlab/skipped: terminal delivery uses current disposition
+ok - failed-outcome/gitlab/no-identity: terminal delivery uses current disposition
+ok - failed-outcome/gerrit/open: terminal delivery uses current disposition
+ok - failed-outcome/gerrit/merged: terminal delivery uses current disposition
+ok - failed-outcome/gerrit/closed: terminal delivery uses current disposition
+ok - failed-outcome/gerrit/unreadable: terminal delivery uses current disposition
+ok - failed-outcome/gerrit/skipped: terminal delivery uses current disposition
+ok - failed-outcome/gerrit/no-identity: terminal delivery uses current disposition
+ok - failed-status/github/open: terminal delivery uses current disposition
+ok - failed-status/github/merged: terminal delivery uses current disposition
+ok - failed-status/github/closed: terminal delivery uses current disposition
+ok - failed-status/github/unreadable: terminal delivery uses current disposition
+ok - failed-status/github/skipped: terminal delivery uses current disposition
+ok - failed-status/github/no-identity: terminal delivery uses current disposition
+ok - failed-status/gitlab/open: terminal delivery uses current disposition
+ok - failed-status/gitlab/merged: terminal delivery uses current disposition
+ok - failed-status/gitlab/closed: terminal delivery uses current disposition
+ok - failed-status/gitlab/unreadable: terminal delivery uses current disposition
+ok - failed-status/gitlab/skipped: terminal delivery uses current disposition
+ok - failed-status/gitlab/no-identity: terminal delivery uses current disposition
+ok - failed-status/gerrit/open: terminal delivery uses current disposition
+ok - failed-status/gerrit/merged: terminal delivery uses current disposition
+ok - failed-status/gerrit/closed: terminal delivery uses current disposition
+ok - failed-status/gerrit/unreadable: terminal delivery uses current disposition
+ok - failed-status/gerrit/skipped: terminal delivery uses current disposition
+ok - failed-status/gerrit/no-identity: terminal delivery uses current disposition
+ok - cancelled-outcome/github/open: terminal delivery uses current disposition
+ok - cancelled-outcome/github/merged: terminal delivery uses current disposition
+ok - cancelled-outcome/github/closed: terminal delivery uses current disposition
+ok - cancelled-outcome/github/unreadable: terminal delivery uses current disposition
+ok - cancelled-outcome/github/skipped: terminal delivery uses current disposition
+ok - cancelled-outcome/github/no-identity: terminal delivery uses current disposition
+ok - cancelled-outcome/gitlab/open: terminal delivery uses current disposition
+ok - cancelled-outcome/gitlab/merged: terminal delivery uses current disposition
+ok - cancelled-outcome/gitlab/closed: terminal delivery uses current disposition
+ok - cancelled-outcome/gitlab/unreadable: terminal delivery uses current disposition
+ok - cancelled-outcome/gitlab/skipped: terminal delivery uses current disposition
+ok - cancelled-outcome/gitlab/no-identity: terminal delivery uses current disposition
+ok - cancelled-outcome/gerrit/open: terminal delivery uses current disposition
+ok - cancelled-outcome/gerrit/merged: terminal delivery uses current disposition
+ok - cancelled-outcome/gerrit/closed: terminal delivery uses current disposition
+ok - cancelled-outcome/gerrit/unreadable: terminal delivery uses current disposition
+ok - cancelled-outcome/gerrit/skipped: terminal delivery uses current disposition
+ok - cancelled-outcome/gerrit/no-identity: terminal delivery uses current disposition
+ok - cancelled-status/github/open: terminal delivery uses current disposition
+ok - cancelled-status/github/merged: terminal delivery uses current disposition
+ok - cancelled-status/github/closed: terminal delivery uses current disposition
+ok - cancelled-status/github/unreadable: terminal delivery uses current disposition
+ok - cancelled-status/github/skipped: terminal delivery uses current disposition
+ok - cancelled-status/github/no-identity: terminal delivery uses current disposition
+ok - cancelled-status/gitlab/open: terminal delivery uses current disposition
+ok - cancelled-status/gitlab/merged: terminal delivery uses current disposition
+ok - cancelled-status/gitlab/closed: terminal delivery uses current disposition
+ok - cancelled-status/gitlab/unreadable: terminal delivery uses current disposition
+ok - cancelled-status/gitlab/skipped: terminal delivery uses current disposition
+ok - cancelled-status/gitlab/no-identity: terminal delivery uses current disposition
+ok - cancelled-status/gerrit/open: terminal delivery uses current disposition
+ok - cancelled-status/gerrit/merged: terminal delivery uses current disposition
+ok - cancelled-status/gerrit/closed: terminal delivery uses current disposition
+ok - cancelled-status/gerrit/unreadable: terminal delivery uses current disposition
+ok - cancelled-status/gerrit/skipped: terminal delivery uses current disposition
+ok - cancelled-status/gerrit/no-identity: terminal delivery uses current disposition
+ok - outcome: cancellation without delivery carries no verdict
+ok - status: cancellation without delivery carries no verdict
+ok - selected: cancellation without delivery carries no verdict
+ok - coarse: cancellation without delivery carries no verdict
+ok - no-ci-log: cancellation without delivery carries no verdict
+ok - red-ci: cancellation without delivery carries no verdict
+ok - cancelled-test: cancellation without delivery carries no verdict
+ok - skipped-test: cancellation without delivery carries no verdict
+ok - synthetic cancelled run leaves fleet inventory unverified without a failure contradiction
+fm-test-run: per-script budget of 180s exceeded, terminating: tests/.gate-fm-crew-state.test.sh
+not ok - tests/.gate-fm-crew-state.test.sh exceeded the per-script budget of 180s and was terminated
+nal delivery reports only observed evidence
+ok - skipped-rebase: terminal delivery reports only observed evidence
+ok - cancelled-skipped-rebase: terminal delivery reports only observed evidence
+fm-test-run: reaping processes tests/.gate-fm-crew-state.test.sh left behind (group 3371318)
+FM_TEST_LEAK tests/.gate-fm-crew-state.test.sh pgid=3371318
+FM_TEST_END 2026-10-15T15:41:07Z tests/.gate-fm-crew-state.test.sh exit=124 duration_ms=185542 gate_skip=false
+FM_TEST_BEGIN 2026-10-15T15:41:07Z tests/.gate-fm-spawn-dispatch-profile.test.sh family=unclassified expected_gate_skip=none
+# all fm-spawn-dispatch-profile tests passed
+ok - codex Astra receives --model and model_reasoning_effort max profile flags
+ok - codex omits max for models without the catalog capability
+ok - codex warns and omits max for malformed catalogs
+FM_TEST_END 2026-10-15T15:41:32Z tests/.gate-fm-spawn-dispatch-profile.test.sh exit=0 duration_ms=24126 gate_skip=false
+FM_TEST_SUMMARY total=6 failed=3 skipped_gate=0 duration_ms=594744
+FM_TEST_SUMMARY_FAMILY family=unclassified count=6 duration_ms=593553 failed=3
+FM_TEST_SLOWEST rank=1 script=tests/.gate-fm-pr-merge.test.sh duration_ms=186197
+FM_TEST_SLOWEST rank=2 script=tests/.gate-fm-crew-state.test.sh duration_ms=185542
+FM_TEST_SLOWEST rank=3 script=tests/.gate-fm-teardown.test.sh duration_ms=185414
+FM_TEST_SLOWEST rank=4 script=tests/.gate-fm-spawn-dispatch-profile.test.sh duration_ms=24126
+FM_TEST_SLOWEST rank=5 script=tests/.gate-fm-wake-queue.test.sh duration_ms=9562
+FM_TEST_SLOWEST rank=6 script=tests/.gate-fm-watcher-lock.test.sh duration_ms=2712
+fm-test-run: wrote timing artifact: /home/bohn/.no-mistakes/evidence/01M4ZWV8H0KM2V907GBD81WBZV/regressions.json

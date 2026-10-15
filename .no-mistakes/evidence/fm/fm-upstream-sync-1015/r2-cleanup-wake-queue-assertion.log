@@ -1,0 +1,4 @@
+selected: test_term_stops_a_watcher_blocked_in_the_drain_ring_idle_capture
+cleanup_registry=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/.fm-test-cleanup.1845161.85P4pu
+pid_registry=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/.fm-test-pids.1845161.vQDzHb
+not ok - injected assertion failure after child registration

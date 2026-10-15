@@ -1,0 +1,4 @@
+selected: test_merged_pull_fetch_uses_terminal_route
+ok - teardown fetches the terminal pull ref before proving local work landed
+selected: test_squash_merged_forgejo_pr_allows_when_main_moved_on
+ok - teardown proves a Forgejo task landed from the merged pull request when the content check is inconclusive

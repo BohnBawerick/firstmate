@@ -1,0 +1,6 @@
+project-capacity: assertion after registration reaped all 1 children and removed both registries. exit=1
+project-capacity: signal after registration reaped all 1 children and removed both registries. exit=143
+watcher-lock: assertion after registration reaped all 40 children and removed both registries. exit=1
+watcher-lock: signal after registration reaped all 40 children and removed both registries. exit=143
+wake-queue: assertion after registration reaped all 1 children and removed both registries. exit=1
+wake-queue: signal after registration reaped all 1 children and removed both registries. exit=143

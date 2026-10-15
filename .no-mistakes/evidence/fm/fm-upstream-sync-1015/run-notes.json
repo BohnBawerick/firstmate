@@ -1,0 +1,20 @@
+{
+  "target": "3f1e17f3564fd0511fe8ae4aa885bbd2ad8304fb",
+  "base": "70a59aa8499601638bf0a868dc8ded6929703fd1",
+  "upstream_baseline": "a24f4cb873d87295dddbc521599c21ea86d6dc00",
+  "setup_and_partial_results": [
+    "Initial subject groups used 180/240-second containment. Forgejo, teardown and crew-state groups plus contribution/project-capacity suites hit those limits. Relevant selectors were rerun with focused drivers and suitable limits.",
+    "The initial selector retained top-level parameterized loops. The replacement driver skips suite entry calls while loading definitions. Editing the old driver during an active shell run caused a trailing EOF error after its assertions passed. The final Forgejo selector rerun exited 0.",
+    "A secondmate fixture nested under the code root was refused as designed. Identical bin files were copied into a sibling disposable code root, then split/inheritance and per-mate spawn regressions passed.",
+    "The PATH Claude wrapper invokes global mise selection. Those setup processes were stopped. Final controlled comparisons used absolute workspace-local executables. Pane startup through a login shell had otherwise resolved the PATH wrapper.",
+    "Forgejo initially refused startup with GIT_CONFIG_GLOBAL=/dev/null. Its private HOME Git config fixed the setup. The service and repository were destroyed after real merge checks.",
+    "Capacity setup initially used an isolated HOME without the required default-session tripwire, then incorrectly called prepare before provision. The final helper contract used provision, which prepares internally. A cleanup PATH wrapper initially intercepted lifecycle calls. Cleanup was retried successfully through the original PATH, then a clean rerun completed.",
+    "Rendered popup evidence comes from real ANSI captured on the unmodified upstream comparison, which reproduced the target failure. It is a rendered terminal capture, not a native desktop screenshot."
+  ],
+  "unavailable_capabilities": [
+    "Command Code was absent on PATH. Workspace-local 1.74.1 installed successfully. Its isolated credentialed live guard reported signed out. No authorized disposable login was available.",
+    "Orca and launchctl are absent. This Linux host cannot run the macOS Orca app or launchd. No authorized disposable macOS test host was available.",
+    "The phase boundary forbids starting or controlling a disposable no-mistakes pipeline. Ledger continuation regressions used the existing executable fixtures.",
+    "A closed/reopened GitHub contribution requires an authorized mutable sandbox forge. Current shared repositories and pull requests were not mutated. The executable closed/reopen regression passed with its existing fixture."
+  ]
+}

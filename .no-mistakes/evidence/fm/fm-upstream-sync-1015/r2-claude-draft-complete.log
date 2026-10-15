@@ -1,0 +1,5 @@
+fm-control draft exit: exit=1
+error: task draft's composer visibly holds pending text; refusing to type the /exit exit command because it would concatenate onto that text. Clear or submit the pending text, then retry 'exit'
+ok - public fm-control refuses exit and preserves the visible draft and live agent
+stopped draft harness=claude backend=herdr endpoint=fm-lab-herdr-submit-con-2300912-21933:w1:p1 worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV
+ok - public fm-control exits the agent after the draft is cleared

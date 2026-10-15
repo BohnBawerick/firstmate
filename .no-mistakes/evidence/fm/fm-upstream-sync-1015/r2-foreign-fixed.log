@@ -1,0 +1,25 @@
+FM_TEST_BEGIN 2026-10-15T16:32:13Z tests/fm-turnend-foreign-owner-arm-fix.test.sh family=watcher-wake-lock expected_gate_skip=none
+SETUP live synthetic owner= 2618452 lock= 2618452
+second-session acquisition rc=0 stdout='lock_rc=1\n' stderr='error: NOT THIS SESSION - another live firstmate session holds the lock (pid 2618452); operate read-only until resolved\n'
+nonowner autoarm rc=0 stdout='autoarm_rc=0\n' stderr=''
+nonowner stop 1 rc=0 stdout='{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid 2618452). Allowing this turn to end safely; the owning session must restore supervision."}\n' stderr=''
+nonowner stop 2 rc=0 stdout='{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid 2618452). Allowing this turn to end safely; the owning session must restore supervision."}\n' stderr=''
+nonowner stop 3 rc=0 stdout='{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid 2618452). Allowing this turn to end safely; the owning session must restore supervision."}\n' stderr=''
+nonowner stop 4 rc=0 stdout='{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid 2618452). Allowing this turn to end safely; the owning session must restore supervision."}\n' stderr=''
+nonowner stop 5 rc=0 stdout='{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid 2618452). Allowing this turn to end safely; the owning session must restore supervision."}\n' stderr=''
+FIXED repeated non-owner Stops: all five ended safely
+fresh-beat-only counterfactual rc=0 stdout='{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid 2618452). Allowing this turn to end safely; the owning session must restore supervision."}\n' stderr=''
+COUNTERFACTUAL dead original owner: watcher= 2627288
+replacement-owned healthy watcher rc=0 stdout='{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid 2623971). Allowing this turn to end safely; the owning session must restore supervision."}\n' stderr=''
+same-session acquisition rc=0 stdout='lock acquired: THIS session holds the fleet lock (recorded harness pid 2629073, same Claude session as this session)\nlock_rc=0\n' stderr=''
+other-session acquisition rc=0 stdout='lock_rc=1\n' stderr='error: NOT THIS SESSION - another live firstmate session holds the lock (pid 2629073, session synthetic-same); operate read-only until resolved\n'
+same-session stop rc=2 stdout='' stderr='●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n●  TURN WOULD END BLIND - SUPERVISION IS OFF\n●  1 task(s) in flight, but no live watcher holds this home lock (last beat: 614s ago).\n●  The Stop-owned auto-arm did not claim this home either, so recovery is NOT already under way.\n●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.\n●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+other-session stop rc=0 stdout='{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid 2629073). Allowing this turn to end safely; the owning session must restore supervision."}\n' stderr=''
+FIXED same-session id owns the lock; a different id is still foreign
+single owner, no autoarm firing rc=0 stdout='lock acquired: THIS session holds the fleet lock (harness pid 2635837)\nsingle_owner_verified=1\nsingle_owner_guard_rc=2\n' stderr='●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n●  TURN WOULD END BLIND - SUPERVISION IS OFF\n●  1 task(s) in flight, but no live watcher holds this home lock (last beat: 617s ago).\n●  The Stop-owned auto-arm did not claim this home either, so recovery is NOT already under way.\n●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.\n●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+COMPLETE
+FM_TEST_END 2026-10-15T16:32:33Z tests/fm-turnend-foreign-owner-arm-fix.test.sh exit=0 duration_ms=19552 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=19795
+FM_TEST_SUMMARY_FAMILY family=watcher-wake-lock count=1 duration_ms=19552 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-turnend-foreign-owner-arm-fix.test.sh duration_ms=19552
+fm-test-run: wrote timing artifact: /home/bohn/.no-mistakes/evidence/01M4ZWV8H0KM2V907GBD81WBZV/r2-foreign-fixed.json

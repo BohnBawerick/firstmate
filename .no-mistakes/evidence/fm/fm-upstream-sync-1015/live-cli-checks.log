@@ -1,0 +1,59 @@
+Publication authority through the real fm-role CLI
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-role.sh check /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/cli.e182f5bj/fork
+refused: this home runs as firstmate user/operator and holds no publication authority for github.com/bohnbawerick/firstmate
+exit=1
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-role.sh check /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/cli.e182f5bj/fork upstream-consent github.com/BohnBawerick/firstmate
+authorized: task consent for github.com/bohnbawerick/firstmate
+exit=0
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-role.sh check /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/cli.e182f5bj/fork upstream-consent github.com/kunchenguid/firstmate
+refused: this home runs as firstmate user/operator and holds no publication authority for github.com/bohnbawerick/firstmate
+exit=1
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-role.sh check /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/cli.e182f5bj/original upstream-consent github.com/BohnBawerick/firstmate
+refused: this home runs as firstmate user/operator and holds no publication authority for github.com/kunchenguid/firstmate
+exit=1
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-role.sh check /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/cli.e182f5bj/original upstream-consent github.com/kunchenguid/firstmate
+authorized: task consent for github.com/kunchenguid/firstmate
+exit=0
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-role.sh check /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/cli.e182f5bj/fork upstream-consent github.com/kunchenguid/firstmate
+refused: this task targets firstmate's own repository but no publication target can be determined (no upstream, github, or origin remote, or an unverified landing remap on /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/cli.e182f5bj/fork)
+exit=1
+
+Review the terminal PR route against real fetched Git refs
+Recorded PR: https://forgejo.example/pull/123/pulls/7
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-review-diff.sh review
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+diff base: origin/main
+ feature.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/feature.txt b/feature.txt
+index df967b9..5da7fac 100644
+--- a/feature.txt
++++ b/feature.txt
+@@ -1 +1 @@
+-base
++correct terminal route
+exit=0
+Recorded PR: https://github.com/pulls/123/pull/7
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-review-diff.sh review
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+diff base: origin/main
+ feature.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/feature.txt b/feature.txt
+index df967b9..5da7fac 100644
+--- a/feature.txt
++++ b/feature.txt
+@@ -1 +1 @@
+-base
++correct terminal route
+exit=0
+
+Both route collisions selected PR 7, and all authority boundaries held.

@@ -1,0 +1,23 @@
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-lab-home.sh create /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/pins.pv78xq5b/home
+/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/pins.pv78xq5b/home
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-harness.sh secondmate mac
+codex
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-harness.sh secondmate-model mac
+gpt-6.1-sol
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-harness.sh secondmate-effort mac
+xhigh
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-harness.sh secondmate-source mac
+config/secondmate-harness.d/mac
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-harness.sh secondmate work
+pi
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-harness.sh secondmate-model work
+deepseek
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-harness.sh secondmate-effort work
+high
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-harness.sh secondmate-source work
+config/secondmate-harness
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-harness.sh secondmate mac
+pi
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-harness.sh secondmate ../mac
+error: invalid secondmate id '../mac'; refusing to resolve its harness pin
+A per-mate pin wins as a whole line; other mates and default pins use shared settings; path traversal is refused.

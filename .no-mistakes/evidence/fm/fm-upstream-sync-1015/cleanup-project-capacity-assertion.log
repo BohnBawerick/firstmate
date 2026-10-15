@@ -1,0 +1,4 @@
+selected: test_orca_spawn_is_admitted_under_the_shared_project_lock
+cleanup_registry=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/.fm-test-cleanup.1807236.Upc09q
+pid_registry=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/.fm-test-pids.1807236.OZ56Zd
+not ok - injected assertion failure after child registration

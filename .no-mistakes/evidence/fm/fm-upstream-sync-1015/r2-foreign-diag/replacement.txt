@@ -1,0 +1,5 @@
+firstmate watcher auto-arm FAILED - the Stop-owned automatic supervision mechanism is broken after 2 bounded attempts, and no live watcher with a fresh beacon was verified.
+watcher: FAILED - refusing to arm from a disposable validation checkout: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/fm-turnend-foreign-owner-uocmv3cn/nonowner/bin
+The supervision host (docs/supervision-host.md) ran these cycles; its last one exited 0 without a wake.
+Do not launch a manual background arm from this notice; investigate the automatic Stop hook and watcher startup before ending blind.
+replacement_rc=2

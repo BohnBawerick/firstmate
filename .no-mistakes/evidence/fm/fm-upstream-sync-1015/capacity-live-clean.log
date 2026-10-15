@@ -1,0 +1,5 @@
+$ bash /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/bin/fm-spawn.sh new /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/capacity.hy238opo/project --harness commandcode --backend herdr --mode direct-PR --yolo off
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/capacity.hy238opo/home
+deferred: project project admits 1 worker(s) at once on this machine (/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/capacity.hy238opo/home/config/project-capacity) and 1 already hold a place (holder); task new was not launched and its backlog item stays queued - dispatch it again once one of them records its ready PR or is cleaned up
+exit=75
+No task record, launch brief, or endpoint was created.

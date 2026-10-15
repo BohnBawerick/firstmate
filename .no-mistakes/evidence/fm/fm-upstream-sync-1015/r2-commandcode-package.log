@@ -1,0 +1,3 @@
+name = 'command-code'
+version = '1.74.1'
+dist.tarball = 'https://registry.npmjs.org/command-code/-/command-code-1.74.1.tgz'

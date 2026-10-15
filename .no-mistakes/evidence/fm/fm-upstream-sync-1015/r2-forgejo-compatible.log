@@ -1,0 +1,10 @@
+Forgejo version 7.0.14+gitea-1.21.11 (release name 7.0.14) built with GNU Make 4.4.1, go1.23.4 : bindata, timetzdata, sqlite, sqlite_unlock_notify
+Version: development	golang: 1.27.2
+Traceback (most recent call last):
+  File "/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/drivers/live-forgejo.py", line 131, in <module>
+    run([tools / 'tea', 'login', 'add', '--name', 'lab', '--url', proxy_url, '--token', token])
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/drivers/live-forgejo.py", line 35, in run
+    assert p.returncode == expected, (args, p.returncode, p.stdout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ([PosixPath('/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/live-tools/tea'), 'login', 'add', '--name', 'lab', '--url', 'http://localhost:35395', '--token', '1169d62d91d4e09d9cb2a6784cb467f39c3c21b5'], 2, 'Error: unknown flag: --name\n')

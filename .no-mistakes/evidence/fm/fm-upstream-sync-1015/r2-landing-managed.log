@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/home/bohn/.no-mistakes/evidence/01M4ZWV8H0KM2V907GBD81WBZV/r2-landing-positive-driver.py", line 43, in <module>
+    (wt/'unlanded.txt').write_text('keep this work\n')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/pathlib/__init__.py", line 809, in write_text
+    with self.open(mode='w', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/pathlib/__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: "/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/landing.rvd1_7ed/ancestry/pool/.treehouse/project-761fcd/1/project\n🌳 Setting up worktree...\n🌳 Leased worktree at /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/landing.rvd1_7ed/ancestry/pool/.treehouse/project-761fcd/1/project. Run 'treehouse return /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/landing.rvd1_7ed/ancestry/pool/.treehouse/project-761fcd/1/project' to release it./unlanded.txt"

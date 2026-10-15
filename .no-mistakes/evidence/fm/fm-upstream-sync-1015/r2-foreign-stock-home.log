@@ -1,0 +1,11 @@
+SETUP live synthetic owner= 2554027 lock= 2554027
+second-session acquisition rc=0 stdout='lock_rc=1\n' stderr='error: NOT THIS SESSION - another live firstmate session holds the lock (pid 2554027); operate read-only until resolved\n'
+nonowner autoarm rc=0 stdout='autoarm_rc=0\n' stderr=''
+nonowner stop 1 rc=0 stdout='' stderr=''
+Traceback (most recent call last):
+  File "/home/bohn/.no-mistakes/evidence/01M4ZWV8H0KM2V907GBD81WBZV/r2-foreign-stock-home.py", line 183, in <module>
+    require("SUPERVISION IS OWNED BY ANOTHER LIVE SESSION" in result.stdout, "foreign-owner Stop lost its clear diagnostic")
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/bohn/.no-mistakes/evidence/01M4ZWV8H0KM2V907GBD81WBZV/r2-foreign-stock-home.py", line 140, in require
+    raise RuntimeError(message)
+RuntimeError: foreign-owner Stop lost its clear diagnostic

@@ -1,0 +1,9 @@
+all fm-crew-state tests passed
+selected: test_anchored_continuation_binds_while_daemon_answers
+ok - the anchored continuation binds while the daemon answers
+selected: test_selected_run_anchored_continuation_needs_a_live_daemon
+ok - the selected-run anchored continuation reports the dead daemon, not an identity failure
+selected: test_selected_run_anchored_parked_keeps_its_gate_with_a_dead_daemon
+ok - the selected route keeps an anchored parked run's gate with a dead daemon
+selected: test_unproven_record_with_dead_daemon_does_not_override_a_busy_pane
+ok - an unproven record with a dead daemon never overrides a busy pane

@@ -1,0 +1,8 @@
+npm error code E404
+npm error 404 Not Found - GET https://registry.npmjs.org/@command-code%2fcli - Not found
+npm error 404
+npm error 404  The requested resource '@command-code/cli@1.74.1' could not be found or you do not have permission to access it.
+npm error 404
+npm error 404 Note that you can also install from a
+npm error 404 tarball, folder, http url, or git url.
+npm error A complete log of this run can be found in: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/npm-cache/_logs/2026-10-15T16_25_15_568Z-debug-0.log

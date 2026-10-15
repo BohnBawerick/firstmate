@@ -1,0 +1,5 @@
+selected: test_forgejo_malformed_status_pages_refuse_before_merge
+ok - Forgejo merge refuses malformed first and later status pages before issuing a merge request
+selected: test_forgejo_null_statuses_are_an_explicit_empty_page
+ok - Forgejo accepts explicit null empty pages and still refuses unconfigured CI
+.no-mistakes/select-tests.sh: line 33: unexpected EOF while looking for matching `"'

@@ -1,0 +1,5 @@
+ok - disposable watcher refuses inherited state outside its marked lab
+selected: test_lock_stale_steal_single_winner_under_concurrency
+cleanup_registry=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/.fm-test-cleanup.1838627.yRohlw
+pid_registry=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M4ZWV8H0KM2V907GBD81WBZV/.no-mistakes/test-tmp/.fm-test-pids.1838627.ILUnat
+not ok - injected assertion failure after child registration
