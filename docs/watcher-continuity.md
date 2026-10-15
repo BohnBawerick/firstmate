@@ -144,6 +144,7 @@ The refusal names the holder and what to do instead.
 It refuses only on the full conjunction: a live lock owner, that owner not being this session, and this caller having a resolvable harness ancestry of its own.
 A missing, stale, or malformed lock is no competing session, and `bin/fm-lock.sh` already turns those into a fresh acquisition.
 A caller outside any harness session is no competing session either - that is the parent home reaching into a secondmate's endpoint over ssh, a detached job, or CI, none of which can produce the two-agents-one-home split.
+The supervision branch acting for the lock holder is no competing session: a caller with `FM_SUPERVISION_ACTOR=branch` and `FM_LEASE_HOLDER_PID` naming the live holder passes when that holder is its process ancestor, which is how the supervision host's headless engine, started under the holder through the non-harness Stop hook and host loop, acts for the session it serves (`fm_session_lock_branch_delegate`).
 
 `bin/fm-session-start.sh`'s LOCK section states the verdict in words on its own `HELM:` line, so a reading agent never has to compare pids by hand.
 The line reads the acquisition's exit code rather than recomputing ownership, because `bin/fm-lock.sh` owns that decision and exits 0 only after verifying it; the helm line can therefore never contradict the acquisition line above it or the read-only banner below it.

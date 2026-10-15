@@ -15,6 +15,8 @@
 # Claude session id below matches the id recorded beside a live lock. Neither
 # signal ever fails open: no id, no sidecar, an untrusted id, or a different
 # recorded id leaves the ancestry verdict exactly as it was.
+# The mutation gate alone also lets the supervision branch act for a live lock
+# holder that is its process ancestor (fm_session_lock_branch_delegate).
 # This file is sourced by scripts and has no side effects on source.
 
 # Cursor process identity is NOT expressible as a command-name pattern and is
@@ -423,7 +425,33 @@ fm_session_lock_held_by_other() {  # <state-dir>
   fm_harness_pid_alive "$lock_pid" || return 1
   fm_session_lock_owned_by_self "$state" && return 1
   fm_harness_ancestry_pids >/dev/null 2>&1 || return 1
+  fm_session_lock_branch_delegate "$lock_pid" && return 1
   return 0
+}
+
+# True when the current process is the supervision branch acting for live lock
+# holder $1: FM_SUPERVISION_ACTOR=branch, FM_LEASE_HOLDER_PID names that holder,
+# and the holder is an ancestor of this process. The supervision host's
+# headless engine (bin/fm-supervision-host.sh) is its own harness process,
+# started under the lock-holding session through the non-harness Stop hook and
+# host loop, so it is never in that session's contiguous harness run; the Pi
+# branch passes through ancestry alone because it runs inside the primary.
+# Process parentage is the proof, so a session outside the holder's tree stays
+# a competing session whatever its environment says. This answers only the
+# mutation gate: acquiring or recording the lock (bin/fm-lock.sh) never
+# consults it.
+fm_session_lock_branch_delegate() {  # <lock-pid>
+  local lock_pid=$1 pid=$$ hops=0
+  [ "${FM_SUPERVISION_ACTOR:-}" = branch ] || return 1
+  [ "${FM_LEASE_HOLDER_PID:-}" = "$lock_pid" ] || return 1
+  while [ "$hops" -lt 64 ]; do
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$pid" = "$lock_pid" ] && return 0
+    [ "$pid" -gt 1 ] || return 1
+    hops=$((hops + 1))
+  done
+  return 1
 }
 
 # Gate for every fleet-mutation entry point: return 0 when $2 may proceed

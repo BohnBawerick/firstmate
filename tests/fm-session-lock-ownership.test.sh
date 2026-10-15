@@ -255,6 +255,59 @@ test_a_caller_outside_any_harness_session_is_not_a_competing_session() {
   pass "a caller outside any harness session is not treated as a competing session"
 }
 
+# The supervision host's headless engine is its own harness process, started
+# under the lock-holding session through a non-harness gap (the Stop hook and
+# the host loop), so it is never in that session's contiguous harness run. As
+# the branch actor bound to the lock holder it acts for that session, exactly
+# as the Pi branch does from inside the primary; outside the holder's process
+# tree, or without the branch binding, it stays a competing session.
+test_a_branch_engine_under_the_lock_holder_passes_the_gate() {
+  local dir rc out holder tree
+  dir="$TMP_ROOT/gate-branch-engine"
+  make_home "$dir"
+  # The lock holder records itself, then reaches a second harness process
+  # through a plain bash gap, the way the Stop hook and host loop do.
+  tree="$TMP_ROOT/branch-engine-tree.sh"
+  cat > "$tree" <<'SH'
+#!/usr/bin/env bash
+dir=$1
+fake=$2
+printf '%s\n' "$$" > "$dir/state/.lock"
+export FM_LEASE_HOLDER_PID=$$
+/bin/bash -c '"$1" -c "\"\$@\"; exit \$?" _ "$2"; exit $?' gap "$fake" "$dir/bin/fm-wake-drain.sh"
+exit $?
+SH
+  chmod +x "$tree"
+
+  detached_run env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" FM_SUPERVISION_ACTOR=branch \
+    "$FAKE_CLAUDE" "$tree" "$dir" "$FAKE_CLAUDE" >/dev/null
+  out=$(run_output)
+  assert_not_contains "$out" "does not hold the fleet lock" \
+    "a branch engine running under the lock holder was refused as a competing session"
+
+  rc=$(detached_run env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
+    "$FAKE_CLAUDE" "$tree" "$dir" "$FAKE_CLAUDE")
+  out=$(run_output)
+  [ "$rc" != 0 ] || fail "a harness under the lock holder passed the gate without the branch binding"
+  assert_contains "$out" "does not hold the fleet lock" \
+    "a non-branch harness under the lock holder was not refused"
+
+  holder=$(start_lock_holder "$dir")
+  rc=$(detached_run env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" FM_SUPERVISION_ACTOR=branch \
+    FM_LEASE_HOLDER_PID="$holder" \
+    "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/fm-wake-drain.sh")
+  out=$(run_output)
+  [ "$rc" != 0 ] || fail "a branch engine outside the lock holder's process tree passed the gate"
+  assert_contains "$out" "does not hold the fleet lock" \
+    "a branch engine outside the lock holder's process tree was not refused"
+  retire_fixture_process "$holder"
+
+  pass "a branch engine under the lock holder passes the gate, and only there"
+}
+
 # --- 2. ownership wording, and the background continuation ------------------
 
 test_lock_output_states_ownership_in_words() {
@@ -860,6 +913,7 @@ test_every_mutating_entry_point_refuses_a_non_owning_session
 test_the_gate_answers_before_argument_validation
 test_the_lock_holder_itself_still_mutates
 test_a_caller_outside_any_harness_session_is_not_a_competing_session
+test_a_branch_engine_under_the_lock_holder_passes_the_gate
 test_lock_output_states_ownership_in_words
 test_a_background_continuation_of_the_same_session_inherits_the_helm
 test_an_ancestry_grant_is_reported_in_words
