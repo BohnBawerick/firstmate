@@ -282,9 +282,10 @@ RECORDED_WORKTREES=""
 LOCK_CONTENTION_OWNER_PID=
 LOCK_REFUSE_HOLDER_PID=
 LOCK_WAIT_HOLDER_PID=
+LOCK_WAITED_PID=
 cleanup_all() {
   local wt pid
-  for pid in "$LOCK_CONTENTION_OWNER_PID" "$LOCK_REFUSE_HOLDER_PID" "$LOCK_WAIT_HOLDER_PID"; do
+  for pid in "$LOCK_WAITED_PID" "$LOCK_CONTENTION_OWNER_PID" "$LOCK_REFUSE_HOLDER_PID" "$LOCK_WAIT_HOLDER_PID"; do
     [ -n "$pid" ] || continue
     kill "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
@@ -292,6 +293,7 @@ cleanup_all() {
   LOCK_CONTENTION_OWNER_PID=
   LOCK_REFUSE_HOLDER_PID=
   LOCK_WAIT_HOLDER_PID=
+  LOCK_WAITED_PID=
   while IFS= read -r wt; do
     [ -n "$wt" ] || continue
     [ -d "$wt" ] || continue
@@ -753,6 +755,7 @@ sleep 25
 wait "$LOCK_CONTENTION_OWNER_PID" || fail "guarded lab presentation lock owner failed"
 LOCK_CONTENTION_OWNER_PID=
 wait "$LOCK_WAITED_PID" || fail "the waiting spawn failed: $(cat "$TMP_ROOT/lock-waited.err")"
+LOCK_WAITED_PID=
 LOCK_WAITED_META="$HOME_DIR/state/lock-waited.meta"
 remember_meta_worktree "$LOCK_WAITED_META" >/dev/null
 LOCK_WAITED_WSID=$(grep '^herdr_workspace_id=' "$LOCK_WAITED_META" | cut -d= -f2-)
