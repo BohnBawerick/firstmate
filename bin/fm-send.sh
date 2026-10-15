@@ -426,6 +426,7 @@ fm_send_resolve_target() { # <raw-target>
     TARGET_BACKEND=$(fm_backend_of_meta "$meta")
     TARGET_META=$meta
     TARGET_HARNESS=$(fm_meta_get "$meta" harness)
+    EXPECTED_LABEL="fm-$(fm_send_id_from_meta "$meta")"
     RESOLUTION_TRIED="explicit target '$raw' matched $meta; backend=$TARGET_BACKEND"
     return 0
   fi

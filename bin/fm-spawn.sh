@@ -1692,9 +1692,6 @@ clear_relaunch_harness_wiring() {
   done <<EOF
 $(fm_control_harness_wiring_paths "$harness" "$wt" "$state" "$id" "$kind")
 EOF
-  if [ "$harness" = claude ] && [ "$kind" != secondmate ]; then
-    fm_control_claude_legacy_hook_file_retire "$wt" || return 1
-  fi
 }
 
 spawn_herdr_presentation_order_lock_release() {
@@ -4154,6 +4151,12 @@ if [ "$RELAUNCH" -eq 1 ]; then
     SES=$HERDR_SES
     WT_TARGET=$T
   fi
+  if [ "$BACKEND" = herdr ] && [ "$KIND" != secondmate ]; then
+    fm_backend_herdr_task_workspace_isolated "$T" "$W" || {
+      echo "error: task $ID lacks verified one-task workspace isolation; refusing relaunch" >&2
+      exit 1
+    }
+  fi
 else
   case "$BACKEND" in
   tmux)
@@ -5182,7 +5185,6 @@ BUSY_GEN=
       session_keys='"feedbackDrafts":"off","attribution":{"commit":"","pr":"","sessionUrl":false},'
     fi
     printf '{%s%s}\n' "$session_keys" "$hooks_json" >"$STATE_REAL/$ID.claude-settings.json"
-    [ "$KIND" = secondmate ] || fm_control_claude_legacy_hook_file_retire "$WT"
     ;;
   devin)
     if [ "$RAW_LAUNCH" -eq 0 ]; then

@@ -82,9 +82,7 @@
 # Before that return, teardown runs `git clean -ffdq` in the copy, and a forced
 # secondmate teardown does the same in each child copy it returns.
 # The second -f removes nested repositories, and -x stays off so ignored files remain.
-# A ship teardown without --force does not run that clean: it refuses untracked
-# entries, except those under the .claude/ allowance, so a nested repository
-# there can still survive the return.
+# A ship teardown without --force does not run that clean.
 # After a return that succeeds, teardown reads `git status --porcelain --untracked-files=all`.
 # Any remaining output, a status read that fails, or a copy that is missing or
 # no longer a readable worktree is reported at once with the lost pool slot and
@@ -1997,7 +1995,7 @@ validate_worktree_teardown_safety() {
     echo "Restore the git index state, or get the captain's explicit OK to discard, then --force." >&2
     return 1
   fi
-  dirty=$(printf '%s\n' "$dirty_raw" | grep -vE '^\?\? (\.claude/|\.fm-(grok|kimi)-turnend$)' || true)
+  dirty=$(printf '%s\n' "$dirty_raw" | grep -vE '^\?\? \.fm-(grok|kimi)-turnend$' || true)
 
   if ! unpushed_raw=$(git -C "$WT" log --oneline HEAD --not --remotes -- 2>/dev/null); then
     if worktree_safety_blocked_by_lock "commits not on a remote"; then
@@ -3333,7 +3331,6 @@ cleanup_firstmate_home_children() {
     elif [ "$child_backend" = orca ]; then
       if [ -n "$child_wt" ] && [ -d "$child_wt" ]; then
         validate_child_worktree_for_removal "$child_wt" "$child_proj" >/dev/null || return 1
-        fm_control_claude_legacy_hook_file_retire "$child_wt"
         rm -f "$child_wt/.opencode/plugins/fm-turn-end.js"
         remove_turnend_worktree_pointers "$child_wt"
       fi
@@ -3353,7 +3350,6 @@ cleanup_firstmate_home_children() {
         require_owned_worktree_slot_record "$child_id" "$child_wt" || return 1
       else
         validate_child_worktree_for_removal "$child_wt" "$child_proj" >/dev/null || return 1
-        fm_control_claude_legacy_hook_file_retire "$child_wt"
         rm -f "$child_wt/.opencode/plugins/fm-turn-end.js" \
           "$child_wt/.opencode/plugins/fm-busy-state.js" \
           "$child_wt/.fm-grok-turnend" "$child_wt/.fm-kimi-turnend"
@@ -3680,7 +3676,6 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
         git -C "$WT" branch -D "$branch" >/dev/null 2>&1 || true
       fi
     fi
-    fm_control_claude_legacy_hook_file_retire "$WT"
     rm -f "$WT/.opencode/plugins/fm-turn-end.js" "$WT/.opencode/plugins/fm-busy-state.js"
     remove_turnend_worktree_pointers "$WT"
   fi
@@ -3699,9 +3694,7 @@ elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
     fi
   fi
   # Remove our hook files so a reused pool worktree cannot fire signals for a
-  # dead task. A Claude settings.local.json is the project's or the worker's
-  # unless it is still a hook file an older spawn wrote whole.
-  fm_control_claude_legacy_hook_file_retire "$WT"
+  # dead task.
   rm -f "$WT/.opencode/plugins/fm-turn-end.js"
   remove_turnend_worktree_pointers "$WT"
   # Kills remaining processes in the worktree (including the agent), resets, returns

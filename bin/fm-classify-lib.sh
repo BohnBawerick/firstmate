@@ -2175,6 +2175,11 @@ status_open_activities() {  # <status-file-or-dash>
 # "<session>:fm-<id>" form when no metadata state is available.
 window_to_task() {
   local w=$1 state=${2:-${STATE:-${FM_STATE_OVERRIDE:-}}} meta mw mt t line
+  if [ "${3:-}" = bound ]; then
+    meta=$(fm_backend_meta_for_window "$w" "$state" bound) || return 1
+    t=${meta##*/}; printf '%s' "${t%.meta}"
+    return 0
+  fi
   if [ -n "$state" ]; then
     for meta in "$state"/*.meta; do
       [ -e "$meta" ] || continue
@@ -2777,6 +2782,6 @@ signal_crew_provably_working() {  # <file> ...
 # while the away-mode daemon applies its persistence recheck.
 stale_is_terminal() {  # <window> <state>
   local win=$1 state=$2 last
-  last=$(last_status_line "$state/$(window_to_task "$win" "$state").status")
+  last=$(last_status_line "$state/$(window_to_task "$win" "$state" "${3:-}").status")
   [ -n "$last" ] && status_is_captain_relevant "$last"
 }

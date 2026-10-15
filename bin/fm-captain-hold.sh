@@ -765,7 +765,11 @@ captain_archived_entry_body() {  # <task-id>
   [ "$backend" = markdown ] || return 1
   entries=$(captain_toml_section_entries "$root/.tasks.toml" markdown archive)
   archive=$(captain_beads_setting "$entries" archive)
-  [ -n "$archive" ] || return 1
+  if [ -z "$archive" ] && [ -n "${HOME:-}" ]; then
+    entries=$(captain_toml_section_entries "$HOME/.tasks-axi/config.toml" markdown archive) || return 1
+    archive=$(captain_beads_setting "$entries" archive)
+  fi
+  archive=${archive:-$data/done-archive.md}
   case "$archive" in /*) ;; *) archive="$root/$archive" ;; esac
   [ -f "$archive" ] || return 1
   LC_ALL=C awk -v id="$1" '
@@ -799,6 +803,10 @@ resolve_entry() {  # <origin-or-empty> <entry>; prints "<id> <how>" or fails
   esac
   if captain_archived_entry_body "$entry" >/dev/null; then
     printf '%s archived' "$entry"
+    return 0
+  fi
+  if [ -n "${legacy:-}" ] && captain_archived_entry_body "$legacy" >/dev/null; then
+    printf '%s archived' "$legacy"
     return 0
   fi
   if [ -n "$origin" ] && [ "$origin" != "$BINDING_ANY" ]; then

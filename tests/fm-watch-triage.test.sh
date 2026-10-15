@@ -3996,7 +3996,7 @@ test_gone_report_rearms_when_the_endpoint_comes_back() {
   gone_endpoint_env missing; export FM_TEST_PANE_COMMAND FM_TEST_TMUX_WINDOWS
   wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$failed" exit \
     || fail "the gone endpoint was never reported: $(cat "$out")"
-  [ -s "$state/.dead-reported-$key" ] || fail "the once-only report left no record of itself"
+  [ -s "$state/.dead-reported-$key-wedge" ] || fail "the once-only report left no record of itself"
   ack_stopped_cycle "$state" || fail "could not acknowledge the first gone report"
 
   # A replacement is launched into the same window and then wedges for real.
@@ -4006,7 +4006,7 @@ test_gone_report_rearms_when_the_endpoint_comes_back() {
     || fail "a replacement agent's wedge was swallowed by the earlier gone report: $(cat "$out")"
   grep -F 'possible wedge, escalation' "$out" >/dev/null \
     || fail "a replacement agent did not escalate as a wedge: $(cat "$out")"
-  [ ! -e "$state/.dead-reported-$key" ] \
+  [ ! -e "$state/.dead-reported-$key-wedge" ] \
     || fail "the once-only record survived an endpoint that reads live again"
   ack_stopped_cycle "$state" || fail "could not acknowledge the replacement's wedge escalation"
 
@@ -4046,7 +4046,7 @@ test_second_death_after_a_same_window_relaunch_reports_in_full() {
     || fail "the first death was never reported: $(cat "$out")"
   grep -F 'agent missing' "$out" >/dev/null \
     || fail "the first death report did not name the endpoint verdict: $(cat "$out")"
-  [ -s "$state/.dead-reported-$key" ] || fail "the first death left no once-record"
+  [ -s "$state/.dead-reported-$key-wedge" ] || fail "the first death left no once-record"
   ack_stopped_cycle "$state" || fail "could not acknowledge the first death report"
 
   # A replacement launches: the pane churns and the bookkeeping resets, but the
@@ -4059,7 +4059,7 @@ test_second_death_after_a_same_window_relaunch_reports_in_full() {
     || fail "a replacement launch churned the pane without absorbing: $(cat "$out")"
   grep -F 'possible wedge' "$out" >/dev/null \
     && fail "the relaunch round escalated before its fresh window elapsed: $(cat "$out")"
-  [ -s "$state/.dead-reported-$key" ] \
+  [ -s "$state/.dead-reported-$key-wedge" ] \
     || fail "the relaunch churn dropped the first death's once-record"
   [ ! -e "$state/.wedge-escalations-$key" ] \
     || fail "the relaunch churn left a wedge escalation count behind"
@@ -4122,7 +4122,7 @@ test_identical_dead_display_of_a_successor_still_reports() {
     || fail "the first death was never reported: $(cat "$out")"
   grep -F 'agent missing' "$out" >/dev/null \
     || fail "the first death report did not name the endpoint verdict: $(cat "$out")"
-  [ -s "$state/.dead-reported-$key" ] || fail "the first death left no once-record"
+  [ -s "$state/.dead-reported-$key-wedge" ] || fail "the first death left no once-record"
   [ "$(wedge_stale_wakes "$state" "$window")" -eq 1 ] \
     || fail "the first death queued $(wedge_stale_wakes "$state" "$window") wakes instead of one"
   ack_stopped_cycle "$state" || fail "could not acknowledge the first death report"

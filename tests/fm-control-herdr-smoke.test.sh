@@ -142,6 +142,39 @@ run_control() {
     "$ROOT/bin/fm-control.sh" "$@" 2>&1
 }
 
+if OUT=$(env FM_HOME="$HOME_DIR" HERDR_SESSION="$SESSION" HERDR_PANE_ID="$PANE_ID" \
+  "$ROOT/bin/fm-send.sh" "$SESSION:$PANE_ID" --key Escape 2>&1); then
+  fail "an unlabelled raw send accepted the caller's own pane: $OUT"
+fi
+env FM_HOME="$HOME_DIR" HERDR_SESSION="$SESSION" HERDR_PANE_ID="$PANE_ID" \
+  TARGET="$SESSION:$PANE_ID" ROOT="$ROOT" bash -c '
+    . "$ROOT/bin/fm-backend.sh"
+    fm_backend_source herdr
+    fm_backend_send_key herdr "$TARGET" Escape && exit 1
+    fm_backend_capture herdr "$TARGET" 10 && exit 1
+    fm_backend_visible_capture herdr "$TARGET" && exit 1
+    fm_backend_target_exists herdr "$TARGET" && exit 1
+    [ "$(fm_backend_composer_state herdr "$TARGET")" = unknown ] || exit 1
+    [ "$(fm_backend_herdr_send_text_submit "$TARGET" text 1 0 0)" = send-failed ] || exit 1
+    fm_backend_kill herdr "$TARGET" && exit 1
+    exit 0
+  ' || fail "an unlabelled endpoint action accepted the caller pane"
+fm_herdr_lab_cli "$SESSION" tab rename "$TAB_ID" fm-foreign >/dev/null \
+  || fail "could not model a reused pane binding"
+if OUT=$(env FM_HOME="$HOME_DIR" HERDR_SESSION="$SESSION" \
+  "$ROOT/bin/fm-send.sh" "$SESSION:$PANE_ID" --key Escape 2>&1); then
+  fail "a raw recorded send accepted a foreign task binding: $OUT"
+fi
+if fm_backend_kill herdr "$SESSION:$PANE_ID" "" fm-hsmoke; then
+  fail "endpoint close accepted another task's binding"
+fi
+fm_herdr_lab_cli "$SESSION" tab rename "$TAB_ID" fm-hsmoke >/dev/null \
+  || fail "could not restore the worker binding"
+env FM_HOME="$HOME_DIR" HERDR_SESSION="$SESSION" \
+  "$ROOT/bin/fm-send.sh" "$SESSION:$PANE_ID" --key Enter >/dev/null \
+  || fail "a correctly bound raw send was refused"
+pass "real herdr: raw sends reject caller and foreign panes while allowing the recorded task"
+
 # --- no registered agent: the endpoint exists but hosts no agent ------------
 
 OUT=$(run_control hsmoke exit) || fail "exit against an agent-free herdr pane should be idempotent success: $OUT"
@@ -208,6 +241,27 @@ for _ in $(seq 1 20); do
 done
 [ "$(fm_backend_herdr_current_path "$SESSION:$PANE_ID" 2>/dev/null || true)" = "$PROJ_REAL" ] \
   || fail "the real Herdr pane did not drift out of its recorded worktree"
+
+SHARED=$("$ROOT/bin/fm-herdr-lab.sh" run "$SESSION" tab create --workspace "$WORKSPACE_ID" --cwd "$WT" --label captain-shell --no-focus) \
+  || fail "could not create a shared-workspace fixture"
+SHARED_PANE=$(printf '%s' "$SHARED" | jq -r '.result.root_pane.pane_id')
+cp "$HOME_DIR/state/hsmoke.meta" "$SCRATCH/shared-before.meta"
+if OUT=$(env FM_HOME="$HOME_DIR" HERDR_SESSION="$SESSION" FM_SPAWN_NO_GUARD=1 \
+  "$ROOT/bin/fm-spawn.sh" hsmoke --relaunch --harness codex 2>&1); then
+  fail "a surviving shared-tab endpoint was relaunched"
+fi
+case "$OUT" in
+  *"one-task workspace isolation"*) ;;
+  *) fail "shared-tab relaunch did not explain its refusal: $OUT" ;;
+esac
+cmp -s "$HOME_DIR/state/hsmoke.meta" "$SCRATCH/shared-before.meta" \
+  || fail "shared-tab refusal changed task metadata"
+[ ! -e "$SCRATCH/codex-launched" ] || fail "shared-tab refusal launched a harness"
+"$ROOT/bin/fm-herdr-lab.sh" run "$SESSION" pane close "$SHARED_PANE" >/dev/null \
+  || fail "could not remove the shared-workspace fixture"
+"$ROOT/bin/fm-herdr-lab.sh" run "$SESSION" workspace rename "$WORKSPACE_ID" hsmoke-owned >/dev/null \
+  || fail "could not name the isolated worker workspace"
+pass "real herdr: surviving shared-tab relaunch refuses before launch or metadata publication"
 
 OUT=$(env FM_HOME="$HOME_DIR" HERDR_SESSION="$SESSION" FM_SPAWN_NO_GUARD=1 \
   "$ROOT/bin/fm-spawn.sh" hsmoke --relaunch --harness codex) \
@@ -342,6 +396,10 @@ AGENT_PID=$(herdr pane process-info --pane "$PANE_ID" --session "$SESSION" 2>/de
 kill "$AGENT_PID" 2>/dev/null || fail "could not stop the agent-named process"
 wait_process_state shell 50 \
   || version_fail "after the agent process exited the pane reads '$(fm_backend_herdr_pane_process_state "$SESSION" "$PANE_ID")' rather than 'shell' through pane process-info. Raw process-info: $(herdr pane process-info --pane "$PANE_ID" --session "$SESSION" 2>&1 | tr -d '\n')"
+
+fm_herdr_lab_cli "$SESSION" pane report-agent "$PANE_ID" --source fm-control-smoke \
+  --agent fm-control-smoke-agent --state idle >/dev/null \
+  || fail "could not seed the stale registration over the exited process"
 
 # The divergence that makes this case non-vacuous: Herdr's own registry still
 # reports the agent, and only the process-level view disagrees.

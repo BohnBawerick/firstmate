@@ -943,6 +943,31 @@ test_verify_accepts_an_answered_call_archived_by_done_retention() {
   pass "verify still refuses an archived captain call that was never answered"
 }
 
+test_verify_archived_legacy_identities_and_default_configuration() {
+  local home origin=review canonical=review-decision-pick-one variant
+  home=$(make_home archived-legacy-default)
+  mkdir -p "$home/data/$origin"
+  tasks_in "$home" add "$origin" "Review" --kind scout --start >/dev/null || fail "could not create origin"
+  write_origin_meta "$home" "$origin"
+  printf 'done: report complete\n' > "$home/state/$origin.status"
+  printf 'Report\n' > "$home/data/$origin/report.md"
+  run_captain "$home" hold "$canonical" --title Pick --reason Choice --origin "$origin" >/dev/null \
+    || fail "could not create legacy hold"
+  run_captain "$home" complete "$origin" pick-one >/dev/null || fail "could not inventory legacy hold"
+  printf 'Choose option A.\n' > "$home/answer.txt"
+  run_captain "$home" answer "$canonical" --decision-file "$home/answer.txt" >/dev/null || fail "could not answer legacy hold"
+  tasks_in "$home" prune --keep 0 >/dev/null || fail "could not archive answered hold"
+  for variant in explicit default absent; do
+    case "$variant" in
+      default) printf 'backend = "markdown"\n[markdown]\npath = "data/backlog.md"\n' > "$home/.tasks.toml" ;;
+      absent) rm "$home/.tasks.toml" ;;
+    esac
+    run_captain "$home" verify "$origin" >/dev/null \
+      || fail "archived legacy hold failed verification with $variant archive configuration"
+  done
+  pass "archived legacy identities verify with explicit, default, and absent local archive configuration"
+}
+
 # --release lifts the hold instead of closing, preserving the work item's own
 # body under the record; a re-held task later accepts a new answer.
 test_release_frees_held_work() {
@@ -4819,6 +4844,14 @@ SH
   pass "marked hold reasons round-trip through public reads, fleet, startup, and return without changing other fields"
 }
 
+if [ "${1:-}" = --archive-regressions ]; then
+  test_verify_accepts_an_answered_call_archived_by_done_retention
+  test_verify_archived_legacy_identities_and_default_configuration
+  test_legacy_identities_keep_working
+  exit 0
+fi
+
+test_verify_archived_legacy_identities_and_default_configuration
 test_hold_reason_round_trips_awkward_characters
 test_hold_origins_precede_backend_holds
 test_historical_self_inventory_has_workable_repair

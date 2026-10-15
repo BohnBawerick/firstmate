@@ -3031,6 +3031,31 @@ fm_backend_herdr_projection_live_binding_matches() {  # <session> <token> <works
   ' >/dev/null 2>&1
 }
 
+fm_backend_herdr_task_workspace_isolated() {
+  local target=$1 expected=$2 session pane out tab workspace label tabs panes
+  fm_backend_herdr_parse_target "$target" || return 1
+  session=$FM_BACKEND_HERDR_SESSION
+  pane=$FM_BACKEND_HERDR_PANE
+  [ "$(fm_backend_herdr_pane_label_binding "$session" "$pane" "$expected")" = bound ] || return 1
+  out=$(fm_backend_herdr_cli "$session" pane get "$pane" 2>/dev/null) || return 1
+  tab=$(printf '%s' "$out" | jq -r --arg pane "$pane" 'select(.result.pane.pane_id == $pane) | .result.pane.tab_id // empty')
+  workspace=$(printf '%s' "$out" | jq -r --arg pane "$pane" 'select(.result.pane.pane_id == $pane) | .result.pane.workspace_id // empty')
+  [ -n "$tab" ] && [ -n "$workspace" ] || return 1
+  out=$(fm_backend_herdr_cli "$session" workspace get "$workspace" 2>/dev/null) || return 1
+  label=$(printf '%s' "$out" | jq -r --arg workspace "$workspace" 'select(.result.workspace.workspace_id == $workspace) | .result.workspace.label // empty')
+  case "$label" in ''|firstmate|2ndmate-*) return 1 ;; esac
+  tabs=$(fm_backend_herdr_cli "$session" tab list --workspace "$workspace" 2>/dev/null) || return 1
+  printf '%s' "$tabs" | jq -e --arg tab "$tab" --arg expected "$expected" '
+    (.result.tabs | type) == "array" and (.result.tabs | length) == 1
+    and .result.tabs[0].tab_id == $tab and .result.tabs[0].label == $expected
+  ' >/dev/null 2>&1 || return 1
+  panes=$(fm_backend_herdr_cli "$session" pane list --workspace "$workspace" 2>/dev/null) || return 1
+  printf '%s' "$panes" | jq -e --arg tab "$tab" --arg pane "$pane" '
+    (.result.panes | type) == "array" and (.result.panes | length) == 1
+    and .result.panes[0].pane_id == $pane and .result.panes[0].tab_id == $tab
+  ' >/dev/null 2>&1
+}
+
 fm_backend_herdr_projection_reclaim_rollback() {  # <session> <new-pane>
   local session=$1 new_pane=$2 state
   state=$(fm_backend_herdr_pane_agent_state "$session" "$new_pane")
@@ -3311,11 +3336,19 @@ fm_backend_herdr_parse_target() {  # <target>
 # and fail fast on inactive or bad targets without starting a new server.
 fm_backend_herdr_target_observable() {  # <target>
   fm_backend_herdr_parse_target "$1" || return 1
+  if [ "$FM_BACKEND_HERDR_CALLER_SESSION" = "$FM_BACKEND_HERDR_SESSION" ] &&
+     [ "$FM_BACKEND_HERDR_CALLER_PANE_ID" = "$FM_BACKEND_HERDR_PANE" ]; then
+    return 1
+  fi
   [ "$(fm_backend_herdr_server_running_state "$FM_BACKEND_HERDR_SESSION")" = running ]
 }
 
 fm_backend_herdr_target_ready() {  # <target>
   fm_backend_herdr_parse_target "$1" || return 1
+  if [ "$FM_BACKEND_HERDR_CALLER_SESSION" = "$FM_BACKEND_HERDR_SESSION" ] &&
+     [ "$FM_BACKEND_HERDR_CALLER_PANE_ID" = "$FM_BACKEND_HERDR_PANE" ]; then
+    return 1
+  fi
   fm_backend_herdr_server_ensure "$FM_BACKEND_HERDR_SESSION" || return 1
 }
 
@@ -3393,7 +3426,7 @@ fm_backend_herdr_normalize_key() {  # <key>
 # path (tmux's `send-keys -t T key`).
 fm_backend_herdr_send_key() {  # <target> <key> [expected-label]
   fm_backend_herdr_target_ready "$1" || return 1
-  [ -z "${3:-}" ] || ! fm_backend_herdr_target_unbound "$1" "$3" || return 1
+  ! fm_backend_herdr_target_unbound "$1" "${3:-}" || return 1
   local key
   key=$(fm_backend_herdr_normalize_key "$2")
   fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane send-keys "$FM_BACKEND_HERDR_PANE" "$key" >/dev/null 2>&1
@@ -3418,7 +3451,7 @@ fm_backend_herdr_capture() {  # <target> <lines> [expected-label]
   fm_backend_herdr_target_ready "$1" || return 1
   # Labelled reads come from task-aware callers; a pane that is no longer the
   # task's (fm_backend_herdr_pane_label_binding) must not be read as its screen.
-  [ -z "${3:-}" ] || ! fm_backend_herdr_target_unbound "$1" "$3" || return 1
+  ! fm_backend_herdr_target_unbound "$1" "${3:-}" || return 1
   local lines=${2:-200} fetch out
   case "$lines" in ''|*[!0-9]*) lines=200 ;; esac
   fetch=$lines
@@ -3433,7 +3466,7 @@ fm_backend_herdr_capture() {  # <target> <lines> [expected-label]
 # is what triggers the empty-read bug.
 fm_backend_herdr_visible_capture() {  # <target> [expected-label]
   fm_backend_herdr_target_observable "$1" || return 1
-  [ -z "${2:-}" ] || ! fm_backend_herdr_target_unbound "$1" "$2" || return 1
+  ! fm_backend_herdr_target_unbound "$1" "${2:-}" || return 1
   fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane read "$FM_BACKEND_HERDR_PANE" --source visible 2>/dev/null
 }
 
@@ -3533,7 +3566,7 @@ fm_backend_herdr_composer_read() {  # <target> [styled-only]
 # fm_backend_herdr_composer_state: the fleet-wide verdict contract - capture
 # plus capabilities in, shared verdict out. An unreadable pane is unknown.
 fm_backend_herdr_composer_state() {  # <target> [expected-label] -> empty|pending|pending-unproven|unknown
-  if [ -n "${2:-}" ] && fm_backend_herdr_target_unbound "$1" "$2"; then
+  if fm_backend_herdr_target_unbound "$1" "${2:-}"; then
     printf 'unknown'
     return 0
   fi
@@ -3839,7 +3872,7 @@ fm_backend_herdr_send_text_submit() {  # <target> <text> <retries> <enter-sleep>
   local target=$1 text=$2 retries=$3 sleep_s=$4 settle=$5 i=0 verdict baseline confirm_sleep
   local raw_status footer_baseline='' allow_rendered=0 enter_sent=0 identity proof=0 content
   fm_backend_herdr_parse_target "$target" || { printf 'unknown'; return 0; }
-  if [ -n "${6:-}" ] && fm_backend_herdr_target_unbound "$target" "$6"; then
+  if fm_backend_herdr_target_unbound "$target" "${6:-}"; then
     printf 'send-failed'
     return 0
   fi
@@ -4001,7 +4034,8 @@ fm_backend_herdr_kill_serialized() {  # <session> <pane>
   fm_backend_herdr_explicit_close_pane_confirmed "$session" "$pane" || true
 }
 
-fm_backend_herdr_kill() {  # <target>
+fm_backend_herdr_kill() {  # <target> [unused] [expected-label]
+  ! fm_backend_herdr_target_unbound "$1" "${3:-}" || return 1
   fm_backend_herdr_target_ready "$1" || return 0
   local session=$FM_BACKEND_HERDR_SESSION pane=$FM_BACKEND_HERDR_PANE
   local lock_path attempt=0 lock_held=0

@@ -1407,6 +1407,24 @@ test_content_fallback_refreshes_stale_origin_ref() {
   pass "content fallback refreshes origin default before comparing trees"
 }
 
+test_teardown_preserves_hook_only_user_settings() {
+  local case_dir rc file
+  case_dir=$(make_case user-hooks)
+  write_meta "$case_dir" no-mistakes ship
+  git -C "$case_dir/project" config core.excludesFile /dev/null
+  file="$case_dir/wt/.claude/settings.local.json"
+  mkdir -p "${file%/*}"
+  printf '%s\n' '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"echo user-hook"}]}]}}' > "$file"
+  cp "$file" "$case_dir/before-settings.json"
+  [ -n "$(git -C "$case_dir/wt" status --porcelain)" ] || fail "fixture: user settings must be untracked and visible to Git"
+  rc=0
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+  expect_code 1 "$rc" "teardown should refuse untracked user settings: $(cat "$case_dir/stdout" "$case_dir/stderr")"
+  cmp -s "$file" "$case_dir/before-settings.json" || fail "teardown deleted or changed hook-only user settings"
+  [ -f "$case_dir/state/task-x1.meta" ] || fail "teardown removed the task despite untracked user settings"
+  pass "teardown preserves hook-only user settings and refuses their removal"
+}
+
 test_dirty_worktree_refuses() {
   local case_dir rc pr_head
   case_dir=$(make_case dirty-wt)
@@ -1455,9 +1473,7 @@ assert_dirty_diagnostic() {
     for n in 01 02 03 04 05 06 07 08 09 10 11; do
       touch "$case_dir/wt/$n-scratch.txt"
     done
-    # Preserve the existing exemptions without counting them as leftovers.
-    mkdir "$case_dir/wt/.claude"
-    touch "$case_dir/wt/.claude/settings.local.json" "$case_dir/wt/.fm-grok-turnend"
+    touch "$case_dir/wt/.fm-grok-turnend"
   fi
   before=$(git -C "$case_dir/wt" status --porcelain)
   rc=0
@@ -5262,6 +5278,14 @@ test_retained_sources_still_reach_the_ordinary_refusal() {
     "retained-sources: the ordinary refusal was replaced"
   pass "present required sources still reach the ordinary teardown refusal"
 }
+
+if [ "${1:-}" = --settings-regressions ]; then
+  test_teardown_preserves_hook_only_user_settings
+  test_dirty_worktree_refuses
+  exit 0
+fi
+
+test_teardown_preserves_hook_only_user_settings
 
 test_missing_startup_source_refuses_before_cleanup
 test_unreadable_startup_source_refuses_before_cleanup

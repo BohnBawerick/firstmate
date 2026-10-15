@@ -552,13 +552,19 @@ fm_backend_validate_task_endpoint() {  # <meta-file> <task-id>
   return 0
 }
 
-fm_backend_meta_for_window() {  # <target> <state-dir>
-  local target=$1 state=$2 meta window terminal
+fm_backend_meta_for_window() {  # <target> <state-dir> [bound]
+  local target=$1 state=$2 meta window terminal task
   for meta in "$state"/*.meta; do
     [ -e "$meta" ] || continue
     window=$(fm_meta_get "$meta" window)
     terminal=$(fm_meta_get "$meta" terminal)
     { [ -n "$window" ] && [ "$window" = "$target" ]; } || { [ -n "$terminal" ] && [ "$terminal" = "$target" ]; } || continue
+    if [ "${3:-}" = bound ] && [ "$(fm_backend_of_meta "$meta")" = herdr ]; then
+      fm_backend_source herdr || continue
+      fm_backend_herdr_parse_target "$target" || continue
+      task=${meta##*/}; task=${task%.meta}
+      [ "$(fm_backend_herdr_pane_label_binding "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE" "fm-$task")" = bound ] || continue
+    fi
     printf '%s' "$meta"
     return 0
   done
@@ -989,7 +995,7 @@ fm_backend_target_exists() {  # <backend> <target> [expected-label]
       # own ambient session (e.g. the primary firstmate's default session) is
       # a DIFFERENT one than the target's.
       fm_backend_herdr_cli "$session" pane get "$pane" >/dev/null 2>&1 || return 1
-      [ -z "$expected_label" ] || ! fm_backend_herdr_target_unbound "$target" "$expected_label"
+      ! fm_backend_herdr_target_unbound "$target" "$expected_label"
       ;;
     zellij)
       fm_backend_source zellij || return 1

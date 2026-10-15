@@ -315,6 +315,23 @@ test_claude_spawn_leaves_a_tracked_settings_local_untouched() {
   pass "a claude spawn leaves a tracked settings.local.json untouched and wires hooks through --settings"
 }
 
+test_claude_spawn_preserves_hook_only_user_settings() {
+  local rec id=busy-cl-hooks out file
+  rec=$(make_spawn_case claude-user-hooks claude "$id")
+  read_case_record "$rec"
+  file="$WT_DIR/.claude/settings.local.json"
+  printf '.claude/settings.local.json\n' >> "$PROJ_DIR/.git/info/exclude"
+  mkdir -p "${file%/*}"
+  printf '%s\n' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo custom-hook"}]}]}}' > "$file"
+  cp "$file" "$CASE_DIR/settings-before.json"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
+  expect_code 0 $? "claude spawn with user hooks should succeed: $out"
+  cmp -s "$file" "$CASE_DIR/settings-before.json" || fail "spawn removed or changed hook-only user settings"
+  jq -e '.hooks.Stop' "$HOME_DIR/state/$id.claude-settings.json" >/dev/null \
+    || fail "spawn did not keep its own hook wiring in state"
+  pass "claude spawn preserves hook-only user settings"
+}
+
 test_codex_unverified_until_a_semantic_source_exists() {
   local rec id=busy-cx-1 out state
   rec=$(make_spawn_case codex-unverified codex "$id")
@@ -861,6 +878,14 @@ test_secondmate_codex_and_grok_do_not_arm_a_parent_turnend() {
   pass "codex and grok secondmates stay on their existing verdicts and do not emit a parent turn-end"
 }
 
+if [ "${1:-}" = --settings-regressions ]; then
+  test_claude_spawn_preserves_hook_only_user_settings
+  test_claude_spawn_leaves_a_tracked_settings_local_untouched
+  test_secondmate_claude_spawn_leaves_local_settings_untouched
+  exit 0
+fi
+
+test_claude_spawn_preserves_hook_only_user_settings
 test_secondmate_claude_spawn_arms_busy_for_the_stall_gate
 test_raw_secondmate_launch_writes_no_busy_wiring
 test_secondmate_claude_stop_guard_owns_the_stop_verdict

@@ -498,22 +498,25 @@ test_relaunch_preserves_durable_task_metadata() {
 # The worktree's .claude/settings.local.json can hold keys the worker added,
 # such as a cloud environment id; a relaunch must not rewrite or remove it.
 test_relaunch_keeps_worker_keys_in_settings_local() {
-  local dir out rc file before
-  dir=$(new_case worker-settings rl42)
-  add_ship_task "$dir" rl42 claude
-  file="$dir/wt/.claude/settings.local.json"
-  mkdir -p "${file%/*}"
-  printf '%s\n' '{"remote":{"defaultEnvironmentId":"env-rust-brep-oracle"}}' > "$file"
-  before=$(cat "$file")
-
-  out=$(run_control "$dir" rl42 relaunch --note "continuing in the cloud lane"); rc=$?
-  expect_code 0 "$rc" "relaunch should succeed"$'\n'"$out"
-  [ "$(cat "$file" 2>/dev/null)" = "$before" ] \
-    || fail "relaunch rewrote or removed the worker's settings.local.json"
-  jq -e '.hooks.Stop' "$dir/home/state/rl42.claude-settings.json" >/dev/null \
-    || fail "relaunch did not wire the replacement's hooks through the state settings file"
-  assert_grep "--settings '$dir/home/state/rl42.claude-settings.json'" "$dir/fake/literal" \
-    "the replacement launch must pass the state settings file"
+  local dir out rc file before payload n=0
+  for payload in '{"remote":{"defaultEnvironmentId":"env-rust-brep-oracle"}}' \
+    '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo user-hook"}]}]}}'; do
+    n=$((n + 1))
+    dir=$(new_case "worker-settings-$n" rl42)
+    add_ship_task "$dir" rl42 claude
+    file="$dir/wt/.claude/settings.local.json"
+    mkdir -p "${file%/*}"
+    printf '%s\n' "$payload" > "$file"
+    before=$(cat "$file")
+    out=$(run_control "$dir" rl42 relaunch --note "continuing in the cloud lane"); rc=$?
+    expect_code 0 "$rc" "relaunch should succeed"$'\n'"$out"
+    [ "$(cat "$file" 2>/dev/null)" = "$before" ] \
+      || fail "relaunch rewrote or removed the worker's settings.local.json"
+    jq -e '.hooks.Stop' "$dir/home/state/rl42.claude-settings.json" >/dev/null \
+      || fail "relaunch did not wire the replacement's hooks through the state settings file"
+    assert_grep "--settings '$dir/home/state/rl42.claude-settings.json'" "$dir/fake/literal" \
+      "the replacement launch must pass the state settings file"
+  done
   pass "fm-control relaunch: a worker's settings.local.json keys survive the relaunch"
 }
 
@@ -732,19 +735,22 @@ test_relaunch_requires_a_note_for_a_ship_task() {
 # --- 2. harness switch -------------------------------------------------------
 
 test_harness_switch_moves_the_record_and_clears_prior_wiring() {
-  local dir out rc
+  local dir out rc before
   dir=$(new_case switch rl4)
   add_ship_task "$dir" rl4 claude
-  # Wiring the previous claude incarnation left in the worktree.
   mkdir -p "$dir/wt/.claude"
-  printf '{"hooks":{}}\n' > "$dir/wt/.claude/settings.local.json"
+  printf '%s\n' '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"echo user-hook"}]}]}}' > "$dir/wt/.claude/settings.local.json"
+  before=$(cat "$dir/wt/.claude/settings.local.json")
+  printf '{"hooks":{}}\n' > "$dir/home/state/rl4.claude-settings.json"
   printf 'codex' > "$dir/fake/becomes"
   out=$(run_control "$dir" rl4 relaunch --harness codex --note "switching runtime"); rc=$?
   expect_code 0 "$rc" "a harness switch should succeed"$'\n'"$out"
   assert_contains "$out" "harness=codex from=claude" "the outcome should name both harnesses"
   [ "$(meta_field "$dir" rl4 harness)" = codex ] || fail "the record should follow the switch"
-  [ ! -e "$dir/wt/.claude/settings.local.json" ] \
-    || fail "the previous harness's per-task wiring must be cleared on a switch"
+  [ "$(cat "$dir/wt/.claude/settings.local.json" 2>/dev/null)" = "$before" ] \
+    || fail "a harness switch removed or changed hook-only user settings"
+  [ ! -e "$dir/home/state/rl4.claude-settings.json" ] \
+    || fail "a harness switch left the prior harness's owned wiring"
   assert_grep "codex" "$dir/fake/literal" "the replacement launch should be the new harness"
   [ "$(journal_field "$dir" rl4 from_harness)" = claude ] || fail "the journal should record the origin harness"
   [ "$(journal_field "$dir" rl4 to_harness)" = codex ] || fail "the journal should record the target harness"
@@ -2209,7 +2215,7 @@ fi
 case "${1:-} ${2:-}" in
   'pane get')
     if [ "${3:-}" = "$(cat "$D/herdr-pane")" ]; then
-      printf '{"result":{"pane":{"pane_id":"%s","foreground_cwd":"%s"}}}\n' \
+      printf '{"result":{"pane":{"pane_id":"%s","foreground_cwd":"%s","tab_id":"tab1","workspace_id":"ws1"}}}\n' \
         "${3:-}" "$(cat "$D/cwd")"
     else
       # Only the pane this case says survived can be read back. Any other pane
@@ -2259,6 +2265,15 @@ case "${1:-} ${2:-}" in
         : > "$D/herdr-agent-live" ;;
     esac
     exit 0 ;;
+  'workspace get')
+    printf '{"result":{"workspace":{"workspace_id":"ws1","label":"worker-owned"}}}\n'
+    exit 0 ;;
+  'tab get')
+    printf '{"result":{"tab":{"tab_id":"tab1","label":"fm-%s","workspace_id":"ws1"}}}\n' "$(cat "$D/herdr-task")"
+    exit 0 ;;
+  'pane list')
+    printf '{"result":{"panes":[{"pane_id":"%s","tab_id":"tab1","workspace_id":"ws1"}]}}\n' "$(cat "$D/herdr-pane")"
+    exit 0 ;;
   'workspace list')
     printf '{"result":{"workspaces":[]}}\n'
     exit 0 ;;
@@ -2270,7 +2285,11 @@ case "${1:-} ${2:-}" in
     printf '{"result":{"workspace":{"workspace_id":"wsnew"},"tab":{"tab_id":"seedtab"}}}\n'
     exit 0 ;;
   'tab list')
-    printf '{"result":{"tabs":[]}}\n'
+    if [ "${4:-}" = ws1 ]; then
+      printf '{"result":{"tabs":[{"tab_id":"tab1","label":"fm-%s","workspace_id":"ws1"}]}}\n' "$(cat "$D/herdr-task")"
+    else
+      printf '{"result":{"tabs":[]}}\n'
+    fi
     exit 0 ;;
   'tab create')
     # The re-created endpoint. Recording it lets a case prove the pane the
@@ -2339,6 +2358,7 @@ EOF
   } > "$home/state/$id.meta"
   printf '%s' "$wt" > "$dir/fake/cwd"
   printf '%s' "$survivor" > "$dir/fake/herdr-pane"
+  printf '%s' "$id" > "$dir/fake/herdr-task"
   : > "$dir/fake/herdr-log"
   : > "$dir/fake/herdr-stopped"
   TASK_TMPS+=("/tmp/fm-$id")
@@ -2677,6 +2697,15 @@ SH
     || fail "the dialog file must be gone when the control lock is released, got: $(cat "$trace" 2>/dev/null)"
   pass "fm-control exit removes the dialog file before it releases the control lock"
 }
+
+if [ "${1:-}" = --recovery-regressions ]; then
+  test_relaunch_keeps_worker_keys_in_settings_local
+  test_harness_switch_moves_the_record_and_clears_prior_wiring
+  test_secondmate_claude_relaunch_keeps_local_settings
+  test_herdr_reclaim_adopts_a_pane_that_outlived_its_server
+  test_herdr_relaunch_resumes_only_the_registered_pi_session
+  exit 0
+fi
 
 test_exit_and_relaunch_remove_the_dialog_file
 test_exit_removes_the_dialog_file_before_releasing_the_lock

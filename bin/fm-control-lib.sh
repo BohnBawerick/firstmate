@@ -379,22 +379,6 @@ fm_control_endpoint_absence_verdict() {  # <backend> <target> [expected-label]
   esac
 }
 
-# Before firstmate passed a crewmate's Claude hooks through --settings, it
-# wrote them as the whole of the worktree's .claude/settings.local.json. Remove
-# such a file only while it is still exactly that: untracked by git and holding
-# nothing but a hooks object. A tracked file, or one that also holds keys a
-# worker or the project added, is left untouched; its leftover hooks name a
-# retired busy generation, which fm-busy-event.sh rejects.
-fm_control_claude_legacy_hook_file_retire() {  # <worktree>
-  local wt=${1-} file
-  [ -n "$wt" ] || return 0
-  file="$wt/.claude/settings.local.json"
-  [ -f "$file" ] && [ ! -L "$file" ] || return 0
-  ! git -C "$wt" ls-files --error-unmatch -- .claude/settings.local.json >/dev/null 2>&1 || return 0
-  jq -e 'type == "object" and keys == ["hooks"]' "$file" >/dev/null 2>&1 || return 0
-  rm -f -- "$file"
-}
-
 # The per-task wiring artifacts a harness leaves behind, so a relaunch that
 # changes harness (or re-arms the same one with a fresh busy generation) can
 # clear the previous incarnation's wiring instead of leaving a stale hook
