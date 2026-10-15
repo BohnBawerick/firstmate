@@ -1273,7 +1273,16 @@ fm_lock_reap_dead_link() {
       fi
       token=$tomb
     done
-    [ -n "$token" ] || return 1
+    if [ -z "$token" ]; then
+      # A dangling link with no tomb has no owner left to race: every lock
+      # path removes the link before its owner directory, so only a crash or
+      # an outside deletion leaves this shape, and nothing would ever clear it.
+      # Past the pid-less freshness window, claim it with a fresh tomb, which
+      # is exclusive against a concurrent reaper exactly like the rename above.
+      fm_lock_mid_acquire_is_fresh "$lockdir" "" && return 1
+      mkdir -- "$owner.reaped.$current" 2>/dev/null || return 1
+      token="$owner.reaped.$current"
+    fi
   fi
   tomb="$owner.reaped.$current"
   if [ "$token" != "$tomb" ]; then

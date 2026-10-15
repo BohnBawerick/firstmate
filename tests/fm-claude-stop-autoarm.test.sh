@@ -955,6 +955,32 @@ SH
   pass "auto-arm: an abandoned-claim reclaim reaps a dead steal mutex without nesting"
 }
 
+# An owner directory deleted out from under its lock leaves the owner link
+# dangling with no pid to read and no reap tomb. Both the claim micro-mutex and
+# its steal mutex must still be reclaimed, or every later Stop firing exits 0
+# silently and supervision stays off for good.
+test_dangling_owner_links_are_reclaimed_and_rearm() {
+  local dir out status link
+  dir=$(make_primary_dir "$TMP_ROOT/dangling-owner-links")
+  : > "$dir/state/task1.meta"
+  write_arm_fixture "$dir" actionable
+  record_autoarm_epoch "$dir" 464 999999 rewake
+  for link in .claude-autoarm.lock .claude-autoarm.lock.steal; do
+    ln -s "$dir/state/$link.owner.GONE" "$dir/state/$link"
+    touch -h -t 202001010000 "$dir/state/$link"
+    [ -L "$dir/state/$link" ] && [ ! -e "$dir/state/$link" ] \
+      || fail "fixture did not leave $link dangling"
+  done
+  out=$(run_autoarm "$dir" 2>/dev/null); status=$?
+  expect_code 2 "$status" "dangling owner links must not keep the auto-arm from claiming"
+  [ -e "$dir/state/arm-ran" ] || fail "dangling owner links left the home unarmed with work in flight"
+  assert_contains "$out" "firstmate watcher wake" "the reclaimed cycle must still translate its wake"
+  [ "$(epoch_field "$dir" epoch)" -gt 464 ] || fail "reclaimed cycle did not advance the ledger: $(epoch_field "$dir" epoch)"
+  assert_absent "$dir/state/.claude-autoarm.lock" "reclaim left the dangling owner lock behind"
+  assert_absent "$dir/state/.claude-autoarm.lock.steal" "reclaim left the dangling steal mutex behind"
+  pass "auto-arm: dangling owner links are reclaimed so supervision re-arms"
+}
+
 test_arming_claim_with_fresh_beacon_is_never_reclaimed() {
   local dir out status pid
   dir=$(make_primary_dir "$TMP_ROOT/arming-claim")
@@ -1734,6 +1760,7 @@ test_single_flight_admits_exactly_one_owner
 test_term_mid_arm_commits_failure_and_rewakes
 test_abandoned_owner_claim_is_reclaimed_and_rearms
 test_abandoned_claim_reclaim_reaps_dead_steal_without_nesting
+test_dangling_owner_links_are_reclaimed_and_rearm
 test_arming_claim_with_fresh_beacon_is_never_reclaimed
 test_fresh_arming_claim_with_stale_beacon_is_never_reclaimed
 test_claim_not_named_by_the_ledger_is_never_reclaimed
