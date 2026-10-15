@@ -1,0 +1,92 @@
+[
+  {
+    "name": "Default loopback service exposes mailbox tools only and ignores inherited callback opt-in",
+    "result": "pass",
+    "details": {
+      "tools": [
+        "get_messages",
+        "reply",
+        "submit_message"
+      ],
+      "blocked_destinations": 4
+    }
+  },
+  {
+    "name": "Unique hello travels operator to signed callback to MCP reply and back without concurrent duplicates",
+    "result": "pass",
+    "details": {
+      "message_id": "msg_6e6eae23ed17b4b8",
+      "nonce": "hello-8d9f1b8e56c0663e28100146",
+      "duplicate_submissions": 24
+    }
+  },
+  {
+    "name": "Restart retains assignments replies subscriptions and recovers an offline assignment exactly once",
+    "result": "pass",
+    "details": {
+      "recovered_message_id": "msg_a26e94f7582fa02d"
+    }
+  },
+  {
+    "name": "Renewal rotates signatures optional correlation is omitted and expired or removed subscriptions stop events",
+    "result": "pass",
+    "details": {
+      "subscription_id": "sub_0f748da474fbe527"
+    }
+  },
+  {
+    "name": "Delivery retries stable events survives restart exhausts visibly and accepts a stalled-body 202 immediately",
+    "result": "pass",
+    "details": {
+      "retry_statuses": [
+        503,
+        503,
+        202
+      ],
+      "exhausted_attempts": 4,
+      "stalled_ack_seconds": 0.408
+    }
+  },
+  {
+    "name": "Invalid challenge echoes redirects credential URLs and non-public addresses are rejected",
+    "result": "pass",
+    "details": {
+      "redirect_target_requests": 0
+    }
+  },
+  {
+    "name": "Real TLS callbacks validate the hostname ignore proxy settings and try available localhost candidates",
+    "result": "pass",
+    "details": {
+      "resolved_candidates": [
+        "::1",
+        "127.0.0.1"
+      ],
+      "receiver_bound": "IPv4 only"
+    }
+  },
+  {
+    "name": "CLI and MCP enforce byte bounds cursor pagination private storage and explicit database ownership",
+    "result": "pass",
+    "details": {
+      "record_pages": [
+        50,
+        5
+      ],
+      "escaped_response_records": 1,
+      "storage_modes": {
+        "mailbox.sqlite3": "0o600",
+        "mailbox.sqlite3-wal": "0o600",
+        "mailbox.sqlite3-shm": "0o600"
+      }
+    }
+  },
+  {
+    "name": "Verification cache survives retries filter changes renewal and restarts but expires five minutes after the original challenge",
+    "result": "pass",
+    "details": {
+      "elapsed_seconds": 302.03,
+      "challenges": 2
+    }
+  }
+]

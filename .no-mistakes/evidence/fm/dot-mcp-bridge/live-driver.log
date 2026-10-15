@@ -1,0 +1,21 @@
+PASS Default loopback service exposes mailbox tools only and ignores inherited callback opt-in
+PASS Unique hello travels operator to signed callback to MCP reply and back without concurrent duplicates
+PASS Restart retains assignments replies subscriptions and recovers an offline assignment exactly once
+PASS Renewal rotates signatures optional correlation is omitted and expired or removed subscriptions stop events
+PASS Delivery retries stable events survives restart exhausts visibly and accepts a stalled-body 202 immediately
+PASS Invalid challenge echoes redirects credential URLs and non-public addresses are rejected
+PASS Real TLS callbacks validate the hostname ignore proxy settings and try available localhost candidates
+PASS CLI and MCP enforce byte bounds cursor pagination private storage and explicit database ownership
+Waiting for real verification-cache expiry: 277s
+Waiting for real verification-cache expiry: 252s
+Waiting for real verification-cache expiry: 227s
+Waiting for real verification-cache expiry: 202s
+Waiting for real verification-cache expiry: 177s
+Waiting for real verification-cache expiry: 152s
+Waiting for real verification-cache expiry: 127s
+Waiting for real verification-cache expiry: 102s
+Waiting for real verification-cache expiry: 77s
+Waiting for real verification-cache expiry: 52s
+Waiting for real verification-cache expiry: 27s
+Waiting for real verification-cache expiry: 2s
+PASS Verification cache survives retries filter changes renewal and restarts but expires five minutes after the original challenge

@@ -1,0 +1,1039 @@
+{
+  "revision": "f04fcbd88863bf305a45c1525f70cbcd260bae08",
+  "operator_submission": {
+    "seq": 1,
+    "id": "msg_6e6eae23ed17b4b8",
+    "queue": "roundtrip",
+    "content": "hello-8d9f1b8e56c0663e28100146",
+    "correlation_id": "hello-8d9f1b8e56c0663e28100146",
+    "idempotency_key": "hello-8d9f1b8e56c0663e28100146",
+    "status": "pending",
+    "reply": null,
+    "created_at": "2026-10-15T06:49:41.622937Z",
+    "updated_at": "2026-10-15T06:49:41.622937Z",
+    "delivery": {
+      "pending": 1,
+      "delivered": 0,
+      "undelivered": 0
+    }
+  },
+  "mcp_retrieval": [
+    {
+      "seconds": 0.632,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "c4720a2a",
+        "method": "tools/call",
+        "params": {
+          "name": "get_messages",
+          "arguments": {
+            "queue": "roundtrip",
+            "status": "pending"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "c4720a2a",
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": {
+                "utf8_bytes": 436,
+                "sha256": "5e240daef5ed60b92241743be3e593c6ffd8fbdba7577cf53869b7354ffc0e79"
+              }
+            }
+          ],
+          "isError": false
+        }
+      },
+      "response_bytes": 595
+    }
+  ],
+  "mcp_reply": [
+    {
+      "seconds": 0.633,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "e75c1712",
+        "method": "tools/call",
+        "params": {
+          "name": "reply",
+          "arguments": {
+            "message_id": "msg_6e6eae23ed17b4b8",
+            "correlation_id": "wrong-correlation",
+            "reply": "bad"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "e75c1712",
+        "error": {
+          "code": -32603,
+          "message": "Internal error: correlation_id does not match the message"
+        }
+      },
+      "response_bytes": 135
+    },
+    {
+      "seconds": 0.639,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "8d46ae89",
+        "method": "tools/call",
+        "params": {
+          "name": "reply",
+          "arguments": {
+            "message_id": "msg_6e6eae23ed17b4b8",
+            "correlation_id": "hello-8d9f1b8e56c0663e28100146",
+            "reply": "done hello-8d9f1b8e56c0663e28100146"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "8d46ae89",
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"status\": \"ok\", \"message_id\": \"msg_6e6eae23ed17b4b8\"}"
+            }
+          ],
+          "isError": false
+        }
+      },
+      "response_bytes": 171
+    },
+    {
+      "seconds": 0.64,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "1fc613ca",
+        "method": "tools/call",
+        "params": {
+          "name": "reply",
+          "arguments": {
+            "message_id": "msg_6e6eae23ed17b4b8",
+            "correlation_id": "hello-8d9f1b8e56c0663e28100146",
+            "reply": "done hello-8d9f1b8e56c0663e28100146"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "1fc613ca",
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\"status\": \"ok\", \"message_id\": \"msg_6e6eae23ed17b4b8\", \"idempotent\": true}"
+            }
+          ],
+          "isError": false
+        }
+      },
+      "response_bytes": 193
+    },
+    {
+      "seconds": 17.146,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "36465ac4",
+        "method": "tools/call",
+        "params": {
+          "name": "reply",
+          "arguments": {
+            "message_id": "msg_6e6eae23ed17b4b8",
+            "reply": {
+              "utf8_bytes": 16385,
+              "sha256": "00196cfa5b1f876c5d652d1f2fb5fc83caa888d26b1c490c109027fbb4e43dd6"
+            }
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "36465ac4",
+        "error": {
+          "code": -32603,
+          "message": "Internal error: reply exceeds 16384 UTF-8 bytes"
+        }
+      },
+      "response_bytes": 125
+    }
+  ],
+  "operator_readback": [
+    {
+      "seq": 1,
+      "id": "msg_6e6eae23ed17b4b8",
+      "queue": "roundtrip",
+      "content": "hello-8d9f1b8e56c0663e28100146",
+      "correlation_id": "hello-8d9f1b8e56c0663e28100146",
+      "idempotency_key": "hello-8d9f1b8e56c0663e28100146",
+      "status": "replied",
+      "reply": "done hello-8d9f1b8e56c0663e28100146",
+      "created_at": "2026-10-15T06:49:41.622937Z",
+      "updated_at": "2026-10-15T06:49:41.755599Z",
+      "delivery": {
+        "pending": 0,
+        "delivered": 1,
+        "undelivered": 0
+      }
+    },
+    {
+      "seq": 1,
+      "id": "msg_6e6eae23ed17b4b8",
+      "queue": "roundtrip",
+      "content": "hello-8d9f1b8e56c0663e28100146",
+      "correlation_id": "hello-8d9f1b8e56c0663e28100146",
+      "idempotency_key": "hello-8d9f1b8e56c0663e28100146",
+      "status": "replied",
+      "reply": "done hello-8d9f1b8e56c0663e28100146",
+      "created_at": "2026-10-15T06:49:41.622937Z",
+      "updated_at": "2026-10-15T06:49:41.755599Z",
+      "delivery": {
+        "pending": 0,
+        "delivered": 1,
+        "undelivered": 0
+      }
+    }
+  ],
+  "received_signed_callbacks": [
+    {
+      "seconds": 0.373,
+      "kind": "callback",
+      "path": "/cache",
+      "payload": {
+        "type": "verification",
+        "challenge": "6c9ca55f9ab8fb3439cee9dc35b9c6d5"
+      },
+      "webhook_id": "msg_verification_6c7f592ee6a8c5b4",
+      "timestamp": "1792046981",
+      "signature_valid_keys": [
+        0
+      ],
+      "body_bytes": 73,
+      "receiver_status": 200
+    },
+    {
+      "seconds": 1.389,
+      "kind": "callback",
+      "path": "/rotation",
+      "payload": {
+        "type": "verification",
+        "challenge": "69b455fbd6946ada553643d42b070a01"
+      },
+      "webhook_id": "msg_verification_be1864960bb6452d",
+      "timestamp": "1792046982",
+      "signature_valid_keys": [
+        0
+      ],
+      "body_bytes": 73,
+      "receiver_status": 200
+    },
+    {
+      "seconds": 1.604,
+      "kind": "callback",
+      "path": "/rotation",
+      "payload": {
+        "name": "message.created",
+        "timestamp": "2026-10-15T06:49:42.520650Z",
+        "data": {
+          "queue": "rotate",
+          "content": "rotation proof",
+          "created_at": "2026-10-15T06:49:42.520650Z",
+          "message_id": "msg_b44d78637c65bfc3"
+        },
+        "cursor": null,
+        "eventId": "evt_6d9a927ee65b8382"
+      },
+      "webhook_id": "evt_6d9a927ee65b8382",
+      "timestamp": "1792046982",
+      "signature_valid_keys": [
+        0,
+        1
+      ],
+      "body_bytes": 263,
+      "receiver_status": 202
+    },
+    {
+      "seconds": 2.884,
+      "kind": "callback",
+      "path": "/retry",
+      "payload": {
+        "type": "verification",
+        "challenge": "da654767ab2bc966c0c19004521daf31"
+      },
+      "webhook_id": "msg_verification_360904a00cbde8de",
+      "timestamp": "1792046984",
+      "signature_valid_keys": [
+        0
+      ],
+      "body_bytes": 73,
+      "receiver_status": 200
+    },
+    {
+      "seconds": 2.906,
+      "kind": "callback",
+      "path": "/recover",
+      "payload": {
+        "type": "verification",
+        "challenge": "030c2888d17e4393d1377af12177c50a"
+      },
+      "webhook_id": "msg_verification_b5b54790d0cfc445",
+      "timestamp": "1792046984",
+      "signature_valid_keys": [
+        0
+      ],
+      "body_bytes": 73,
+      "receiver_status": 200
+    },
+    {
+      "seconds": 2.912,
+      "kind": "callback",
+      "path": "/stall",
+      "payload": {
+        "type": "verification",
+        "challenge": "1db154dc64e010da1083b04631b30e35"
+      },
+      "webhook_id": "msg_verification_636b933566faa30d",
+      "timestamp": "1792046984",
+      "signature_valid_keys": [
+        0
+      ],
+      "body_bytes": 73,
+      "receiver_status": 200
+    },
+    {
+      "seconds": 3.114,
+      "kind": "callback",
+      "path": "/retry",
+      "payload": {
+        "name": "message.created",
+        "timestamp": "2026-10-15T06:49:44.144635Z",
+        "data": {
+          "queue": "retry",
+          "content": "temporary receiver failure",
+          "created_at": "2026-10-15T06:49:44.144635Z",
+          "message_id": "msg_f168835d0d92085a"
+        },
+        "cursor": null,
+        "eventId": "evt_c9837cc74b39996a"
+      },
+      "webhook_id": "evt_c9837cc74b39996a",
+      "timestamp": "1792046984",
+      "signature_valid_keys": [
+        0
+      ],
+      "body_bytes": 274,
+      "receiver_status": 503
+    },
+    {
+      "seconds": 4.128,
+      "kind": "callback",
+      "path": "/retry",
+      "payload": {
+        "name": "message.created",
+        "timestamp": "2026-10-15T06:49:44.144635Z",
+        "data": {
+          "queue": "retry",
+          "content": "temporary receiver failure",
+          "created_at": "2026-10-15T06:49:44.144635Z",
+          "message_id": "msg_f168835d0d92085a"
+        },
+        "cursor": null,
+        "eventId": "evt_c9837cc74b39996a"
+      },
+      "webhook_id": "evt_c9837cc74b39996a",
+      "timestamp": "1792046985",
+      "signature_valid_keys": [
+        0
+      ],
+      "body_bytes": 274,
+      "receiver_status": 503
+    },
+    {
+      "seconds": 6.147,
+      "kind": "callback",
+      "path": "/retry",
+      "payload": {
+        "name": "message.created",
+        "timestamp": "2026-10-15T06:49:44.144635Z",
+        "data": {
+          "queue": "retry",
+          "content": "temporary receiver failure",
+          "created_at": "2026-10-15T06:49:44.144635Z",
+          "message_id": "msg_f168835d0d92085a"
+        },
+        "cursor": null,
+        "eventId": "evt_c9837cc74b39996a"
+      },
+      "webhook_id": "evt_c9837cc74b39996a",
+      "timestamp": "1792046987",
+      "signature_valid_keys": [
+        0
+      ],
+      "body_bytes": 274,
+      "receiver_status": 202
+    },
+    {
+      "seconds": 14.49,
+      "kind": "callback",
+      "path": "/recover",
+      "payload": {
+        "name": "message.created",
+        "timestamp": "2026-10-15T06:49:55.494097Z",
+        "data": {
+          "queue": "recover",
+          "content": "retry survives restart",
+          "created_at": "2026-10-15T06:49:55.494097Z",
+          "message_id": "msg_d0a44277ae5142b0"
+        },
+        "cursor": null,
+        "eventId": "evt_78d7c28f3e267710"
+      },
+      "webhook_id": "evt_78d7c28f3e267710",
+      "timestamp": "1792046995",
+      "signature_valid_keys": [
+        0
+      ],
+      "body_bytes": 272,
+      "receiver_status": 503
+    },
+    {
+      "seconds": 15.615,
+      "kind": "callback",
+      "path": "/recover",
+      "payload": {
+        "name": "message.created",
+        "timestamp": "2026-10-15T06:49:55.494097Z",
+        "data": {
+          "queue": "recover",
+          "content": "retry survives restart",
+          "created_at": "2026-10-15T06:49:55.494097Z",
+          "message_id": "msg_d0a44277ae5142b0"
+        },
+        "cursor": null,
+        "eventId": "evt_78d7c28f3e267710"
+      },
+      "webhook_id": "evt_78d7c28f3e267710",
+      "timestamp": "1792046996",
+      "signature_valid_keys": [
+        0
+      ],
+      "body_bytes": 272,
+      "receiver_status": 202
+    },
+    {
+      "seconds": 15.874,
+      "kind": "callback",
+      "path": "/stall",
+      "payload": {
+        "name": "message.created",
+        "timestamp": "2026-10-15T06:49:56.844956Z",
+        "data": {
+          "queue": "stall",
+          "content": "ack without response body",
+          "created_at": "2026-10-15T06:49:56.844956Z",
+          "message_id": "msg_a798d280d447db91"
+        },
+        "cursor": null,
+        "eventId": "evt_f94ea83b8f7a8599"
+      },
+      "webhook_id": "evt_f94ea83b8f7a8599",
+      "timestamp": "1792046996",
+      "signature_valid_keys": [
+        0
+      ],
+      "body_bytes": 273,
+      "receiver_status": 202
+    },
+    {
+      "seconds": 16.38,
+      "kind": "callback",
+      "path": "/tls",
+      "payload": {
+        "type": "verification",
+        "challenge": "c479c6cddf70706d6f4d6f60e450da5f"
+      },
+      "webhook_id": "msg_verification_f476bd6d2addfe6f",
+      "timestamp": "1792046997",
+      "signature_valid_keys": [
+        0
+      ],
+      "body_bytes": 73,
+      "receiver_status": 200
+    },
+    {
+      "seconds": 16.589,
+      "kind": "callback",
+      "path": "/tls",
+      "payload": {
+        "name": "message.created",
+        "timestamp": "2026-10-15T06:49:57.626779Z",
+        "data": {
+          "queue": "tls",
+          "content": "verified TLS hostname",
+          "created_at": "2026-10-15T06:49:57.626779Z",
+          "message_id": "msg_2f1ef22f8ffe3392"
+        },
+        "cursor": null,
+        "eventId": "evt_05ab44f0e0b76961"
+      },
+      "webhook_id": "evt_05ab44f0e0b76961",
+      "timestamp": "1792046997",
+      "signature_valid_keys": [
+        0
+      ],
+      "body_bytes": 267,
+      "receiver_status": 202
+    },
+    {
+      "seconds": 302.394,
+      "kind": "callback",
+      "path": "/cache",
+      "payload": {
+        "type": "verification",
+        "challenge": "69d6b46fed06eba1e874735d67315bdf"
+      },
+      "webhook_id": "msg_verification_873feab874fd44f8",
+      "timestamp": "1792047283",
+      "signature_valid_keys": [
+        0
+      ],
+      "body_bytes": 73,
+      "receiver_status": 200
+    }
+  ],
+  "destination_rejections": [
+    {
+      "seconds": 0.212,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "441c6e4d",
+        "method": "events/subscribe",
+        "params": {
+          "name": "message.created",
+          "arguments": {
+            "queue": "blocked"
+          },
+          "delivery": {
+            "mode": "webhook",
+            "url": "http://127.0.0.1:46509/blocked",
+            "secret": "<disposable signing secret>"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "441c6e4d",
+        "error": {
+          "code": -32015,
+          "message": "CallbackEndpointError: Verification challenge failed: Destination URL must use HTTPS",
+          "data": {
+            "reason": "challenge_failed",
+            "details": "Verification challenge failed: Destination URL must use HTTPS"
+          }
+        }
+      },
+      "response_bytes": 278
+    },
+    {
+      "seconds": 0.214,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "a856db85",
+        "method": "events/subscribe",
+        "params": {
+          "name": "message.created",
+          "arguments": {
+            "queue": "blocked"
+          },
+          "delivery": {
+            "mode": "webhook",
+            "url": "https://127.0.0.1:46509/blocked",
+            "secret": "<disposable signing secret>"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "a856db85",
+        "error": {
+          "code": -32015,
+          "message": "CallbackEndpointError: Verification challenge failed: Non-public address blocked: 127.0.0.1",
+          "data": {
+            "reason": "challenge_failed",
+            "details": "Verification challenge failed: Non-public address blocked: 127.0.0.1"
+          }
+        }
+      },
+      "response_bytes": 292
+    },
+    {
+      "seconds": 0.215,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "aa68feeb",
+        "method": "events/subscribe",
+        "params": {
+          "name": "message.created",
+          "arguments": {
+            "queue": "blocked"
+          },
+          "delivery": {
+            "mode": "webhook",
+            "url": "https://100.64.0.1/callback",
+            "secret": "<disposable signing secret>"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "aa68feeb",
+        "error": {
+          "code": -32015,
+          "message": "CallbackEndpointError: Verification challenge failed: Non-public address blocked: 100.64.0.1",
+          "data": {
+            "reason": "challenge_failed",
+            "details": "Verification challenge failed: Non-public address blocked: 100.64.0.1"
+          }
+        }
+      },
+      "response_bytes": 294
+    },
+    {
+      "seconds": 0.216,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "74d911ea",
+        "method": "events/subscribe",
+        "params": {
+          "name": "message.created",
+          "arguments": {
+            "queue": "blocked"
+          },
+          "delivery": {
+            "mode": "webhook",
+            "url": "https://169.254.169.254/callback",
+            "secret": "<disposable signing secret>"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "74d911ea",
+        "error": {
+          "code": -32015,
+          "message": "CallbackEndpointError: Verification challenge failed: Non-public address blocked: 169.254.169.254",
+          "data": {
+            "reason": "challenge_failed",
+            "details": "Verification challenge failed: Non-public address blocked: 169.254.169.254"
+          }
+        }
+      },
+      "response_bytes": 304
+    },
+    {
+      "seconds": 16.166,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "b1ff0035",
+        "method": "events/subscribe",
+        "params": {
+          "name": "message.created",
+          "arguments": {
+            "queue": "invalid"
+          },
+          "delivery": {
+            "mode": "webhook",
+            "url": "http://127.0.0.1:46509/bad-echo",
+            "secret": "<disposable signing secret>"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "b1ff0035",
+        "error": {
+          "code": -32015,
+          "message": "CallbackEndpointError: Verification challenge failed: Verification challenge echo mismatch",
+          "data": {
+            "reason": "challenge_failed",
+            "details": "Verification challenge failed: Verification challenge echo mismatch"
+          }
+        }
+      },
+      "response_bytes": 290
+    },
+    {
+      "seconds": 16.168,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "76d378df",
+        "method": "events/subscribe",
+        "params": {
+          "name": "message.created",
+          "arguments": {
+            "queue": "invalid"
+          },
+          "delivery": {
+            "mode": "webhook",
+            "url": "http://127.0.0.1:46509/redirect",
+            "secret": "<disposable signing secret>"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "76d378df",
+        "error": {
+          "code": -32015,
+          "message": "CallbackEndpointError: Verification challenge failed: Verification challenge returned status 302",
+          "data": {
+            "reason": "challenge_failed",
+            "details": "Verification challenge failed: Verification challenge returned status 302"
+          }
+        }
+      },
+      "response_bytes": 302
+    },
+    {
+      "seconds": 16.169,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "42d5f1ca",
+        "method": "events/subscribe",
+        "params": {
+          "name": "message.created",
+          "arguments": {
+            "queue": "invalid"
+          },
+          "delivery": {
+            "mode": "webhook",
+            "url": "https://192.168.1.1/callback",
+            "secret": "<disposable signing secret>"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "42d5f1ca",
+        "error": {
+          "code": -32015,
+          "message": "CallbackEndpointError: Verification challenge failed: Non-public address blocked: 192.168.1.1",
+          "data": {
+            "reason": "challenge_failed",
+            "details": "Verification challenge failed: Non-public address blocked: 192.168.1.1"
+          }
+        }
+      },
+      "response_bytes": 296
+    },
+    {
+      "seconds": 16.17,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "88e45de0",
+        "method": "events/subscribe",
+        "params": {
+          "name": "message.created",
+          "arguments": {
+            "queue": "invalid"
+          },
+          "delivery": {
+            "mode": "webhook",
+            "url": "https://100.64.0.1/callback",
+            "secret": "<disposable signing secret>"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "88e45de0",
+        "error": {
+          "code": -32015,
+          "message": "CallbackEndpointError: Verification challenge failed: Non-public address blocked: 100.64.0.1",
+          "data": {
+            "reason": "challenge_failed",
+            "details": "Verification challenge failed: Non-public address blocked: 100.64.0.1"
+          }
+        }
+      },
+      "response_bytes": 294
+    },
+    {
+      "seconds": 16.171,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "822f07f6",
+        "method": "events/subscribe",
+        "params": {
+          "name": "message.created",
+          "arguments": {
+            "queue": "invalid"
+          },
+          "delivery": {
+            "mode": "webhook",
+            "url": "https://[::ffff:100.64.0.1]/callback",
+            "secret": "<disposable signing secret>"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "822f07f6",
+        "error": {
+          "code": -32015,
+          "message": "CallbackEndpointError: Verification challenge failed: Non-public address blocked: ::ffff:100.64.0.1",
+          "data": {
+            "reason": "challenge_failed",
+            "details": "Verification challenge failed: Non-public address blocked: ::ffff:100.64.0.1"
+          }
+        }
+      },
+      "response_bytes": 308
+    },
+    {
+      "seconds": 16.172,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "ff9054dd",
+        "method": "events/subscribe",
+        "params": {
+          "name": "message.created",
+          "arguments": {
+            "queue": "invalid"
+          },
+          "delivery": {
+            "mode": "webhook",
+            "url": "http://user:pass@127.0.0.1:46509/callback",
+            "secret": "<disposable signing secret>"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "ff9054dd",
+        "error": {
+          "code": -32015,
+          "message": "CallbackEndpointError: Verification challenge failed: Destination URL requires a hostname without credentials or fragment",
+          "data": {
+            "reason": "challenge_failed",
+            "details": "Verification challenge failed: Destination URL requires a hostname without credentials or fragment"
+          }
+        }
+      },
+      "response_bytes": 352
+    },
+    {
+      "seconds": 16.172,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "140bfb2b",
+        "method": "events/subscribe",
+        "params": {
+          "name": "message.created",
+          "arguments": {
+            "queue": "invalid"
+          },
+          "delivery": {
+            "mode": "webhook",
+            "url": "http://127.0.0.1:46509/callback#fragment",
+            "secret": "<disposable signing secret>"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "140bfb2b",
+        "error": {
+          "code": -32015,
+          "message": "CallbackEndpointError: Verification challenge failed: Destination URL requires a hostname without credentials or fragment",
+          "data": {
+            "reason": "challenge_failed",
+            "details": "Verification challenge failed: Destination URL requires a hostname without credentials or fragment"
+          }
+        }
+      },
+      "response_bytes": 352
+    },
+    {
+      "seconds": 16.641,
+      "kind": "mcp",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "7c6a18b5",
+        "method": "events/subscribe",
+        "params": {
+          "name": "message.created",
+          "arguments": {
+            "queue": "mismatch"
+          },
+          "delivery": {
+            "mode": "webhook",
+            "url": "https://127.0.0.1:35093/mismatch",
+            "secret": "<disposable signing secret>"
+          }
+        }
+      },
+      "http_status": 200,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "7c6a18b5",
+        "error": {
+          "code": -32015,
+          "message": "CallbackEndpointError: Verification challenge failed: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: IP address mismatch, certificate is not valid for '127.0.0.1'. (_ssl.c:1082)",
+          "data": {
+            "reason": "challenge_failed",
+            "details": "Verification challenge failed: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: IP address mismatch, certificate is not valid for '127.0.0.1'. (_ssl.c:1082)"
+          }
+        }
+      },
+      "response_bytes": 490
+    }
+  ],
+  "scenario_observations": [
+    {
+      "name": "Default loopback service exposes mailbox tools only and ignores inherited callback opt-in",
+      "result": "pass",
+      "details": {
+        "tools": [
+          "get_messages",
+          "reply",
+          "submit_message"
+        ],
+        "blocked_destinations": 4
+      }
+    },
+    {
+      "name": "Unique hello travels operator to signed callback to MCP reply and back without concurrent duplicates",
+      "result": "pass",
+      "details": {
+        "message_id": "msg_6e6eae23ed17b4b8",
+        "nonce": "hello-8d9f1b8e56c0663e28100146",
+        "duplicate_submissions": 24
+      }
+    },
+    {
+      "name": "Restart retains assignments replies subscriptions and recovers an offline assignment exactly once",
+      "result": "pass",
+      "details": {
+        "recovered_message_id": "msg_a26e94f7582fa02d"
+      }
+    },
+    {
+      "name": "Renewal rotates signatures optional correlation is omitted and expired or removed subscriptions stop events",
+      "result": "pass",
+      "details": {
+        "subscription_id": "sub_0f748da474fbe527"
+      }
+    },
+    {
+      "name": "Delivery retries stable events survives restart exhausts visibly and accepts a stalled-body 202 immediately",
+      "result": "pass",
+      "details": {
+        "retry_statuses": [
+          503,
+          503,
+          202
+        ],
+        "exhausted_attempts": 4,
+        "stalled_ack_seconds": 0.408
+      }
+    },
+    {
+      "name": "Invalid challenge echoes redirects credential URLs and non-public addresses are rejected",
+      "result": "pass",
+      "details": {
+        "redirect_target_requests": 0
+      }
+    },
+    {
+      "name": "Real TLS callbacks validate the hostname ignore proxy settings and try available localhost candidates",
+      "result": "pass",
+      "details": {
+        "resolved_candidates": [
+          "::1",
+          "127.0.0.1"
+        ],
+        "receiver_bound": "IPv4 only"
+      }
+    },
+    {
+      "name": "CLI and MCP enforce byte bounds cursor pagination private storage and explicit database ownership",
+      "result": "pass",
+      "details": {
+        "record_pages": [
+          50,
+          5
+        ],
+        "escaped_response_records": 1,
+        "storage_modes": {
+          "mailbox.sqlite3": "0o600",
+          "mailbox.sqlite3-wal": "0o600",
+          "mailbox.sqlite3-shm": "0o600"
+        }
+      }
+    },
+    {
+      "name": "Verification cache survives retries filter changes renewal and restarts but expires five minutes after the original challenge",
+      "result": "pass",
+      "details": {
+        "elapsed_seconds": 302.03,
+        "challenges": 2
+      }
+    }
+  ],
+  "remote_outcomes": {
+    "authenticated_remote_access": "untested: account-side tunnel and plugin setup explicitly reserved for Firstmate after review",
+    "real_dot_message_reply": "untested: contacting the existing dot is forbidden in this phase",
+    "real_event_triggered_wake_and_cloud_task": "untested: contacting the dot and dispatching cloud work are forbidden in this phase"
+  },
+  "contract_reference": "https://developers.openai.com/plugins/build/mcp-events",
+  "cleanup": {
+    "mailbox_server_processes_stopped": [
+      348090,
+      348201,
+      348703,
+      353631,
+      354479
+    ],
+    "disposable_fixture_directories_removed": true
+  }
+}
