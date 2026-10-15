@@ -1936,8 +1936,7 @@ secondmate_current_json() {  # <parent-tasks-json-file> <output-file>
            {state:(if $dot[0].unavailable or $dot[0].ready == false then "unknown"
                    elif any($decisions[]; .verb == "needs-decision" or .verb == "captain-hold") then "captain_decision"
                    elif any($decisions[]; .verb == "blocked") then "externally_held"
-                   elif any($dot[0].children[]?; .terminal == false and .current_state == "unknown") then "unknown"
-                   elif any($dot[0].children[]?; .terminal == false and .current_state == "working") then "active_child_work"
+                   elif $task.current_state.state == "working" and any($dot[0].children[]?; .terminal == false) then "active_child_work"
                    else ($task.current_state.state // "unknown") end),
             reason:(($task.current_state.detail // "mailbox health unknown") + (if $dot[0].unavailable then "; reported cloud inventory unavailable" else "; cloud activity is dot-reported, not directly observed" end))}
            else {state:"unknown",reason:(if $summary_sampled then "structured home state invalid: " + ($summary.reason // "unknown reason") else $reason end)} end),invalidity:null,

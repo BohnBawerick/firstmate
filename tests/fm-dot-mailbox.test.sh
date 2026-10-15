@@ -961,6 +961,72 @@ class MailboxRegressionTests(unittest.TestCase):
         self.box.publish_mate_replies()
         self.assertIn("state: working", run("fm-crew-state.sh", "dot-test"))
 
+    def test_current_cloud_turn_supersedes_older_terminal_parent_event(self):
+        class Health(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'ready' if self.path == '/readyz' else b'{"status":"ok","name":"fm-dot-mailbox"}')
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Health)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        urls = (f"http://127.0.0.1:{server.server_port}/health", f"http://127.0.0.1:{server.server_port}/readyz")
+        parent, home, env, run, message = self.routed_dot(urls)
+        self.subscribe()
+        status = parent / "state/dot-test.status"
+        def reply(text):
+            result = self.box.reply_message(message["id"], text, message["correlation_id"])
+            self.box.publish_mate_replies()
+            return result
+        def check(current, summary):
+            self.assertIn(f"state: {current} ·", run("fm-crew-state.sh", "dot-test"))
+            fleet = json.loads(run("fm-fleet-snapshot.sh", "--json"))
+            task = next(row for row in fleet["tasks"] if row["id"] == "dot-test")
+            mate = next(row for row in fleet["secondmate_current"]["records"] if row["id"] == "dot-test")
+            self.assertEqual(task["current_state"]["state"], current)
+            self.assertEqual(mate["current"]["state"], summary)
+        for terminal in ("done", "failed"):
+            with self.subTest(terminal=terminal):
+                note = {"schema": "fm.activity-note.v1", "event_id": terminal + "-A", "kind": terminal,
+                    "observed_at": m.now_iso(), "summary": "turn A finished", "task_id": "reused-task", "turn_id": terminal + "-A"}
+                reply("activity-note: " + json.dumps(note))
+                check(terminal, terminal)
+                terminal_log = status.read_bytes()
+                for kind in ("task-created", "milestone"):
+                    note.update(event_id=terminal + "-B-" + kind, kind=kind, observed_at=m.now_iso(),
+                        summary="turn B working", turn_id=terminal + "-B")
+                    reply("activity-note: " + json.dumps(note))
+                    self.assertEqual(status.read_bytes(), terminal_log)
+                    snapshot = json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test"))
+                    self.assertTrue(snapshot["ready"])
+                    self.assertEqual(snapshot["children"][0]["turn_id"], terminal + "-B")
+                    self.assertEqual(snapshot["children"][0]["current_state"], "working")
+                    check("working", "active_child_work")
+                with self.box.transaction():
+                    rows = self.box.conn.execute("SELECT seq,activity FROM mate_replies WHERE activity IS NOT NULL").fetchall()
+                    for row in rows:
+                        activity = json.loads(row["activity"])
+                        stamp = datetime.datetime.fromisoformat(activity["observed_at"].replace("Z", "+00:00"))
+                        activity["observed_at"] = (stamp - datetime.timedelta(seconds=1000)).isoformat()
+                        self.box.conn.execute("UPDATE mate_replies SET activity=? WHERE seq=?", (json.dumps(activity), row["seq"]))
+                snapshot = json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test"))
+                self.assertTrue(snapshot["ready"])
+                self.assertEqual(snapshot["children"][0]["turn_id"], terminal + "-B")
+                self.assertEqual(snapshot["children"][0]["current_state"], "unknown")
+                check("unknown", "unknown")
+                self.assertEqual(status.read_bytes(), terminal_log)
+        blocker = reply("blocked: explicit setup blocker")
+        check("blocked", "externally_held")
+        reply(f"resolved: [key={blocker['blocker_key']}] setup repaired")
+        check("unknown", "unknown")
+        reply("needs-decision: owner choice required")
+        check("parked", "captain_decision")
+
     def test_dot_fleet_waiting_state_uses_folded_parent_decisions(self):
         class Health(http.server.BaseHTTPRequestHandler):
             ready = True

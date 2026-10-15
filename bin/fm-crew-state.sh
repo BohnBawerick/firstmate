@@ -308,11 +308,24 @@ if [ "$TRANSPORT" = dot-mcp ]; then
   if DOT_SNAPSHOT=$("$SCRIPT_DIR/fm-dot-secondmate.sh" snapshot "$ID" 2>/dev/null); then
     DOT_HEALTH=$(jq -r '.health' <<< "$DOT_SNAPSHOT")
     jq -e '.ready == true' <<< "$DOT_SNAPSHOT" >/dev/null || emit unknown mailbox "$DOT_HEALTH"
+    DOT_LOG_STATE=$(map_log_state "$LOG_LINE")
+    case "$DOT_LOG_STATE" in
+      blocked|parked) emit "$DOT_LOG_STATE" status-log "$(status_line_note "$LOG_LINE")${SEP}$DOT_HEALTH" ;;
+    esac
+    DOT_CHILD_STATE=$(jq -r '
+      if .children_truncated then "unknown"
+      elif any(.children[]; .terminal == false) then
+        if .work_observation_fresh | not then "unknown"
+        elif any(.children[]; .terminal == false and .current_state == "needs-decision") then "parked"
+        elif any(.children[]; .terminal == false and .current_state == "blocked") then "blocked"
+        else "working" end
+      else empty end' <<< "$DOT_SNAPSHOT")
+    [ -z "$DOT_CHILD_STATE" ] || emit "$DOT_CHILD_STATE" mailbox "reported cloud observations${SEP}$DOT_HEALTH"
     if [ -n "$LOG_LINE" ]; then
-      if [ "$(map_log_state "$LOG_LINE")" = working ] && ! jq -e '.work_observation_fresh and (.children_truncated == false)' <<< "$DOT_SNAPSHOT" >/dev/null; then
+      if [ "$DOT_LOG_STATE" = working ] && ! jq -e '.work_observation_fresh' <<< "$DOT_SNAPSHOT" >/dev/null; then
         emit unknown mailbox "work observation is stale or missing${SEP}$DOT_HEALTH"
       fi
-      emit "$(map_log_state "$LOG_LINE")" status-log "$(status_line_note "$LOG_LINE")${SEP}$DOT_HEALTH"
+      emit "$DOT_LOG_STATE" status-log "$(status_line_note "$LOG_LINE")${SEP}$DOT_HEALTH"
     fi
     emit unknown mailbox "$DOT_HEALTH (idle until routed work; dot process state is not observable)"
   fi
