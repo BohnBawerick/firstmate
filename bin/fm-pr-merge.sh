@@ -107,9 +107,10 @@
 # A Forgejo merge is refused unless every pre-merge condition holds, each read
 # live at merge time: the pull request is open, not a draft, mergeable is
 # true, and the combined commit status at the exact current head, read across
-# every status page, is success (an unconfigured status, reported as "none",
+# every status page, is success. Error objects and malformed pages refuse,
+# including the terminal empty page. An unconfigured status, reported as "none",
 # refuses rather than being treated as nothing to check, the same reading
-# GitLab's null head_pipeline gets above). Every
+# GitLab's null head_pipeline gets above. Every
 # failing condition is reported, not just the first. tea exposes no head-
 # binding flag on its own merge subcommand, so the verified head is instead
 # passed as head_commit_id to a direct call against Forgejo/Gitea's REST API
@@ -131,7 +132,7 @@
 # because there is no established translation from a gh/glab-style flag into
 # a Forgejo API field yet.
 #
-# Before either forge merge, the task's existing per-task control lock
+# Before the forge merge, the task's existing per-task control lock
 # serializes the captain-hold check through the forge command. A still-held or
 # unreadable row refuses before that command, so a captain approval must be
 # recorded as an `answer --release` before this entrypoint is invoked. While
@@ -1615,7 +1616,7 @@ forgejo_confirm_merged() {
   [ "$merged" = true ]
 }
 
-# Record before either forge call. This arms the merge poll without claiming a
+# Record before the forge call. This arms the merge poll without claiming a
 # landed outcome, so even a provider read failure after a real merge cannot
 # leave teardown without the PR identity it needs to verify the result.
 away_status=0

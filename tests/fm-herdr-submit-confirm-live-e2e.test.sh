@@ -117,6 +117,18 @@ while [ "$i" -lt 60 ]; do
 done
 [ "$idle" = 1 ] || fail "Claude Code ($VERSION) on $HERDR_VER never rendered an idle composer in the lab pane"
 
+# Wait for two empty composer reads so an initial redraw cannot race the first steer.
+ready=0
+i=0
+while [ "$i" -lt 40 ]; do
+  state=$(fm_backend_herdr_composer_state "$TARGET")
+  if [ "$state" = empty ]; then ready=$((ready + 1)); else ready=0; fi
+  [ "$ready" -ge 2 ] && break
+  i=$((i + 1))
+  sleep 0.5
+done
+[ "$ready" -ge 2 ] || fail "Claude Code ($VERSION) on $HERDR_VER did not settle to an empty composer before the first steer"
+
 TOKEN="FMHERDRPONG$$_$RANDOM"
 verdict=$(fm_backend_herdr_send_text_submit "$TARGET" "Reply with exactly $TOKEN and nothing else." 3 0.4 0.4) \
   || fail "send_text_submit failed to run against Claude Code ($VERSION) on $HERDR_VER"

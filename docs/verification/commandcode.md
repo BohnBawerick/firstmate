@@ -1,7 +1,5 @@
 # Command Code worker verification
 
-Audience: maintainer verification.
-
 Verified 2026-10-05 on Linux x86_64 (`Linux 7.2.5-3-omarchy`) with Command Code `1.74.1` from the AUR `command-code` package, Node `v26.8.1`, tmux `3.7c`, and Herdr `0.9.3`.
 The [adapter reference](../../.agents/skills/harness-adapters/references/harness/commandcode.md) owns operating facts; executable owners carry launch and state mechanics.
 This verification covers crewmates and scouts on model `deepseek/deepseek-v4.1-flash`, with tmux as the guarded runtime backend and a named Herdr lab session for the same lifecycle on Herdr.

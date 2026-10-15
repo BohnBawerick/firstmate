@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Spawn a direct report: a crewmate in a treehouse or Orca worktree, or a
 # secondmate in its isolated firstmate home.
-# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--quality <standard|hardened>] [--branch-prefix <prefix>] [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--herdr-resume-lock-wait]
+# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--quality <standard|hardened>] [--branch-prefix <prefix>] [--base-branch <branch>] [--upstream-consent <host>/<owner>/<repo>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--herdr-resume-lock-wait]
 #        fm-spawn.sh <task-id> <project-dir> --scout [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--herdr-resume-lock-wait]
 #        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
 #   --mode and --yolo are this task's delivery contract, REQUIRED for every ship
@@ -31,6 +31,12 @@
 #   loud one-line deviation notice is printed and the spawn continues.
 #   no-mistakes-prod-only is a registry policy rather than a task mode and is
 #   refused as a flag value.
+#   --upstream-consent supplies the captain-approved one-task grant for a
+#   publishing ship on Firstmate itself; docs/configuration.md "Firstmate role"
+#   owns authority and publication-target resolution. The flag must agree with
+#   the brief, is recorded in task metadata, and is refused on local-only,
+#   scouts, and secondmates. A relaunch reuses the recorded grant and refuses
+#   an override.
 #   --quality is this task's quality posture, resolved at intake the same way from
 #   the project's registered "+hardened" annotation (bin/fm-project-mode.sh
 #   --quality). Unlike --mode it has a safe default, so it is optional on a ship
@@ -48,10 +54,10 @@
 #   prefix is the captain's standing preference and the brief agreement above
 #   already guarantees the worker's instructions match the branch.
 #   --base-branch is the optional branch selected at intake for a ship or scout
-#   to start from and target instead of origin's default branch. A fresh launch
-#   resets its pooled copy to origin/<branch>, refusing when the project has no
-#   origin or origin lacks that branch, or when the project's registered forge
-#   cannot carry it. It must agree with every Setup "Base branch:" line in the
+#   to start from and target instead of the project's default branch, using
+#   the local/remote base-selection contract below. It refuses a delivery or
+#   registered forge that cannot carry it.
+#   It must agree with every Setup "Base branch:" line in the
 #   brief (bin/fm-brief.sh --base-branch writes one; other such lines are prose),
 #   and a brief with such a line refuses a spawn without the flag. The spawn records it as
 #   base_branch= in state/<id>.meta, which a relaunch reuses and later review and

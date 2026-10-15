@@ -16,7 +16,7 @@ This skill owns the boundary between the two relationships.
 
 Absent any explicit grant, a home runs as firstmate **user/operator**.
 It may install, run, update, reconfigure, and locally repair firstmate, and its ordinary project work flows through the registered delivery modes unchanged.
-What it may never do on its own is publish to firstmate's upstream: no pushed branch, no pull request, no issue, no comment, no fork, no review.
+It may never publish Firstmate work on its own authority: no pushed branch, pull request, issue, comment, fork, or review.
 
 Role is **never inferred**.
 GitHub identity, forge permissions, the name or URL of `origin` or any other remote, repository ownership, authentication state, environment variables, and CI context all say nothing about role; the only inputs are the explicit local grants below.
@@ -30,7 +30,7 @@ A user/operator home that hits a firstmate bug does local work only:
 3. Optionally prepare a sanitized local issue draft or a proposed local patch under the task's data directory, for the operator to review and submit by hand.
 4. Report to the captain what happened and what was produced.
 
-A local patch or workaround may touch the gitignored operational surface and a task's own worktree; nothing reaches upstream without the authority below.
+A local patch or workaround may touch the gitignored operational surface and a task's own worktree; publication requires the authority below.
 This posture covers firstmate self-repair exactly the same way it covers a dispatched task: the boundary is about publication, not about which surface holds the fix.
 
 ## The two explicit grants
@@ -41,7 +41,7 @@ Only the operator may opt the primary home in; follow the [Firstmate role schema
 
 ### One-task contribution consent (bounded)
 
-When the captain explicitly approves one specific upstream contribution, record it on that task only: `--upstream-consent <host>/<owner>/<repo>` on `bin/fm-brief.sh`, `bin/fm-spawn.sh`, and `bin/fm-promote.sh`.
+When the captain explicitly approves one specific contribution, record it on that task only: `--upstream-consent <host>/<owner>/<repo>` on `bin/fm-brief.sh`, `bin/fm-spawn.sh`, and `bin/fm-promote.sh`.
 Consent renders as an `upstream-consent=` token on the brief's `Delivery contract:` line, is recorded in `state/<id>.meta`, and a relaunch reuses the recorded value.
 It changes the home's persistent role in no way; the next task is gated fresh.
 The captain's approval must be a current explicit instruction naming the contribution - never an inference from the task resembling maintainer work.
@@ -63,7 +63,7 @@ Never work around a refusal by pointing the task at a second checkout, fork, or 
 ## Updating is not contributing
 
 `/updatefirstmate` and every guarded sync pull **from** upstream, which is consumption, not publication, and stays allowed for every role.
-The boundary covers only traffic that writes to the upstream repository.
+The [publication-target policy](../../../docs/configuration.md#firstmate-role-configfirstmate-role) determines which repository a publishing task needs authority for.
 
 ## Secondmates
 

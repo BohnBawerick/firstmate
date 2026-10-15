@@ -109,6 +109,10 @@
   ],
   "surfaces": [
     {
+      "path": "tests/fixtures/claude-2.1.300-exit-popup.txt",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": ".agents/skills/afk/SKILL.md",
       "audience": "agent-runtime"
     },

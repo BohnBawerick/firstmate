@@ -14,7 +14,7 @@
 # charters still use a single `{TASK}` charter fill. Firstmate may adjust other
 # sections when the task genuinely deviates (e.g. working an existing external
 # PR instead of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--quality <standard|hardened>] [--branch-prefix <prefix>] [--base-branch <branch>] [--forge <none|gerrit|forgejo> [--shape squash]] [--herdr-lab]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--quality <standard|hardened>] [--branch-prefix <prefix>] [--base-branch <branch>] [--project <dir>] [--upstream-consent <host>/<owner>/<repo>] [--forge <none|gerrit|forgejo> [--shape squash]] [--herdr-lab]
 #        fm-brief.sh <task-id> <repo-name> --scout [--base-branch <branch>] [--herdr-lab]
 #        fm-brief.sh <task-id> <repo-name> --dreamer [--herdr-lab]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
@@ -91,8 +91,8 @@
 # change.
 # It defaults to squash on gerrit and is refused without it.
 # --upstream-consent <host>/<owner>/<repo> records the captain's one-off
-# approval for this one task to publish to that repository when it is
-# firstmate's own upstream. It renders as an `upstream-consent=` token on the
+# approval for this one task to publish to the verified Firstmate publication
+# target. It renders as an `upstream-consent=` token on the
 # Delivery contract line, bin/fm-spawn.sh checks it against this home's role
 # authority and records it in the task record, and bin/fm-promote.sh honors it
 # the same way. Ship-only: a scout publishes nothing and a charter is not a

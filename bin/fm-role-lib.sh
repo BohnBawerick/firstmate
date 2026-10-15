@@ -3,8 +3,8 @@
 #
 # Every Firstmate home runs as a user/operator by default: it may consume
 # firstmate, change its gitignored operational state, and repair the installation
-# locally, but nothing it does publishes to the firstmate repository's upstream.
-# Upstream publication - a pushed branch, pull request, issue, comment, or fork -
+# locally, but it cannot publish Firstmate work on its own authority.
+# Publication - a pushed branch, pull request, issue, comment, or fork -
 # requires an explicit, home-local grant: the maintainer opt-in written by the
 # operator into config/firstmate-role, or a bounded per-task consent recorded at
 # dispatch. Role is never inferred from gh identity, permissions, remotes,
@@ -17,8 +17,8 @@
 # Role file: one directive line in config/firstmate-role (blank lines and
 # full-line # comments ignored), either
 #   user                                 - the default; may be omitted
-#   maintainer <host>/<owner>/<repo>     - this home develops firstmate for the
-#                                          named upstream
+#   maintainer <host>/<owner>/<repo>     - this home may publish Firstmate work
+#                                          to the named repository
 # A scope names the publication target repository (where a PR lands), not a push
 # destination. In a secondmate home (marked by .fm-secondmate-home) a role file
 # authorizes nothing on its own: it is trusted only when the existing

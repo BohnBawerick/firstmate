@@ -39,12 +39,15 @@ BASE_ENV = {
 
 def make(name):
     root = LAB / name
-    root.mkdir()
-    for directory in ("state", "config", "data", "projects"):
-        (root / directory).mkdir()
+    subprocess.run(
+        [str(REPO / "bin/fm-lab-home.sh"), "create", str(root)],
+        check=True,
+        env=BASE_ENV,
+        capture_output=True,
+    )
     subprocess.run(["git", "init", "-q", str(root)], check=True, env=BASE_ENV)
     (root / "AGENTS.md").write_text("Synthetic diagnostic fixture. No fleet or project operations.\n")
-    (root / "bin").symlink_to(REPO / "bin", target_is_directory=True)
+    shutil.copytree(REPO / "bin", root / "bin")
     (root / "state/task.meta").write_text("project=synthetic\n")
     (root / "state/home-summary.json").write_text("{}\n")
     env = BASE_ENV | {
@@ -52,8 +55,6 @@ def make(name):
         "FM_ROOT_OVERRIDE": str(root),
         "FM_STATE_OVERRIDE": str(root / "state"),
         "FM_CONFIG_OVERRIDE": str(root / "config"),
-        "FM_DATA_OVERRIDE": str(root / "data"),
-        "FM_PROJECTS_OVERRIDE": str(root / "projects"),
         "FM_POLL": "1",
         "FM_HEARTBEAT": "999999",
         "FM_HOME_SUMMARY_INTERVAL": "999999",
