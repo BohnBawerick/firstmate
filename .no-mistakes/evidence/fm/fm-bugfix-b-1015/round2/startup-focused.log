@@ -1,0 +1,3 @@
+ok - a stalled home-summary refresh does not hold session start
+ok - a hung per-task endpoint read hits its configured bound, reports the task, and leaves nothing stuck
+ok - a padded-zero per-read bound falls back to the 10s default instead of removing the bound

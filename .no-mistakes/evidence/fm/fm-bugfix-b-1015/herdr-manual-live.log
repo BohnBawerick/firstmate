@@ -1,0 +1,67 @@
+Codex idle through actual Herdr adapter: empty
+
+  >_ OpenAI Codex (v0.162.1)
+     ~/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6
+
+
+
+
+
+
+
+
+                                          ⣀⣤⣤⣤⣀⣀
+                                       ⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣦⣤⣤⣤⣤⣤⣤⡀
+                                     ⢀⣾⣿⣿⠿⠋⠉⠉⢉⣭⣿⣿⣿⣿⣿⠿⣿⣿⣿⣿⣷⣄
+                                    ⣀⣾⣿⣿⠃ ⣀⣴⣾⣿⣿⡿⠟⠋ ⣀⡀ ⠈⠙⢿⣿⣿⣧
+                                 ⣀⣶⣿⣿⣿⣿⡇ ⢸⣿⣿⡿⠛⠉⢀⣠⣴⣿⣿⣿⣷⣦⣀⠈⢻⣿⣿⡇
+                                ⣰⣿⣿⡿⢿⣿⣿⡇ ⢸⣿⣿⢀⣤⣶⣿⣿⣿⠟⠛⠻⣿⣿⣿⣿⣮⣿⣿⡷
+                               ⢰⣿⣿⡟⠁⢸⣿⣿⡇ ⢸⣿⣿⣿⣿⠿⠿⣿⣿⣿⣦⣄⡀⠈⠛⠿⣿⣿⣿⣧⡀
+                               ⣾⣿⣿⠃ ⢸⣿⣿⡇ ⢸⣿⣿⠋⠁  ⠈⠙⢻⣿⣿⣿⣶⣤⡀ ⠹⢿⣿⣷⡄
+                               ⢸⣿⣿⣇ ⠸⣿⣿⣷⣦⣼⣿⣿      ⢸⣿⣿⠻⢿⣿⣿⡇ ⠘⣿⣿⣿
+                               ⠈⢿⣿⣿⣦⡀⠈⠛⠿⣿⣿⣿⣿⣄⡀  ⢀⣠⣼⣿⣿  ⣿⣿⡇  ⣿⣿⣿⠇
+                                 ⢻⣿⣿⣿⣷⣦⣀⠈⠙⠻⣿⣿⣿⣶⣶⣿⣿⣿⣿⣿  ⣿⣿⡇ ⣠⣿⣿⣿
+                                 ⢸⣿⣿⡿⢿⣿⣿⣿⣦⣠⣴⣿⣿⣿⡿⠟⠋⢸⣿⣿  ⣿⣿⣷⣴⣿⣿⣿⠃
+                                 ⠘⣿⣿⣷ ⠈⠛⢿⣿⣿⣿⠿⠋⠉ ⣠⣴⣿⣿⣿  ⣿⣿⣿⣿⣿⠟⠁
+                                  ⠻⣿⣿⣿⣤⣀ ⠈⠉ ⢀⣤⣶⣿⣿⣿⠿⠟⠁ ⣰⣿⣿⡟⠋⠁
+                                   ⠈⠿⣿⣿⣿⣿⣶⣾⣿⣿⣿⣿⠟⠋⠁  ⣠⣼⣿⣿⡟
+                                      ⠙⠛⠛⠛⠻⠛⢿⣿⣿⣿⣿⣷⣾⣿⣿⣿⡿⠏
+                                             ⠈⠙⠛⠿⠿⠿⠿⠛⠉
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+
+  ? for shortcuts
+Ambiguous periodic draft: expected=240 bytes; typed=160; observed=161
+Real Claude periodic draft proof: refused; Enter withheld
+Narrow expected payload: Reply with exactly NARROWLIVE28026PONG and nothing else. This sentence only pads the request so that it wraps past the composer's visible rows in a narrow pane, and this one pads it a little further.
+Narrow observed composer tail: else. This sentence only pads the request so that it wraps past the composer's visible rows in a narrow pane, and this one pads it a little further.
+Narrow send result: empty
+ ▐▛███▛█   Sonnet 5.5
+▝▜██████▀  Claude Max
+ ▝▝   ▝▝   …/01M50CWGPF8YPNBTQR…
+
+
+❯ Reply with exactly
+  NARROWLIVE28026PONG and nothing
+  else. This sentence only pads the
+  request so that it wraps past
+  the composer's visible rows in a
+  narrow pane, and this one pads it
+  a little further.
+
+● NARROWLIVE28026PONG
+      Ctrl+Y to paste deleted text
+────────────────────────────────────
+❯
+────────────────────────────────────
+  01M50CWGPF8YPNBTQRHJHZRNM6 [!?]…
+  ⏵⏵ bypass permissions on  · ← 1…
+LIVE HERDR SCENARIOS PASSED

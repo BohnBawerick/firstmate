@@ -1,0 +1,8 @@
+stopped: lab tmux server and lab processes
+removed: 2 Claude project entries under /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/runtime/fm-live-lab.SvYfd3/late
+removed: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/runtime/fm-live-lab.SvYfd3/late
+down exit=0
+ok - down tracks TERM-spawned descendants across a missed process scan
+TERM root pid=1387269 child pid=1387820
+Child process after delayed write window: Remaining lab trust keys: <>
+Missed scan proof: 10

@@ -1,0 +1,6 @@
+1792093926	1	stale	live-primary	stale: lab wake for the supervision branch
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 1 --recovery-generation 59407.1792093926.fJLM91
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+lab-status [key=one] needs-decision: first unresolved choice
+lab-status [key=two] blocked: second unresolved blocker
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'

@@ -1,0 +1,5 @@
+unreached: sm1: the request to write down its open work could not be delivered: ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━; the re-read message could not be delivered either: WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+summary: 0 of 1 restarted, 0 nudged, 1 unreached
+grep: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/runtime/fm-secondmate-restart.T5yFpC/pi-settle-deadline-14210/fake/sleep-args: No such file or directory
+/home/bohn/.no-mistakes/evidence/01M50CWGPF8YPNBTQRHJHZRNM6/round2/restart-focused.sh: line 597: [: : integer expected
+not ok - the settle loop did not cap all sleeps to the available two-second intervals

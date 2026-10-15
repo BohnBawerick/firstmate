@@ -1,0 +1,188 @@
++ test_poll_deadline_preserves_progress_and_bounds_logout
++ local home harness real_py out count retry_uid mode
+++ command -v python3
++ real_py=/usr/bin/python3
++ harness=/tmp/fm-mail-check.USfci3/deadline-imap.py
++ cat
+++ make_home deadline-fetch
+++ local name=deadline-fetch home
+++ home=/tmp/fm-mail-check.USfci3/deadline-fetch
+++ mkdir -p /tmp/fm-mail-check.USfci3/deadline-fetch/state
+++ printf '%s\n' /tmp/fm-mail-check.USfci3/deadline-fetch
++ home=/tmp/fm-mail-check.USfci3/deadline-fetch
++ write_env /tmp/fm-mail-check.USfci3/deadline-fetch
++ local home=/tmp/fm-mail-check.USfci3/deadline-fetch
++ printf '%s\n' FM_MAIL_USER=test@example.invalid FM_MAIL_PASS=test-pass FM_IMAP_HOST=imap.test.invalid FM_SMTP_HOST=smtp.test.invalid
++ enter_mailbox /tmp/fm-mail-check.USfci3/deadline-fetch :
++ local home=/tmp/fm-mail-check.USfci3/deadline-fetch generator=:
++ mkdir -p /tmp/fm-mail-check.USfci3/deadline-fetch/bin /tmp/fm-mail-check.USfci3/fakebin
++ '[' -e /tmp/fm-mail-check.USfci3/deadline-fetch/bin/fm-wake-lib.sh ']'
++ ln -s /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-wake-lib.sh /tmp/fm-mail-check.USfci3/deadline-fetch/bin/fm-wake-lib.sh
++ '[' -e /tmp/fm-mail-check.USfci3/deadline-fetch/bin/fm-path-lib.sh ']'
++ ln -s /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-path-lib.sh /tmp/fm-mail-check.USfci3/deadline-fetch/bin/fm-path-lib.sh
++ printf '%s\n' :
++ chmod +x /tmp/fm-mail-check.USfci3/fakebin/python3
++ printf '#!/bin/bash\nexec "%s" "%s" "$@"\n' /usr/bin/python3 /tmp/fm-mail-check.USfci3/deadline-imap.py
++ printf 'fetch\n'
++ printf 'uidvalidity=90009\n21\n22\n'
++ printf '21\n22\n'
++ printf '0\n'
++ out=/tmp/fm-mail-check.USfci3/deadline-fetch/out
++ run_check /tmp/fm-mail-check.USfci3/deadline-fetch /tmp/fm-mail-check.USfci3/deadline-fetch/out /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-mail-check.sh
++ local home=/tmp/fm-mail-check.USfci3/deadline-fetch out=/tmp/fm-mail-check.USfci3/deadline-fetch/out check=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-mail-check.sh
++ shift 3
++ local status=0
++ env -u FM_MAIL_USER -u FM_MAIL_PASS -u FM_IMAP_HOST -u FM_SMTP_HOST -u FM_MAIL_CHECK_BUDGET FM_CHECK_TIMEOUT=30 FM_HOME=/tmp/fm-mail-check.USfci3/deadline-fetch PATH=/tmp/fm-mail-check.USfci3/fakebin:/home/bohn/.local/share/mise/installs/codex/0.162.1/codex-path:/home/bohn/.codex/tmp/arg0/codex-arg0s7RkzL:/home/bohn/.local/share/mise/installs/codex/0.162.1/codex-path:/home/bohn/.local/bin:/home/bohn/.kimi-code/bin:/home/bohn/.grok/bin:/home/bohn/.dotnet:/home/bohn/.dotnet/tools:/home/bohn/.local/share/pnpm:/home/bohn/.opencode/bin:/home/bohn/.local/share/mise/installs/codex/latest/bin:/home/bohn/.local/share/mise/installs/claude/latest:/home/bohn/.local/share/mise/installs/cursor-agent/latest/bin:/home/bohn/.local/share/mise/installs/gemini/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/gh/latest/gh_2.102.0_linux_amd64/bin:/home/bohn/.local/share/mise/installs/github-can1357-oh-my-pi/latest:/home/bohn/.local/share/mise/installs/go/1.25.14/bin:/home/bohn/.local/share/mise/installs/http-muse/latest:/home/bohn/.local/share/mise/installs/pnpm/10.33.4:/home/bohn/.local/share/mise/installs/node/26.7.0/bin:/home/bohn/.local/share/mise/installs/npm-xai-official-grok/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-playwright/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-opencode-cli/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/pi/latest/pi:/home/bohn/.local/share/mise/installs/npm-gh-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-lavish-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-chrome-devtools-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-quota-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-tasks-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/java/temurin-21/bin:/home/bohn/.local/share/mise/shims:/home/bohn/go/bin:/home/bohn/.cargo/bin:/home/bohn/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/cuda/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-mail-check.sh check
++ expect_code 0 0 'check exit'
++ local expected=0 actual=0 'label=check exit'
++ '[' 0 = 0 ']'
+++ cat /tmp/fm-mail-check.USfci3/deadline-fetch/out
++ assert_not_contains 'mail: new mail: woke for 13' 'poll did not finish' 'slow headers exhausted the watchdog'
++ case "$1" in
++ :
+++ cat /tmp/fm-mail-check.USfci3/deadline-fetch/out
++ assert_contains 'mail: new mail: woke for 13' 'new mail: woke for' 'slow headers made no progress'
++ case "$1" in
++ :
+++ grep -c '^[0-9]' /tmp/fm-mail-check.USfci3/deadline-fetch/state/.mail-seen
++ count=17
++ '[' 17 -gt 3 ']'
++ '[' 17 -lt 22 ']'
+++ cat /tmp/fm-mail-check.USfci3/deadline-fetch/state/.mail-retry-pos
++ '[' 0 = 0 ']'
+++ tail -1 /tmp/fm-mail-check.USfci3/deadline-fetch/state/.mail-retry
++ retry_uid=13
++ '[' -n 13 ']'
++ grep -Fxq 13 /tmp/fm-mail-check.USfci3/deadline-fetch/state/.mail-seen
++ assert_present /tmp/fm-mail-check.USfci3/deadline-fetch/closed 'expired poll left its connection open'
++ '[' -e /tmp/fm-mail-check.USfci3/deadline-fetch/closed ']'
++ printf 'fast\n'
++ run_check /tmp/fm-mail-check.USfci3/deadline-fetch /tmp/fm-mail-check.USfci3/deadline-fetch/out /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-mail-check.sh
++ local home=/tmp/fm-mail-check.USfci3/deadline-fetch out=/tmp/fm-mail-check.USfci3/deadline-fetch/out check=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-mail-check.sh
++ shift 3
++ local status=0
++ env -u FM_MAIL_USER -u FM_MAIL_PASS -u FM_IMAP_HOST -u FM_SMTP_HOST -u FM_MAIL_CHECK_BUDGET FM_CHECK_TIMEOUT=30 FM_HOME=/tmp/fm-mail-check.USfci3/deadline-fetch PATH=/tmp/fm-mail-check.USfci3/fakebin:/home/bohn/.local/share/mise/installs/codex/0.162.1/codex-path:/home/bohn/.codex/tmp/arg0/codex-arg0s7RkzL:/home/bohn/.local/share/mise/installs/codex/0.162.1/codex-path:/home/bohn/.local/bin:/home/bohn/.kimi-code/bin:/home/bohn/.grok/bin:/home/bohn/.dotnet:/home/bohn/.dotnet/tools:/home/bohn/.local/share/pnpm:/home/bohn/.opencode/bin:/home/bohn/.local/share/mise/installs/codex/latest/bin:/home/bohn/.local/share/mise/installs/claude/latest:/home/bohn/.local/share/mise/installs/cursor-agent/latest/bin:/home/bohn/.local/share/mise/installs/gemini/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/gh/latest/gh_2.102.0_linux_amd64/bin:/home/bohn/.local/share/mise/installs/github-can1357-oh-my-pi/latest:/home/bohn/.local/share/mise/installs/go/1.25.14/bin:/home/bohn/.local/share/mise/installs/http-muse/latest:/home/bohn/.local/share/mise/installs/pnpm/10.33.4:/home/bohn/.local/share/mise/installs/node/26.7.0/bin:/home/bohn/.local/share/mise/installs/npm-xai-official-grok/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-playwright/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-opencode-cli/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/pi/latest/pi:/home/bohn/.local/share/mise/installs/npm-gh-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-lavish-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-chrome-devtools-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-quota-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-tasks-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/java/temurin-21/bin:/home/bohn/.local/share/mise/shims:/home/bohn/go/bin:/home/bohn/.cargo/bin:/home/bohn/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/cuda/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-mail-check.sh check
++ expect_code 0 0 'check exit'
++ local expected=0 actual=0 'label=check exit'
++ '[' 0 = 0 ']'
+++ grep '^[0-9]' /tmp/fm-mail-check.USfci3/deadline-fetch/state/.mail-seen
+++ sort -u
+++ wc -l
+++ tr -d '[:space:]'
++ count=22
++ '[' 22 = 22 ']'
++ '[' '!' -s /tmp/fm-mail-check.USfci3/deadline-fetch/state/.mail-retry ']'
+++ cat /tmp/fm-mail-check.USfci3/deadline-fetch/state/.wake-queue
++ assert_contains $'1792091251\t1\tcheck\tmail:90009/1\tcheck: mail 1 - mail from reader@example.invalid - recovered header\n1792091251\t2\tcheck\tmail:90009/21\tcheck: mail 21 - mail from reader@example.invalid - recovered header\n1792091251\t3\tcheck\tmail:90009/22\tcheck: mail 22 - mail from reader@example.invalid - recovered header\n1792091251\t4\tcheck\tmail:90009/2\tcheck: mail 2 - mail from reader@example.invalid - recovered header\n1792091251\t5\tcheck\tmail:90009/3\tcheck: mail 3 - mail from reader@example.invalid - recovered header\n1792091252\t6\tcheck\tmail:90009/4\tcheck: mail 4 - mail from reader@example.invalid - recovered header\n1792091252\t7\tcheck\tmail:90009/5\tcheck: mail 5 - mail from reader@example.invalid - recovered header\n1792091252\t8\tcheck\tmail:90009/6\tcheck: mail 6 - mail from reader@example.invalid - recovered header\n1792091252\t9\tcheck\tmail:90009/7\tcheck: mail 7 - mail from reader@example.invalid - recovered header\n1792091252\t10\tcheck\tmail:90009/8\tcheck: mail 8 - mail from reader@example.invalid - recovered header\n1792091252\t11\tcheck\tmail:90009/9\tcheck: mail 9 - mail from reader@example.invalid - recovered header\n1792091253\t12\tcheck\tmail:90009/10\tcheck: mail 10 - mail from reader@example.invalid - recovered header\n1792091253\t13\tcheck\tmail:90009/11\tcheck: mail 11 - mail from reader@example.invalid - recovered header\n1792091253\t14\tcheck\tmail:90009/12\tcheck: mail 12 - mail from reader@example.invalid - recovered header\n1792091253\t15\tcheck\tmail:90009/13\tcheck: mail 13 - mail from (no header) - unfetchable header - see fm-mail read\n1792091253\t16\tcheck\tmail:90009/13\tcheck: mail 13 - mail from reader@example.invalid - recovered header\n1792091253\t17\tcheck\tmail:90009/14\tcheck: mail 14 - mail from reader@example.invalid - recovered header\n1792091253\t18\tcheck\tmail:90009/15\tcheck: mail 15 - mail from reader@example.invalid - recovered header\n1792091254\t19\tcheck\tmail:90009/16\tcheck: mail 16 - mail from reader@example.invalid - recovered header\n1792091254\t20\tcheck\tmail:90009/17\tcheck: mail 17 - mail from reader@example.invalid - recovered header\n1792091254\t21\tcheck\tmail:90009/18\tcheck: mail 18 - mail from reader@example.invalid - recovered header\n1792091254\t22\tcheck\tmail:90009/19\tcheck: mail 19 - mail from reader@example.invalid - recovered header\n1792091254\t23\tcheck\tmail:90009/20\tcheck: mail 20 - mail from reader@example.invalid - recovered header' 'check: mail 13 - mail from reader@example.invalid' 'the degraded header never published its recovered metadata'
++ case "$1" in
++ :
++ for mode in logout login
+++ make_home deadline-logout
+++ local name=deadline-logout home
+++ home=/tmp/fm-mail-check.USfci3/deadline-logout
+++ mkdir -p /tmp/fm-mail-check.USfci3/deadline-logout/state
+++ printf '%s\n' /tmp/fm-mail-check.USfci3/deadline-logout
++ home=/tmp/fm-mail-check.USfci3/deadline-logout
++ write_env /tmp/fm-mail-check.USfci3/deadline-logout
++ local home=/tmp/fm-mail-check.USfci3/deadline-logout
++ printf '%s\n' FM_MAIL_USER=test@example.invalid FM_MAIL_PASS=test-pass FM_IMAP_HOST=imap.test.invalid FM_SMTP_HOST=smtp.test.invalid
++ printf '%s\n' logout
++ out=/tmp/fm-mail-check.USfci3/deadline-logout/out
++ run_check /tmp/fm-mail-check.USfci3/deadline-logout /tmp/fm-mail-check.USfci3/deadline-logout/out /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-mail-check.sh FM_MAIL_CHECK_BUDGET=5 FM_MAIL_POLL_MAX_WAKES=2
++ local home=/tmp/fm-mail-check.USfci3/deadline-logout out=/tmp/fm-mail-check.USfci3/deadline-logout/out check=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-mail-check.sh
++ shift 3
++ local status=0
++ env -u FM_MAIL_USER -u FM_MAIL_PASS -u FM_IMAP_HOST -u FM_SMTP_HOST -u FM_MAIL_CHECK_BUDGET FM_CHECK_TIMEOUT=30 FM_MAIL_CHECK_BUDGET=5 FM_MAIL_POLL_MAX_WAKES=2 FM_HOME=/tmp/fm-mail-check.USfci3/deadline-logout PATH=/tmp/fm-mail-check.USfci3/fakebin:/home/bohn/.local/share/mise/installs/codex/0.162.1/codex-path:/home/bohn/.codex/tmp/arg0/codex-arg0s7RkzL:/home/bohn/.local/share/mise/installs/codex/0.162.1/codex-path:/home/bohn/.local/bin:/home/bohn/.kimi-code/bin:/home/bohn/.grok/bin:/home/bohn/.dotnet:/home/bohn/.dotnet/tools:/home/bohn/.local/share/pnpm:/home/bohn/.opencode/bin:/home/bohn/.local/share/mise/installs/codex/latest/bin:/home/bohn/.local/share/mise/installs/claude/latest:/home/bohn/.local/share/mise/installs/cursor-agent/latest/bin:/home/bohn/.local/share/mise/installs/gemini/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/gh/latest/gh_2.102.0_linux_amd64/bin:/home/bohn/.local/share/mise/installs/github-can1357-oh-my-pi/latest:/home/bohn/.local/share/mise/installs/go/1.25.14/bin:/home/bohn/.local/share/mise/installs/http-muse/latest:/home/bohn/.local/share/mise/installs/pnpm/10.33.4:/home/bohn/.local/share/mise/installs/node/26.7.0/bin:/home/bohn/.local/share/mise/installs/npm-xai-official-grok/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-playwright/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-opencode-cli/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/pi/latest/pi:/home/bohn/.local/share/mise/installs/npm-gh-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-lavish-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-chrome-devtools-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-quota-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-tasks-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/java/temurin-21/bin:/home/bohn/.local/share/mise/shims:/home/bohn/go/bin:/home/bohn/.cargo/bin:/home/bohn/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/cuda/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-mail-check.sh check
++ expect_code 0 0 'check exit'
++ local expected=0 actual=0 'label=check exit'
++ '[' 0 = 0 ']'
+++ cat /tmp/fm-mail-check.USfci3/deadline-logout/out
++ assert_not_contains 'mail: new mail: woke for 2' 'poll did not finish' 'logout exceeded the watchdog'
++ case "$1" in
++ :
++ '[' logout = logout ']'
+++ cat /tmp/fm-mail-check.USfci3/deadline-logout/out
++ assert_contains 'mail: new mail: woke for 2' 'new mail: woke for' 'hung logout discarded completed rows'
++ case "$1" in
++ :
++ assert_present /tmp/fm-mail-check.USfci3/deadline-logout/closed 'hung logout left its connection open'
++ '[' -e /tmp/fm-mail-check.USfci3/deadline-logout/closed ']'
+++ grep -c '^[0-9]' /tmp/fm-mail-check.USfci3/deadline-logout/state/.mail-seen
++ count=2
++ '[' 2 = 2 ']'
++ for mode in logout login
+++ make_home deadline-login
+++ local name=deadline-login home
+++ home=/tmp/fm-mail-check.USfci3/deadline-login
+++ mkdir -p /tmp/fm-mail-check.USfci3/deadline-login/state
+++ printf '%s\n' /tmp/fm-mail-check.USfci3/deadline-login
++ home=/tmp/fm-mail-check.USfci3/deadline-login
++ write_env /tmp/fm-mail-check.USfci3/deadline-login
++ local home=/tmp/fm-mail-check.USfci3/deadline-login
++ printf '%s\n' FM_MAIL_USER=test@example.invalid FM_MAIL_PASS=test-pass FM_IMAP_HOST=imap.test.invalid FM_SMTP_HOST=smtp.test.invalid
++ printf '%s\n' login
++ out=/tmp/fm-mail-check.USfci3/deadline-login/out
++ run_check /tmp/fm-mail-check.USfci3/deadline-login /tmp/fm-mail-check.USfci3/deadline-login/out /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-mail-check.sh FM_MAIL_CHECK_BUDGET=5 FM_MAIL_POLL_MAX_WAKES=2
++ local home=/tmp/fm-mail-check.USfci3/deadline-login out=/tmp/fm-mail-check.USfci3/deadline-login/out check=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-mail-check.sh
++ shift 3
++ local status=0
++ env -u FM_MAIL_USER -u FM_MAIL_PASS -u FM_IMAP_HOST -u FM_SMTP_HOST -u FM_MAIL_CHECK_BUDGET FM_CHECK_TIMEOUT=30 FM_MAIL_CHECK_BUDGET=5 FM_MAIL_POLL_MAX_WAKES=2 FM_HOME=/tmp/fm-mail-check.USfci3/deadline-login PATH=/tmp/fm-mail-check.USfci3/fakebin:/home/bohn/.local/share/mise/installs/codex/0.162.1/codex-path:/home/bohn/.codex/tmp/arg0/codex-arg0s7RkzL:/home/bohn/.local/share/mise/installs/codex/0.162.1/codex-path:/home/bohn/.local/bin:/home/bohn/.kimi-code/bin:/home/bohn/.grok/bin:/home/bohn/.dotnet:/home/bohn/.dotnet/tools:/home/bohn/.local/share/pnpm:/home/bohn/.opencode/bin:/home/bohn/.local/share/mise/installs/codex/latest/bin:/home/bohn/.local/share/mise/installs/claude/latest:/home/bohn/.local/share/mise/installs/cursor-agent/latest/bin:/home/bohn/.local/share/mise/installs/gemini/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/gh/latest/gh_2.102.0_linux_amd64/bin:/home/bohn/.local/share/mise/installs/github-can1357-oh-my-pi/latest:/home/bohn/.local/share/mise/installs/go/1.25.14/bin:/home/bohn/.local/share/mise/installs/http-muse/latest:/home/bohn/.local/share/mise/installs/pnpm/10.33.4:/home/bohn/.local/share/mise/installs/node/26.7.0/bin:/home/bohn/.local/share/mise/installs/npm-xai-official-grok/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-playwright/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-opencode-cli/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/pi/latest/pi:/home/bohn/.local/share/mise/installs/npm-gh-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-lavish-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-chrome-devtools-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-quota-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-tasks-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/java/temurin-21/bin:/home/bohn/.local/share/mise/shims:/home/bohn/go/bin:/home/bohn/.cargo/bin:/home/bohn/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/cuda/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-mail-check.sh check
++ expect_code 0 0 'check exit'
++ local expected=0 actual=0 'label=check exit'
++ '[' 0 = 0 ']'
+++ cat /tmp/fm-mail-check.USfci3/deadline-login/out
++ assert_not_contains '' 'poll did not finish' 'login exceeded the watchdog'
++ case "$1" in
++ :
++ '[' login = logout ']'
+++ cat /tmp/fm-mail-check.USfci3/deadline-login/out
++ assert_contains '' 'mail poll deadline reached' 'hung login hid the inner deadline'
++ case "$1" in
++ fail $'hung login hid the inner deadline (missing: \'mail poll deadline reached\')\n--- output ---\n'
++ printf 'not ok - %s\n' $'hung login hid the inner deadline (missing: \'mail poll deadline reached\')\n--- output ---\n'
+not ok - hung login hid the inner deadline (missing: 'mail poll deadline reached')
+--- output ---
+
++ exit 1
++ cp -a /tmp/fm-mail-check.USfci3 /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/mail-debug-state
++ fm_test_cleanup
++ local d
++ fm_test_reap_tracked_pids
++ local pid live
++ '[' -n /tmp/.fm-test-pids.1783787.4f3ur8 ']'
++ '[' -f /tmp/.fm-test-pids.1783787.4f3ur8 ']'
++ live=/tmp/.fm-test-pids.1783787.4f3ur8.live
++ :
++ jobs -rp
++ jobs -sp
++ fm_test_descendant_pids 1783787
++ IFS=
++ read -r pid
++ rm -f /tmp/.fm-test-pids.1783787.4f3ur8.live /tmp/.fm-test-pids.1783787.4f3ur8
++ fm_test_reap_watchers
++ local state lock_home $'seen=\n'
++ '[' -f /tmp/.fm-test-watcher.1783787.xjkf1F ']'
++ IFS=
++ read -r state
++ rm -f /tmp/.fm-test-watcher.1783787.xjkf1F
++ fm_test_reap_procevent_homes
++ local home claim_root $'seen=\n'
++ '[' -f /tmp/.fm-test-procevent.1783787.BEbL6N ']'
++ IFS=$'\t'
++ read -r home claim_root
++ rm -f /tmp/.fm-test-procevent.1783787.BEbL6N
++ for d in "${FM_TEST_CLEANUP_DIRS[@]:-}"
++ '[' -n '' ']'
++ '[' -f /tmp/.fm-test-cleanup.1783787.4RYkDi ']'
++ IFS=
++ read -r d
++ '[' -n /tmp/fm-mail-check.USfci3 ']'
++ fm_test_remove_tree /tmp/fm-mail-check.USfci3
++ local dir=/tmp/fm-mail-check.USfci3
++ '[' -d /tmp/fm-mail-check.USfci3 ']'
++ '[' '!' -L /tmp/fm-mail-check.USfci3 ']'
++ find /tmp/fm-mail-check.USfci3 -type d -exec chmod u+rwx '{}' +
++ rm -rf /tmp/fm-mail-check.USfci3
++ IFS=
++ read -r d
++ rm -f /tmp/.fm-test-cleanup.1783787.4RYkDi

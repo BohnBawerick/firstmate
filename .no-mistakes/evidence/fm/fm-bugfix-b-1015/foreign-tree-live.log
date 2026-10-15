@@ -1,0 +1,7 @@
+Real primary owner: 3543386 
+Forged branch outside its process tree: exit= 1 
+error: refusing to present or acknowledge this home's wake queue - this session does not hold the fleet lock for /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/foreign-tree-home/state.
+Another live firstmate session (harness pid 3543386) holds it, and only that session
+may change fleet state. Operate read-only from here, or end that session first.
+
+LIVE FOREIGN-TREE REFUSAL PASSED

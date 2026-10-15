@@ -1,0 +1,45 @@
+
+ ▀▀█  v1.2.0
+ █▀ █ escape interrupt · ctrl+c/ctrl+d clear/exit · / commands · ! bash · ctrl+o more
+ Press ctrl+o to show full startup help and loaded resources.
+
+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
+
+[Extensions]
+  fm-calm.ts, sm-pi.pi-ext.ts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+~/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/runtime/fm-secondmate-busy-live.1GNuGH/pi/sm (main)
+$0.000 (sub) 0.0%/272k (auto)                                                                                                   (openai-codex) gpt-6-luna • high

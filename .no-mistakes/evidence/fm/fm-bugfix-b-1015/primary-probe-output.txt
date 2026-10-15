@@ -1,0 +1,27 @@
+lock acquired: THIS session holds the fleet lock (harness pid 2755893)
+Real primary startup with blocked summary: elapsed=2s
+The digest above is complete for this session start. The READ-ONCE CONTRACT
+true
+Detached summary published after its lock cleared
+reclaimed auto-arm generation=1
+epoch=1 owner_pid=2767551 outcome=arming updated_at=1792092131
+linux-starttime=3586629 cmdline-hex=62617368002d63002e202224312f62696e2f666d2d77616b652d6c69622e7368223b20666d5f6175746f61726d5f636c61696d5f6e6578742022243222207c7c206578697420313b207072696e746620227265636c61696d6564206175746f2d61726d2067656e65726174696f6e3d25735c6e22202224464d5f4155544f41524d5f4d595f47454e223b20636174202224322f2e636c617564652d6175746f61726d2d65706f6368223b20746573742021202d4c202224322f2e636c617564652d6175746f61726d2e6c6f636b223b20746573742021202d4c202224322f2e636c617564652d6175746f61726d2e6c6f636b2e737465616c22005f002f686f6d652f626f686e2f2e6e6f2d6d697374616b65732f776f726b74726565732f3834326133316339326433332f30314d353043574750463859504e42545152484a485a524e4d36002f686f6d652f626f686e2f2e6e6f2d6d697374616b65732f776f726b74726565732f3834326133316339326433332f30314d353043574750463859504e42545152484a485a524e4d362f2e746573742d70686173652f7072696d6172792d6c6976652d686f6d652f737461746500
+1792092131	1	check	startup-network	check: startup-network: deferred startup network checks finished (done); read them with /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-startup-network.sh report
+lab-status [key=one] needs-decision: first unresolved choice
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'
+1792092131	1	check	startup-network	check: startup-network: deferred startup network checks finished (done); read them with /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-startup-network.sh report
+lab-status [key=two] blocked: second unresolved blocker
+delegate engine drain exit: 0
+1792092155	2	stale	live-primary	stale: lab wake for the supervision branch
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 2 --recovery-generation 2764900.1792092131.T6BDnu
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+lab-status [key=one] needs-decision: first unresolved choice
+lab-status [key=two] blocked: second unresolved blocker
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'
+foreign engine drain exit: 1
+error: refusing to present or acknowledge this home's wake queue - this session does not hold the fleet lock for /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/primary-live-home/state.
+Another live firstmate session (harness pid 2755893) holds it, and only that session
+may change fleet state. Operate read-only from here, or end that session first.
+error: refusing to present or acknowledge this home's wake queue - this session does not hold the fleet lock for /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/primary-live-home/state.
+Real nested Claude delegate admitted; unbound nested Claude refused; lock unchanged
+LIVE PRIMARY SCENARIOS PASSED

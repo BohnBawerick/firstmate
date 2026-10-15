@@ -1,0 +1,148 @@
+$ bash bin/fm-lab-home.sh create /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home 
+ /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home
+ exit= 0
+$ bash bin/fm-brief.sh probe disposable --scout --herdr-lab 
+ scaffolded: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home/data/probe/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+ exit= 0
+EMITTED WORKTREE RULE:
+For tmux-based lab primaries, `bin/fm-lab-home.sh` owns the short private socket directory; do not place `TMUX_TMPDIR` under the lab home or worktree.
+Use `LAB_HOME_HELPER='/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-lab-home.sh'`, then `LAB_TMUX_DIR=$("$LAB_HOME_HELPER" tmux-dir "$FM_HOME")` and launch tmux with `TMUX_TMPDIR="$LAB_TMUX_DIR"`.
+1. Set `HERDR_LAB_HELPER='/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-herdr-lab.sh'` and generate the session name with `HERDR_LAB_SESSION=$("$HERDR_LAB_HELPER" name probe)`.
+You are in a disposable git worktree of disposable, at a detached HEAD on a clean default branch.
+The worktree is your laboratory - install, run, edit, and make scratch commits freely; all of it is discarded at teardown.
+2. Stay inside this worktree; the only files you may write outside it are the report and the status file below.
+   `echo "{state} [at=<epoch>]: {one short line}" >> '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home/state/probe.status' && { [ ! -e '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home/config/fleet-ledger' ] || '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/bin/fm-fleet-ledger.sh' appended '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home/config' '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home/state/probe.status' >/dev/null 2>&1 || true; }`
+   - The worktree pool your own worktree came from, and the repository every lane's worktree
+     shares. Never create, remove, return, prune, move, or reassign a worktree or pool slot, and
+     never write into a sibling slot's directory. Rule 2 does not cover this: removing a worktree
+     get/return/remove/prune, the equivalent operations on any other worktree provider or runtime
+     backend, and `git worktree add|remove|move|prune`. A slot that looks unused is not evidence
+     that it is free, and returning your own worktree is firstmate's job at cleanup, not yours.
+Firstmate steers you through durable message files in '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home/state/probe.inbox'.
+When a terminal message says an instruction is waiting there - and at any natural checkpoint when you are unsure - list '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home/state/probe.inbox'/*.msg, read and act on each message in numeric order, then acknowledge each handled message by moving it: `mv '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home/state/probe.inbox'/NNN.msg '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home/state/probe.inbox'/handled/`.
+Write your findings to `/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home/data/probe/report.md`.
+Before reporting done, read and follow `/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.agents/skills/captain-hold-lifecycle/SKILL.md` and pass its shared completion gate for the report and any visual review.
+$ git init -q -b main /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/project 
+  exit= 0
+$ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/project -c user.name=fixture -c user.email=fixture@example.invalid commit -q --allow-empty -m fixture 
+  exit= 0
+$ bash bin/fm-spawn.sh probe /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/project env claude --scout --backend tmux 
+ fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home
+error: this home pins worker accounts (config/claude-account or config/pi-account), and Firstmate cannot prove which runner the raw launch command starts, so a wrapper or shell syntax could bypass the pin: env claude; under a pin a raw launch must be plain [NAME=value ...] claude|pi|pi-signed <arguments>, or launch with --harness <name>
+ exit= 1
+$ bash bin/fm-spawn.sh probe /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/project command claude --scout --backend tmux 
+ fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home
+error: this home pins worker accounts (config/claude-account or config/pi-account), and Firstmate cannot prove which runner the raw launch command starts, so a wrapper or shell syntax could bypass the pin: command claude; under a pin a raw launch must be plain [NAME=value ...] claude|pi|pi-signed <arguments>, or launch with --harness <name>
+ exit= 1
+$ bash bin/fm-spawn.sh probe /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/project exec claude --scout --backend tmux 
+ fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home
+error: this home pins worker accounts (config/claude-account or config/pi-account), and Firstmate cannot prove which runner the raw launch command starts, so a wrapper or shell syntax could bypass the pin: exec claude; under a pin a raw launch must be plain [NAME=value ...] claude|pi|pi-signed <arguments>, or launch with --harness <name>
+ exit= 1
+$ bash bin/fm-spawn.sh probe /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/project bash -c "claude" --scout --backend tmux 
+ fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home
+error: this home pins worker accounts (config/claude-account or config/pi-account), and Firstmate cannot prove which runner the raw launch command starts, so a wrapper or shell syntax could bypass the pin: bash -c "claude"; under a pin a raw launch must be plain [NAME=value ...] claude|pi|pi-signed <arguments>, or launch with --harness <name>
+ exit= 1
+$ bash bin/fm-spawn.sh probe /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/project true; claude --scout --backend tmux 
+ fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home
+error: this home pins worker accounts (config/claude-account or config/pi-account), and Firstmate cannot prove which runner the raw launch command starts, so a wrapper or shell syntax could bypass the pin: true; claude; under a pin a raw launch must be plain [NAME=value ...] claude|pi|pi-signed <arguments>, or launch with --harness <name>
+ exit= 1
+$ bash bin/fm-spawn.sh probe /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/project A=1 env claude --scout --backend tmux 
+ fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home
+error: this home pins worker accounts (config/claude-account or config/pi-account), and Firstmate cannot prove which runner the raw launch command starts, so a wrapper or shell syntax could bypass the pin: A=1 env claude; under a pin a raw launch must be plain [NAME=value ...] claude|pi|pi-signed <arguments>, or launch with --harness <name>
+ exit= 1
+All wrapped launches refused before endpoint or task metadata creation
+$ bash bin/fm-remote-entrypoint.sh 1 L2hvbWUvYm9obi8ubm8tbWlzdGFrZXMvd29ya3RyZWVzLzg0MmEzMWM5MmQzMy8wMU01MENXR1BGOFlQTkJUUVJISkhaUk5NNg== L2hvbWUvYm9obi8ubm8tbWlzdGFrZXMvd29ya3RyZWVzLzg0MmEzMWM5MmQzMy8wMU01MENXR1BGOFlQTkJUUVJISkhaUk5NNi8udGVzdC1waGFzZS9jbGktbGl2ZS9hYnNlbnQtcGFyZW50L21hdGU= Zm0tcmVtb3RlLXNlY29uZG1hdGUtY29udHJvbC5zaABzdGF0ZQBtYXRlAA== 
+ error: remote home's parent directory does not exist: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/absent-parent; create it on this host first
+ exit= 64
+$ bash bin/fm-procevent.sh register lavish cut -- /bin/cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/feedback.txt 
+ registered: cut (lavish)
+ exit= 0
+$ bash bin/fm-procevent.sh start cut 
+ truncated: cut at 221 bytes
+not-autohandled: cut (left for the handler; still unacknowledged)
+captured: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home/state/procevent-inbox/cut.1.result
+ exit= 0
+captured bytes: 221 limit: 221
+$ bash bin/fm-procevent-lavish.sh read /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home/state/procevent-inbox/cut.1.result 
+ SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 1
+malformed_items: 0
+truncated: yes
+complete: no
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 1
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 1
+element_uid: text-a
+element_selector: #intro
+tag: text
+text:
+| Selected phrase
+prompt:
+| Change this phrase
+target:
+| type: text-range
+| text: "Selected phrase"
+END ANNOTATIONS
+END LAVISH RESULT (1 of 1)
+ exit= 1
+$ bash bin/fm-procevent.sh retire cut 
+ retired: cut
+ exit= 0
+$ bash bin/fm-procevent.sh register lavish whole -- /bin/cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/feedback.txt 
+ registered: whole (lavish)
+ exit= 0
+$ bash bin/fm-procevent.sh start whole 
+ not-autohandled: whole (left for the handler; still unacknowledged)
+captured: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home/state/procevent-inbox/whole.1.result
+ exit= 0
+captured bytes: 403 limit: 503
+$ bash bin/fm-procevent-lavish.sh read /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/cli-live/home/state/procevent-inbox/whole.1.result 
+ SESSION-ENDING MESSAGE: (none)
+
+declared_items: 1
+presented_items: 1
+malformed_items: 0
+truncated: no
+complete: yes
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 1
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 1
+element_uid: text-a
+element_selector: #intro
+tag: text
+text:
+| Selected phrase
+prompt:
+| Change this phrase
+target:
+| type: text-range
+| text: "Selected phrase"
+| selector: "#intro"
+| start:
+|   selector: "#intro"
+|   path[2]: 0,1
+|   offset: 2
+| end:
+|   selector: "#intro"
+|   path[2]: 0,1
+|   offset: 17
+END ANNOTATIONS
+END LAVISH RESULT (1 of 1)
+ exit= 0
+$ bash bin/fm-procevent.sh retire whole 
+ retired: whole
+ exit= 0
+$ bash bin/fm-procevent.sh sweep-home 
+ swept: attempted=0
+ exit= 0
+LIVE CLI SCENARIOS PASSED

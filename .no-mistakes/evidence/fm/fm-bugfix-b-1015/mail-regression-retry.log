@@ -1,0 +1,3 @@
+not ok - logout exceeded the watchdog (unexpected: 'poll did not finish')
+--- output ---
+mail: poll did not finish within the 5s budget

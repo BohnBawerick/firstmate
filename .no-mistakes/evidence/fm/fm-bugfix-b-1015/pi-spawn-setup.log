@@ -1,0 +1,3 @@
+warning: secondmate sm-pi sync skipped before launch: primary default-branch commit cannot be resolved
+fm-config-inherit: warning: skipped crew-harness for /tmp/fm-secondmate-busy-live.dPSdPz/pi/sm/config: destination does not allow inherited item (not gitignored or guard failed)
+spawned sm-pi harness=pi kind=secondmate mode=secondmate yolo=off window=firstmate:fm-sm-pi worktree=/tmp/fm-secondmate-busy-live.dPSdPz/pi/sm

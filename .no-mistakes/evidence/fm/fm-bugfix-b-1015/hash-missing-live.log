@@ -1,0 +1,2 @@
+fm-live-lab: shasum or sha256sum is required and neither was found on PATH
+exit=1

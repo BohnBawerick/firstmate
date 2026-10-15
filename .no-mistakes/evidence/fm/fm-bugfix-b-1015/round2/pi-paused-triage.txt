@@ -1,0 +1,3 @@
+[2026-10-16T04:07:58+0800] absorbed stale (paused, awaiting external, age 1s): firstmate:fm-sm-pi
+[2026-10-16T04:08:01+0800] absorbed stale (paused, awaiting external, age 4s): firstmate:fm-sm-pi
+[2026-10-16T04:08:02+0800] absorbed stale (paused, awaiting external, age 5s): firstmate:fm-sm-pi

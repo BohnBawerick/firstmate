@@ -1,0 +1,1 @@
+v1 gen=g1792094871.1407247.14290 seq=3 state=idle source=pi-ext event=agent-settled ts=1792094877

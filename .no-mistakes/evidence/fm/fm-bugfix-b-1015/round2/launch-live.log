@@ -1,0 +1,47 @@
+$ fm-procevent register lavish late-source -- /bin/cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/launch-live/source.fifo 
+registered: late-source (lavish)
+ exit= 0
+$ fm-procevent reconcile 
+reconciled: published=0 started=0 stopped=0 uncertain=0 failed=1
+ exit= 1
+first unconfirmed launch: no launch-failed wake
+$ fm-procevent list 
+SOURCE                       ADAPTER      OWNER      PENDING
+late-source                  lavish       none       0
+ exit= 0
+$ fm-procevent list 
+SOURCE                       ADAPTER      OWNER      PENDING
+late-source                  lavish       live       0
+ exit= 0
+$ fm-procevent reconcile 
+reconciled: published=0 started=0 stopped=0 uncertain=0 failed=0
+ exit= 0
+late listener found live on next cycle: still no launch-failed wake
+$ fm-procevent retire late-source 
+retired: late-source
+ exit= 0
+$ fm-procevent register lavish bad-source -- /bin/cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/launch-live/source.fifo 
+registered: bad-source (lavish)
+ exit= 0
+$ fm-procevent reconcile 
+reconciled: published=1 started=0 stopped=0 uncertain=0 failed=1
+ exit= 1
+$ fm-procevent reconcile 
+reconciled: published=1 started=0 stopped=0 uncertain=0 failed=1
+ exit= 1
+$ fm-procevent reconcile 
+reconciled: published=1 started=0 stopped=0 uncertain=0 failed=1
+ exit= 1
+1792093903	1	check	procevent:late-source:1	check: procevent lavish late-source 1
+1792093905	2	check	procevent:late-source:1	check: procevent lavish late-source 1
+1792093907	3	check	procevent:late-source:1	check: procevent lavish late-source 1
+1792093909	4	check	procevent:bad-source:launch-failed:59-66392114-92659136	check: process-event source bad-source is registered but its launch did not prove it took the source's claim within FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS, so nothing is confirmed to be collecting from it; reconcile reports that as failed= and keeps launching it every supervision cycle. If it stays that way, check the source command and the adapter binary the registration names, and run an attached bin/fm-procevent.sh start bad-source to reproduce a refusal on its stderr - the detached launch discards it, and a hand-run reconcile only counts it as failed=. A later cycle that finds the source owned ends this episode on its own, so a runner that was merely slow to claim needs nothing from you.
+1792093909	5	check	procevent:late-source:1	check: procevent lavish late-source 1
+
+$ fm-procevent retire bad-source 
+retired: bad-source
+ exit= 0
+$ fm-procevent sweep-home 
+swept: attempted=0
+ exit= 0
+LIVE LISTENER SCENARIOS PASSED

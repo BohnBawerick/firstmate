@@ -1,0 +1,25 @@
+valid saved ownership exit=0
+[
+  {
+    "token": "event-one",
+    "task": "good",
+    "url": "https://github.com/lab/disposable/pull/1"
+  }
+]
+
+mismatched saved ownership exit=1
+fm-contributions: 1 unreadable contribution record(s); pending signals are unverified
+
+multiple JSON records in one saved file exit=1
+fm-contributions: 1 unreadable contribution record(s); pending signals are unverified
+
+restored valid saved record exit=0
+[
+  {
+    "token": "event-one",
+    "task": "good",
+    "url": "https://github.com/lab/disposable/pull/1"
+  }
+]
+
+Read-only pending view created no state directory

@@ -1,0 +1,15 @@
+ok - detailed confirmations restart; other replies preserve the conversation
+ok - plain correlated replies release the persist gate only after affirmative acknowledgment
+ok - documented helper acknowledgments permit restart at both reply boundaries
+ok - unsaved or incomplete replies retain the conversation at both restart decisions
+ok - T1 persist is a gate, and asks for open records and task status only
+ok - T2 the mate persists before anything is stopped
+ok - T2b an arrived persist answer is resolved before timeout
+ok - T2c a reply between the preliminary scan and timeout decision wins
+ok - Pi settle wait accepts zero containment and rejects invalid or short values
+ok - The derived minimum permits two stable local Herdr samples
+ok - Local tmux Pi fails closed immediately without semantic idle proof
+ok - Local tmux Pi settles on its semantic busy record, not the Calm-hidden screen
+grep: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CWGPF8YPNBTQRHJHZRNM6/.test-phase/runtime/fm-secondmate-restart.wocH8G/pi-settle-deadline-12929/fake/sleep-args: No such file or directory
+.test-phase/product/tests/fm-secondmate-restart.test.sh: line 596: [: : integer expected
+not ok - the settle loop did not cap all sleeps to the available two-second intervals
