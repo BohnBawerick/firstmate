@@ -640,7 +640,7 @@ secondmate_sync() {
       case "$sync_out" in synced:*) nudge_needed=1 ;; esac
     else
       sync_rc=$?
-      echo "SECONDMATE_SYNC: secondmate $id: skipped: remote tracked-file sync failed on $remote_host: $(remote_sync_failure_reason "$sync_rc" "$sync_out")"
+      echo "SECONDMATE_SYNC: secondmate $id: skipped: remote tracked-file sync failed on $remote_host: $(remote_sync_failure_reason "$sync_rc" "$sync_out" "$primary_head" "$FM_ROOT")"
       converged=0
     fi
     if inherit_out=$(FM_CONFIG_INHERIT_LIVE=1 \

@@ -384,7 +384,7 @@ cmd_sync() {
     commit=$(git -C "$FM_ROOT" rev-parse HEAD 2>/dev/null) || die "remote code root HEAD is unreadable"
   fi
   import_home_commit "$TARGET_HOME" "$commit" \
-    || die "remote home could not import $commit from this host's Firstmate copy or the home's origin; run /updatefirstmate to refresh this host's copy, or push that commit first"
+    || die "remote home could not import $commit: neither this host's Firstmate copy nor the home's origin has it; if the commit is on that origin, run /updatefirstmate to refresh this host's copy"
   # ff_target publishes its verdict in FF_STATUS, so it must run in THIS shell.
   report=$(mktemp "${TMPDIR:-/tmp}/fm-remote-sync.XXXXXX") || die "cannot stage the sync report"
   ff_target "$TARGET_HOME" "remote home" "$commit" yes yes "$id" "$TARGET_HOME/state" > "$report" 2>&1

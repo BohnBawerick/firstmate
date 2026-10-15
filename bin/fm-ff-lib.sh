@@ -252,13 +252,28 @@ changed_instr() {
 # reason. The remote leg refuses a command shape it does not recognize with this
 # status, which on this leg can only mean that host's Firstmate copy predates the
 # parent-targeted sync it was just asked for; every other failure already carries
-# its own diagnostic.
+# its own diagnostic. With the target <commit> and this <primary-root>, an
+# import failure for a commit that is on none of this primary's remote-tracking
+# branches is named for what it is: the commit landed only here, so neither the
+# host's copy nor the home's origin can hold it and refreshing that host's copy
+# cannot help.
 REMOTE_SYNC_UNSUPPORTED_STATUS=2
-remote_sync_failure_reason() { # <exit-status> <output>
+remote_sync_failure_reason() { # <exit-status> <output> [<commit> <primary-root>]
+  local commit=${3:-} root=${4:-}
   if [ "$1" = "$REMOTE_SYNC_UNSUPPORTED_STATUS" ]; then
     printf '%s\n' "the Firstmate copy on that host is too old to sync to this primary's commit; run /updatefirstmate"
     return 0
   fi
+  case "$2" in
+    *"could not import"*)
+      if [ -n "$commit" ] && [ -n "$root" ] \
+        && git -C "$root" cat-file -e "$commit^{commit}" 2>/dev/null \
+        && [ -z "$(git -C "$root" branch -r --contains "$commit" 2>/dev/null)" ]; then
+        printf '%s\n' "this primary's commit $commit is on no remote branch this primary knows of, so the remote home cannot fetch it; it converges once that commit reaches the origin the remote home pulls from"
+        return 0
+      fi
+      ;;
+  esac
   first_line "$2"
 }
 

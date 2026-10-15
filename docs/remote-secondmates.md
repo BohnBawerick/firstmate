@@ -655,6 +655,7 @@ Session start and every remote launch converge the persistent remote home on the
 The [`secondmate-provisioning` skill](../.agents/skills/secondmate-provisioning/SKILL.md) owns the guarded convergence contract, including the distinct `/updatefirstmate` behavior, and [`bin/fm-remote-secondmate-control.sh`](../bin/fm-remote-secondmate-control.sh) owns the commit-import mechanics.
 Neither session start nor launch moves the host's own Firstmate copy.
 An unsafe or unavailable target is reported and left untouched.
+The host can import a commit only from its own Firstmate copy or the home's origin, so a commit that landed only on the primary's local main stays out of reach until it reaches that origin, and the report names that cause.
 A completed sync reports which watched instruction paths its advance changed.
 The primary needs that fact because it cannot diff a checkout it cannot read.
 It uses the fact to decide whether the running remote agent must be replaced to actually reload.

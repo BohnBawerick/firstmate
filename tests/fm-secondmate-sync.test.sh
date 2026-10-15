@@ -1295,6 +1295,51 @@ test_bootstrap_reports_outdated_host_actionably() {
   pass "R10 a host too old for a parent-targeted sync is reported with the command that fixes it"
 }
 
+# --- R11: a commit only on the primary's local main is named as the cause ------
+# A primary that lands Firstmate work on its local main ahead of its origin hands
+# the remote host a commit that neither that host's copy nor the home's origin
+# can supply. Session start must say so rather than send the operator to
+# /updatefirstmate, which only pulls the origin that lacks the commit too.
+test_bootstrap_names_a_primary_only_commit() {
+  local w c1 c2 home fakebin out before
+  w=$(new_remote_world remote-local-only)
+  cp "$ROOT"/bin/fm-remote-*.sh "$w/main/bin/"
+  git -C "$w/main" add -A
+  git -C "$w/main" commit -qm "primary tooling"
+  git -C "$w/main" push -q origin main
+  git -C "$w/coderoot" pull -q --ff-only origin main
+  c1=$(head_of "$w/main")
+  add_remote_home "$w" sm "$w/forge.git" "$c1"
+  bump_primary "$w" instr          # landed locally, never pushed
+  c2=$(head_of "$w/main")
+  before=$(head_of "$w/sm")
+  home="$w/home"
+  mkdir -p "$home/config" "$home/projects"
+  printf -- '- sm - remote fixture (host: host-sm; root: %s; home: %s; scope: remote work; projects: alpha; added 2026-08-02)\n' \
+    "$w/coderoot" "$w/sm" > "$home/data/secondmates.md"
+  fm_write_secondmate_meta "$home/state/sm.meta" "$w/sm"
+  printf 'remote_host=host-sm\n' >> "$home/state/sm.meta"
+
+  fakebin=$(make_remote_leg_ssh_stub "$w")
+  fm_fake_exit0 "$fakebin" gh treehouse tmux node
+  out=$(PATH="$fakebin:$BASE_PATH" \
+    FM_HOME="$home" FM_ROOT_OVERRIDE="$w/main" \
+    FM_BOOTSTRAP_NETWORK=only \
+    FM_SSH_BIN="$fakebin/fake-ssh" FM_REMOTE_CODE_ROOT="$w/coderoot" \
+    FM_TEST_REPO_ROOT="$ROOT" \
+    FM_INHERITABLE_CONFIG='' FM_FAKE_TREEHOUSE_LEASE_HELP=1 FM_SEND_SETTLE=0 \
+    "$ROOT/bin/fm-bootstrap.sh" 2>&1)
+
+  [ "$(head_of "$w/sm")" = "$before" ] || fail "an unimportable target still moved the remote home"
+  assert_contains "$out" "SECONDMATE_SYNC: secondmate sm: skipped:" \
+    "a primary-only commit did not produce its own convergence line: $out"
+  assert_contains "$out" "is on no remote branch this primary knows of" \
+    "the skip does not name the primary-only commit as the cause: $out"
+  assert_not_contains "$out" "push that commit first" \
+    "the skip still recommends pushing the primary's commit: $out"
+  pass "R11 a primary commit that is not on any remote is named as the reason a remote home cannot sync"
+}
+
 # --- R9: a remote launch never re-targets the host's own Firstmate copy --------
 # The launch leg runs a host-local spawn whose FM_ROOT is that host's Firstmate
 # copy. Once the parent has synced the home to ITS commit, that spawn must leave
@@ -1408,6 +1453,7 @@ test_remote_sync_skips_dirty_diverged_and_feature_branch
 test_remote_sync_without_target_follows_host_copy
 test_bootstrap_syncs_remote_home_to_primary_commit
 test_bootstrap_reports_outdated_host_actionably
+test_bootstrap_names_a_primary_only_commit
 test_remote_launch_does_not_retarget_host_copy
 test_remote_launch_relays_codex_max_downgrade_warning
 

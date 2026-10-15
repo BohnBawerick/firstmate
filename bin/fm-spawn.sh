@@ -1264,7 +1264,7 @@ spawn_remote_secondmate() {
       :
     else
       sync_rc=$?
-      echo "warning: remote secondmate $id sync skipped before launch: $(remote_sync_failure_reason "$sync_rc" "$sync_out")" >&2
+      echo "warning: remote secondmate $id sync skipped before launch: $(remote_sync_failure_reason "$sync_rc" "$sync_out" "$sm_primary_head" "$FM_ROOT")" >&2
     fi
   else
     echo "warning: remote secondmate $id sync skipped before launch: primary default-branch commit cannot be resolved" >&2
