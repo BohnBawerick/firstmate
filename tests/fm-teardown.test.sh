@@ -1357,6 +1357,37 @@ SH
   pass "the content-landed fallback checks a task's recorded base branch, not the default branch"
 }
 
+test_named_base_refuses_work_only_on_local_default() {
+  local case_dir mode representation local_head landed_head rc
+  for mode in no-mistakes direct-PR; do
+    for representation in ancestry squash; do
+      case_dir=$(make_case "named-base-local-main-$mode-$representation")
+      write_meta "$case_dir" "$mode" ship
+      printf 'base_branch=feature/hub\n' >> "$case_dir/state/task-x1.meta"
+      git -C "$case_dir/project" push -q origin main:refs/heads/feature/hub
+      wt_commit_file "$case_dir" feature.txt hello "task work"
+      local_head=$(git -C "$case_dir/wt" rev-parse HEAD)
+      if [ "$representation" = ancestry ]; then
+        landed_head=$local_head
+      else
+        landed_head=$(git -C "$case_dir/project" commit-tree "$local_head^{tree}" -p main -m "squash local task work")
+      fi
+      git -C "$case_dir/project" update-ref refs/heads/main "$landed_head"
+
+      rc=0
+      run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+      expect_code 1 "$rc" "$mode/$representation: work only on local main must not count as landed on feature/hub"
+      assert_refusal_retained_task_state "$case_dir" "$mode/$representation" "$local_head"
+      [ "$(git -C "$case_dir/project" rev-parse main)" = "$landed_head" ] \
+        || fail "$mode/$representation: refusal changed local main"
+      [ "$(cat "$case_dir/wt/feature.txt")" = hello ] \
+        || fail "$mode/$representation: refusal changed the task's work"
+    done
+  done
+  pass "named-base tasks retain work contained only in local main, by ancestry or equivalent content"
+}
+
 test_content_fallback_refreshes_stale_origin_ref() {
   local case_dir rc
   case_dir=$(make_case content-stale-ref)
@@ -5284,6 +5315,7 @@ test_pr_check_does_not_refresh_stale_pr_head
 test_pr_check_records_remote_head_when_local_lags
 test_content_in_default_fallback_allows
 test_content_fallback_uses_recorded_base_branch
+test_named_base_refuses_work_only_on_local_default
 test_content_fallback_refreshes_stale_origin_ref
 test_dirty_worktree_refuses
 test_untracked_only_refusal_diagnostic

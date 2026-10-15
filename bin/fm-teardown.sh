@@ -1663,7 +1663,7 @@ work_is_landed() {
   local branch=$1
   pr_is_merged "$branch" && return 0
   content_in_default && return 0
-  content_in_local_default
+  [ -z "$BASE_BRANCH" ] && content_in_local_default
 }
 
 # The completion links this teardown already holds locally. A scout's

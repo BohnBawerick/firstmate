@@ -714,9 +714,13 @@ FIELDS
     if ! status_json=$(tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
         "/repos/{owner}/{repo}/commits/$live_head/status?limit=50&page=$page" 2>/dev/null) \
       || ! fields=$(printf '%s' "$status_json" | jq -r '
-          if type == "object" and ((.statuses // []) | type) == "array" then
+          if type == "object" and has("statuses")
+            and (.statuses == null or (.statuses | type) == "array")
+            and (.state == "" or .state == "success" or .state == "pending"
+              or .state == "failure" or .state == "error" or .state == "warning")
+            and (((.statuses // []) | length) > 0 or .state == "") then
             "count=" + ((.statuses // []) | length | tostring),
-            "state=" + ((.state // "") | tostring)
+            "state=" + .state
           else
             error("status payload is not a combined status")
           end' 2>/dev/null); then

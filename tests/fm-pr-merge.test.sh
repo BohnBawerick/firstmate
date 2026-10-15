@@ -2390,6 +2390,71 @@ test_forgejo_combined_status_reads_every_page() {
   pass "fm-pr-merge reads every Forgejo combined-status page before merging"
 }
 
+test_forgejo_malformed_status_pages_refuse_before_merge() {
+  local case_dir page payload file rc index
+  for page in 2 1; do
+    index=0
+    for payload in \
+      '{"message":"unavailable"}' \
+      '{"state":"success"}' \
+      '{"statuses":[]}' \
+      '{"state":"success","statuses":{}}' \
+      '{"state":null,"statuses":[]}' \
+      '{"state":0,"statuses":[]}' \
+      '{"state":"failure","statuses":[]}' \
+      '{"state":"unavailable","statuses":[]}' \
+      '{"state":"success\ncount=0","statuses":[{}]}'; do
+      index=$((index + 1))
+      case_dir=$(make_forgejo_case "forgejo-invalid-status-$page-$index")
+      file="$case_dir/tea-status.json"
+      [ "$page" = 1 ] || file="$case_dir/tea-status-page$page.json"
+      printf '%s\n' "$payload" > "$file"
+
+      rc=0
+      run_pr_merge "$case_dir" task-x1 "$FJ_URL" \
+        > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+      expect_code 1 "$rc" "status page $page payload $payload: malformed status should refuse"
+      assert_grep 'the combined commit status is "unreadable", not success' "$case_dir/stderr" \
+        "status page $page payload $payload: malformed status was not reported"
+      assert_grep "page=$page" "$case_dir/tea.log" "status page $page was not read"
+      [ -z "$(tea_merge_line "$case_dir/tea.log")" ] \
+        || fail "status page $page payload $payload: a merge request was issued"
+      assert_absent "$case_dir/tea-merged" "status page $page payload $payload: malformed status merged the PR"
+    done
+  done
+  pass "Forgejo merge refuses malformed first and later status pages before issuing a merge request"
+}
+
+test_forgejo_null_statuses_are_an_explicit_empty_page() {
+  local case_dir page rc expected
+  for page in 1 2; do
+    case_dir=$(make_forgejo_case "forgejo-null-statuses-$page")
+    if [ "$page" = 1 ]; then
+      printf '{"state":"","total_count":0,"statuses":null}\n' > "$case_dir/tea-status.json"
+      expected=1
+    else
+      printf '{"state":"","total_count":0,"statuses":null}\n' > "$case_dir/tea-status-page2.json"
+      expected=0
+    fi
+
+    rc=0
+    run_pr_merge "$case_dir" task-x1 "$FJ_URL" \
+      > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+    expect_code "$expected" "$rc" "explicit empty status page $page: unexpected merge result"
+    if [ "$page" = 1 ]; then
+      assert_grep 'the combined commit status is "none", not success' "$case_dir/stderr" \
+        "explicit empty first page did not report unconfigured CI"
+      [ -z "$(tea_merge_line "$case_dir/tea.log")" ] \
+        || fail "unconfigured CI issued a merge request"
+    else
+      assert_present "$case_dir/tea-merged" "a valid null terminal page refused a green PR"
+    fi
+  done
+  pass "Forgejo accepts explicit null empty pages and still refuses unconfigured CI"
+}
+
 test_forgejo_stale_recorded_head_is_reported() {
   local case_dir rc merge_line
   case_dir=$(make_forgejo_case forgejo-stale-head)
@@ -3028,6 +3093,8 @@ test_forgejo_refuses_when_login_is_ambiguous
 test_forgejo_each_condition_refuses_independently
 test_forgejo_unconfigured_ci_refuses_as_none
 test_forgejo_combined_status_reads_every_page
+test_forgejo_malformed_status_pages_refuse_before_merge
+test_forgejo_null_statuses_are_an_explicit_empty_page
 test_forgejo_stale_recorded_head_is_reported
 test_forgejo_invalid_head_refuses
 test_forgejo_missing_tool_refuses_before_recording
