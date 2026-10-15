@@ -394,7 +394,7 @@ test_mcp_http_and_event_callback_delivery
 test_security_callback_contract
 test_server_restart_persistence
 
-python3 - "$ROOT" "$TMP_ROOT" <<'PY'
+python3 - "$ROOT" "$TMP_ROOT" <<'PY' || fail "mailbox regression cases failed"
 import base64
 import concurrent.futures
 import datetime
@@ -1071,4 +1071,3 @@ class MailboxRegressionTests(unittest.TestCase):
 
 unittest.main(argv=[sys.argv[0]], verbosity=2)
 PY
-[ "$?" -eq 0 ] || fail "mailbox regression cases failed"
