@@ -159,9 +159,13 @@
 #   session-scoped presentation-order lock (keyed by named session plus
 #   canonical socket, outside any home's state/) through launch handoff.
 #   On contention a create makes one bounded attempt and falls back to the
-#   ordinary flat layout before any projection mutation. A resume refuses by
-#   default on the same contention (it does not degrade flat; a concurrent
-#   resume is a hard failure). Pass --herdr-resume-lock-wait to opt that
+#   ordinary flat layout before any projection mutation. That create bound is
+#   FM_HERDR_PRESENTATION_LOCK_WAIT seconds (default 180), long enough to
+#   outlast another spawn's whole launch handoff, so two spawns started
+#   together each get their own workspace instead of the later one landing as
+#   a tab. A resume makes the short bounded attempt and refuses by default on
+#   the same contention (it does not degrade flat; a concurrent resume is a
+#   hard failure). Pass --herdr-resume-lock-wait to opt that
 #   resume into waiting for the lock instead, so two concurrent recoveries
 #   can serialize and each still replace its own exact husk. The flag acts
 #   only on that fresh ship or scout spawn path: --relaunch reuses the
@@ -1653,8 +1657,12 @@ trap spawn_abort_cleanup EXIT
 # is required so secondmate and primary spawns serialize against the same
 # session without writing any other home's state directory.
 #
-# Default mode is one BOUNDED attempt. A clean create uses that default and
-# falls back to the ordinary flat layout on contention. An exact resume also
+# Default mode is one short BOUNDED attempt. Mode `create` - a clean projected
+# create or a reclaim - bounds the attempt at FM_HERDR_PRESENTATION_LOCK_WAIT
+# seconds instead: a holder keeps this lock through its own launch handoff,
+# which takes well over a few seconds, so that bound covers a whole concurrent
+# spawn rather than sending every simultaneous spawn but one to a tab. A create
+# still falls back to the ordinary flat layout on contention. An exact resume also
 # defaults to the bounded attempt and hard-refuses on contention (it does not
 # degrade flat). Passing mode `wait` makes this call WAIT for the lock instead
 # (`fm_lock_acquire_wait`, the same unbounded-wait idiom this file already uses
@@ -1664,7 +1672,7 @@ trap spawn_abort_cleanup EXIT
 # Dead-owner reclaim inside `fm_lock_try_acquire` still bounds a wait against a
 # holder that crashed mid-hold.
 spawn_herdr_presentation_order_lock_acquire() {
-  local session=${1:-} mode=${2:-} attempt lock_path
+  local session=${1:-} mode=${2:-} lock_path seconds
   [ -n "$session" ] || session=$(fm_backend_herdr_session)
   lock_path=$(fm_backend_herdr_presentation_session_lock_path "$session") || return 1
   HERDR_PRESENTATION_ORDER_LOCK="$lock_path"
@@ -1673,16 +1681,13 @@ spawn_herdr_presentation_order_lock_acquire() {
     HERDR_PRESENTATION_ORDER_LOCK_HELD=1
     return 0
   fi
-  attempt=0
-  while [ "$attempt" -lt 50 ]; do
-    if fm_lock_try_acquire "$HERDR_PRESENTATION_ORDER_LOCK"; then
-      HERDR_PRESENTATION_ORDER_LOCK_HELD=1
-      return 0
-    fi
-    sleep 0.1
-    attempt=$((attempt + 1))
-  done
-  return 1
+  seconds=5
+  if [ "$mode" = create ]; then
+    seconds=${FM_HERDR_PRESENTATION_LOCK_WAIT:-180}
+    case "$seconds" in ''|*[!0-9]*) seconds=180 ;; esac
+  fi
+  fm_lock_acquire_wait_max "$HERDR_PRESENTATION_ORDER_LOCK" "$seconds" || return 1
+  HERDR_PRESENTATION_ORDER_LOCK_HELD=1
 }
 
 clear_relaunch_harness_wiring() {
@@ -4255,7 +4260,7 @@ else
         elif [ "${FM_BACKEND_HERDR_PRESENTATION_PREFERENCE:-default}" = default ] &&
           ! fm_backend_herdr_presentation_default_supported "$STATE" "$HERDR_SES"; then
           :
-        elif spawn_herdr_presentation_order_lock_acquire "$HERDR_SES"; then
+        elif spawn_herdr_presentation_order_lock_acquire "$HERDR_SES" create; then
           # The projected child is placed and bound UNDER this launcher's exact
           # parent workspace. Its own herdr pane identity names that workspace
           # directly; the label lookup is only the fallback for a launcher with

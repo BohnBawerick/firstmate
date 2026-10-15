@@ -524,7 +524,7 @@ mkdir -p "$HOME_DIR/state" "$HOME_DIR/config" \
   "$HOME_DIR/data/order-fail" "$HOME_DIR/data/fm-hibit-resume-r1" \
   "$HOME_DIR/data/wheelhouse-healing-r1"
 mkdir -p "$HOME_DIR/data/active-seeded" "$HOME_DIR/data/abort-a" "$HOME_DIR/data/abort-b" \
-  "$HOME_DIR/data/lock-contended" "$HOME_DIR/data/default-on"
+  "$HOME_DIR/data/lock-contended" "$HOME_DIR/data/lock-waited" "$HOME_DIR/data/default-on"
 touch "$HOME_DIR/state/.last-watcher-beat"
 # Presentation spaces are on by default, so the flat baseline below opts out
 # explicitly; the projected cases each restate the setting they exercise.
@@ -540,6 +540,7 @@ write_ship_brief "$HOME_DIR" active-seeded 'Projection active seeded fixture.'
 write_ship_brief "$HOME_DIR" abort-a 'Projection abort fixture A.'
 write_ship_brief "$HOME_DIR" abort-b 'Projection abort fixture B.'
 write_ship_brief "$HOME_DIR" lock-contended 'Projection lock contention fixture.'
+write_ship_brief "$HOME_DIR" lock-waited 'Projection lock wait fixture.'
 write_ship_brief "$HOME_DIR" default-on 'Projection default-on fixture.'
 make_project "$PROJECT_DIR"
 make_project "$RECOVERY_PROJECT_DIR"
@@ -730,7 +731,8 @@ while [ ! -e "$LOCK_CONTENTION_READY" ] && kill -0 "$LOCK_CONTENTION_OWNER_PID" 
 LOCK_CONTENTION_START=$(log_line_count)
 LOCK_CONTENTION_FOCUS_START=$(focus_audit_line_count)
 LOCK_CONTENTION_MOVE_START=$(wc -l < "$MOVE_CALL_LOG" | tr -d '[:space:]')
-if spawn_task lock-contended "$HOME_DIR" "$PROJECT_DIR" > "$TMP_ROOT/lock-contended.out" 2> "$TMP_ROOT/lock-contended.err"; then
+if FM_HERDR_PRESENTATION_LOCK_WAIT=1 \
+  spawn_task lock-contended "$HOME_DIR" "$PROJECT_DIR" > "$TMP_ROOT/lock-contended.out" 2> "$TMP_ROOT/lock-contended.err"; then
   LOCK_CONTENTION_STATUS=0
 else
   LOCK_CONTENTION_STATUS=$?
@@ -763,6 +765,50 @@ teardown_task lock-contended "$HOME_DIR" > "$TMP_ROOT/lock-contended-teardown.ou
   || fail "flat lock-contention fixture teardown failed: $(cat "$TMP_ROOT/lock-contended-teardown.err")"
 assert_focus_is "$CAPTAIN_FOCUS" "bounded presentation lock flat fallback teardown"
 pass "real Herdr lab: bounded lock contention warns and falls back flat without projection or focus drift"
+
+# A holder keeps the lock through its own whole launch handoff, so a spawn that
+# starts while another spawn is mid-launch waits it out under the default bound
+# and still gets its own workspace instead of landing as a tab.
+cp "$MOVE_CALL_LOG" "$TMP_ROOT/move-log-before-lock-waited"
+LOCK_WAITED_READY="$TMP_ROOT/lock-waited-ready"
+LOCK_WAITED_RELEASE="$TMP_ROOT/lock-waited-release"
+ROOT="$ROOT" READY="$LOCK_WAITED_READY" RELEASE="$LOCK_WAITED_RELEASE" \
+  LOCK="$LOCK_CONTENTION_PATH" bash -c '
+  . "$ROOT/bin/fm-wake-lib.sh"
+  fm_lock_try_acquire "$LOCK" || exit 1
+  : > "$READY"
+  while [ ! -e "$RELEASE" ]; do sleep 0.05; done
+  fm_lock_release "$LOCK"
+' &
+LOCK_CONTENTION_OWNER_PID=$!
+while [ ! -e "$LOCK_WAITED_READY" ] && kill -0 "$LOCK_CONTENTION_OWNER_PID" 2>/dev/null; do sleep 0.01; done
+[ -e "$LOCK_WAITED_READY" ] || fail "could not hold the guarded lab presentation lock for the waiting spawn"
+spawn_task lock-waited "$HOME_DIR" "$PROJECT_DIR" > "$TMP_ROOT/lock-waited.out" 2> "$TMP_ROOT/lock-waited.err" &
+LOCK_WAITED_PID=$!
+# Hold well past the old five-second attempt, measured from when the spawn
+# reaches the lock, so a spawn that gives up early takes the flat fallback.
+sleep 25
+: > "$LOCK_WAITED_RELEASE"
+wait "$LOCK_CONTENTION_OWNER_PID" || fail "guarded lab presentation lock owner failed"
+LOCK_CONTENTION_OWNER_PID=
+wait "$LOCK_WAITED_PID" || fail "the waiting spawn failed: $(cat "$TMP_ROOT/lock-waited.err")"
+LOCK_WAITED_META="$HOME_DIR/state/lock-waited.meta"
+remember_meta_worktree "$LOCK_WAITED_META" >/dev/null
+LOCK_WAITED_WSID=$(grep '^herdr_workspace_id=' "$LOCK_WAITED_META" | cut -d= -f2-)
+[ -n "$LOCK_WAITED_WSID" ] && [ "$LOCK_WAITED_WSID" != "$FIRSTMATE_WSID" ] \
+  || fail "a spawn that waited out lock contention still landed in the flat firstmate workspace"
+[ -f "$HOME_DIR/state/lock-waited.herdr-presentation" ] \
+  || fail "a spawn that waited out lock contention did not publish its projection journal"
+! grep -F "presentation focus lock unavailable" "$TMP_ROOT/lock-waited.err" >/dev/null 2>&1 \
+  || fail "a spawn that waited out lock contention still warned about flat fallback"
+assert_focus_is "$CAPTAIN_FOCUS" "presentation lock wait"
+teardown_task lock-waited "$HOME_DIR" > "$TMP_ROOT/lock-waited-teardown.out" 2> "$TMP_ROOT/lock-waited-teardown.err" \
+  || fail "lock-wait fixture teardown failed: $(cat "$TMP_ROOT/lock-waited-teardown.err")"
+assert_focus_is "$CAPTAIN_FOCUS" "presentation lock wait teardown"
+pass "real Herdr lab: a spawn started while another holds the presentation lock waits and gets its own workspace"
+# The ordering scenarios below read the move log cumulatively against the
+# projected workspaces still live, so the retired one's move is dropped again.
+cp "$TMP_ROOT/move-log-before-lock-waited" "$MOVE_CALL_LOG"
 PROJECTION_ORDER_START=$(log_line_count)
 
 [ "$OFF_WT" = "$ON_WT" ] || fail "Treehouse did not reuse the same fixture worktree, so byte comparison is inconclusive"
