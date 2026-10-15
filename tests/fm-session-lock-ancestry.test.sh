@@ -1132,6 +1132,142 @@ test_verified_reclaim_keeps_new_sidecar() {
   pass "session-lock: a verified reclaim keeps the new sidecar beside the new pid"
 }
 
+test_shared_codex_hosts_never_qualify_as_recorded_owners() {
+  local dir fakebin host caller platform got
+  dir="$TMP_ROOT/shared-codex-owner"
+  fakebin=$(fm_fakebin "$dir")
+  mkdir -p "$dir/state"
+  printf '700\n' > "$dir/state/.lock"
+  printf 'S1\n' > "$dir/state/.lock-session"
+  cat > "$fakebin/ps" <<'SH'
+#!/usr/bin/env bash
+field= pid=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) field=$2; shift 2 ;;
+    -p) pid=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+case "$pid:$field" in
+  700:comm=)
+    if [ "$FM_TEST_CODEX_HOST" = code-mode ]; then
+      printf '%s\n' '/opt/codex-code-mode-host'
+    elif [ "$FM_TEST_CODEX_PLATFORM" = macos ]; then
+      printf '%s\n' '/Applications/Codex.app/Contents/Resources/codex'
+    else
+      printf '%s\n' codex
+    fi
+    ;;
+  700:args=)
+    if [ "$FM_TEST_CODEX_HOST" = code-mode ]; then
+      printf '%s\n' '/opt/codex-code-mode-host'
+    else
+      printf '%s\n' '/opt/codex --config model=x --profile desktop app-server --managed-daemon'
+    fi
+    ;;
+  700:ppid=|800:ppid=) printf '1\n' ;;
+  800:comm=)
+    [ "$FM_TEST_CODEX_CALLER" != same-session ] && printf 'codex\n' || printf 'claude\n'
+    ;;
+  800:args=)
+    [ "$FM_TEST_CODEX_CALLER" != same-session ] && printf '/opt/codex --yolo prompt-about-app-server\n' || printf '/opt/claude --resume\n'
+    ;;
+  *:comm=) printf 'bash\n' ;;
+  *:args=) printf 'bash probe\n' ;;
+  *:ppid=)
+    [ "$FM_TEST_CODEX_CALLER" != app ] && printf '800\n' || printf '700\n'
+    ;;
+esac
+SH
+  chmod +x "$fakebin/ps"
+  for host in app-server code-mode; do
+    for caller in app terminal same-session; do
+      for platform in linux macos; do
+        got=$(FM_TEST_CODEX_HOST="$host" FM_TEST_CODEX_CALLER="$caller" FM_TEST_CODEX_PLATFORM="$platform" \
+          FM_TEST_SESSION_ID=S1 FM_TEST_CLAUDE_PID=800 lib_eval "$fakebin" "
+          fm_harness_pid_alive 700; printf 'owner=%s\\n' \"\$?\"
+          fm_session_lock_owned_by_self '$dir/state'; printf 'self=%s\\n' \"\$?\"
+          fm_session_lock_foreign_owner_live '$dir/state'; printf 'foreign=%s\\n' \"\$?\"
+          fm_session_lock_held_by_other '$dir/state'; printf 'other=%s\\n' \"\$?\"
+          fm_require_session_lock '$dir/state' probe; printf 'gate=%s\\n' \"\$?\"
+          fm_session_lock_inspect '$dir/state'
+          printf 'inspection=%s,%s\\n' \"\$FM_LOCK_INSPECT_STATE\" \"\$FM_LOCK_INSPECT_LIVE_HARNESS\"
+          fm_harness_ancestry_pid
+        ")
+        assert_contains "$got" "$(printf 'owner=1\nself=1\nforeign=1\nother=1\ngate=0\ninspection=unknown,false')" \
+          "$platform/$host/$caller accepted an invalid recorded owner: $got"
+        if [ "$caller" = app ]; then
+          [ "${got##*$'\n'}" = 700 ] || fail "App ancestry was lost while excluding its recorded owner: $got"
+        else
+          [ "${got##*$'\n'}" = 800 ] || fail "terminal ancestry no longer resolves: $got"
+        fi
+      done
+    done
+  done
+  pass "recorded Codex App hosts never grant ownership, report held, or block terminal mutations"
+}
+
+test_terminal_reclaims_a_recorded_codex_app_host() {
+  local dir bin host terminal pid out rc i
+  for host in app-server configured-server code-mode; do
+    dir="$TMP_ROOT/reclaim-codex-$host"
+    bin="$dir/harness-bin"
+    mkdir -p "$dir/home/state" "$bin"
+    printf '#!%s\n' "$(command -v bash)" > "$bin/codex"
+    cat >> "$bin/codex" <<'SH'
+if [ "${FM_TEST_HOLD:-0}" = 1 ]; then
+  printf '%s\n' "$$" > "$FM_HOME/state/.lock"
+  printf 'S1\n' > "$FM_HOME/state/.lock-session"
+  : > "$FM_HOME/state/ready"
+  sleep 120
+  :
+else
+  "$FM_TEST_LOCK"
+  exit $?
+fi
+SH
+    chmod +x "$bin/codex"
+    cp "$bin/codex" "$bin/codex-code-mode-host"
+    case "$host" in
+      app-server) set -- "$bin/codex" app-server --managed-daemon ;;
+      configured-server) set -- "$bin/codex" --config model=x --profile desktop app-server ;;
+      code-mode) set -- "$bin/codex-code-mode-host" ;;
+    esac
+    FM_HOME="$dir/home" FM_TEST_HOLD=1 "$@" >/dev/null 2>&1 &
+    pid=$!
+    fm_test_track_pid "$pid"
+    i=0
+    while [ ! -e "$dir/home/state/ready" ] && [ "$i" -lt 100 ]; do
+      sleep 0.05
+      i=$((i + 1))
+    done
+    [ -e "$dir/home/state/ready" ] || fail "the $host fixture did not start"
+    for terminal in codex claude; do
+      printf '%s\n' "$pid" > "$dir/home/state/.lock"
+      printf 'S1\n' > "$dir/home/state/.lock-session"
+      if [ "$terminal" = codex ]; then
+        out=$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_PID FM_HOME="$dir/home" FM_TEST_LOCK="$ROOT/bin/fm-lock.sh" \
+          "$bin/codex" --yolo 2>&1); rc=$?
+      else
+        out=$(FM_HOME="$dir/home" FM_TEST_LOCK="$ROOT/bin/fm-lock.sh" "$NAMED_CLAUDE" -c \
+          'export CLAUDE_CODE_SESSION_ID=S1 CLAUDE_PID=$$; "$FM_TEST_LOCK"; exit $?' 2>&1); rc=$?
+      fi
+      expect_code 0 "$rc" "$terminal could not reclaim a recorded live $host owner: $out"
+      assert_contains "$out" "THIS session holds the fleet lock" "reclamation did not confirm terminal ownership: $out"
+      [ "$(cat "$dir/home/state/.lock")" != "$pid" ] || fail "reclamation kept the shared $host anchor"
+      kill -0 "$pid" 2>/dev/null || fail "reclamation killed the shared $host process"
+      if [ "$terminal" = claude ]; then
+        [ "$(cat "$dir/home/state/.lock-session")" = S1 ] || fail "reclamation lost the trusted Claude sidecar"
+      else
+        [ ! -e "$dir/home/state/.lock-session" ] || fail "a Codex terminal retained an untrusted sidecar"
+      fi
+    done
+    fm_test_reap_pid "$pid" || fail "the $host fixture survived cleanup"
+  done
+  pass "terminal Codex and Claude sessions reclaim recorded shared App hosts without stopping them"
+}
+
 test_version_named_session_is_identified_on_both_platforms
 test_harness_at_namespace_pid1_is_examined
 test_ordinary_paths_are_never_harness_processes
@@ -1140,6 +1276,8 @@ test_competing_version_named_session_is_seen_as_live
 test_same_session_id_owns_a_recycled_background_chain
 test_anchor_pid_is_the_model_loop_process_only_for_a_trusted_id
 test_codex_app_server_never_anchors_the_lock
+test_shared_codex_hosts_never_qualify_as_recorded_owners
+test_terminal_reclaims_a_recorded_codex_app_host
 test_e2e_version_named_session_claims_the_home
 test_e2e_daemon_parented_session_claims_the_home
 test_e2e_daemon_parented_version_named_session_keeps_its_lock

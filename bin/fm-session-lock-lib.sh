@@ -175,7 +175,8 @@ fm_harness_pid_alive() {
   kill -0 "$pid" 2>/dev/null || return 1
   comm=$(ps -o comm= -p "$pid" 2>/dev/null) || return 1
   args=$(ps -o args= -p "$pid" 2>/dev/null)
-  fm_harness_process_matches "$comm" "$args"
+  fm_harness_process_matches "$comm" "$args" || return 1
+  ! fm_session_lock_codex_app_host "$pid"
 }
 
 # --- trusted same-session identity -------------------------------------------
@@ -332,14 +333,14 @@ fm_session_lock_owned_by_self() {
   case "$lock_pid" in
     ''|*[!0-9]*) return 1 ;;
   esac
+  fm_harness_pid_alive "$lock_pid" || return 1
   pids=$(fm_harness_ancestry_pids) || return 1
   while IFS= read -r pid; do
     [ "$pid" = "$lock_pid" ] && return 0
   done <<EOF
 $pids
 EOF
-  fm_session_lock_same_session "$state" "$pids" || return 1
-  fm_harness_pid_alive "$lock_pid"
+  fm_session_lock_same_session "$state" "$pids"
 }
 
 # True when state dir $1 records a live verified harness outside this process's
