@@ -257,14 +257,61 @@ fm_session_lock_same_session() {  # <state> [<ancestry-pids>]
 # helper leaves a dead pid that its own session's next hook reclaims, because
 # the sidecar still names that session. Every other session records the
 # outermost pid of its contiguous run, exactly as before.
+#
+# A Codex App thread's tool shells run directly under the app-server (or its
+# code-mode host) that every thread shares and that outlives any one thread, and
+# the thread itself has no process of its own. That host can never prove the
+# session is alive, so it is never an anchor: the function prints the refusal
+# and returns 2, and bin/fm-lock.sh leaves the home unlocked.
 fm_session_lock_anchor_pid() {
-  local pids
+  local pids anchor
   pids=$(fm_harness_ancestry_pids) || return 1
   if fm_session_lock_trusted_session_id "$pids" >/dev/null; then
     printf '%s\n' "$CLAUDE_PID"
     return 0
   fi
-  _fm_harness_outermost_pid "$pids"
+  anchor=$(_fm_harness_outermost_pid "$pids") || return 1
+  if fm_session_lock_codex_app_host "$anchor"; then
+    echo "error: this session runs in a Codex App thread, under the Codex app-server process $anchor that every thread shares; Codex App has no per-thread process to hold the helm, so operate read-only and take the helm from a terminal harness session instead" >&2
+    return 2
+  fi
+  printf '%s\n' "$anchor"
+}
+
+# True when pid $1 is a Codex App host shared by many threads: the codex
+# code-mode host, or a codex process whose first positional argument is the
+# app-server subcommand. Options and the values of -c/--config and
+# -p/--profile are skipped, so a terminal codex session whose prompt merely
+# mentions app-server is not mistaken for one.
+fm_session_lock_codex_app_host() {  # <pid>
+  local comm args word skip=1
+  comm=$(ps -o comm= -p "$1" 2>/dev/null) || return 1
+  args=$(ps -o args= -p "$1" 2>/dev/null) || return 1
+  case "${comm##*/}" in
+    codex-code-mode*) return 0 ;;
+    codex) ;;
+    *) return 1 ;;
+  esac
+  # Skip argv words up to and including the one naming codex itself, so a
+  # script interpreter in front of it (bash /path/codex) is not read as the
+  # subcommand.
+  for word in $args; do
+    if [ "$skip" -eq 1 ]; then
+      case "${word##*/}" in codex) skip=0 ;; esac
+      continue
+    fi
+    if [ "$skip" -eq 2 ]; then
+      skip=0
+      continue
+    fi
+    case "$word" in
+      -c | --config | -p | --profile) skip=2 ;;
+      -*) ;;
+      app-server) return 0 ;;
+      *) return 1 ;;
+    esac
+  done
+  return 1
 }
 
 # True when state dir $1 holds a session lock that this process's session owns:

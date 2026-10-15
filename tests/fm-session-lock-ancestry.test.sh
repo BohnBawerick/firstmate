@@ -427,6 +427,36 @@ test_anchor_pid_is_the_model_loop_process_only_for_a_trusted_id() {
   pass "session-lock: a trusted id anchors the lock on the model-loop process, anything else on the outermost pid"
 }
 
+# A Codex App thread's tool shells run directly under the app-server shared by
+# every thread (and live past any one thread), so that process can never prove
+# the thread is still alive. The real fm-lock.sh, run as the child of a real
+# process named codex, must refuse to record an app-server as the anchor and
+# leave the home unlocked, while a terminal codex session still takes it.
+test_codex_app_server_never_anchors_the_lock() {
+  local dir bin out rc
+  dir="$TMP_ROOT/codex-app-server"
+  bin="$dir/codex-bin"
+  mkdir -p "$dir/home/state" "$bin"
+  printf '#!%s\n' "$(command -v bash)" > "$bin/codex"
+  cat >> "$bin/codex" <<'SH'
+FM_HOME="$FM_TEST_HOME" "$FM_TEST_LOCK"
+SH
+  chmod +x "$bin/codex"
+  out=$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_PID FM_TEST_HOME="$dir/home" FM_TEST_LOCK="$ROOT/bin/fm-lock.sh" \
+    "$bin/codex" app-server --listen unix:// --managed-daemon 2>&1); rc=$?
+  expect_code 1 "$rc" "fm-lock.sh under a shared Codex app-server must refuse: $out"
+  assert_contains "$out" "Codex App" "the refusal must name Codex App: $out"
+  assert_contains "$out" "terminal harness" "the refusal must name a terminal harness as the way to take the helm: $out"
+  [ ! -e "$dir/home/state/.lock" ] || fail "a shared Codex app-server was recorded as the lock anchor: $(cat "$dir/home/state/.lock")"
+
+  rm -rf "$dir/home/state" && mkdir -p "$dir/home/state"
+  out=$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_PID FM_TEST_HOME="$dir/home" FM_TEST_LOCK="$ROOT/bin/fm-lock.sh" \
+    "$bin/codex" --yolo 2>&1); rc=$?
+  expect_code 0 "$rc" "a terminal codex session must still take the lock: $out"
+  [ -s "$dir/home/state/.lock" ] || fail "a terminal codex session did not record the lock"
+  pass "session-lock: a shared Codex app-server never anchors the lock, and a terminal codex session still does"
+}
+
 # --- end-to-end layer: the real Stop auto-arm in real process trees ----------
 
 install_autoarm_scripts() {
@@ -1109,6 +1139,7 @@ test_harness_beyond_a_gap_never_owns_the_lock
 test_competing_version_named_session_is_seen_as_live
 test_same_session_id_owns_a_recycled_background_chain
 test_anchor_pid_is_the_model_loop_process_only_for_a_trusted_id
+test_codex_app_server_never_anchors_the_lock
 test_e2e_version_named_session_claims_the_home
 test_e2e_daemon_parented_session_claims_the_home
 test_e2e_daemon_parented_version_named_session_keeps_its_lock
