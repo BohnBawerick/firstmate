@@ -698,7 +698,11 @@ class Mailbox:
                 if activity and activity["kind"] != "pickup":
                     if activity["kind"] in ("blocked", "needs-decision", "done", "failed"):
                         with self.lock:
-                            current = self._current_children(row["mate_id"], activity["task_id"])[0]
+                            current = self.conn.execute("""SELECT r.seq FROM mate_replies r JOIN messages m ON m.id=r.message_id
+                                WHERE m.mate_id=? AND json_extract(activity,'$.task_id')=? AND json_extract(activity,'$.turn_id')=?
+                                ORDER BY (json_extract(activity,'$.kind') IN ('done','failed')) DESC,
+                                    json_extract(activity,'$.observed_at') DESC,r.seq DESC LIMIT 1""",
+                                (row["mate_id"], activity["task_id"], activity["turn_id"])).fetchone()
                         publish_args = (["publish-child", row["mate_id"], row["home"], self.db_path,
                             activity_child_id(activity), activity["kind"], str(row["seq"]),
                             terminal_text(activity["summary"])[:800], relative] if current["seq"] == row["seq"] else None)
@@ -746,15 +750,14 @@ class Mailbox:
             result = candidate
         return result
 
-    def _current_children(self, mate_id, task_id=None):
+    def _current_children(self, mate_id):
         return self.conn.execute("""WITH turns AS (
                 SELECT r.*, ROW_NUMBER() OVER (
                     PARTITION BY json_extract(activity,'$.task_id'),json_extract(activity,'$.turn_id')
                     ORDER BY (json_extract(activity,'$.kind') IN ('done','failed')) DESC,
                         json_extract(activity,'$.observed_at') DESC,r.seq DESC) AS turn_rank
                 FROM mate_replies r JOIN messages m ON m.id=r.message_id
-                WHERE m.mate_id=? AND activity IS NOT NULL AND json_extract(activity,'$.kind')!='pickup'
-                    AND (? IS NULL OR json_extract(activity,'$.task_id')=?)),
+                WHERE m.mate_id=? AND activity IS NOT NULL AND json_extract(activity,'$.kind')!='pickup'),
             tasks AS (
                 SELECT *, ROW_NUMBER() OVER (
                     PARTITION BY json_extract(activity,'$.task_id')
@@ -762,7 +765,7 @@ class Mailbox:
                 FROM turns WHERE turn_rank=1)
             SELECT * FROM tasks WHERE task_rank=1
             ORDER BY (json_extract(activity,'$.kind') IN ('done','failed')),seq DESC LIMIT 101""",
-            (mate_id, task_id, task_id)).fetchall()
+            (mate_id,)).fetchall()
 
     def mate_snapshot(self, mate_id):
         mate = self.mate(mate_id)

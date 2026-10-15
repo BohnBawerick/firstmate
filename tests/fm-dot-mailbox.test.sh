@@ -658,7 +658,8 @@ class MailboxRegressionTests(unittest.TestCase):
         reply("old-blocker-A", "native-task", "turn-A", "blocked", 1)
         self.box.publish_mate_replies()
         status = parent / "state/dot-test.status"
-        self.assertFalse(status.exists())
+        self.assertEqual(len(status.read_text().splitlines()), 1)
+        self.assertIn("old-blocker-A", status.read_text())
 
         self.box.conn.close()
         self.box = m.Mailbox(self.box.db_path, allow_local_callbacks=True)
@@ -677,14 +678,15 @@ class MailboxRegressionTests(unittest.TestCase):
         self.assertTrue(children()["native-task"]["display_required"])
         self.box.publish_mate_replies()
         self.assertFalse(children()["native-task"]["display_required"])
-        self.assertEqual(len(status.read_text().splitlines()), 1)
+        self.assertEqual(len(status.read_text().splitlines()), 2)
         reply("late-finished-A", "native-task", "turn-A", "done", 1)
         reply("late-progress-A", "native-task", "turn-A", "milestone", 4)
         reply("late-progress-B", "native-task", "turn-B", "milestone", 5)
         self.box.publish_mate_replies()
         self.assertEqual(children()["native-task"]["turn_id"], "turn-B")
         self.assertEqual(children()["native-task"]["state"], "done")
-        self.assertEqual(len(status.read_text().splitlines()), 1)
+        self.assertEqual(len(status.read_text().splitlines()), 3)
+        self.assertIn("late-finished-A", status.read_text())
 
         reply("continued-C", "native-task", "turn-C", "task-created", 6)
         current = children()["native-task"]
@@ -697,12 +699,71 @@ class MailboxRegressionTests(unittest.TestCase):
         self.assertEqual(current["state"], "failed")
         self.assertFalse(current["display_required"])
         self.assertTrue(children()["other-task"]["display_required"])
-        self.assertEqual(len(status.read_text().splitlines()), 2)
+        self.assertEqual(len(status.read_text().splitlines()), 4)
         self.assertTrue(all("child " + first["id"] in line for line in status.read_text().splitlines()))
         history = json.loads(run("fm-dot-secondmate.sh", "history", "dot-test"))["events"]
         self.assertEqual(len(history), 10)
         self.assertEqual({event["activity"]["turn_id"] for event in history}, {"turn-A", "turn-B", "turn-C", "other-turn"})
         self.assertTrue(all(event["activity"]["schema"] == "fm.activity-note.v1" for event in history))
+
+    def test_turn_outcomes_survive_newer_turn_and_restart(self):
+        parent, home = self.directory / "parent", self.directory / "mate"
+        (parent / "state").mkdir(parents=True)
+        (parent / "data").mkdir()
+        charter = self.directory / "charter.md"
+        charter.write_text("Idle until routed work arrives. Report through the mailbox.\n")
+        env = {**os.environ, "FM_HOME": str(parent), "FM_ROOT_OVERRIDE": str(parent)}
+        for key in ("FM_STATE_OVERRIDE", "FM_DATA_OVERRIDE", "FM_CONFIG_OVERRIDE"):
+            env.pop(key, None)
+
+        def run(script, *args):
+            return subprocess.run(["bash", str(root / "bin" / script), *map(str, args)], env=env,
+                capture_output=True, text=True, check=True, timeout=30).stdout
+
+        run("fm-dot-secondmate.sh", "register", "dot-test", self.box.db_path, home, "work",
+            "http://127.0.0.1:1/health", "http://127.0.0.1:1/readyz", "Cloud tests", charter)
+        run("fm-send.sh", "dot-test", "Subject: pending turn outcome proof")
+        message = self.box.get_messages(queue="work")["messages"][0]
+        meta = parent / "state/dot-test.meta"
+        original = meta.read_text()
+        status = parent / "state/dot-test.status"
+
+        def activity(event_id, turn_id, kind, minute):
+            return "activity-note: " + json.dumps({"schema": "fm.activity-note.v1", "event_id": event_id,
+                "kind": kind, "observed_at": f"2026-01-01T00:{minute:02d}:00Z", "summary": event_id,
+                "task_id": "native-task", "turn_id": turn_id})
+
+        for index, kind in enumerate(("done", "failed", "blocked", "needs-decision")):
+            with self.subTest(kind=kind):
+                text = activity("outcome-" + kind, f"turn-{index}", kind, index * 2 + 1)
+                result = self.box.reply_message(message["id"], text, message["correlation_id"])
+                meta.write_text(original.replace("transport=dot-mcp", "transport=unavailable"))
+                self.box.publish_mate_replies()
+                self.assertNotIn("outcome-" + kind, status.read_text() if status.exists() else "")
+                next_turn = activity("next-" + kind, f"next-turn-{index}", "task-created", index * 2 + 2)
+                self.box.reply_message(message["id"], next_turn, message["correlation_id"])
+                self.box.conn.close()
+                self.box = m.Mailbox(self.box.db_path, allow_local_callbacks=True)
+                self.addCleanup(self.box.conn.close)
+                meta.write_text(original)
+                history = json.loads(run("fm-dot-secondmate.sh", "history", "dot-test"))["events"]
+                pending = next(event for event in history if event["revision"] == result["revision"])
+                self.assertFalse(pending["published"])
+                with patch.object(m.time, "time", return_value=time.time() + 60):
+                    self.box.publish_mate_replies()
+                self.assertIn("outcome-" + kind, status.read_text())
+                self.assertEqual(len(status.read_text().splitlines()), index + 1)
+                history = json.loads(run("fm-dot-secondmate.sh", "history", "dot-test"))["events"]
+                delivered = next(event for event in history if event["revision"] == result["revision"])
+                self.assertTrue(delivered["published"])
+                snapshot = json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test"))
+                self.assertEqual(len(snapshot["children"]), 1)
+                self.assertEqual(snapshot["children"][0]["turn_id"], f"next-turn-{index}")
+                self.assertTrue(snapshot["children"][0]["display_required"])
+                self.assertEqual(self.box.reply_message(message["id"], text, message["correlation_id"])["revision"], result["revision"])
+                self.box.publish_mate_replies()
+                self.assertEqual(len(status.read_text().splitlines()), index + 1)
+        self.assertEqual(len(list((home / "state/terminal-outcomes").glob("*.reported"))), 4)
 
     def test_dot_secondmate_routes_replies_and_reports_health_without_a_pane(self):
         parent, home = self.directory / "parent", self.directory / "mate"
