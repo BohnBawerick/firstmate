@@ -24,11 +24,18 @@
 # Output is one stable, parseable, token-tight line firstmate can read every
 # heartbeat:
 #
-#   state: <working|parked|done|blocked|paused|failed|unknown> · source: <run-step|pane|status-log|remote-endpoint|none> · <detail>
+#   state: <working|parked|done|blocked|paused|failed|unknown> · source: <run-step|pane|status-log|remote-endpoint|mailbox|none> · <detail>
 #
 # Logic, in order:
-#   1. Resolve worktree + backend target + kind from state/<id>.meta. A meta
-#      recording remote_host= is a remote secondmate: its worktree and endpoint
+#   1. Resolve worktree + backend target + kind from state/<id>.meta.
+#      A secondmate with transport=dot-mcp uses mailbox observations, not a process
+#      probe. An unready bridge yields unknown. With a ready bridge, folded
+#      unresolved blockers and decisions retain their waiting state; current
+#      nonterminal children take precedence over an older terminal parent event. Incomplete
+#      or stale child observations yield unknown. Without nonterminal children,
+#      the folded parent status applies, but stale working reports stay unknown.
+#      tests/fm-dot-mailbox.test.sh covers fresh and stale turns after done/failed.
+#      A meta recording remote_host= is a remote secondmate: its worktree and endpoint
 #      live on that host, so the local worktree and pane reads are skipped and
 #      the remote host is asked for the endpoint's recovery-grade state
 #      (fm-on.sh + fm-remote-secondmate-control.sh state). alive falls through

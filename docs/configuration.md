@@ -809,6 +809,7 @@ The skill text owns the marker spelling, the tick order, and the reinforcement r
 
 Persistent secondmate routes live locally in `data/secondmates.md`.
 The concise single-line route contract is owned by the [`secondmate-provisioning` skill](../.agents/skills/secondmate-provisioning/SKILL.md#routing-table), including the parser-compatible fields, one-sentence summary requirement, `home:` pointer to the seeded charter, and limit on extra registry prose.
+For a ChatGPT dot route, follow [the mailbox transport guide](dot-mcp-bridge.md#register-an-existing-dot-as-a-second-mate); local-home provisioning and backlog-file handoff below apply to process-backed mates.
 
 ### Remote routes and validation
 

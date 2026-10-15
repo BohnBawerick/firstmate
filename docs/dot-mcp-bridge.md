@@ -79,8 +79,8 @@ The script headers and `--help` own the command reference, including the local c
 
 ## Prepare a Secure MCP Tunnel connection
 
-The following live steps remain for Firstmate after review.
-They create a tunnel profile, connect a plugin, and contact the dot only when the operator executes them.
+For an existing connection, keep its tunnel, runtime key, profile and mailbox database, and use its existing launch commands with the updated bridge code.
+The initialization and plugin-creation steps below are only for a new connection.
 Use an existing official `tunnel-client` binary; these commands use the verified v0.0.16 flag names.
 
 Follow the [Secure MCP Tunnel setup guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) to obtain a tunnel identifier in Platform tunnel settings and associate the Platform organization and ChatGPT workspace.
@@ -122,14 +122,14 @@ Open [ChatGPT Plugins](https://chatgpt.com/plugins), select the plus button, the
 Following the [custom MCP connection steps](https://developers.openai.com/plugins/deploy/connect-chatgpt#add-the-mcp-server), enter a name and description, select Connection Tunnel, and enter the tunnel identifier.
 Select no authentication for this mailbox server, review the risk warning, and create the plugin.
 Review the discovered tools and enable the plugin in the dot conversation.
-Account and workspace UI availability remain unverified.
+Account and workspace policies control access to custom MCP connections.
 In the dot conversation, request a `message.created` subscription on the connector for queue `worker-tasks`, with instructions to retrieve assignments and reply to their exact message IDs.
 Confirm challenge verification and the subscription before submitting a unique hello nonce.
 Read the nonce through MCP, reply with its correlation ID, and inspect the result with the operator CLI.
 A local controlled receiver proves callback behavior only; it does not prove an authenticated remote connection or a real dot wake.
 
-To stop, use Ctrl-C in both foreground terminals.
-In the tunnel terminal, clear the credential and remove only this run's profile directory from the isolated copy:
+To stop this foreground setup, use Ctrl-C in both terminals.
+In the tunnel terminal, clear the credential and remove the profile directory only if this setup created it:
 
 ```bash
 unset CONTROL_PLANE_API_KEY
@@ -159,7 +159,7 @@ Write a task-specific charter in a private file, with these rules:
 - Own routine upkeep of assigned cloud environments and tools, including setup scripts, packages and caches; fix those as needed for assigned work without asking the owner to repair them.
 - Preserve user work and the assignment's repository and data boundaries during upkeep.
 - Report only through `reply`, using the assignment's exact message ID and correlation ID.
-- Start each reply with `working:`, `done:`, `blocked:`, `needs-decision:` or `paused:`.
+- Report cloud observations using the [activity-note format](#reported-cloud-activity); use `working:`, `done:`, `blocked:`, `needs-decision:` or `paused:` for plain status replies.
 - Include actual results and native thread/turn IDs when cloud work runs; include a URL only when the native tool supplies one.
 - Escalate only account, credential, billing or permission changes, or work outside the charter, through Firstmate rather than the user directly.
 - Do not call `submit_message` to answer assignments or invent work while idle.
@@ -169,11 +169,12 @@ From the parent home, register the route with the script whose `--help` owns the
 ```sh
 export FM_HOME="/absolute/parent/home"
 bin/fm-dot-secondmate.sh register dot-cloud \
-  /absolute/private/mailbox.sqlite3 /absolute/private/dot-home default \
+  /absolute/private/mailbox.sqlite3 /absolute/private/dot-home worker-tasks \
   http://127.0.0.1:8765/health http://127.0.0.1:18765/readyz \
   "Cloud tasks explicitly routed by Firstmate" /absolute/private/dot-charter.md
 bin/fm-dot-secondmate.sh health dot-cloud
-bin/fm-send.sh dot-cloud "Return a harmless proof nonce through the mailbox."
+bin/fm-send.sh dot-cloud "Subject: Mailbox proof
+Return a harmless proof nonce through the mailbox."
 bin/fm-crew-state.sh dot-cloud
 ```
 
@@ -188,12 +189,13 @@ Exact retransmissions deduplicate; a new recovery instruction with the same corr
 Routed replies require that correlation and a supported outcome prefix or the activity-note format below.
 A durable reply outbox publishes through the existing parent-channel helper, preserving retries across crashes without duplicating a status line.
 Full replies are retained under the parent home's private `data/<mate-id>/mailbox-replies/` directory.
-A blocked or decision reply opens a `dot-<message-id>` key, which Firstmate answers with ordinary `fm-send --resolve-key`.
+A plain blocked or decision reply opens a `dot-<message-id>` key, which Firstmate answers with ordinary `fm-send --resolve-key`.
 
 Health reports mailbox readiness, tunnel readiness, an active subscription, last tool contact, pending assignments and undelivered events.
 It never claims the dot's process is online: an idle dot is externally hosted and its current process state is not observable.
 `fm-peek` returns those health facts rather than chat or a simulated pane.
 Fleet summaries include reported cloud children, their native IDs, observation ages and `dot-reported` provenance.
+`bin/fm-crew-state.sh` owns current-state reconciliation; bridge readiness alone does not establish current work.
 No local process or pane stands in for cloud liveness.
 An unavailable tunnel is not evidence that a local agent should be spawned.
 Process interrupts, relaunches and generic cleanup refuse dot routes; registration and mailbox records remain intact.
@@ -275,7 +277,8 @@ Display bindings are separate from worker metadata and scoped to the parent home
 Presentation locks and focus guards protect unrelated tabs.
 A renamed or ambiguous display is left alone and reported as an error.
 An owned pane with a missing reader is restored only when it contains a proven idle shell; unrelated or unknown processes are left alone.
-Presentation-lock contention skips a watch pass; the next pass resumes reconciliation, while a single sync reports busy.
+Presentation-lock contention skips a watch pass, while a single sync reports busy.
+Watch also defers a terminal display's close while a foreground client is viewing its tab, preserving the binding and retrying after focus moves away; a single sync reports refusal.
 Stopping the view process leaves displays and all cloud work untouched.
 Restarting it reuses confirmed bindings and replays durable history; missing observations remain unknown.
 Refresh an existing turn-scoped view after its tracked tasks have durable terminal results and delivered parent outcomes.
@@ -291,5 +294,5 @@ bash bin/fm-test-run.sh tests/fm-dot-mailbox.test.sh tests/fm-dot-view-herdr-e2e
 
 The suite exercises the mailbox round trip, duplicate and restart behavior, callback validation, signing, bounded retries, renewal, and storage limits.
 It also drives `fm-send` through a registered mailbox route, receives MCP replies through the parent status channel, reads the wake drain and fleet view, and checks health failures without a terminal.
-Activity cases cover retry conflicts, pagination, out-of-order updates, task identity across turns, stale observations, restart replay, terminal-safe rendering and parent-delivery receipts.
-The Herdr test uses a named isolated lab to check display ownership, focus, ignored input and delivery-before-close without touching the default session.
+Activity cases cover retry conflicts, pagination, out-of-order updates, task identity across turns, fresh and stale work after an earlier terminal turn, restart replay, terminal-safe rendering and parent-delivery receipts.
+The Herdr test uses a named isolated lab to check display ownership, missing-reader recovery, lock and focus retries, ignored input and delivery-before-close without touching the default session.

@@ -45,8 +45,7 @@ The `projects:` field is a non-exclusive clone list, not ownership.
 
 An existing ChatGPT dot can use the mailbox transport described in [`docs/dot-mcp-bridge.md`](../../../docs/dot-mcp-bridge.md#register-an-existing-dot-as-a-second-mate).
 Use `bin/fm-dot-secondmate.sh` to register and inspect that route, not the process-home seed, spawn or restart commands below.
-Its private home stores the charter and parent binding; it has no local executable checkout, agent pane or child inventory to inspect.
-Route work through ordinary `fm-send`, read its returned status/documents, and treat mailbox/tunnel readiness and last contact as separate facts from the unobservable hosted process state.
+The transport guide owns routing, reported child activity, liveness and lifecycle limits.
 
 ## Charter and seed
 
@@ -230,7 +229,7 @@ If the secondmate is already running and only inherited local material changed, 
 To apply a changed pin to a live local secondmate, use the [control-plane relaunch](../../../docs/agent-control.md#transactional-relaunch).
 That plane refuses a remotely placed secondmate by name, because its agent runs on another host where none of the plane's postconditions can be read.
 For a remote secondmate, follow the [remote relaunch procedure](../../../docs/remote-secondmates.md#relaunch-a-live-remote-second-mate).
-A successful update restarts every live process-backed mate of both placements on its own, including one already on the target commit; the `/updatefirstmate` skill owns that pass, and `bin/fm-secondmate-restart.sh` owns its persist gate and failure vocabulary.
+The [`/updatefirstmate` skill](../updatefirstmate/SKILL.md) owns update and restart policy; `bin/fm-secondmate-restart.sh` owns its persistence gate and failure vocabulary.
 
 Do not reconstruct a secondmate's whole tree from the main home.
 The main firstmate reconciles only direct reports.

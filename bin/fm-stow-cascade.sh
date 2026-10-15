@@ -8,7 +8,7 @@
 #
 # Enumeration comes from data/secondmates.md, the registry that already refuses
 # a duplicate id, a duplicate home, and an overlapping home, so each registered
-# secondmate is emitted exactly once and no home is accounted twice. A home's
+# process-backed secondmate is emitted once. Dot routes are excluded. A home's
 # budget is that home's alone: this command never sums a fleet total, because
 # config/startup-memory-budget is a per-home allowance.
 #

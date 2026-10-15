@@ -291,12 +291,13 @@ In a primary home the receipt is written after the cascade below, not instead of
 
 ## Automatic cascade to secondmates
 
-In a primary home, every `/stow` cascades to every registered secondmate after this home's own required pass and knowledge sweep are complete.
+In a primary home, every `/stow` cascades to every registered process-backed secondmate after this home's own required pass and knowledge sweep are complete.
+For dot mailbox routes, follow the [mailbox transport lifecycle](../../../docs/dot-mcp-bridge.md#register-an-existing-dot-as-a-second-mate).
 In a secondmate home, `/stow` curates that home only and never cascades further.
 The cascade changes nothing until `/stow` is invoked: it adds no notification, no digest section, and no background work.
 
 Run `bin/fm-stow-cascade.sh` once the primary's own pass is done.
-It enumerates each registered secondmate exactly once, reports that home's own budget accounting, and resolves how the sweep reaches it; its header owns the stanza fields, the bound, and the exit codes.
+It enumerates each registered process-backed secondmate exactly once, reports that home's own budget accounting, and resolves how the sweep reaches it; its header owns the stanza fields, the bound, and the exit codes.
 Every home is judged against its own `config/startup-memory-budget` allowance, so never add homes together or treat one home's excess as another's.
 
 Act on each home by its reported `transport`:

@@ -3,8 +3,8 @@
 #
 # Mechanical half of the /updatefirstmate skill. Fast-forwards the running
 # firstmate repo's default branch from origin, then fast-forwards every
-# registered secondmate home. Local homes are treehouse worktrees or standalone
-# clones; remote routes update their configured code root on that host and then
+# registered process-backed secondmate home. Local homes are treehouse worktrees
+# or standalone clones; remote routes update their configured code root and then
 # fast-forward the persistent home to that root. FAST-FORWARD ONLY, exactly like
 # fm-fleet-sync.sh: never force, never create a merge commit, never stash.
 # A secondmate divergence whose complete local tree result is already present at

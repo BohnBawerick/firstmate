@@ -162,7 +162,8 @@ For the supervision host that runs the same branch contract beside a non-Pi prim
 
 ### Registered secondmate current state
 
-A registered secondmate's validated home is the authority for bearings current state because it owns the child metadata inventory, each child's current-state result, endpoint observations, backlog holds and dependencies, keyed unresolved decisions, and recent Done baseline.
+A registered process-backed secondmate's validated home is the authority for bearings current state because it owns the child metadata inventory, each child's current-state result, endpoint observations, backlog holds and dependencies, keyed unresolved decisions, and recent Done baseline.
+Dot secondmate observations follow the [mailbox transport guide](dot-mcp-bridge.md#register-an-existing-dot-as-a-second-mate) instead of a structured executable-home summary.
 The original cross-home projection instead treated the secondmate agent as an ordinary parent task, so an idle secondmate's `fm-crew-state` fallback selected the latest append-only parent status event even when structured state in the registered home contradicted it.
 The parent-status contract also required explicit keyed resolution for decisions and blockers but not for a material `working` phase, so a start event could remain unsuperseded after the corresponding home backlog had moved the work to Done.
 Generated secondmate charters reject generic receipt or start acknowledgements, key only supervisor-actionable material phase reports, and close an opened phase with a same-key later state or `resolved` event, while the structured home remains authoritative even if that closure is missing.
@@ -341,6 +342,7 @@ That keeps spawn launch compatible across claude, codex, opencode, pi, pi-signed
 ## Optional secondmates
 
 `data/secondmates.md` records persistent secondmates with natural-language scopes, project clone lists, and home paths.
+For dot secondmates, use the [mailbox transport guide](dot-mcp-bridge.md#register-an-existing-dot-as-a-second-mate) instead of the process-home provisioning and lifecycle below.
 A local route points directly at its home, while a remote route adds an SSH alias and remote Firstmate code root so the entire home and all of its child work stay on that host.
 Remote placement pins the remote second-mate agent to Herdr while leaving the remote home's worker backend selection independent, and every non-doctor primary-to-remote `fm-on` command runs through the remote account's Firstmate-owned job worker rather than its SSH process or a Herdr pane.
 [`remote-secondmates.md`](remote-secondmates.md) owns current setup, supplied-origin provisioning, transport, relay, failure, and retirement behavior.
@@ -499,7 +501,7 @@ The same pass also persists open-work record state the session is holding - fili
 It is deliberately not a reconciliation of durable records against repository or PR reality: its input is the volatile context, so it can only preserve what the session still knows, and no reconciliation that outlives a session exists today.
 Task-scoped notes use `bin/fm-tasks-axi.sh show <id> --full` followed by `bin/fm-tasks-axi.sh update <id> --body-file <path>`, adding `--archive-body` when the prior body should remain recoverable.
 The stow pass never writes a skill, but a separately executed, captain-approved migration may move conditional knowledge into a user-owned local skill excluded from the Firstmate clone; changes to Firstmate's tracked skills remain deliberate repository work through the normal PR pipeline.
-Invoked in a primary home, `/stow` then cascades the same sweep to every registered secondmate, enumerated through `bin/fm-stow-cascade.sh`: each home is accounted and curated against its own startup-memory allowance, a live secondmate sweeps its own session, and a slow or unreachable home is reported as an exception rather than blocking the primary.
+The [`/stow` cascade contract](../.agents/skills/stow/SKILL.md#automatic-cascade-to-secondmates) owns which secondmates participate and how their memory is curated.
 
 ## Local clones stay fresh
 
@@ -513,13 +515,11 @@ The refresh also prunes local branches whose remote is gone and that no worktree
 
 ## Self-updates stay safe
 
-`/updatefirstmate` fast-forwards the running firstmate repo and registered secondmate homes from `origin` without touching project clones.
-It restarts every live second mate whose home the pass left on the target commit through a persist-gated replacement, including a home that needed no advance, because a restart is also the only thing that re-resolves launch-time harness wiring; the re-read nudge is retained only as the fallback for live agents whose runtime cannot prove a restart.
+The [`/updatefirstmate` skill](../.agents/skills/updatefirstmate/SKILL.md) owns update targets, restart policy, operator procedure and outcome vocabulary; the relevant script headers own the mechanics.
 For a remote route, the configured code root updates from its own origin on that host before the persistent home fast-forwards to the code-root commit.
 The primary update is fast-forward only, while a clean secondmate divergence may reconcile with `reset --keep` only when a three-way temporary-index proof shows its complete local tree result is already present at the target, including after a squash merge.
 Dirty, uniquely diverged, offline, and off-default targets are reported and left untouched, and genuine secondmate divergence remains visible through a durable reconciliation record until a later successful convergence clears it.
 Local homes share the guarded fast-forward helper, while remote updates delegate the same safety decision to the configured host through the generic transport.
-The procedure and outcome vocabulary are owned by the [`/updatefirstmate` skill](../.agents/skills/updatefirstmate/SKILL.md); the relevant script headers own the mechanics.
 
 ## Restart-proof
 
