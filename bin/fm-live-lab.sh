@@ -669,26 +669,20 @@ expand_pairs() {
     }' <(printf '%s\n' "$1") <(printf '%s\n' "$3")
 }
 
-# A group is eligible only while each scan still sees an identity-valid member.
-# Once absent, it is removed from the caller's group list and cannot be rediscovered.
+# A ps scan can miss a child born while its parent exits. Only the kernel can
+# confirm a group is gone. Never rediscover a dropped group by its ID.
 prune_groups() {
-  awk -v groups="$1" '
-    BEGIN { n=split(groups, ids, /[[:space:]]+/) }
-    NR==FNR { split($0, fields, "\t"); if (fields[1] ~ /^[0-9]+$/) saved[fields[1]]=fields[2]; next }
-    {
-      pid=$1; pgid=$3; state=$4
-      start=$5 " " $6 " " $7 " " $8 " " $9
-      if (state !~ /^Z/ && (!(pid in saved) || saved[pid] == start)) live[pgid]=1
-    }
-    END { for (i=1; i<=n; i++) if (ids[i] in live) printf "%s ", ids[i] }
-  ' <(printf '%s\n' "$2") <(printf '%s\n' "$3")
+  local group
+  for group in $1; do
+    kill -0 -- "-$group" 2>/dev/null && printf '%s ' "$group"
+  done
 }
 
 refresh_pairs() {
   local snapshot
   snapshot=$(ps -axo pid=,ppid=,pgid=,stat=,lstart=)
   pairs=$(expand_pairs "$pairs" "$groups" "$snapshot")
-  groups=$(prune_groups "$groups" "$pairs" "$snapshot")
+  groups=$(prune_groups "$groups")
 }
 
 # <pid TAB lstart> pairs captured before tmux shutdown. Recheck identity even

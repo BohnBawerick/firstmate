@@ -639,6 +639,10 @@ PYEOF
       count=$(grep -c '^[0-9]' "$home/state/.mail-seen")
       [ "$count" = 2 ] || fail "hung logout lost completed rows"
     else
+      [ ! -s "$out" ] || fail "a lone login deadline miss must stay quiet: $(cat "$out")"
+      assert_contains "$(cat "$home/state/.mail-check")" 'deferred=fm-mail poll error: mail poll deadline reached' \
+        "hung login did not retain the deferred deadline"
+      run_check "$home" "$out" "$CHECK" FM_MAIL_CHECK_BUDGET=5 FM_MAIL_POLL_MAX_WAKES=2
       assert_contains "$(cat "$out")" 'mail poll deadline reached' "hung login hid the inner deadline"
       assert_absent "$home/state/.mail-seen" "hung login advanced the mail cursor"
     fi

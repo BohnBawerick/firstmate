@@ -1626,7 +1626,7 @@ EOF
 }
 
 test_endpoint_read_hang_is_bounded_and_reported() {
-  local rec root home fakebin out status=0 stray
+  local rec root home fakebin out status=0 stray waited=0
   rec=$(new_world endpoint-hang)
   IFS='|' read -r root home fakebin <<EOF
 $rec
@@ -1638,9 +1638,8 @@ EOF
   printf 'window=sess:p-slow\nkind=ship\nbackend=herdr\n' > "$home/state/task-a-slow.meta"
   printf 'window=sess:p-live\nkind=ship\nbackend=herdr\n' > "$home/state/task-z-live.meta"
 
-  # The same fake hangs the side-band home summary before the endpoint section.
-  # Bound that unrelated refresh at 5s instead of paying its production 60s;
-  # the endpoint's own 2s bound and descendant-cleanup assertions stay real.
+  # The same fake hangs the detached home summary alongside the endpoint read.
+  # Bound that unrelated refresh at 5s instead of paying its production 60s.
   out=$(FM_HOME_SUMMARY_TIMEOUT=5 FM_SESSION_START_ENDPOINT_TIMEOUT=2 \
     run_session_start "$home" "$root" "$fakebin:$BASE_PATH") || status=$?
 
@@ -1655,6 +1654,11 @@ EOF
   assert_not_contains "$out" "STARTUP TRUNCATED - SESSION START" \
     "a bounded endpoint-read hang raised the whole-digest truncation banner"
 
+  while [ ! -s "$home/state/.home-summary-refresh.log" ] && [ "$waited" -lt 100 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  assert_present "$home/state/.home-summary-refresh.log" "the detached refresh never reached its bound"
   stray=$(pgrep -f "$fakebin/herdr" 2>/dev/null | wc -l | tr -d ' ')
   [ "$stray" -eq 0 ] || fail "the per-task read bound left $stray hung herdr process(es) behind"
 
@@ -1662,7 +1666,7 @@ EOF
 }
 
 test_endpoint_bound_rejects_padded_zero() {
-  local rec root home fakebin out status=0 stray
+  local rec root home fakebin out status=0 stray waited=0
   rec=$(new_world endpoint-padded-zero)
   IFS='|' read -r root home fakebin <<EOF
 $rec
@@ -1686,6 +1690,11 @@ EOF
   assert_contains "$out" "$(printf '\nCONTEXT\n')" \
     "a padded-zero bound cost the digest its context section"
 
+  while [ ! -s "$home/state/.home-summary-refresh.log" ] && [ "$waited" -lt 100 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  assert_present "$home/state/.home-summary-refresh.log" "the detached refresh never reached its bound"
   stray=$(pgrep -f "$fakebin/herdr" 2>/dev/null | wc -l | tr -d ' ')
   [ "$stray" -eq 0 ] || fail "the fallback bound left $stray hung herdr process(es) behind"
 

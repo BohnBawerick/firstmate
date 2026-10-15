@@ -459,11 +459,11 @@ lab_keys=$(node -e 'const j=JSON.parse(require("node:fs").readFileSync(process.a
 assert_equals "" "$lab_keys" "reparented child cannot re-add trust after down"
 pass "down waits for captured descendants after their root exits"
 
-# A recorded process can create a new descendant only after TERM arrives.
+# A process scan can miss both an exiting root and its TERM-spawned child.
 LATE=$(make_lab late claude)
 cat > "$TMP_ROOT/late-rewriter.sh" <<'SH'
 store=$1 key=$2 marker=$3
-trap 'bash -c '\''sleep 1; node -e "const fs=require(\"node:fs\");const [s,k]=process.argv.slice(1);const j=JSON.parse(fs.readFileSync(s,\"utf8\"));j.projects[k]={hasTrustDialogAccepted:true};fs.writeFileSync(s,JSON.stringify(j))" "$1" "$2"'\'' _ "$store" "$key" >/dev/null 2>&1 & echo $! > "$marker"; exit 0' TERM
+trap 'bash -c '\''sleep 3; node -e "const fs=require(\"node:fs\");const [s,k]=process.argv.slice(1);const j=JSON.parse(fs.readFileSync(s,\"utf8\"));j.projects[k]={hasTrustDialogAccepted:true};fs.writeFileSync(s,JSON.stringify(j))" "$1" "$2"'\'' _ "$store" "$key" >/dev/null 2>&1 & echo $! > "$marker"; exit 0' TERM
 echo ready > "$marker.ready"
 while :; do sleep 0.1; done
 SH
@@ -476,15 +476,36 @@ for ((attempt=0; attempt<50; attempt++)); do
 done
 assert_present "$TMP_ROOT/late-child.ready" "TERM fixture installed its handler before down"
 record_pid "$LATE" "$LATE_ROOT"
-out=$("$LIVE_LAB" down "$LATE" 2>&1)
+mkdir -p "$TMP_ROOT/late-ps-bin"
+cat > "$TMP_ROOT/late-ps-bin/ps" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = -axo ] && [ "${2:-}" = 'pid=,ppid=,pgid=,stat=,lstart=' ]; then
+  count=$(cat "$PS_SCAN_COUNT" 2>/dev/null || echo 0)
+  count=$((count + 1))
+  echo "$count" > "$PS_SCAN_COUNT"
+  if [ "$count" -eq 2 ]; then
+    kill -0 -- "-$PS_GROUP" 2>/dev/null && touch "$PS_SCAN_COUNT.missed"
+  fi
+  "$REAL_PS" "$@" | awk -v scan="$count" -v group="$PS_GROUP" '
+    scan == 2 && $3 == group { next }
+    { print }
+  '
+else
+  "$REAL_PS" "$@"
+fi
+SH
+chmod +x "$TMP_ROOT/late-ps-bin/ps"
+out=$(REAL_PS="$(command -v ps)" PS_SCAN_COUNT="$TMP_ROOT/late-scan-count" PS_GROUP="$LATE_ROOT" PATH="$TMP_ROOT/late-ps-bin:$PATH" "$LIVE_LAB" down "$LATE" 2>&1)
 expect_code 0 "$?" "down waits for a child born during TERM: $out"
+assert_present "$TMP_ROOT/late-scan-count.missed" "the missed scan hid a group that still existed"
 assert_present "$TMP_ROOT/late-child" "TERM handler spawned a child"
 LATE_CHILD=$(cat "$TMP_ROOT/late-child")
 printf '%s\n' "$LATE_CHILD" >> "$TMP_ROOT/pids"
+sleep 3.5
 case "$(ps -o stat= -p "$LATE_CHILD" 2>/dev/null | awk '{$1=$1; print}')" in ''|Z*) ;; *) fail "down leaves a TERM-spawned child alive" ;; esac
 lab_keys=$(node -e 'const j=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));console.log(Object.keys(j.projects).filter(k=>k.startsWith(process.argv[2])).join(" "))' "$HOME/.claude.json" "$LATE")
 assert_equals "" "$lab_keys" "TERM-spawned child cannot re-add trust after down"
-pass "down tracks descendants spawned during TERM"
+pass "down tracks TERM-spawned descendants across a missed process scan"
 
 # A reused PID with a different start time must not own its new process tree.
 Y=$(make_lab y claude)
@@ -503,6 +524,7 @@ pass "down ignores roots with mismatched start times"
 # A group observed empty must not be admitted again if its id is later reused.
 # The ps shim hides the first group's only member on pass 2, then presents an
 # unrelated process under that pgid on pass 3 while another lab group waits.
+# The signal probe agrees that the simulated group disappeared on pass 2.
 GROUP_REUSE=$(make_lab group-reuse claude)
 start_group python3 -c 'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(600)'
 GROUP_ROOT=$!
@@ -533,7 +555,15 @@ else
 fi
 SH
 chmod +x "$TMP_ROOT/group-ps-bin/ps"
-out=$(REAL_PS="$(command -v ps)" PS_SCAN_COUNT="$TMP_ROOT/group-scan-count" PS_GROUP_ROOT="$GROUP_ROOT" PS_OUTSIDER="$GROUP_OUTSIDER" PS_GROUP_ID="$GROUP_ID" PATH="$TMP_ROOT/group-ps-bin:$PATH" "$LIVE_LAB" down "$GROUP_REUSE" 2>&1)
+out=$(
+  kill() {
+    if [ "${1:-}" = -0 ] && [ "${2:-}" = -- ] && [ "${3:-}" = "-$PS_GROUP_ID" ] \
+      && [ "$(cat "$PS_SCAN_COUNT")" -ge 2 ]; then return 1; fi
+    builtin kill "$@"
+  }
+  export -f kill
+  REAL_PS="$(command -v ps)" PS_SCAN_COUNT="$TMP_ROOT/group-scan-count" PS_GROUP_ROOT="$GROUP_ROOT" PS_OUTSIDER="$GROUP_OUTSIDER" PS_GROUP_ID="$GROUP_ID" PATH="$TMP_ROOT/group-ps-bin:$PATH" "$LIVE_LAB" down "$GROUP_REUSE" 2>&1
+)
 expect_code 0 "$?" "down ignores a reused group id: $out"
 [ "$(cat "$TMP_ROOT/group-scan-count")" -ge 3 ] || fail "fixture did not expose the reused group id"
 kill -0 "$GROUP_OUTSIDER" 2>/dev/null || fail "down signalled an unrelated process with a reused group id"

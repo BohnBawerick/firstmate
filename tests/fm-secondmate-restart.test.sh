@@ -709,6 +709,7 @@ case "${FM_FAKE_SSH_MODE:-ok}" in
   unreachable) exit 255 ;;
 esac
 if [ "${FM_FAKE_SSH_HANG:-}" = "${rargs[1]:-}" ]; then
+  [ -z "${FM_FAKE_SSH_HANG_STARTED:-}" ] || date +%s > "$FM_FAKE_SSH_HANG_STARTED"
   /bin/sleep 30
 fi
 case "${rargs[1]:-}" in
@@ -933,11 +934,13 @@ test_pi_settle_bounds_remote_probes() {
     setup_remote_case "$dir" sm1 ok pi
     export FM_FAKE_ANSWER_STATUS="$dir/home/state/sm1.status"
     export FM_FAKE_SSH_HANG=$probe
+    export FM_FAKE_SSH_HANG_STARTED="$dir/hang-started"
 
-    started=$SECONDS
     out=$(FM_TEST_SETTLE_WAIT=8 run_restart "$dir" sm1); rc=$?
-    elapsed=$((SECONDS - started))
-    unset FM_FAKE_ANSWER_STATUS FM_FAKE_SSH_HANG
+    assert_present "$FM_FAKE_SSH_HANG_STARTED" "the hung probe never started"
+    started=$(cat "$FM_FAKE_SSH_HANG_STARTED")
+    elapsed=$(( $(date +%s) - started ))
+    unset FM_FAKE_ANSWER_STATUS FM_FAKE_SSH_HANG FM_FAKE_SSH_HANG_STARTED
 
     expect_code 3 "$rc" "a hung remote $probe probe must leave Pi unreached"$'\n'"$out"
     [ "$elapsed" -le 8 ] || fail "a hung remote $probe probe exceeded the settle deadline (${elapsed}s)"
