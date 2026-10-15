@@ -555,7 +555,9 @@ test_relaunch_serializes_concurrent_durable_metadata_publication() {
     FM_FAKE_TRACE_RELEASE="$launch_release" \
     run_control "$dir" rl28 relaunch --note "continue after publication" > "$dir/control.out" &
   control_pid=$!
-  while [ ! -e "$prepare" ] && [ "$i" -lt 500 ]; do
+  # Checkpointing and spawn preparation can outlast five seconds on a busy host.
+  while [ ! -e "$prepare" ] && [ "$i" -lt 5000 ]; do
+    kill -0 "$control_pid" 2>/dev/null || break
     /bin/sleep 0.01
     i=$((i + 1))
   done

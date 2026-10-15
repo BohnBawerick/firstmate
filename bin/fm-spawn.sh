@@ -175,11 +175,10 @@
 #   With no harness arg, a crewmate/scout spawn resolves the CREW harness only when
 #   config/crew-dispatch.json is absent. When that file exists, crewmate/scout
 #   spawns require an explicit harness so firstmate cannot silently skip dispatch
-#   profile consultation. A --secondmate spawn is exempt and resolves the SECONDMATE
-#   harness (config/secondmate-harness.d/<id> -> config/secondmate-harness ->
-#   config/crew-harness -> own; bin/fm-harness.sh secondmate <id>), so the
-#   secondmate-vs-crewmate split is DURABLE across every respawn (recovery,
-#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp|agy|devin)
+#   profile consultation. A --secondmate spawn is exempt and re-resolves through
+#   bin/fm-harness.sh secondmate <id> on every spawn or respawn.
+#   docs/configuration.md "Choose the secondmate harness" owns pin schemas and
+#   precedence. A bare adapter name (claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp|agy|devin)
 #   overrides it for this spawn (either kind). A non-flag string containing
 #   whitespace is treated as a RAW launch command - the escape hatch for verifying
 #   new adapters. For pi and pi-signed, fm-spawn resolves the selected executable
@@ -222,11 +221,8 @@
 #   all and relies on omp auto-discovering the home's tracked .omp/extensions/
 #   (verified, omp 18.1.11: a file named both ways loads twice, and discovery is
 #   cwd-only with no trust dialog).
-#   The secondmate pin in effect (the per-mate file, else config/secondmate-harness)
-#   may also carry an optional model and effort as extra
-#   whitespace-separated tokens ("<harness> [<model>] [<effort>]"). For a
-#   --secondmate spawn, those tokens apply only when this spawn also resolves its
-#   harness from that pin. An explicit per-spawn --harness,
+#   For a --secondmate spawn, the configured model and effort apply only when
+#   this spawn also resolves its harness from the pin. An explicit per-spawn --harness,
 #   positional harness arg, or raw launch command starts with clean model/effort
 #   defaults unless the caller also passes explicit --model/--effort flags. When
 #   the file governs the spawn, its model/effort tokens are re-resolved on every
@@ -2214,13 +2210,9 @@ case "$ARG3" in
   done
   ;;
 '')
-  # No explicit harness: resolve from config. A secondmate AGENT launches on the
-  # secondmate harness (config/secondmate-harness.d/<id> ->
-  # config/secondmate-harness -> config/crew-harness -> own);
-  # every other kind uses the crew harness only when no dispatch profile file is
-  # active. Resolving here on every spawn is what makes the split DURABLE - a
-  # respawn (recovery, /updatefirstmate, restart) re-resolves, so
-  # the secondmate pins keep governing secondmate launches across restarts.
+  # Re-resolve here so recovery and restart use the mate's current pin rather
+  # than its previous launch profile. Other kinds must still consult dispatch
+  # profiles when configured.
   # The launch_template lookup below is the unverified-adapter guard for both
   # kinds: a harness with no template aborts the spawn.
   if [ "$KIND" = secondmate ]; then
@@ -2349,13 +2341,8 @@ agy)
   ;;
 esac
 
-# The secondmate pin in effect (config/secondmate-harness.d/<id>, else
-# config/secondmate-harness) may carry optional model/effort tokens alongside the
-# harness ("<harness> [<model>] [<effort>]"). They apply only when this is a
-# --secondmate spawn and no explicit per-spawn harness/raw launch was supplied, so
-# the harness itself came from the secondmate config fallback chain. Resolving
-# here on every spawn makes the pin durable across respawns. Precedence: explicit
-# --model/--effort flags still win over the file's tokens.
+# Keep a pin's model and effort with its harness; an explicit harness or raw
+# command must not inherit another adapter's profile.
 if [ "$KIND" = secondmate ] && [ -z "$ARG3" ]; then
   if [ "$MODEL_SET" -eq 0 ]; then
     SM_MODEL=$("$SCRIPT_DIR/fm-harness.sh" secondmate-model "$ID")

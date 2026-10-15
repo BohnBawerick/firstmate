@@ -14,7 +14,7 @@
 # used to run, not the one it runs now.
 #
 # This wrapper is the missing other half. It runs the host-local relaunch
-# through bin/fm-on.sh exactly as secondmate-provisioning documents, then reads
+# through bin/fm-on.sh as docs/remote-secondmates.md documents, then reads
 # the confirmed harness, model, and effort back out of the endpoint's own
 # route report - the same read-back-from-the-endpoint shape bin/fm-spawn.sh
 # already uses when it first records a remote route - and republishes this

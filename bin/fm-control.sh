@@ -66,9 +66,8 @@
 #              it refuses.
 #              An explicit `default` model or effort clears that
 #              axis for the replacement. With no explicit axis, a secondmate
-#              re-resolves its durable secondmate pin (config/secondmate-harness.d/<id>,
-#              else config/secondmate-harness: harness
-#              plus its optional model and effort tokens) exactly as any other
+#              re-resolves its configured profile (docs/configuration.md
+#              "Choose the secondmate harness") exactly as any other
 #              respawn does, while a ship or scout keeps the exact adapter
 #              already recorded for it.
 #              A prefixed raw-command basename cannot reconstruct its launch

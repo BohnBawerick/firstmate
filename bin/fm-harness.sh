@@ -5,12 +5,8 @@
 #                                        (config/crew-harness; "default" resolves to own)
 #        fm-harness.sh secondmate [<id>]
 #                                        print the harness the PRIMARY uses to launch
-#                                        SECONDMATE agents: config/secondmate-harness.d/<id>
-#                                        (when <id> is given) -> config/secondmate-harness ->
-#                                        config/crew-harness -> own. "default" or absent
-#                                        defers to the next link, so an unset pin behaves
-#                                        exactly as the crew harness did before these
-#                                        knobs existed.
+#                                        SECONDMATE agents, resolving for <id> when given
+#                                        or using shared defaults otherwise.
 #        fm-harness.sh secondmate-model [<id>]
 #                                        print the optional MODEL token from the pin
 #                                        file in effect, or empty when absent.

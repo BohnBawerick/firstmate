@@ -16,6 +16,12 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 TMP_ROOT=$(fm_test_tmproot fm-remote-secondmate-e2e)
 mkdir -p "$TMP_ROOT"
 TMP_ROOT=$(cd "$TMP_ROOT" && pwd -P)
+# Keep remote worker tool discovery and Git configuration inside the fixture account.
+mkdir -p "$TMP_ROOT/account/.local/bin"
+if fixture_node=$(command -v node); then
+  ln -s "$fixture_node" "$TMP_ROOT/account/.local/bin/node"
+fi
+export HOME="$TMP_ROOT/account"
 PARENT="$TMP_ROOT/parent"
 REMOTE_ROOT="$TMP_ROOT/remote-root"
 REMOTE_HOME="$TMP_ROOT/remote-home"
@@ -1300,14 +1306,14 @@ FM_STATE_OVERRIDE="$WATCH_STATE" FM_SECONDMATE_LIVENESS_SECS=1 FM_POLL=1 \
   remote_env exec "$ROOT/bin/fm-watch.sh" \
   > "$TMP_ROOT/watch-liveness.out" 2> "$TMP_ROOT/watch-liveness.err" &
 watch_pid=$!
-watch_wait=0
-while kill -0 "$watch_pid" 2>/dev/null && [ "$watch_wait" -lt 1500 ]; do
-  sleep 0.02
-  watch_wait=$((watch_wait + 1))
+# A relaunch includes remote inheritance and startup, so allow their setup window.
+watch_deadline=$(( $(date +%s) + 600 ))
+while kill -0 "$watch_pid" 2>/dev/null && [ "$(date +%s)" -lt "$watch_deadline" ]; do
+  sleep 0.1
 done
 if kill -0 "$watch_pid" 2>/dev/null; then
   kill "$watch_pid" 2>/dev/null || true
-  fail "the watcher did not exit on its auto-relaunch wake within the bound"
+  fail "the watcher did not exit on its auto-relaunch wake within the bound: $(cat "$TMP_ROOT/watch-liveness.out") $(cat "$TMP_ROOT/watch-liveness.err")"
 fi
 wait "$watch_pid" \
   || fail "the liveness watcher leg exited non-zero: $(cat "$TMP_ROOT/watch-liveness.err")"
