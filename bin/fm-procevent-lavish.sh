@@ -22,7 +22,8 @@
 #            what Lavish delivered. The freeform message (tag=message) is its
 #            own labeled field, printed first and distinct from per-element
 #            annotations; it is labeled SESSION-ENDING MESSAGE only when the
-#            session ended. It accepts both field-declared CSV tables and
+#            session ended, with session_ending_message_count; otherwise it uses
+#            CAPTAIN MESSAGE and captain_message_count. It accepts both field-declared CSV tables and
 #            YAML-like item lists, including list items with nested target and
 #            attachment metadata. Declared and presented item counts, plus a
 #            completeness verdict, follow before all annotations so a partial
@@ -892,9 +893,9 @@ cmd_read() {
         }
       }
     }
+    my $ended = $session_ended =~ /^(?:true|True|TRUE)$/;
     if (@messages) {
-      my $message_label = $session_ended =~ /^(?:true|True|TRUE)$/
-        ? "SESSION-ENDING MESSAGE" : "CAPTAIN MESSAGE";
+      my $message_label = $ended ? "SESSION-ENDING MESSAGE" : "CAPTAIN MESSAGE";
       print "$message_label\n";
       for my $i (0 .. $#messages) {
         print "$message_label PART ", ($i + 1), " of ", scalar(@messages), "\n" if @messages > 1;
@@ -916,7 +917,8 @@ cmd_read() {
     print "lifecycle: $lifecycle\n";
     print "session_ended: ", (length $session_ended ? $session_ended : "(unset)"), "\n";
     print "annotation_count: ", scalar(@annotations), "\n";
-    print "session_ending_message_count: ", scalar(@messages), "\n";
+    my $message_count_key = $ended ? "session_ending_message_count" : "captain_message_count";
+    print "$message_count_key: ", scalar(@messages), "\n";
     print "\n";
     if (@annotations) {
       print "ANNOTATIONS\n";

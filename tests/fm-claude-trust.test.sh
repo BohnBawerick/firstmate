@@ -628,12 +628,8 @@ test_refused_spawn_leaves_no_task_state() {
 # Resolve the final prompt argument using the same shell argument splitting the
 # pane sees after the leading export statements.
 claude_launch_doorbell() {  # <launch command>
-  local command=$1
-  # Strip every leading statement (exports, the session-identity unset) so the
-  # eval below only splits the agent command and never runs it.
-  while [[ "$command" == export\ *\;* || "$command" == unset\ *\;* ]]; do
-    command=${command#*; }
-  done
+  local command
+  command=$(fm_test_launch_command "$1")
   (
     eval "set -- $command"
     printf '%s' "${!#}"

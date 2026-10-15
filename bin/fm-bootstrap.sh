@@ -1075,7 +1075,7 @@ crew_dispatch_validate() {
   if $typed_active; then
     verified_harnesses=$(fm_control_harnesses | jq -Rsc 'split("\n") | map(select(length > 0))')
   else
-    verified_harnesses='["claude","codex","opencode","pi","pi-signed","grok","kimi","cursor","agy","muse","rovo","omp","devin"]'
+    verified_harnesses='["claude","codex","opencode","pi","pi-signed","grok","kimi","cursor","agy","muse","rovo","omp","devin","commandcode"]'
   fi
   codex_max_models='[]'
   if codex_max_models=$(fm_codex_catalog_models_supporting_effort max | jq -Rsc 'split("\n") | map(select(length > 0))'); then
