@@ -2975,7 +2975,8 @@ fm_backend_herdr_task_workspace_isolated() {
   [ -n "$tab" ] && [ -n "$workspace" ] || return 1
   out=$(fm_backend_herdr_cli "$session" workspace get "$workspace" 2>/dev/null) || return 1
   label=$(printf '%s' "$out" | jq -r --arg workspace "$workspace" 'select(.result.workspace.workspace_id == $workspace) | .result.workspace.label // empty')
-  case "$label" in ''|firstmate|2ndmate-*) return 1 ;; esac
+  case "$label" in ''|firstmate) return 1 ;; esac
+  if [[ "$label" =~ ^2ndmate-[^/]+$ ]]; then return 1; fi
   tabs=$(fm_backend_herdr_cli "$session" tab list --workspace "$workspace" 2>/dev/null) || return 1
   printf '%s' "$tabs" | jq -e --arg tab "$tab" --arg expected "$expected" '
     (.result.tabs | type) == "array" and (.result.tabs | length) == 1

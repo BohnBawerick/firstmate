@@ -209,6 +209,10 @@ done
 [ "$(fm_backend_herdr_current_path "$SESSION:$PANE_ID" 2>/dev/null || true)" = "$PROJ_REAL" ] \
   || fail "the real Herdr pane did not drift out of its recorded worktree"
 
+LEGACY_WORKSPACE_LABEL='2ndmate-alpha/hsmoke · p:AbCdEfGhIjKlMnOpQrStUv'
+fm_herdr_lab_cli "$SESSION" workspace rename "$WORKSPACE_ID" "$LEGACY_WORKSPACE_LABEL" >/dev/null \
+  || fail "could not name the legacy child workspace"
+
 SHARED=$("$ROOT/bin/fm-herdr-lab.sh" run "$SESSION" tab create --workspace "$WORKSPACE_ID" --cwd "$WT" --label captain-shell --no-focus) \
   || fail "could not create a shared-workspace fixture"
 SHARED_PANE=$(printf '%s' "$SHARED" | jq -r '.result.root_pane.pane_id')
@@ -226,8 +230,6 @@ cmp -s "$HOME_DIR/state/hsmoke.meta" "$SCRATCH/shared-before.meta" \
 [ ! -e "$SCRATCH/codex-launched" ] || fail "shared-tab refusal launched a harness"
 "$ROOT/bin/fm-herdr-lab.sh" run "$SESSION" pane close "$SHARED_PANE" >/dev/null \
   || fail "could not remove the shared-workspace fixture"
-"$ROOT/bin/fm-herdr-lab.sh" run "$SESSION" workspace rename "$WORKSPACE_ID" hsmoke-owned >/dev/null \
-  || fail "could not name the isolated worker workspace"
 pass "real herdr: surviving shared-tab relaunch refuses before launch or metadata publication"
 
 OUT=$(env FM_HOME="$HOME_DIR" HERDR_SESSION="$SESSION" FM_SPAWN_NO_GUARD=1 \
@@ -244,6 +246,27 @@ done
   || fail "the Herdr relaunch replaced its endpoint instead of reusing it"
 herdr pane get "$PANE_ID" --session "$SESSION" >/dev/null 2>&1 \
   || fail "the Herdr relaunch removed the endpoint it was required to reuse"
+for WORKSPACE_LABEL in \
+  '└ hsmoke · p:AbCdEfGhIjKlMnOpQrStUv' \
+  'firstmate/hsmoke · p:AbCdEfGhIjKlMnOpQrStUv' \
+  "$LEGACY_WORKSPACE_LABEL"
+do
+  fm_herdr_lab_cli "$SESSION" workspace rename "$WORKSPACE_ID" "$WORKSPACE_LABEL" >/dev/null \
+    || fail "could not set the child workspace label"
+  fm_backend_herdr_task_workspace_isolated "$SESSION:$PANE_ID" fm-hsmoke \
+    || fail "an isolated child workspace was rejected: $WORKSPACE_LABEL"
+done
+for WORKSPACE_LABEL in firstmate 2ndmate-alpha; do
+  fm_herdr_lab_cli "$SESSION" workspace rename "$WORKSPACE_ID" "$WORKSPACE_LABEL" >/dev/null \
+    || fail "could not set the parent workspace label"
+  if fm_backend_herdr_task_workspace_isolated "$SESSION:$PANE_ID" fm-hsmoke; then
+    fail "a top-level parent workspace was accepted: $WORKSPACE_LABEL"
+  fi
+done
+fm_herdr_lab_cli "$SESSION" workspace rename "$WORKSPACE_ID" "$LEGACY_WORKSPACE_LABEL" >/dev/null \
+  || fail "could not restore the legacy child workspace label"
+pass "real herdr: isolation accepts current and legacy child labels and rejects top-level parent labels"
+
 awk -F= '$1 == "harness" {$0="harness=claude"} {print}' "$HOME_DIR/state/hsmoke.meta" \
   > "$HOME_DIR/state/hsmoke.meta.tmp"
 mv "$HOME_DIR/state/hsmoke.meta.tmp" "$HOME_DIR/state/hsmoke.meta"
@@ -365,6 +388,28 @@ awk -F= '$1 == "harness" {$0="harness=claude"} {print}' "$HOME_DIR/state/hsmoke.
   > "$HOME_DIR/state/hsmoke.meta.tmp"
 mv "$HOME_DIR/state/hsmoke.meta.tmp" "$HOME_DIR/state/hsmoke.meta"
 pass "real herdr: a stale registration no longer blocks relaunch, and the endpoint and local copy survive"
+
+ln -s "$STANDIN_BIN" "$AGENT_BIN/codex"
+cat > "$FAKEBIN/codex" <<EOF
+#!/usr/bin/env bash
+: > "$SCRATCH/codex-launched"
+printf '%s\n' "\$\$" > "$SCRATCH/control-codex.pid"
+"$ROOT/bin/fm-herdr-lab.sh" run "$SESSION" pane report-agent "$PANE_ID" \
+  --source fm-control-smoke --agent codex --state idle >/dev/null || exit 1
+exec "$AGENT_BIN/codex" 900
+EOF
+rm -f "$SCRATCH/codex-launched"
+OUT=$(FM_CONTROL_LAUNCH_WAIT=10 run_control hsmoke relaunch --harness codex --note "Continue in the legacy child workspace") \
+  || fail "control relaunch refused an isolated legacy child workspace: $OUT"
+[ -e "$SCRATCH/codex-launched" ] || fail "control relaunch did not launch the replacement harness"
+[ "$(sed -n 's/^window=//p' "$HOME_DIR/state/hsmoke.meta" | tail -1)" = "$SESSION:$PANE_ID" ] \
+  || fail "control relaunch replaced the legacy child endpoint"
+kill "$(cat "$SCRATCH/control-codex.pid")" || fail "could not stop the control relaunch stand-in"
+wait_process_state shell 50 || fail "the control relaunch stand-in did not exit to its shell"
+awk -F= '$1 == "harness" {$0="harness=claude"} {print}' "$HOME_DIR/state/hsmoke.meta" \
+  > "$HOME_DIR/state/hsmoke.meta.tmp"
+mv "$HOME_DIR/state/hsmoke.meta.tmp" "$HOME_DIR/state/hsmoke.meta"
+pass "real herdr: direct and control relaunch reuse an isolated legacy secondmate child workspace"
 
 # Last: the foreground process is the sleeping stand-in, so the pane never draws any
 # recognized composer chrome. exit's composer-empty guard (bin/fm-control.sh)
