@@ -106,7 +106,7 @@ def parse_activity(text):
 
 
 def activity_child_id(note):
-    return "cloud-" + hashlib.sha256((note["task_id"] + "/" + note["turn_id"]).encode()).hexdigest()[:24]
+    return "cloud-" + hashlib.sha256(note["task_id"].encode()).hexdigest()[:24]
 
 
 def default_db_path():
@@ -698,11 +698,7 @@ class Mailbox:
                 if activity and activity["kind"] != "pickup":
                     if activity["kind"] in ("blocked", "needs-decision", "done", "failed"):
                         with self.lock:
-                            current = self.conn.execute("""SELECT r.seq FROM mate_replies r JOIN messages m ON m.id=r.message_id
-                                WHERE m.mate_id=? AND json_extract(activity,'$.task_id')=? AND json_extract(activity,'$.turn_id')=?
-                                ORDER BY (json_extract(activity,'$.kind') IN ('done','failed')) DESC,
-                                    json_extract(activity,'$.observed_at') DESC,r.seq DESC LIMIT 1""",
-                                (row["mate_id"], activity["task_id"], activity["turn_id"])).fetchone()
+                            current = self._current_children(row["mate_id"], activity["task_id"])[0]
                         publish_args = (["publish-child", row["mate_id"], row["home"], self.db_path,
                             activity_child_id(activity), activity["kind"], str(row["seq"]),
                             terminal_text(activity["summary"])[:800], relative] if current["seq"] == row["seq"] else None)
@@ -750,22 +746,31 @@ class Mailbox:
             result = candidate
         return result
 
+    def _current_children(self, mate_id, task_id=None):
+        return self.conn.execute("""WITH turns AS (
+                SELECT r.*, ROW_NUMBER() OVER (
+                    PARTITION BY json_extract(activity,'$.task_id'),json_extract(activity,'$.turn_id')
+                    ORDER BY (json_extract(activity,'$.kind') IN ('done','failed')) DESC,
+                        json_extract(activity,'$.observed_at') DESC,r.seq DESC) AS turn_rank
+                FROM mate_replies r JOIN messages m ON m.id=r.message_id
+                WHERE m.mate_id=? AND activity IS NOT NULL AND json_extract(activity,'$.kind')!='pickup'
+                    AND (? IS NULL OR json_extract(activity,'$.task_id')=?)),
+            tasks AS (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY json_extract(activity,'$.task_id')
+                    ORDER BY json_extract(activity,'$.observed_at') DESC,seq DESC) AS task_rank
+                FROM turns WHERE turn_rank=1)
+            SELECT * FROM tasks WHERE task_rank=1
+            ORDER BY (json_extract(activity,'$.kind') IN ('done','failed')),seq DESC LIMIT 101""",
+            (mate_id, task_id, task_id)).fetchall()
+
     def mate_snapshot(self, mate_id):
         mate = self.mate(mate_id)
         ready, health = self.mate_health(mate_id)
         with self.lock:
             expiry = self.conn.execute("""SELECT MAX(refresh_before) FROM subscriptions
                 WHERE filter_queue=? OR filter_queue IS NULL""", (mate["queue"],)).fetchone()[0]
-            # Terminal observations dominate late progress for the same native turn.
-            children = self.conn.execute("""WITH ranked AS (
-                SELECT r.*, ROW_NUMBER() OVER (
-                    PARTITION BY json_extract(activity,'$.task_id'),json_extract(activity,'$.turn_id')
-                    ORDER BY (json_extract(activity,'$.kind') IN ('done','failed')) DESC,
-                        json_extract(activity,'$.observed_at') DESC,r.seq DESC) AS rank
-                FROM mate_replies r JOIN messages m ON m.id=r.message_id
-                WHERE m.mate_id=? AND activity IS NOT NULL AND json_extract(activity,'$.kind')!='pickup')
-                SELECT * FROM ranked WHERE rank=1
-                ORDER BY (json_extract(activity,'$.kind') IN ('done','failed')),seq DESC LIMIT 101""", (mate_id,)).fetchall()
+            children = self._current_children(mate_id)
             feed = self.conn.execute("""SELECT r.*, m.content AS assignment FROM mate_replies r JOIN messages m ON m.id=r.message_id
                 WHERE m.mate_id=? ORDER BY r.seq DESC LIMIT 20""", (mate_id,)).fetchall()
         projected = []

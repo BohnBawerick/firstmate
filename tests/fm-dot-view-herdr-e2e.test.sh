@@ -56,7 +56,7 @@ m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 b = m.Mailbox(os.environ['DB'])
 msg = b.get_messages(queue='work')['messages'][0]
 note = {'schema':'fm.activity-note.v1','event_id':'created','kind':'task-created',
-        'observed_at':m.now_iso(),'summary':'read-only proof admitted','task_id':'native-thread','turn_id':'native-turn'}
+        'observed_at':'2026-01-01T00:00:00Z','summary':'read-only proof admitted','task_id':'native-thread','turn_id':'native-turn'}
 b.reply_message(msg['id'], 'activity-note: ' + json.dumps(note), msg['correlation_id'])
 PY
 sync_view() { bash "$ROOT/bin/fm-dot-view.sh" sync dot-test "$HERDR_LAB_SESSION"; }
@@ -76,6 +76,26 @@ done
 [[ "$rendered" == *native-thread* && "$rendered" == *read-only* ]] || fail 'cloud renderer did not replay durable activity'
 sync_view
 [ "$(<"$BINDING")" = "$first" ] || fail 'restart reconciliation duplicated displays'
+python3 - "$ROOT" <<'PY'
+import importlib.util, json, os, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('mailbox', Path(sys.argv[1]) / 'bin/fm-dot-mailbox.py')
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+b = m.Mailbox(os.environ['DB']); msg = b.get_messages(queue='work')['messages'][0]
+for event, turn, stamp in [('next-turn','native-turn-2','2026-01-01T00:01:00Z'),
+                            ('old-progress','native-turn','2026-01-01T00:00:30Z')]:
+    note = {'schema':'fm.activity-note.v1','event_id':event,'kind':'milestone',
+            'observed_at':stamp,'summary':'read-only proof progressing','task_id':'native-thread','turn_id':turn}
+    b.reply_message(msg['id'], 'activity-note: ' + json.dumps(note), msg['correlation_id'])
+PY
+sync_view
+[ "$(<"$BINDING")" = "$first" ] || fail 'turn change replaced or duplicated the native task display'
+for _ in {1..100}; do
+  rendered=$(lab pane read "$pane")
+  if [[ "$rendered" == *'Turn: native-turn-2'* ]]; then break; fi
+  sleep .1
+done
+[[ "$rendered" == *'Turn: native-turn-2'* ]] || fail 'task display did not follow the latest turn'
 # Typing in a read-only display must never reach a shell.
 lab pane send-text "$console" "touch $TMP/should-not-exist" >/dev/null
 lab pane send-keys "$console" Enter >/dev/null
@@ -87,8 +107,8 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location('mailbox', Path(sys.argv[1]) / 'bin/fm-dot-mailbox.py')
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 b = m.Mailbox(os.environ['DB']); msg = b.get_messages(queue='work')['messages'][0]
-note = {'schema':'fm.activity-note.v1','event_id':'result','kind':'done','observed_at':m.now_iso(),
-        'summary':'read-only proof finished','task_id':'native-thread','turn_id':'native-turn'}
+note = {'schema':'fm.activity-note.v1','event_id':'result','kind':'done','observed_at':'2026-01-01T00:02:00Z',
+        'summary':'read-only proof finished','task_id':'native-thread','turn_id':'native-turn-2'}
 b.reply_message(msg['id'], 'activity-note: ' + json.dumps(note), msg['correlation_id'])
 PY
 sync_view

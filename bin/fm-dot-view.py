@@ -74,8 +74,8 @@ def render(box, mate_id, child_id=None):
         with box.lock:
             rows = box.conn.execute("""SELECT r.*, m.content AS assignment FROM mate_replies r JOIN messages m ON m.id=r.message_id
                 WHERE m.mate_id=? AND json_extract(r.activity,'$.task_id')=?
-                AND json_extract(r.activity,'$.turn_id')=? ORDER BY r.seq DESC LIMIT 30""",
-                (mate_id, children[0]["task_id"], children[0]["turn_id"])).fetchall() if children else []
+                ORDER BY r.seq DESC LIMIT 30""",
+                (mate_id, children[0]["task_id"])).fetchall() if children else []
         import json
         events = [{"revision": row["seq"], "activity": json.loads(row["activity"]), "line": row["line"],
                    "subject": mailbox.assignment_subject(row["assignment"])} for row in reversed(rows)]

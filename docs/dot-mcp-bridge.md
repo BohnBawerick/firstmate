@@ -232,7 +232,7 @@ Unknown fields and schema versions are rejected.
 Kinds are `pickup`, `task-created`, `milestone`, `blocked`, `needs-decision`, `done` and `failed`.
 Use `pickup` without task/turn IDs, a task title or URL to acknowledge the assignment through its original correlation.
 Every other kind requires both native IDs.
-A new native turn is a separate reported child, so late messages for an old turn cannot overwrite its successor.
+The native task ID identifies the reported child across turns; observations and history retain each native turn ID.
 Use milestones only for observed changes, not timer ticks.
 The mailbox stores server revisions in the append-only `mate_replies` history and keeps legacy text replies there too.
 The message's `replied` flag means acknowledged, not that its cloud work finished.
@@ -240,6 +240,7 @@ The message's `replied` flag means acknowledged, not that its cloud work finishe
 The initial pickup reaches the parent channel; routine cloud activity does not send a notification per note.
 Actionable and terminal child outcomes use the shared child-outcome publisher and its durable delivery receipts.
 Terminal observations dominate late progress for the same native turn.
+The latest observation among those turn states supplies the task's current state, so a later turn updates the existing child.
 Nonterminal observations older than fifteen minutes display current state as unknown without inventing a completion or cancelling anything.
 The child and activity lists are bounded; a truncated child inventory refuses display cleanup rather than guessing which tasks finished.
 Use the cursor-based `history` command from `bin/fm-dot-secondmate.sh --help` to read all stored revisions.
@@ -257,7 +258,7 @@ Descriptions are capped at 40 characters including an ellipsis, or less when the
 Descriptions use the routed assignment's first nonempty line, stripping an optional `Subject:` prefix, or the native `task_title` on that observation when supplied.
 Start routed work with a short subject line when a long request needs a clearer label.
 All display times use the machine's local timezone; stored observations remain UTC.
-Each active native turn gets a read-only display with its IDs, status, milestones and result.
+Each active native task gets one read-only display with its task ID, current turn ID, status, milestones and result, plus activity from all its turns.
 These are mailbox reports, not the ChatGPT conversation, a cloud shell or live build output.
 Display input is discarded.
 Closing a display never cancels cloud work.
@@ -268,6 +269,8 @@ Presentation locks and focus guards protect unrelated tabs.
 A renamed or ambiguous display is left alone and reported as an error.
 Stopping the view process leaves displays and all cloud work untouched.
 Restarting it reuses confirmed bindings and replays durable history; missing observations remain unknown.
+Refresh an existing turn-scoped view after its tracked tasks have durable terminal results and delivered parent outcomes.
+Stop `watch`, close only the dedicated view workspace, then restart `watch` to rebuild its bindings with task-scoped IDs.
 After restart, Firstmate must use ordinary `fm-send` to ask the dot to paginate its direct children and report each nonterminal child's current native status, outcome and recent milestones.
 Only the dot performs those native reads.
 
@@ -279,5 +282,5 @@ bash bin/fm-test-run.sh tests/fm-dot-mailbox.test.sh tests/fm-dot-view-herdr-e2e
 
 The suite exercises the mailbox round trip, duplicate and restart behavior, callback validation, signing, bounded retries, renewal, and storage limits.
 It also drives `fm-send` through a registered mailbox route, receives MCP replies through the parent status channel, reads the wake drain and fleet view, and checks health failures without a terminal.
-Activity cases cover retry conflicts, pagination, out-of-order updates, stale observations, restart replay, terminal-safe rendering and parent-delivery receipts.
+Activity cases cover retry conflicts, pagination, out-of-order updates, task identity across turns, stale observations, restart replay, terminal-safe rendering and parent-delivery receipts.
 The Herdr test uses a named isolated lab to check display ownership, focus, ignored input and delivery-before-close without touching the default session.
