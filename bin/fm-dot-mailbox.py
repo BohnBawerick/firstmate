@@ -10,7 +10,6 @@
 #   fm-dot-mailbox.py serve [--host <host>] [--port <port>] [--allow-local-callbacks]
 #
 # Environment:
-#   FM_DOT_MAILBOX_DB             Explicit SQLite database path.
 #   FM_HOME                       Owning home when no database path is supplied.
 #   FM_DOT_MCP_ALLOW_LOCAL_CALLBACK  Allow loopback/http callback URLs (for tests).
 #   FM_DOT_MCP_PORT               Default port for serve (default: 8765).
@@ -50,13 +49,10 @@ CALLBACK_TIMEOUT_SEC = 10
 
 def default_db_path():
     """Resolve default database path outside tracked source."""
-    env_db = os.environ.get("FM_DOT_MAILBOX_DB")
-    if env_db:
-        return env_db
     fm_home = os.environ.get("FM_HOME")
     if fm_home:
         return os.path.join(fm_home, "data", "dot-mcp", "mailbox.sqlite3")
-    raise ValueError("Set --db, FM_DOT_MAILBOX_DB, or FM_HOME")
+    raise ValueError("Set --db or FM_HOME")
 
 
 def now_iso():
@@ -172,17 +168,6 @@ def init_db(db_path):
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_due ON pending_events(state, next_attempt_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_message ON pending_events(message_id)")
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS delivery_attempts (
-                id TEXT PRIMARY KEY,
-                event_id TEXT NOT NULL,
-                subscription_id TEXT NOT NULL,
-                message_id TEXT NOT NULL,
-                status_code INTEGER,
-                error TEXT,
-                attempted_at TEXT NOT NULL
-            )
-        """)
     return conn
 
 
@@ -200,7 +185,7 @@ def check_ip_allowed(ip_str, allow_local=False):
     return True, None
 
 
-def post_callback(url, body, headers, allow_local=False):
+def post_callback(url, body, headers, allow_local=False, *, read_response=False):
     validate_text("delivery.url", url, 4096)
     if len(body) > MAX_BODY_BYTES:
         raise ValueError("Event payload exceeds 256 KiB")
@@ -218,29 +203,57 @@ def post_callback(url, body, headers, allow_local=False):
         ok, error = check_ip_allowed(address[0], allow_local)
         if not ok:
             raise ValueError(error)
-    family, kind, proto, _, address = addresses[0]
+    tls_context = ssl.create_default_context() if parsed.scheme == "https" else None
     conn = http.client.HTTPConnection(hostname, port, timeout=CALLBACK_TIMEOUT_SEC)
-    sock = socket.socket(family, kind, proto)
+    deadline = time.monotonic() + CALLBACK_TIMEOUT_SEC
+    sock = None
     try:
-        sock.settimeout(CALLBACK_TIMEOUT_SEC)
-        sock.connect(address)
-        if parsed.scheme == "https":
-            sock = ssl.create_default_context().wrap_socket(sock, server_hostname=hostname)
-        conn.sock = sock
+        for index, (family, kind, proto, _, address) in enumerate(addresses):
+            current = time.monotonic()
+            remaining = deadline - current
+            if remaining <= 0:
+                raise TimeoutError("Callback connection budget exhausted")
+            candidate_deadline = current + remaining / (len(addresses) - index)
+            try:
+                sock = socket.socket(family, kind, proto)
+                remaining = candidate_deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Callback connection budget exhausted")
+                sock.settimeout(remaining)
+                sock.connect(address)
+                if parsed.scheme == "https":
+                    remaining = candidate_deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError("Callback connection budget exhausted")
+                    sock.settimeout(remaining)
+                    sock = tls_context.wrap_socket(sock, server_hostname=hostname)
+                conn.sock = sock
+                break
+            except OSError:
+                if sock is not None:
+                    sock.close()
+                    sock = None
+                if index == len(addresses) - 1:
+                    raise
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Callback connection budget exhausted")
+        sock.settimeout(remaining)
         target = parsed.path or "/"
         if parsed.query:
             target += "?" + parsed.query
         conn.request("POST", target, body=body, headers=headers)
-        response = conn.getresponse()
-        if not 200 <= response.status < 300:
-            return response.status, b""
-        response_body = response.read(MAX_BODY_BYTES + 1)
-        if len(response_body) > MAX_BODY_BYTES:
-            raise ValueError("Callback response exceeds 256 KiB")
-        return response.status, response_body
+        with conn.getresponse() as response:
+            if not read_response or not 200 <= response.status < 300:
+                return response.status, b""
+            response_body = response.read(MAX_BODY_BYTES + 1)
+            if len(response_body) > MAX_BODY_BYTES:
+                raise ValueError("Callback response exceeds 256 KiB")
+            return response.status, response_body
     finally:
         conn.close()
-        sock.close()
+        if sock is not None:
+            sock.close()
 
 
 def validate_signing_secret(secret_str):
@@ -442,7 +455,7 @@ class Mailbox:
             "X-MCP-Subscription-Id": sub_id,
         }
         try:
-            status, response = post_callback(url, body, headers, self.allow_local_callbacks)
+            status, response = post_callback(url, body, headers, self.allow_local_callbacks, read_response=True)
             if not 200 <= status < 300:
                 raise ValueError(f"Verification challenge returned status {status}")
             returned = json.loads(response).get("challenge")
@@ -526,10 +539,6 @@ class Mailbox:
                 self.conn.execute(
                     "UPDATE pending_events SET state=?, next_attempt_at=?, last_error=? WHERE id=? AND state='pending' AND attempts=?",
                     (state, time.time() + 2 ** (attempts - 1), error, event["id"], attempts),
-                )
-                self.conn.execute(
-                    "INSERT INTO delivery_attempts VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (f"att_{secrets.token_hex(8)}", event["id"], event["subscription_id"], event["message_id"], status, error, now_iso()),
                 )
 
 
@@ -857,7 +866,7 @@ def read_stdin_text():
 
 def main():
     parser = argparse.ArgumentParser(description="Firstmate dot MCP Mailbox & Event Bridge")
-    parser.add_argument("--db", help="SQLite database path; otherwise FM_DOT_MAILBOX_DB or FM_HOME is required")
+    parser.add_argument("--db", help="SQLite database path; otherwise FM_HOME is required")
 
     subparsers = parser.add_subparsers(dest="command")
 
