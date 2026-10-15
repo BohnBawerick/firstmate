@@ -354,8 +354,8 @@ fm_control_backend_state_verified() {  # <backend>
 #
 # Both control-plane callers share this one implementation so the proof cannot
 # drift into two answers for the same endpoint.
-fm_control_endpoint_absence_verdict() {  # <backend> <target> [expected-label]
-  local backend=${1-} target=${2-} label=${3-}
+fm_control_endpoint_absence_verdict() {  # <backend> <target>
+  local backend=${1-} target=${2-}
   fm_backend_source "$backend" \
     || { printf 'unproven\tbackend %s could not be loaded to prove anything about that endpoint' "'$backend'"; return 0; }
   case "$backend" in
@@ -366,7 +366,7 @@ fm_control_endpoint_absence_verdict() {  # <backend> <target> [expected-label]
       # Start the RECORDED session's server (only the server - nothing is
       # created) and re-read the recorded pane. A pane that comes back with the
       # server was never destroyed.
-      case "$(fm_backend_herdr_endpoint_absence_recheck "$target" "$label")" in
+      case "$(fm_backend_herdr_endpoint_absence_recheck "$target")" in
         dead) printf 'dead\t' ;;
         alive) printf 'alive\t' ;;
         missing) printf 'gone\t' ;;

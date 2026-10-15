@@ -131,7 +131,7 @@ state_value() { # <id>; prints recovery-grade state
     printf 'unverified\n'
     return 0
   fi
-  FM_STATE_OVERRIDE="$CONTROL_STATE" fm_backend_agent_state "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" "fm-$id" 2>/dev/null || printf 'unreadable\n'
+  fm_backend_agent_state "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" 2>/dev/null || printf 'unreadable\n'
 }
 
 print_route() { # <id>
@@ -184,14 +184,14 @@ cmd_launch() {
   meta=$(meta_path "$id")
   if [ -f "$meta" ]; then
     remote_endpoint_require "$id"
-    current=$(FM_STATE_OVERRIDE="$CONTROL_STATE" fm_backend_agent_state "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" "fm-$id" 2>/dev/null || printf 'unreadable\n')
+    current=$(fm_backend_agent_state "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" 2>/dev/null || printf 'unreadable\n')
     case "$current" in
       alive)
         print_route "$id"
         return 0
         ;;
       dead)
-        FM_STATE_OVERRIDE="$CONTROL_STATE" fm_backend_kill "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" "" "fm-$id" 2>/dev/null \
+        fm_backend_kill "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" 2>/dev/null \
           || die "could not remove the confirmed agent-less endpoint"
         ;;
       missing) ;;
@@ -307,7 +307,7 @@ cmd_send() {
       return 0
       ;;
   esac
-  FM_STATE_OVERRIDE="$CONTROL_STATE" fm_task_inbox_ring "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" "$rec" "fm-$id" || ring_rc=$?
+  fm_task_inbox_ring "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" "$rec" "fm-$id" || ring_rc=$?
   case "$ring_rc" in
     1) printf 'notice: doorbell skipped (composer visibly holds pending text); the steer is durably recorded at %s\n' "$rec" >&2 ;;
     2) printf 'notice: doorbell did not reach %s; the steer is durably recorded at %s\n' "$REMOTE_ENDPOINT_TARGET" "$rec" >&2 ;;
@@ -320,8 +320,8 @@ cmd_key() {
   validate_id "$id"
   validate_home "$id"
   remote_endpoint_require "$id"
-  FM_HOME="$TARGET_HOME" FM_ROOT_OVERRIDE="$FM_ROOT" FM_STATE_OVERRIDE="$CONTROL_STATE" \
-    "$SCRIPT_DIR/fm-send.sh" "$id" --key "$key"
+  FM_HOME="$TARGET_HOME" FM_ROOT_OVERRIDE="$FM_ROOT" FM_STATE_OVERRIDE="$TARGET_HOME/state" \
+    "$SCRIPT_DIR/fm-send.sh" "$REMOTE_ENDPOINT_TARGET" --key "$key"
 }
 
 cmd_capture() {
@@ -331,7 +331,7 @@ cmd_capture() {
   case "$lines" in ''|*[!0-9]*|0) die "capture line count must be positive" ;; esac
   [ "$lines" -le 100 ] || die "capture line count exceeds 100"
   remote_endpoint_require "$id"
-  FM_STATE_OVERRIDE="$CONTROL_STATE" fm_backend_capture "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" "$lines" "fm-$id" | head -c 65536
+  fm_backend_capture "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" "$lines" "fm-$id" | head -c 65536
 }
 
 cmd_observe() {
@@ -340,7 +340,7 @@ cmd_observe() {
   validate_home "$id"
   remote_endpoint_require "$id"
   harness=$(fm_meta_get "$REMOTE_ENDPOINT_META" harness)
-  FM_STATE_OVERRIDE="$CONTROL_STATE" fm_pending_reply_backend_observation "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" "fm-$id" "$harness"
+  fm_pending_reply_backend_observation "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" "fm-$id" "$harness"
   printf '\n'
 }
 
@@ -349,7 +349,7 @@ cmd_composer() {
   validate_id "$id"
   validate_home "$id"
   remote_endpoint_require "$id"
-  FM_STATE_OVERRIDE="$CONTROL_STATE" fm_backend_composer_state "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" "fm-$id"
+  fm_backend_composer_state "$REMOTE_ENDPOINT_BACKEND" "$REMOTE_ENDPOINT_TARGET" "fm-$id"
   printf '\n'
 }
 

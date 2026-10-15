@@ -208,12 +208,14 @@ focused_workspace() {
 }
 [ "$(focused_workspace)" = "$WS_OTHER" ] || fail "the unrelated captain workspace did not take focus"
 
-read -r WS_PRIMARY _ _ <<EOF
-$(make_workspace firstmate)
-EOF
+[ "$(lab workspace list | jq '[.result.workspaces[]? | select(.label == "firstmate")] | length')" = 0 ] \
+  || fail "the first-use fixture already has a home workspace"
 
 spawn_from_launcher "" "$PRIMARY_HOME" uniqA "$PROJ" --mode no-mistakes --yolo off
 [ "$SPAWN_RC" -eq 0 ] || fail "a primary-shaped spawn with no herdr parent failed"$'\n'"$(cat "$SPAWN_ERR")"
+WS_PRIMARY=$(lab workspace list | jq -r '.result.workspaces[]? | select(.label == "firstmate") | .workspace_id')
+[ "$(printf '%s\n' "$WS_PRIMARY" | awk 'NF { n++ } END { print n+0 }')" = 1 ] \
+  || fail "first-use dispatch did not initialize exactly one home workspace"
 UNIQA_META="$PRIMARY_HOME/state/uniqA.meta"
 record_worktree "$UNIQA_META"
 UNIQA_PANE=$(grep '^herdr_pane_id=' "$UNIQA_META" | cut -d= -f2-)
@@ -223,7 +225,33 @@ UNIQA_WS=$(workspace_of_pane "$UNIQA_PANE")
 [ "$(journal_field "$PRIMARY_HOME/state/uniqA.herdr-presentation" parent_workspace_id)" = "$WS_PRIMARY" ] \
   || fail "uniqA did not bind the home parent"
 [ "$(focused_workspace)" = "$WS_OTHER" ] || fail "the spawn stole focus from the captain's workspace"
-pass "real herdr E2E: a worker without launcher ancestry gets its own workspace under the home parent"
+pass "real herdr E2E: first-use dispatch initializes the home parent and isolates its worker"
+
+OLD_UNIQA_PANE=$UNIQA_PANE
+lab pane close "$UNIQA_PANE" >/dev/null || fail "could not remove the worker endpoint for reclaim"
+for parent_pane in $(lab pane list --workspace "$WS_PRIMARY" | jq -r '.result.panes[]?.pane_id'); do
+  lab pane close "$parent_pane" >/dev/null || fail "could not remove the home parent for reclaim"
+done
+[ "$(lab workspace list | jq '[.result.workspaces[]? | select(.label == "firstmate")] | length')" = 0 ] \
+  || fail "the reclaim fixture still has a home workspace"
+if ! env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_SOCKET_PATH HERDR_SESSION="$HERDR_LAB_SESSION" \
+  FM_SPAWN_NO_GUARD=1 FM_HOME="$PRIMARY_HOME" FM_ROOT_OVERRIDE="$ROOT" \
+  "$ROOT/bin/fm-spawn.sh" uniqA --relaunch --harness "sh -c 'echo launcher-ws-ok'" \
+  > "$TMP_ROOT/reclaim.out" 2> "$TMP_ROOT/reclaim.err"; then
+  fail "reclaim without a home parent failed"$'\n'"$(cat "$TMP_ROOT/reclaim.err")"
+fi
+WS_PRIMARY=$(lab workspace list | jq -r '.result.workspaces[]? | select(.label == "firstmate") | .workspace_id')
+[ "$(printf '%s\n' "$WS_PRIMARY" | awk 'NF { n++ } END { print n+0 }')" = 1 ] \
+  || fail "reclaim did not initialize exactly one home workspace"
+UNIQA_PANE=$(grep '^herdr_pane_id=' "$UNIQA_META" | cut -d= -f2-)
+[ -n "$UNIQA_PANE" ] && [ "$UNIQA_PANE" != "$OLD_UNIQA_PANE" ] \
+  || fail "reclaim did not replace the missing endpoint"
+UNIQA_WS=$(workspace_of_pane "$UNIQA_PANE")
+[ -n "$UNIQA_WS" ] && [ "$UNIQA_WS" != "$WS_PRIMARY" ] || fail "reclaim did not isolate the worker"
+[ "$(journal_field "$PRIMARY_HOME/state/uniqA.herdr-presentation" parent_workspace_id)" = "$WS_PRIMARY" ] \
+  || fail "reclaim did not journal its initialized parent"
+[ "$(focused_workspace)" = "$WS_OTHER" ] || fail "reclaim stole focus from the captain's workspace"
+pass "real herdr E2E: reclaim initializes a missing home parent and isolates its replacement worker"
 
 # --- 2. unique parent label with a launcher pane ---
 

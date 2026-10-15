@@ -382,7 +382,7 @@ fm_backend_validate "$BACKEND" || exit 1
 # --- shared helpers ---------------------------------------------------------
 
 agent_state() {
-  fm_backend_agent_state "$BACKEND" "$T" "$LABEL"
+  fm_backend_agent_state "$BACKEND" "$T"
 }
 
 busy_verdict() {
@@ -659,7 +659,7 @@ do_exit() {
       # "destroyed" with "unreachable from this seat". Route it through the
       # control plane's one absence proof - the same one the relaunch gate uses
       # - and report what that proof actually established, never more.
-      absence=$(fm_control_endpoint_absence_verdict "$BACKEND" "$T" "$LABEL")
+      absence=$(fm_control_endpoint_absence_verdict "$BACKEND" "$T")
       case "${absence%%$'\t'*}" in
         gone)
           # Proven gone, so the agent that lived in it went with it: exit's

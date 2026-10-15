@@ -371,7 +371,7 @@ test_busy_inbox_escalation_reaches_supervision() {
     --source claude-hook --event UserPromptSubmit
   printf 'Question awaiting an answer\n' > "$pane"
   PATH="$dir/fakebin:$PATH" FM_FAKE_TMUX_CAPTURE="$pane" \
-    stale_window_is_busy "$win" "$state" "$task" || fail "inbox consumer fixture is not busy"
+    stale_window_is_busy "$win" "$state" || fail "inbox consumer fixture is not busy"
   case "$variant" in
     stuck)
       detail="unread firstmate instruction: stuck-busy after 2 consecutive busy-deferred due doorbells; $state/$task.inbox/001.msg stays unhandled and no doorbell was typed; inspect the worker"
@@ -950,7 +950,7 @@ test_stale_terminal_escalates() {
   case "$out" in escalate\|*) ;; *) fail "terminal stale did not escalate: $out" ;; esac
   fm_write_meta "$state/herdr-t5.meta" "window=default:w1:p2" "backend=herdr"
   printf 'done: ready in branch fm/herdr\n' > "$state/herdr-t5.status"
-  out=$(FM_STATE_OVERRIDE="$state" classify_stale herdr-t5 "$state")
+  out=$(FM_STATE_OVERRIDE="$state" classify_stale "default:w1:p2" "$state")
   case "$out" in escalate\|*) ;; *) fail "terminal herdr stale did not escalate through metadata: $out" ;; esac
   pass "stale + terminal status escalates immediately"
 }
@@ -1252,7 +1252,7 @@ test_housekeeping_paused_resumed_cleared() {
   key=$(printf '%s' "held-w12" | tr ':/.' '___')
   echo $(( $(date +%s) - 5000 )) > "$state/.subsuper-paused-$key"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
-    FM_STATE_OVERRIDE="$state" stale_window_is_busy "$win" "$state" held-w12 \
+    FM_STATE_OVERRIDE="$state" stale_window_is_busy "$win" "$state" \
     || fail "the resumed-pause fixture does not actually read busy, so it pins nothing about busy state"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
     FM_STATE_OVERRIDE="$state" FM_PAUSE_RESURFACE_SECS=240 housekeeping "$state"
@@ -1290,7 +1290,7 @@ test_housekeeping_busy_declared_wait_matures_its_window() {
       --source pi-ext --event agent-start
     key=$(printf '%s' "$task" | tr ':/.' '___')
     PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$win" FM_FAKE_TMUX_CAPTURE="$pane" \
-      FM_STATE_OVERRIDE="$state" stale_window_is_busy "$win" "$state" "$task" \
+      FM_STATE_OVERRIDE="$state" stale_window_is_busy "$win" "$state" \
       || fail "the $case_name fixture does not actually read busy, so it pins nothing about busy state"
 
     # Immature window: ticks inside PAUSE_RESURFACE_SECS neither escalate nor let the
@@ -1531,8 +1531,6 @@ test_housekeeping_herdr_persistent_stale_resolves_meta() {
   key=$(printf '%s' "herdr-w7" | tr ':/.' '___')
   echo $(( $(date +%s) - 500 )) > "$state/.subsuper-stale-$key"
   (
-    fm_backend_source herdr || fail "could not load the Herdr test boundary"
-    fm_backend_herdr_pane_label_binding() { printf bound; }
     fm_backend_capture() {
       [ "$1" = herdr ] || fail "expected herdr capture backend, got $1"
       [ "$2" = "default:w1:p2" ] || fail "expected herdr window target, got $2"
@@ -1568,8 +1566,6 @@ test_housekeeping_herdr_idle_busy_record_clears_stale() {
   key=$(printf '%s' "herdr-footer" | tr ':/.' '___')
   echo $(( $(date +%s) - 500 )) > "$state/.subsuper-stale-$key"
   (
-    fm_backend_source herdr || fail "could not load the Herdr test boundary"
-    fm_backend_herdr_pane_label_binding() { printf bound; }
     fm_backend_capture() {
       [ "$1" = herdr ] || fail "expected herdr capture backend, got $1"
       [ "$2" = "default:w1:p4" ] || fail "expected herdr window target, got $2"
@@ -1598,8 +1594,6 @@ test_housekeeping_herdr_resumed_stale_cleared() {
   key=$(printf '%s' "herdr-busy" | tr ':/.' '___')
   echo $(( $(date +%s) - 500 )) > "$state/.subsuper-stale-$key"
   (
-    fm_backend_source herdr || fail "could not load the Herdr test boundary"
-    fm_backend_herdr_pane_label_binding() { printf bound; }
     fm_backend_capture() {
       [ "$1" = herdr ] || fail "expected herdr capture backend, got $1"
       [ "$2" = "default:w1:p3" ] || fail "expected herdr window target, got $2"

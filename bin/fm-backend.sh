@@ -552,19 +552,13 @@ fm_backend_validate_task_endpoint() {  # <meta-file> <task-id>
   return 0
 }
 
-fm_backend_meta_for_window() {  # <target> <state-dir> [bound]
-  local target=$1 state=$2 meta window terminal task
+fm_backend_meta_for_window() {  # <target> <state-dir>
+  local target=$1 state=$2 meta window terminal
   for meta in "$state"/*.meta; do
     [ -e "$meta" ] || continue
     window=$(fm_meta_get "$meta" window)
     terminal=$(fm_meta_get "$meta" terminal)
     { [ -n "$window" ] && [ "$window" = "$target" ]; } || { [ -n "$terminal" ] && [ "$terminal" = "$target" ]; } || continue
-    if [ "${3:-}" = bound ] && [ "$(fm_backend_of_meta "$meta")" = herdr ]; then
-      fm_backend_source herdr || continue
-      fm_backend_herdr_parse_target "$target" || continue
-      task=${meta##*/}; task=${task%.meta}
-      [ "$(FM_STATE_OVERRIDE="$state" fm_backend_herdr_pane_label_binding "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE" "fm-$task")" = bound ] || continue
-    fi
     printf '%s' "$meta"
     return 0
   done
@@ -910,7 +904,7 @@ fm_backend_worktree_path() {  # <backend> <worktree-id>
 # uses unknown as the cue for harness-scoped pane-tail detection, while
 # fm-crew-state.sh also corroborates native idle verdicts with the recorded
 # harness's signature before treating a no-run crew as not busy.
-fm_backend_busy_state() {  # <backend> <target> [expected-label]
+fm_backend_busy_state() {  # <backend> <target>
   local backend=$1
   shift
   fm_backend_source "$backend" || { printf 'unknown'; return 0; }
@@ -976,14 +970,25 @@ fm_backend_composer_unknown_deliverable() {  # <backend> <target>
 # primitive so callers that only need a fast alive/dead read (recovery
 # digests, the session-start fleet digest) do not re-derive it inline.
 fm_backend_target_exists() {  # <backend> <target> [expected-label]
-  local backend=$1 target=$2 expected_label=${3:-}
+  local backend=$1 target=$2 expected_label=${3:-} session pane
   case "$backend" in
     tmux)
       tmux display-message -p -t "$target" '#{pane_id}' >/dev/null 2>&1
       ;;
     herdr)
       fm_backend_source herdr || return 1
-      fm_backend_herdr_target_observable "$target" "$expected_label"
+      session=${target%%:*}
+      pane=${target#*:}
+      [ -n "$session" ] && [ -n "$pane" ] && [ "$pane" != "$target" ] || return 1
+      # fm_backend_herdr_cli (not a raw HERDR_SESSION-only call): verified
+      # empirically (docs/herdr-backend.md "Session targeting") that the bare
+      # env var alone is NOT reliably honored once another herdr server is
+      # already bound on the machine - it silently queries whatever server IS
+      # running instead. fm_backend_herdr_cli appends the required --session
+      # flag on top, so this check is correctly scoped even when the caller's
+      # own ambient session (e.g. the primary firstmate's default session) is
+      # a DIFFERENT one than the target's.
+      fm_backend_herdr_cli "$session" pane get "$pane" >/dev/null 2>&1
       ;;
     zellij)
       fm_backend_source zellij || return 1
@@ -1008,11 +1013,7 @@ fm_backend_target_exists() {  # <backend> <target> [expected-label]
 # pane-presence read and prints exactly one of:
 #   alive      - a verified harness agent is running.
 #   dead       - the endpoint exists but confidently has no agent.
-#   missing    - the recorded endpoint is authoritatively absent. On Herdr this
-#                includes a recorded pane id that now names the caller's own
-#                pane, or a pane outside the task's fm-<task-id> tab
-#                (<expected-label>; any fm-* tab when none is given), because
-#                Herdr hands pane ids out again after a restart.
+#   missing    - the recorded endpoint is authoritatively absent.
 #   ambiguous  - the endpoint exists but its process cannot be attributed.
 #   unreadable - a target or inventory read failed or contradicted itself.
 #   unverified - this backend has no recovery classifier.
@@ -1027,12 +1028,12 @@ fm_backend_target_exists() {  # <backend> <target> [expected-label]
 # `missing` only in this recovery-grade view. Zellij remains unverified because
 # its secondmate ghost-tab and agent-process recovery path has not been
 # empirically validated. Orca and cmux do not support secondmate spawns.
-fm_backend_agent_state() {  # <backend> <target> [expected-label]
+fm_backend_agent_state() {  # <backend> <target>
   local backend=$1 target=$2
   fm_backend_source "$backend" || { printf 'unverified'; return 0; }
   case "$backend" in
     tmux) fm_backend_tmux_agent_state "$target" ;;
-    herdr) fm_backend_herdr_agent_state "$target" "${3:-}" ;;
+    herdr) fm_backend_herdr_agent_state "$target" ;;
     *) printf 'unverified' ;;
   esac
 }
@@ -1040,8 +1041,8 @@ fm_backend_agent_state() {  # <backend> <target> [expected-label]
 # Backward-compatible three-state view for existing callers. An
 # authoritatively missing endpoint is confidently not a live agent, while every
 # ambiguous, unreadable, or unverified result stays unknown.
-fm_backend_agent_alive() {  # <backend> <target> [expected-label]
-  case "$(fm_backend_agent_state "$1" "$2" "${3:-}")" in
+fm_backend_agent_alive() {  # <backend> <target>
+  case "$(fm_backend_agent_state "$1" "$2")" in
     alive) printf 'alive' ;;
     dead|missing) printf 'dead' ;;
     *) printf 'unknown' ;;

@@ -1709,7 +1709,7 @@ spawn_herdr_presentation_order_lock_release() {
 # is still standing or unreadable refuses reclaim and retains the journal.
 # Sets HERDR_PROJECTED=1 and the HERDR_* endpoint ids on success.
 spawn_herdr_rebind_projected() {
-  local session=$HERDR_REBIND_SES journal parent_label parent_workspace launcher_status
+  local session=$HERDR_REBIND_SES journal parent_label parent_workspace
   local projection_id projection_label home_id
   journal=$(fm_backend_herdr_projection_journal_path "$STATE" "$ID")
   if [ -e "$journal" ] || [ -L "$journal" ]; then
@@ -1725,18 +1725,12 @@ spawn_herdr_rebind_projected() {
     return 1
   fi
   parent_label=$(fm_backend_herdr_workspace_label)
-  launcher_status=0
-  HERDR_PANE_ID="$RELAUNCH_LAUNCHER_PANE_ID" fm_backend_herdr_launcher_identity "$session" || launcher_status=$?
-  case "$launcher_status" in
-    0) parent_workspace=$FM_BACKEND_HERDR_LAUNCHER_WORKSPACE_ID ;;
-    2) parent_workspace=$(fm_backend_herdr_projection_parent_workspace_exact "$session" "$parent_label" 2>/dev/null || true) ;;
-    *) parent_workspace= ;;
-  esac
-  if [ -z "$parent_workspace" ]; then
+  if ! HERDR_PANE_ID="$RELAUNCH_LAUNCHER_PANE_ID" fm_backend_herdr_workspace_ensure "$session" "$WT" >/dev/null; then
     echo "error: herdr presentation parent is absent or ambiguous; refusing isolated workspace placement" >&2
     spawn_herdr_presentation_order_lock_release
     return 1
   fi
+  parent_workspace=$FM_BACKEND_HERDR_WS_ID
   projection_id=$(fm_backend_herdr_projection_journal_create "$STATE" "$ID") || exit 1
   projection_label=$(fm_backend_herdr_projection_workspace_label "$ID" "$projection_id")
   if ! HERDR_SESSION="$session" fm_backend_herdr_projection_create_task "$WT" "$projection_label" "$W"; then
@@ -2135,9 +2129,9 @@ if [ "$RELAUNCH" -eq 1 ]; then
   # owns that vocabulary). The proof itself lives in one place for the whole
   # control plane - fm_control_endpoint_absence_verdict - so `exit` and
   # `relaunch` cannot reach two different answers about one endpoint.
-  RELAUNCH_STATE=$(fm_backend_agent_state "$BACKEND" "$RELAUNCH_TARGET" "fm-$ID")
+  RELAUNCH_STATE=$(fm_backend_agent_state "$BACKEND" "$RELAUNCH_TARGET")
   if [ "$RELAUNCH_STATE" = missing ]; then
-    RELAUNCH_ABSENCE=$(fm_control_endpoint_absence_verdict "$BACKEND" "$RELAUNCH_TARGET" "fm-$ID")
+    RELAUNCH_ABSENCE=$(fm_control_endpoint_absence_verdict "$BACKEND" "$RELAUNCH_TARGET")
     case "${RELAUNCH_ABSENCE%%$'\t'*}" in
       gone) RELAUNCH_STATE=missing ;;
       dead) RELAUNCH_STATE=dead ;;
@@ -4238,29 +4232,12 @@ else
           echo "error: herdr presentation is unsupported; refusing isolated workspace placement" >&2
           exit 1
         elif spawn_herdr_presentation_order_lock_acquire "$HERDR_SES" create; then
-          # The projected child is placed and bound UNDER this launcher's exact
-          # parent workspace. Its own herdr pane identity names that workspace
-          # directly; the label lookup is only the fallback for a launcher with
-          # no herdr ancestry at all. A claimed-but-broken identity refuses here
-          # rather than projecting under a guessed parent.
-          set +e
-          fm_backend_herdr_launcher_identity "$HERDR_SES"
-          HERDR_LAUNCHER_STATUS=$?
-          set -e
-          case "$HERDR_LAUNCHER_STATUS" in
-          0) HERDR_PARENT_WORKSPACE_ID=$FM_BACKEND_HERDR_LAUNCHER_WORKSPACE_ID ;;
-          2) HERDR_PARENT_WORKSPACE_ID=$(fm_backend_herdr_projection_parent_workspace_exact \
-            "$HERDR_SES" "$HERDR_PARENT_LABEL" 2>/dev/null || true) ;;
-          *)
-            spawn_herdr_presentation_order_lock_release
-            exit 1
-            ;;
-          esac
-          if [ -z "$HERDR_PARENT_WORKSPACE_ID" ]; then
+          if ! FM_HOME="$HERDR_LABEL_HOME" fm_backend_herdr_workspace_ensure "$HERDR_SES" "$PROJ_ABS" >/dev/null; then
             echo "error: herdr presentation parent is absent or ambiguous; refusing isolated workspace placement" >&2
             spawn_herdr_presentation_order_lock_release
             exit 1
           else
+            HERDR_PARENT_WORKSPACE_ID=$FM_BACKEND_HERDR_WS_ID
             HERDR_PROJECTION_ID=$(fm_backend_herdr_projection_journal_create "$STATE" "$ID") || exit 1
             HERDR_PROJECTION_LABEL=$(fm_backend_herdr_projection_workspace_label "$ID" "$HERDR_PROJECTION_ID")
             if ! FM_HOME="$HERDR_LABEL_HOME" fm_backend_herdr_projection_create_task \
@@ -4398,7 +4375,7 @@ fi
 spawn_send_text_line() { # <target> <text>
   case "$BACKEND" in
   tmux) fm_backend_tmux_send_text_line "$1" "$2" ;;
-  herdr) fm_backend_herdr_send_text_line "$1" "$2" "$W" ;;
+  herdr) fm_backend_herdr_send_text_line "$1" "$2" ;;
   zellij) fm_backend_zellij_send_text_line "$1" "$2" "$W" ;;
   orca) fm_backend_orca_send_text_line "$1" "$2" ;;
   cmux) fm_backend_cmux_send_text_line "$1" "$2" "$W" ;;
@@ -4407,7 +4384,7 @@ spawn_send_text_line() { # <target> <text>
 spawn_current_path() { # <target>
   case "$BACKEND" in
   tmux) fm_backend_tmux_current_path "$1" ;;
-  herdr) fm_backend_herdr_current_path "$1" "$W" ;;
+  herdr) fm_backend_herdr_current_path "$1" ;;
   zellij) fm_backend_zellij_current_path "$1" "$W" ;;
   cmux) fm_backend_cmux_current_path "$1" "$W" ;;
   esac
@@ -4415,7 +4392,7 @@ spawn_current_path() { # <target>
 spawn_send_literal() { # <target> <text>
   case "$BACKEND" in
   tmux) fm_backend_tmux_send_literal "$1" "$2" ;;
-  herdr) fm_backend_herdr_send_literal "$1" "$2" "$W" ;;
+  herdr) fm_backend_herdr_send_literal "$1" "$2" ;;
   zellij) fm_backend_zellij_send_literal "$1" "$2" "$W" ;;
   orca) fm_backend_orca_send_literal "$1" "$2" ;;
   cmux) fm_backend_cmux_send_literal "$1" "$2" "$W" ;;
@@ -4424,7 +4401,7 @@ spawn_send_literal() { # <target> <text>
 spawn_send_key() { # <target> <key>
   case "$BACKEND" in
   tmux) fm_backend_tmux_send_key "$1" "$2" ;;
-  herdr) fm_backend_herdr_send_key "$1" "$2" "$W" ;;
+  herdr) fm_backend_herdr_send_key "$1" "$2" ;;
   zellij) fm_backend_zellij_send_key "$1" "$2" "$W" ;;
   orca) fm_backend_orca_send_key "$1" "$2" ;;
   cmux) fm_backend_cmux_send_key "$1" "$2" "$W" ;;

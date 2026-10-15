@@ -149,7 +149,7 @@ handle_push_transition() {  # <backend> <session> <record>
   to=$(fm_transition_to_status "$record")
   [ -n "$pane_id" ] || { sleep 1; return; }
   window="$session:$pane_id"
-  task=$(window_to_task "$window" "$STATE" bound) || return 0
+  task=$(window_to_task "$window" "$STATE")
   # A declared wait already names the human this transition would report: an
   # external dependency, or the captain a verified hold transferred the work to.
   # Either way the wait is durably recorded, so absorb the immediate escalation
@@ -164,8 +164,8 @@ handle_push_transition() {  # <backend> <session> <record>
   case $? in
     0|1) surface_end=${span_record%%$'\t'*}; rest=${span_record#*$'\t'}; surface_ident=${rest%%$'\t'*} ;;
   esac
-  reason="stale: $task (herdr: agent $to - waiting on human, escalated immediately, not via wedge timer)"
-  fm_wake_append stale "$task" "$reason" || exit 1
+  reason="stale: $window (herdr: agent $to - waiting on human, escalated immediately, not via wedge timer)"
+  fm_wake_append stale "$window" "$reason" || exit 1
   fm_backend_commit_transition "$backend" "$STATE" "$session" "$record" || exit 1
   mark_surfaced "$STATE/$task.status" "$surface_end" "$surface_ident"
   wake "$reason"
