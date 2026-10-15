@@ -252,6 +252,20 @@ case "${1:-} ${2:-}" in
     exit 0
     ;;
   api\ *)
+    # The repository read that names its default branch: main unless a case
+    # writes another name, or an empty file to make the read fail.
+    case "${2:-}" in
+      repos/*/*/*) ;;
+      repos/*/*)
+        if [ -f "$FM_TEST_GH_DEFAULT_BRANCH" ]; then
+          [ -s "$FM_TEST_GH_DEFAULT_BRANCH" ] || exit 1
+          printf '{"default_branch":"%s"}\n' "$(cat "$FM_TEST_GH_DEFAULT_BRANCH")"
+        else
+          printf '{"default_branch":"main"}\n'
+        fi
+        exit 0
+        ;;
+    esac
     # The required-check reads: the branch itself, and its rules read without
     # the merge-queue filter the queue reader below applies.
     case " $* " in
@@ -677,6 +691,7 @@ run_pr_merge() {
   FM_TEST_GH_RULES_FAIL="$case_dir/github-rules-fail" \
   FM_TEST_GH_RULES_FAIL_BODY="$case_dir/github-rules-fail-body" \
   FM_TEST_GH_BRANCH="$case_dir/github-branch.json" \
+  FM_TEST_GH_DEFAULT_BRANCH="$case_dir/github-default-branch" \
   FM_TEST_GH_BRANCH_FAIL="$case_dir/github-branch-fail" \
   FM_TEST_GH_REQUIRED_RULES="$case_dir/github-required-rules.json" \
   FM_TEST_GH_REQUIRED_RULES_FAIL="$case_dir/github-required-rules-fail" \
@@ -3305,6 +3320,60 @@ test_github_red_checks_refuse_and_allow_red_waives_named() {
   pass "fm-pr-merge refuses red GitHub checks and waives only a named --allow-red check"
 }
 
+# A pull request based on a side branch, such as a stacked pull request that
+# was retargeted, would land its squash on that branch instead of the default
+# branch, so it refuses unless --allow-base names exactly that base; an
+# unreadable default branch refuses rather than being assumed.
+test_github_non_default_base_refuses_unless_allowed() {
+  local case_dir rc head
+  head=abababababababababababababababababababab
+  case_dir=$(make_case github-side-base)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  jq -c '.baseRefName = "feature-a"' "$case_dir/github-view.json" > "$case_dir/github-view.tmp"
+  mv "$case_dir/github-view.tmp" "$case_dir/github-view.json"
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "side-base: a pull request based on a side branch must refuse"
+  assert_grep 'base branch is "feature-a", not the repository default branch "main"' "$case_dir/stderr" \
+    "side-base: the refusal did not name the base and default branches"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "side-base: gh pr merge ran on a pull request based on a side branch"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+    --allow-base feature-b > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "side-base: --allow-base for another branch must not waive this base"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "side-base: a mismatched --allow-base still merged"
+
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+    --allow-base feature-a > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "side-base: --allow-base naming the live base should merge"$'\n'"$(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 90 example/repo --squash
+
+  case_dir=$(make_case github-default-unreadable)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  : > "$case_dir/github-default-branch"
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/91 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "default-unreadable: an unreadable default branch must refuse"
+  assert_grep 'the repository default branch could not be read' "$case_dir/stderr" \
+    "default-unreadable: the refusal did not name the unreadable default branch"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "default-unreadable: gh pr merge ran without a readable default branch"
+  pass "fm-pr-merge refuses a GitHub pull request based on a side branch unless --allow-base names it"
+}
+
 # A draft cannot be merged, and neither can a pull request whose draft state the
 # forge did not report as a boolean; both refuse before any merge call.
 test_github_draft_or_unreadable_draft_state_refuses() {
@@ -4608,3 +4677,4 @@ test_app_bound_required_status_context_matches_by_name
 test_required_partial_reads_report_all_failures
 test_allow_red_refused_on_forgejo
 test_allow_missing_refused_on_forgejo
+test_github_non_default_base_refuses_unless_allowed

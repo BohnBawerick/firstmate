@@ -56,8 +56,14 @@
 # requires every other required check to have reported and every check to be
 # green unless separately waived by --allow-red. It matches the required
 # context name even for an app-bound requirement, and never waives an unreadable
-# required source or producer read. Both are
-# refused while the away-posture record exists, and neither
+# required source or producer read.
+# A GitHub pull request whose live base branch is not the repository's
+# default branch, read live from the repository, refuses too, because a stacked
+# pull request retargeted at a side branch would otherwise land its squash there
+# instead of on the default branch. An attended --allow-base <branch> accepts
+# exactly that named base and no other; an unreadable default branch refuses.
+# All three waivers are
+# refused while the away-posture record exists, and none
 # applies on GitLab, where a merge already requires the head pipeline to have
 # succeeded, or on Forgejo, where a merge already requires the head's combined
 # commit status to have succeeded. After gh returns success, GitHub's live
@@ -171,7 +177,7 @@
 # explicit captain instruction and never skips the live green check, the
 # away-record read, or a captain hold.
 #
-# Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--allow-red <check-name>] [--allow-missing <check-name>] [-- <extra forge merge args>]
+# Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--allow-red <check-name>] [--allow-missing <check-name>] [--allow-base <branch>] [-- <extra forge merge args>]
 #
 # On GitLab, this script confirms the MR is actually merged before reporting it;
 # an auto-merge-queued or unconfirmed request leaves the poll armed and records
@@ -240,6 +246,7 @@ shift 2
 ATTENDED_OVERRIDE=false
 ALLOW_RED=()
 ALLOW_MISSING=()
+ALLOW_BASE=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --attended-override)
@@ -270,6 +277,16 @@ while [ "$#" -gt 0 ]; do
       echo "error: --allow-missing requires a separate check name argument" >&2
       exit 2
       ;;
+    --allow-base)
+      [ -n "${2:-}" ] || { echo "error: --allow-base requires a branch name" >&2; exit 2; }
+      [ "${#ALLOW_BASE[@]}" -eq 0 ] || { echo "error: --allow-base may be specified only once" >&2; exit 2; }
+      ALLOW_BASE+=("$2")
+      shift 2
+      ;;
+    --allow-base=*)
+      echo "error: --allow-base requires a separate branch name argument" >&2
+      exit 2
+      ;;
     --) shift; break ;;
     *) break ;;
   esac
@@ -291,6 +308,10 @@ if [ "${#ALLOW_RED[@]}" -gt 0 ]; then
       exit 2
       ;;
   esac
+fi
+if [ "${#ALLOW_BASE[@]}" -gt 0 ] && [ "$PROVIDER" != github ]; then
+  echo "error: --allow-base applies only to GitHub, the one forge whose base branch this script checks" >&2
+  exit 2
 fi
 if [ "${#ALLOW_MISSING[@]}" -gt 0 ]; then
   case "$PROVIDER" in
@@ -991,7 +1012,7 @@ github_required_checks_missing() {
 github_verify_mergeable() {
   local json fields line red name covered missing unreported producers runs
   local total=0 named=0 refusals='' mergeable_refusal=''
-  local state='' draft='' mergeable='' merge_state='' live_head='' base=''
+  local state='' draft='' mergeable='' merge_state='' live_head='' base='' default_base=''
 
   if ! json=$(gh pr view "$URL" --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup 2>/dev/null) \
     || [ -z "$json" ]; then
@@ -1074,6 +1095,17 @@ FIELDS
   done <<EOF
 $red
 EOF
+
+  if ! default_base=$(gh api "repos/$PR_OWNER/$PR_REPO" 2>/dev/null \
+      | jq -r 'if (.default_branch | type) == "string" then .default_branch else error("no default branch") end' 2>/dev/null) \
+    || [ -z "$default_base" ]; then
+    refusals="$refusals  - the repository default branch could not be read, so the base branch \"$base\" cannot be confirmed
+"
+  elif [ "$base" != "$default_base" ] \
+    && { [ "${#ALLOW_BASE[@]}" -eq 0 ] || [ "${ALLOW_BASE[0]}" != "$base" ]; }; then
+    refusals="$refusals  - base branch is \"$base\", not the repository default branch \"$default_base\"; pass --allow-base $base to merge onto it deliberately
+"
+  fi
 
   unreported=''
   if ! github_read_required_contexts "$base"; then
@@ -1409,6 +1441,10 @@ require_current_away_authority() {
   fi
   if [ "$FM_PR_AWAY_POSTURE" = true ] && [ "${#ALLOW_MISSING[@]}" -gt 0 ]; then
     echo "error: --allow-missing is attended-only; while the away-posture record exists every required check must report" >&2
+    return 2
+  fi
+  if [ "$FM_PR_AWAY_POSTURE" = true ] && [ "${#ALLOW_BASE[@]}" -gt 0 ]; then
+    echo "error: --allow-base is attended-only; while the away-posture record exists only a pull request based on the default branch may merge" >&2
     return 2
   fi
 }

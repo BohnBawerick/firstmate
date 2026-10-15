@@ -130,7 +130,7 @@ case "${1:-} ${2:-}" in
       *) printf '%s\n' '[]' ;;
     esac
     ;;
-  "api repos/"*) printf '%s\n' '{"name":"main","protected":false}' ;;
+  "api repos/"*) printf '%s\n' '{"name":"main","default_branch":"main","protected":false}' ;;
 esac
 SH
   cat > "$home/fakebin/gh-axi" <<'SH'
