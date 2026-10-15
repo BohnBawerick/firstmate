@@ -2667,12 +2667,6 @@ devin)
     exit 1
   }
   ;;
-commandcode)
-  COMMANDCODE_BIN=$(command -v commandcode) || {
-    echo "error: commandcode executable not found on PATH" >&2
-    exit 1
-  }
-  ;;
 pi | pi-signed)
   PI_BIN=$(resolve_pi_executable "$HARNESS") || {
     echo "error: $HARNESS executable not found on PATH; install it or select a different verified harness" >&2
@@ -2819,6 +2813,10 @@ resolve_path_binary() {  # <command> <not-found-error, empty to stay silent>
   [ -z "$not_found" ] || echo "$not_found" >&2
   return 1
 }
+
+if [ "$HARNESS" = commandcode ]; then
+  COMMANDCODE_BIN=$(resolve_path_binary commandcode "error: commandcode executable not found on PATH") || exit 1
+fi
 
 resolve_kimi_binary() {
   local fallback

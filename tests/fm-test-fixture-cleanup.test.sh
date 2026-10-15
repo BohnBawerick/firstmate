@@ -46,6 +46,7 @@ test_fixture_root_gone_after_sigterm() {
     while :; do sleep 0.1; done
   ' &
   pid=$!
+  fm_test_track_pid "$pid"
   tries=0
   while [ "$tries" -lt 100 ]; do
     [ -s "$dirfile" ] && break
@@ -109,6 +110,7 @@ test_orphan_sweep_respects_fixture_ownership() {
     while :; do sleep 0.1; done
   ' &
   pid=$!
+  fm_test_track_pid "$pid"
   tries=0
   while [ "$tries" -lt 100 ]; do
     [ -s "$dirfile" ] && break
@@ -185,6 +187,7 @@ test_registries_avoid_git_worktree_root() {
     while :; do sleep 0.1; done
   ' _ "$repo" "$LIB" "$dirfile" &
   pid=$!
+  fm_test_track_pid "$pid"
   tries=0
   while [ "$tries" -lt 100 ]; do
     [ -s "$dirfile" ] && break

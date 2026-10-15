@@ -17,6 +17,40 @@ TMP_ROOT=$(fm_test_tmproot fm-commandcode-harness)
 HARNESS="$ROOT/bin/fm-harness.sh"
 unset CLAUDECODE PI_CODING_AGENT GROK_AGENT CURSOR_AGENT CURSOR_INVOKED_AS GEMINI_CLI FM_OMP_HARNESS ATLASSIAN_AGENT_TYPE ROVODEV_CLI
 
+test_commandcode_relative_path_launches_from_worktree() {
+  local case_dir fakebin home proj wt supervisor launch out
+  case_dir="$TMP_ROOT/relative-path"
+  fakebin=$(make_spawn_fakebin "$case_dir/fake" claude)
+  home="$case_dir/home"
+  proj="$case_dir/project"
+  wt="$case_dir/wt"
+  supervisor="$case_dir/supervisor with spaces"
+  mkdir -p "$supervisor/tools"
+  cat > "$supervisor/tools/commandcode" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$PWD" "$@" > "$FM_TEST_COMMANDCODE_RUN_LOG"
+SH
+  chmod +x "$supervisor/tools/commandcode"
+  fm_test_spawn_home "$home" commandcode
+  fm_git_worktree "$proj" "$wt" commandcode-relative-path
+  fm_test_spawn_brief "$home" cc-relative
+  out=$(cd "$supervisor" && PATH="./tools:$PATH" FM_FAKE_LAUNCH_LOG="$case_dir/launch" \
+    fm_test_run_spawn "$home" "$wt" "$fakebin" cc-relative "$proj" \
+      --scout --harness commandcode --model deepseek/deepseek-v4.1-flash --effort low) \
+    || fail "relative-PATH spawn failed: $out"
+  launch=$(cat "$case_dir/launch")
+
+  (cd "$wt" && FM_TEST_COMMANDCODE_RUN_LOG="$case_dir/executed" bash -c "$launch") \
+    > "$case_dir/worker.stdout" 2> "$case_dir/worker.stderr" \
+    || fail "relative-PATH worker did not launch: $(cat "$case_dir/worker.stderr")"
+
+  [ "$(head -1 "$case_dir/executed")" = "$wt" ] \
+    || fail "the resolved Command Code executable did not run in the task worktree"
+  grep -Fx -- '--yolo' "$case_dir/executed" >/dev/null \
+    || fail "the spawned Command Code executable lost its launch arguments"
+  pass "Command Code found through a relative PATH launches after changing to the task worktree"
+}
+
 mkdir -p "$TMP_ROOT/names"
 for name in command-code command-code-helper; do ln -s /bin/bash "$TMP_ROOT/names/$name"; done
 # shellcheck disable=SC2016
@@ -200,3 +234,5 @@ for backend in zellij cmux orca; do
   assert_absent "$home/state/cc-$backend.busy-gen" "refused $backend spawn armed busy state"
 done
 pass "Command Code launches are refused on zellij, cmux, and orca"
+
+test_commandcode_relative_path_launches_from_worktree
