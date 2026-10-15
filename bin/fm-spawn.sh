@@ -429,9 +429,8 @@
 #     __CLAUDEADDDIRS__ quoted --add-dir flags granting exactly this task's
 #                  Firstmate channel directories (claude_add_dirs_flag below;
 #                  supplies its own trailing space, empty never used)
-#     __CLAUDESETTINGS__ the single claude --settings value: a quoted inline
-#                  JSON object for a crewmate or scout, or a quoted path to
-#                  state/<task-id>.claude-settings.json for a secondmate
+#     __CLAUDESETTINGS__ the single claude --settings value: a quoted path to
+#                  state/<task-id>.claude-settings.json
 #     __PIBIN__    quoted concrete Pi-family executable path resolved from PATH
 #     __PITUIMODE__ optional --tui-mode regular when that executable advertises it
 #     __PIAPPROVE__ optional --approve on a seeded Pi/pi-signed secondmate when
@@ -1711,6 +1710,9 @@ clear_relaunch_harness_wiring() {
   done <<EOF
 $(fm_control_harness_wiring_paths "$harness" "$wt" "$state" "$id" "$kind")
 EOF
+  if [ "$harness" = claude ] && [ "$kind" != secondmate ]; then
+    fm_control_claude_legacy_hook_file_retire "$wt" || return 1
+  fi
 }
 
 spawn_herdr_presentation_order_lock_release() {
@@ -2327,10 +2329,10 @@ launch_template() {
   # otherwise run with attribution back on; carrying it per launch keeps the
   # policy in force regardless of which settings scopes end up loaded.
   # Claude Code's --settings flag takes one value, a file path or an inline
-  # JSON string (https://code.claude.com/docs/en/cli-reference). A secondmate's
-  # busy hooks share that value, in state/<id>.claude-settings.json, and the
-  # file also carries feedbackDrafts and attribution so those session keys
-  # stay in force.
+  # JSON string (https://code.claude.com/docs/en/cli-reference). The busy
+  # hooks share that value, in state/<id>.claude-settings.json, and the file
+  # also carries feedbackDrafts and attribution so those session keys stay in
+  # force.
   # __CLAUDEPERMFLAG__ is the permission flag config/claude-permission-mode
   # selects (header above): --dangerously-skip-permissions by default, or
   # --permission-mode auto for a captain who refuses bypass mode.
@@ -5070,6 +5072,21 @@ fi
 # command does not carry, so the record would never be updated.
 busy_notify_turnend=true
 WIRING_HARNESS=$HARNESS
+# A Claude task of any kind takes its hooks only through --settings, so a raw
+# claude command is not armed either.
+if [ "$KIND" != secondmate ] && [ "$RAW_LAUNCH" -ne 0 ]; then
+  case "$HARNESS" in
+  claude*)
+    WIRING_HARNESS=
+    if [ -e "$STATE_REAL/$ID.busy-gen" ]; then
+      "$FM_ROOT/bin/fm-busy-event.sh" retire "$STATE_REAL" "$ID" --current-gen || {
+        echo "error: failed to retire the earlier busy-state contract for $ID" >&2
+        exit 1
+      }
+    fi
+    ;;
+  esac
+fi
 if [ "$KIND" = secondmate ]; then
   busy_notify_turnend=false
   if [ "$RAW_LAUNCH" -ne 0 ]; then
@@ -5143,15 +5160,15 @@ BUSY_GEN=
     # the ordinary Stop idle hook, without the parent turn-ended touch. Every
     # hook command tolerates a refused event (|| true) so a stale-gen writer
     # can never break Claude's own lifecycle.
-    # A crewmate writes those hooks into the disposable worktree's
-    # .claude/settings.local.json. A secondmate does not: that file in a
-    # persistent home is where Claude Code stores the captain's "don't ask
-    # again" rules, and rewriting it drops them. The secondmate hooks go in
-    # a firstmate-owned state/<id>.claude-settings.json passed through
-    # --settings. Claude Code merges hook entries across settings files
+    # The hooks go in a firstmate-owned state/<id>.claude-settings.json
+    # passed through --settings, never into .claude/settings.local.json: in a
+    # secondmate home that file holds the captain's "don't ask again" rules,
+    # and in a worktree it can be tracked by the project or hold keys the
+    # worker added, so rewriting it either dirties the copy or drops them.
+    # Claude Code merges hook entries across settings files
     # (https://code.claude.com/docs/en/hooks) and keeps any key
     # the flag omits (https://code.claude.com/docs/en/cli-reference), so the
-    # home's tracked Stop guard and its settings.local.json both stay.
+    # project's own hooks and settings.local.json both stay in force.
     busy_cmd_prefix="$(shell_quote "$FM_ROOT/bin/fm-busy-event.sh") apply $(shell_quote "$STATE_REAL") $(shell_quote "$ID")"
     busy_suffix="--gen $(shell_quote "$BUSY_GEN") --source claude-hook"
     j_submit=$(json_escape "$busy_cmd_prefix busy $busy_suffix --event user-prompt-submit 2>/dev/null || true")
@@ -5175,17 +5192,12 @@ BUSY_GEN=
       stop_entry="\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_stop\"}]}],"
     fi
     hooks_json="\"hooks\":{\"UserPromptSubmit\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_submit\"}]}],${stop_entry}\"StopFailure\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_stopfail\"}]}],\"SessionEnd\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_sessionend\"}]}]}"
-    if [ "$KIND" = secondmate ]; then
-      session_keys='"feedbackDrafts":"off",'
-      if [ "$KEEP_AI_TRAILERS" != 1 ]; then
-        session_keys='"feedbackDrafts":"off","attribution":{"commit":"","pr":"","sessionUrl":false},'
-      fi
-      printf '{%s%s}\n' "$session_keys" "$hooks_json" >"$STATE_REAL/$ID.claude-settings.json"
-    else
-      mkdir -p "$WT/.claude"
-      printf '{%s}\n' "$hooks_json" >"$WT/.claude/settings.local.json"
-      exclude_path '.claude/settings.local.json'
+    session_keys='"feedbackDrafts":"off",'
+    if [ "$KEEP_AI_TRAILERS" != 1 ]; then
+      session_keys='"feedbackDrafts":"off","attribution":{"commit":"","pr":"","sessionUrl":false},'
     fi
+    printf '{%s%s}\n' "$session_keys" "$hooks_json" >"$STATE_REAL/$ID.claude-settings.json"
+    [ "$KIND" = secondmate ] || fm_control_claude_legacy_hook_file_retire "$WT"
     ;;
   devin)
     if [ "$RAW_LAUNCH" -eq 0 ]; then
@@ -5808,21 +5820,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
 fi
 LAUNCH=${LAUNCH//__PIRESUME__/$RESUME_ARGS}
 LAUNCH=${LAUNCH//__CLAUDEPERMFLAG__/$CLAUDE_PERM_FLAG}
-case "$LAUNCH" in
-*__CLAUDESETTINGS__*)
-  if [ "$KIND" = secondmate ]; then
-    LAUNCH=${LAUNCH//__CLAUDESETTINGS__/$(shell_quote "$STATE_REAL/$ID.claude-settings.json")}
-  else
-    claude_settings="'{\"feedbackDrafts\":\"off\"__CLAUDEATTRIBUTION__}'"
-    LAUNCH=${LAUNCH//__CLAUDESETTINGS__/$claude_settings}
-  fi
-  ;;
-esac
-if [ "$KEEP_AI_TRAILERS" = 1 ]; then
-  LAUNCH=${LAUNCH//__CLAUDEATTRIBUTION__/}
-else
-  LAUNCH=${LAUNCH//__CLAUDEATTRIBUTION__/,'"attribution":{"commit":"","pr":"","sessionUrl":false}'}
-fi
+LAUNCH=${LAUNCH//__CLAUDESETTINGS__/$(shell_quote "$STATE_REAL/$ID.claude-settings.json")}
 if [ "$HARNESS" = rovo ]; then
   ROVOCONFIGOVERRIDE=$(rovo_config_override_flag "$EFFORT" "$DATA" "$STATE" "$ID") || {
     echo "error: could not resolve this task's home paths for rovo's allowedExternalPaths grant" >&2

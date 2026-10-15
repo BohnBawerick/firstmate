@@ -241,7 +241,7 @@ test_claude_hooks_semantic_lifecycle() {
   out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
   expect_code 0 $? "claude spawn should succeed: $out"
   state="$HOME_DIR/state"
-  settings="$WT_DIR/.claude/settings.local.json"
+  settings="$state/$id.claude-settings.json"
   assert_present "$settings" "claude spawn did not write hook settings"
   jq -e . "$settings" >/dev/null || fail "claude hook settings are not valid JSON"
   for ev in UserPromptSubmit Stop StopFailure SessionEnd; do
@@ -279,13 +279,40 @@ test_claude_hooks_stale_incarnation_harmless() {
   out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
   expect_code 0 $? "claude spawn should succeed: $out"
   state="$HOME_DIR/state"
-  settings="$WT_DIR/.claude/settings.local.json"
+  settings="$state/$id.claude-settings.json"
   "$ROOT/bin/fm-busy-event.sh" arm "$state" "$id" >/dev/null
   run_claude_hook "$settings" UserPromptSubmit \
     || fail "a stale-gen hook must still exit 0 so Claude's lifecycle is never broken"
   out=$(classify claude "$id" "$state")
   [ "$out" = "busy fm-spawn" ] || fail "a stale-gen hook event must not change state, got '$out'"
   pass "claude hook events from a superseded incarnation are rejected without breaking the hook"
+}
+
+# A project can track .claude/settings.local.json, and a worker can add its own
+# keys to an untracked one. Either way the file is not firstmate's: the hooks
+# go in the firstmate-owned state settings file passed through --settings, so
+# the spawn leaves the worktree's file byte-identical and the copy clean.
+test_claude_spawn_leaves_a_tracked_settings_local_untouched() {
+  local rec id=busy-cl-3 out state tracked
+  rec=$(make_spawn_case claude-tracked-local claude "$id")
+  read_case_record "$rec"
+  mkdir -p "$PROJ_DIR/.claude"
+  printf '%s\n' '{"permissions":{"allow":["Bash(make:*)"]}}' > "$PROJ_DIR/.claude/settings.local.json"
+  git -C "$PROJ_DIR" add -f .claude/settings.local.json
+  git -C "$PROJ_DIR" -c user.name=fmtest -c user.email=fmtest@example.com commit -qm 'track local claude settings'
+  git -C "$PROJ_DIR" push -q origin HEAD
+  tracked=$(cat "$PROJ_DIR/.claude/settings.local.json")
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
+  expect_code 0 $? "claude spawn should succeed: $out"
+  state="$HOME_DIR/state"
+  [ "$(cat "$WT_DIR/.claude/settings.local.json")" = "$tracked" ] \
+    || fail "claude spawn rewrote the worktree's tracked settings.local.json"
+  [ -z "$(git -C "$WT_DIR" status --porcelain)" ] \
+    || fail "claude spawn left the worktree dirty: $(git -C "$WT_DIR" status --porcelain)"
+  jq -e '.hooks.UserPromptSubmit and .hooks.Stop and .feedbackDrafts == "off"' \
+    "$state/$id.claude-settings.json" >/dev/null \
+    || fail "claude spawn did not write its hooks and session keys to the state settings file"
+  pass "a claude spawn leaves a tracked settings.local.json untouched and wires hooks through --settings"
 }
 
 test_codex_unverified_until_a_semantic_source_exists() {
@@ -850,6 +877,7 @@ test_kimi_and_grok_install_no_unverified_wiring
 test_opencode_plugin_semantic_lifecycle
 test_claude_hooks_semantic_lifecycle
 test_claude_hooks_stale_incarnation_harmless
+test_claude_spawn_leaves_a_tracked_settings_local_untouched
 test_gemini_hooks_semantic_lifecycle
 test_gemini_hooks_stale_incarnation_harmless
 test_raw_gemini_launch_has_no_semantic_wiring

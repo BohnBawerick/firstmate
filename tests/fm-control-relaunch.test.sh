@@ -495,6 +495,28 @@ test_relaunch_preserves_durable_task_metadata() {
 # pr=. A relaunch writes its own keys (control_relaunch_tx=, and traceparent=
 # when tracing is on), so it must keep the PR block last or every armed poll
 # reads as an unauthenticated state check after the relaunch.
+# The worktree's .claude/settings.local.json can hold keys the worker added,
+# such as a cloud environment id; a relaunch must not rewrite or remove it.
+test_relaunch_keeps_worker_keys_in_settings_local() {
+  local dir out rc file before
+  dir=$(new_case worker-settings rl42)
+  add_ship_task "$dir" rl42 claude
+  file="$dir/wt/.claude/settings.local.json"
+  mkdir -p "${file%/*}"
+  printf '%s\n' '{"remote":{"defaultEnvironmentId":"env-rust-brep-oracle"}}' > "$file"
+  before=$(cat "$file")
+
+  out=$(run_control "$dir" rl42 relaunch --note "continuing in the cloud lane"); rc=$?
+  expect_code 0 "$rc" "relaunch should succeed"$'\n'"$out"
+  [ "$(cat "$file" 2>/dev/null)" = "$before" ] \
+    || fail "relaunch rewrote or removed the worker's settings.local.json"
+  jq -e '.hooks.Stop' "$dir/home/state/rl42.claude-settings.json" >/dev/null \
+    || fail "relaunch did not wire the replacement's hooks through the state settings file"
+  assert_grep "--settings '$dir/home/state/rl42.claude-settings.json'" "$dir/fake/literal" \
+    "the replacement launch must pass the state settings file"
+  pass "fm-control relaunch: a worker's settings.local.json keys survive the relaunch"
+}
+
 test_relaunch_keeps_the_pr_identity_parseable() {
   local dir out rc meta
   dir=$(new_case pr-identity rl41)
@@ -985,8 +1007,7 @@ test_wiring_removal_failure_refuses_before_replacement_arm() {
   local dir hook out rc real_rm
   dir=$(new_case wiring-failure rl29)
   add_ship_task "$dir" rl29 claude
-  hook="$dir/wt/.claude/settings.local.json"
-  mkdir -p "${hook%/*}"
+  hook="$dir/home/state/rl29.claude-settings.json"
   printf '{}\n' > "$hook"
   real_rm=$(command -v rm)
   make_rm_failure_stub "$dir"
@@ -1624,7 +1645,7 @@ test_prepublication_abort_retires_replacement_wiring_and_busy_state() {
   expect_code 1 "$rc" "a failed metadata publication should fail closed"$'\n'"$out"
   [ "$(meta_field "$dir" rl28 harness)" = claude ] \
     || fail "a failed publication should retain the prior durable record"
-  [ ! -e "$dir/wt/.claude/settings.local.json" ] \
+  [ ! -e "$dir/home/state/rl28.claude-settings.json" ] \
     || fail "an aborted replacement should remove its harness wiring"
   [ ! -e "$dir/home/state/rl28.busy-gen" ] \
     || fail "an aborted replacement should retire its busy generation"
@@ -2665,6 +2686,7 @@ test_relaunch_refuses_before_exit_when_the_composer_state_is_unproven
 test_relaunch_from_linked_home_preserves_recorded_worktree
 test_relaunch_preserves_durable_task_metadata
 test_relaunch_keeps_the_pr_identity_parseable
+test_relaunch_keeps_worker_keys_in_settings_local
 test_relaunch_reuses_the_quality_posture_and_base_commit
 test_relaunch_serializes_concurrent_durable_metadata_publication
 test_disabled_relaunch_clears_prior_trace_context
