@@ -547,6 +547,40 @@ test_pi_settle_requires_semantic_idle() {
   pass 'Local tmux Pi fails closed immediately without semantic idle proof'
 }
 
+# A tmux Pi second mate carries the semantic busy record fm-spawn arms and its
+# Pi extension writes, so restart proves idle from that record rather than the
+# screen Calm hides. A busy record over the same empty-looking screen is not
+# idle: the restart leaves the mate unreached and sends no /quit.
+test_pi_settle_local_tmux_uses_semantic_record() {
+  local dir out rc
+  dir=$(new_case pi-tmux-semantic-idle)
+  add_local_mate "$dir" sm1 pi
+  printf 'pi' > "$dir/fake/command"
+  arm_answer "$dir" sm1
+  "$ROOT/bin/fm-busy-event.sh" arm "$dir/home/state" sm1 --state idle --source pi-ext --event agent_settled >/dev/null \
+    || fail 'could not arm an idle semantic record for the tmux Pi mate'
+  out=$(FM_TEST_REAL_SLEEP=1 FM_TEST_SETTLE_WAIT=8 FM_TEST_SETTLE_POLL=1 run_restart "$dir" sm1); rc=$?
+  case "$rc" in 0|3) ;; *) fail "a semantically idle tmux Pi failed before or during relaunch"$'\n'"$out" ;; esac
+  assert_not_contains "$out" 'could not be proven settled at a readable empty input' \
+    'a semantically idle tmux Pi was rejected at the settle gate'
+  assert_present "$dir/fake/settle-composer-probed" 'the tmux Pi settle gate skipped the composer read'
+
+  dir=$(new_case pi-tmux-semantic-busy)
+  add_local_mate "$dir" sm1 pi
+  printf 'pi' > "$dir/fake/command"
+  arm_answer "$dir" sm1
+  : > "$dir/fake/calm-hidden-working"
+  "$ROOT/bin/fm-busy-event.sh" arm "$dir/home/state" sm1 --state busy --source pi-ext --event agent_start >/dev/null \
+    || fail 'could not arm a busy semantic record for the tmux Pi mate'
+  out=$(FM_TEST_REAL_SLEEP=1 FM_TEST_SETTLE_WAIT=8 FM_TEST_SETTLE_POLL=1 run_restart "$dir" sm1); rc=$?
+  expect_code 3 "$rc" "a semantically busy tmux Pi must not be restarted"$'\n'"$out"
+  assert_contains "$out" 'unreached: sm1:' 'a semantically busy tmux Pi must be reported unreached'
+  assert_contains "$out" 'could not be proven settled at a readable empty input' \
+    'a semantically busy tmux Pi must fail at the settle gate'
+  assert_no_grep '/quit' "$dir/fake/literal" 'a semantically busy tmux Pi was sent /quit'
+  pass 'Local tmux Pi settles on its semantic busy record, not the Calm-hidden screen'
+}
+
 test_pi_settle_deadline_bounds_success_and_sleep() {
   local dir out rc
   dir=$(new_case pi-settle-deadline)
@@ -1405,6 +1439,7 @@ test_answer_between_resolution_and_timeout_wins
 test_pi_settle_wait_configuration
 test_pi_settle_minimum_allows_local_herdr
 test_pi_settle_requires_semantic_idle
+test_pi_settle_local_tmux_uses_semantic_record
 test_pi_settle_deadline_bounds_success_and_sleep
 test_unprovable_runtime_falls_back
 test_unknown_mate_is_accounted_for

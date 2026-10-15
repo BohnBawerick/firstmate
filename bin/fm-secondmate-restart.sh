@@ -37,7 +37,9 @@
 #      the nudge.
 #      The persistence gate is that answer, never a wall clock.
 #      Pi can publish it before the same logical turn reaches idle, so restart
-#      requires two separated Herdr semantic-idle and empty-composer samples.
+#      requires two separated semantic-idle and empty-composer samples: Herdr's
+#      native agent state, or on another local backend the mate's armed
+#      semantic busy record (bin/fm-busy-lib.sh), never the rendered screen.
 #      Failure within the settle bound leaves the mate unreached without lifecycle
 #      input. A persistence timeout leaves its expectation to the pending-reply loop.
 #
@@ -232,14 +234,34 @@ resolve_persist_reply() {
   return 0
 }
 
+# pi_semantic_observation <array-index>: the local mate's armed semantic busy
+# record (fm-spawn arms it for a Pi second mate, and the Pi extension writes
+# agent_start and agent_settled into it), as idle, busy, or unknown. A missing,
+# stale, or untrusted record is unknown. Calm hides Pi's rendered Working row,
+# so this record, not the screen, is the activity proof off Herdr.
+pi_semantic_observation() {  # <array-index>
+  local id=${IDS[$1]} verdict
+  # shellcheck disable=SC2016 # Positional parameters expand in the child shell.
+  verdict=$(FM_HOME="$FM_HOME" FM_ROOT_OVERRIDE="$FM_ROOT" FM_STATE_OVERRIDE="$STATE" \
+    bash -c '. "$1"; . "$2"; fm_busy_classify_meta "$3" "$4" "$5"' \
+    _ "$SCRIPT_DIR/fm-backend.sh" "$SCRIPT_DIR/fm-busy-lib.sh" "$STATE/$id.meta" "$id" "$STATE" 2>/dev/null) \
+    || verdict=unknown
+  case "$verdict" in
+    'idle '*) printf 'idle' ;;
+    'busy '*) printf 'busy' ;;
+    *) printf 'unknown' ;;
+  esac
+}
+
 # A persistence reply can arrive while Pi is still finishing the same turn.
-# Second mates do not have the per-task agent_settled busy marker installed by
-# fm-spawn, so use the adapter's guarded composer read plus its activity probe.
-# Two separated empty reads reject a brief redraw between tools. The control
-# plane repeats the composer guard before /quit.
+# Use the adapter's guarded composer read plus an activity probe: Herdr's
+# native agent state, or the mate's semantic busy record on another local
+# backend. A local non-Herdr mate without a trusted record cannot prove idle
+# and fails at once. Two separated empty reads reject a brief redraw between
+# tools. The control plane repeats the composer guard before /quit.
 wait_for_pi_settle() {  # <array-index>
   local i=$1 id backend target observation composer deadline stable=0 now remaining sleep_for
-  local route running_harness
+  local route running_harness semantic=0
   local clock_reserve=0 probe_grace=$SETTLE_PROBE_GRACE probe_floor probe_timeout
   probe_floor=$((probe_grace + SETTLE_PROBE_TIMEOUT_MIN))
   id=${IDS[$i]}
@@ -267,7 +289,9 @@ wait_for_pi_settle() {  # <array-index>
   [ "$SETTLE_WAIT" -ne 0 ] || return 1
   if [ "${PLACEMENT[i]}" != remote ]; then
     backend=$(fm_backend_of_meta "$STATE/$id.meta")
-    [ "$backend" = herdr ] || return 1
+    if [ "$backend" != herdr ]; then
+      case "$(pi_semantic_observation "$i")" in idle|busy) semantic=1 ;; *) return 1 ;; esac
+    fi
     target=$(fm_backend_target_of_meta "$STATE/$id.meta")
   fi
   while :; do
@@ -275,7 +299,9 @@ wait_for_pi_settle() {  # <array-index>
     remaining=$((deadline - now - clock_reserve))
     [ "$remaining" -ge "$probe_floor" ] || return 1
     probe_timeout=$((remaining - probe_grace))
-    if [ "${PLACEMENT[i]}" = remote ]; then
+    if [ "$semantic" = 1 ]; then
+      observation=$(pi_semantic_observation "$i")
+    elif [ "${PLACEMENT[i]}" = remote ]; then
       observation=$( (fm_exec_timed "$probe_timeout" "$probe_grace" env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
         "$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh observe "$id") 2>/dev/null) || observation=unknown
     else
