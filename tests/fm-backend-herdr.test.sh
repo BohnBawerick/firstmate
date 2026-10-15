@@ -5495,8 +5495,8 @@ test_composer_state_claude_slash_popup_pushes_composer_above_tail_window() {
 }
 
 test_send_text_submit_claude_selected_slash_popup_is_proven_and_submitted() {
+  local TMP_ROOT="$TMP_ROOT/selected-slash-popup"
   (
-    TMP_ROOT="$TMP_ROOT/selected-slash-popup"
     mkdir -p "$TMP_ROOT"
     # Composer and popup rows captured from real Claude Code 2.1.300 on Herdr 0.9.3.
     herdr_popup_composer_screen() {
