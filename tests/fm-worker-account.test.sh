@@ -274,7 +274,7 @@ test_pi_pin_refusals() {
   assert_refused_before_launch "$id-out" "$out" "which is not signed in for provider 'anthropic'"
   out=$(spawn_ship "$id-raw" --harness "pi --provider openai-codex --model openai-codex/gpt-5.5"); rc=$?
   expect_code 1 "$rc" "a raw Pi launch must refuse under a pin"
-  assert_refused_before_launch "$id-raw" "$out" "a raw Pi launch command runs verbatim"
+  assert_refused_before_launch "$id-raw" "$out" "raw launch commands are unsupported"
   pass "a Pi pin refuses unqualified, missing, undeclared, signed-out, and raw launches"
 }
 
@@ -315,18 +315,16 @@ test_a_pin_governs_only_its_own_runner() {
   pass "a Claude pin leaves codex and Pi launches unchanged"
 }
 
-test_raw_claude_command_receives_the_pin() {
+test_raw_claude_command_refuses_under_a_pin() {
   local out rc id=acct-raw
   new_case raw-claude claude
   signed_in_claude_root "$CASE/work"
   printf '%s\n' "$CASE/work" > "$HOME_DIR/config/claude-account"
   out=$(spawn_ship "$id" --harness "claude --print raw"); rc=$?
-  expect_code 0 "$rc" "a raw Claude spawn under a signed-in pin should succeed: $out"
-  assert_contains "$out" "account=$CASE/work" "a raw Claude spawn should report the pin"
-  run_pane
-  assert_grep "CLAUDE_CONFIG_DIR=$CASE/work" "$CASE/claude-worker" "a raw Claude worker should run under the pinned root"
-  assert_grep "ANTHROPIC_API_KEY=unset" "$CASE/claude-worker" "a raw Claude worker must not keep an ambient API key"
-  pass "a raw Claude launch command receives the home's pin"
+  expect_code 1 "$rc" "a raw Claude spawn under a pin must refuse: $out"
+  assert_refused_before_launch "$id" "$out" "raw launch commands are unsupported"
+  assert_contains "$out" "launch with --harness <name> instead" "the refusal must name a supported launch"
+  pass "a pinned home refuses a raw Claude launch before starting a worker"
 }
 
 test_raw_claude_account_override_refuses_under_a_pin() {
@@ -338,12 +336,62 @@ test_raw_claude_account_override_refuses_under_a_pin() {
   for var in "CLAUDE_CONFIG_DIR=$CASE/other" ANTHROPIC_API_KEY=override-key; do
     out=$(spawn_ship "$id-${var%%=*}" --harness "FOO=1 $var claude --print raw"); rc=$?
     expect_code 1 "$rc" "a raw Claude command setting ${var%%=*} must refuse under a pin"
-    assert_refused_before_launch "$id-${var%%=*}" "$out" "the raw launch command sets ${var%%=*}"
-    assert_contains "$out" "remove ${var%%=*} from the raw command, or change or remove config/claude-account" \
-      "the refusal should say how to proceed"
+    assert_refused_before_launch "$id-${var%%=*}" "$out" "raw launch commands are unsupported"
+    assert_contains "$out" "launch with --harness <name> instead" "the refusal should say how to proceed"
   done
   assert_absent "$CASE/claude-worker" "a refused raw override must never start Claude"
   pass "a pinned home refuses a raw Claude command that overrides the account"
+}
+
+test_raw_account_pin_bypasses_refuse_before_launch() {
+  local out rc id=acct-bypass account raw n=0
+  for account in explicit ordinary; do
+    new_case "raw-bypass-$account" claude
+    signed_in_claude_root "$CASE/work"
+    signed_in_claude_root "$CASE/other"
+    if [ "$account" = ordinary ]; then
+      signed_in_claude_root "$HOME_DIR/user-home/.claude"
+      printf 'ordinary\n' > "$HOME_DIR/config/claude-account"
+    else
+      printf '%s\n' "$CASE/work" > "$HOME_DIR/config/claude-account"
+    fi
+    for raw in "C'LAUDE_CONFIG_DIR'=$CASE/other claude --print raw" \
+      "X='ignored claude ' env CLAUDE_CONFIG_DIR=$CASE/other claude --print raw" \
+      "HOME=$CASE/other claude --print raw"; do
+      n=$((n + 1))
+      out=$(spawn_ship "$id-$n" --harness "$raw"); rc=$?
+      expect_code 1 "$rc" "an account-pin bypass must refuse: $raw"
+      assert_refused_before_launch "$id-$n" "$out" "raw launch commands are unsupported"
+    done
+    assert_absent "$CASE/claude-worker" "a raw bypass must never start a worker"
+  done
+  pass "quoted account names, hidden wrappers, and HOME overrides refuse under explicit and ordinary pins"
+}
+
+test_raw_quoted_credentials_refuse_under_either_pin() {
+  local dir
+  dir="$TMP_ROOT/quoted-credentials"
+  mkdir -p "$dir/claude/config" "$dir/pi/config" "$dir/account"
+  printf '%s\n' "$dir/account" > "$dir/claude/config/claude-account"
+  printf '%s\nopenai-codex\n' "$dir/account" > "$dir/pi/config/pi-account"
+  bash -c '
+    . "$1/bin/fm-worker-account-lib.sh"
+    dir=$2
+    for config in "$dir/claude/config" "$dir/pi/config"; do
+      for harness in claude pi pi-signed; do
+        for name in HOME CLAUDE_CONFIG_DIR $FM_WORKER_ACCOUNT_CLAUDE_SHED; do
+          raw="${name:0:1}'\''${name:1}'\''=override $harness --resume"
+          if fm_worker_account_select "$harness" "$config" openai-codex/test false "$raw" > "$dir/selection" 2> "$dir/refusal"; then
+            printf "raw launch with quoted %s was accepted under %s\n" "$name" "$config" >&2
+            exit 1
+          fi
+          [ ! -s "$dir/selection" ] || exit 2
+          grep -Fq "raw launch commands are unsupported" "$dir/refusal" || exit 3
+        done
+      done
+    done
+  ' _ "$ROOT" "$dir" || fail "a quoted credential assignment bypassed the account-pin guard"
+  pass "quoted HOME, config roots, and every shed credential refuse for all pinned runners"
 }
 
 test_raw_claude_account_override_is_kept_without_a_pin() {
@@ -374,7 +422,7 @@ test_raw_launch_without_a_provable_runner_refuses_under_a_pin() {
     n=$((n + 1))
     out=$(spawn_ship "$id-$n" --harness "$raw"); rc=$?
     expect_code 1 "$rc" "a raw launch whose runner cannot be proven must refuse under a pin: $raw"
-    assert_refused_before_launch "$id-$n" "$out" "cannot prove which runner"
+    assert_refused_before_launch "$id-$n" "$out" "raw launch commands are unsupported"
   done
   assert_absent "$CASE/claude-worker" "a refused wrapped raw launch must never start Claude"
 
@@ -383,7 +431,7 @@ test_raw_launch_without_a_provable_runner_refuses_under_a_pin() {
   printf '%s\nopenai-codex\n' "$CASE/pi-work" > "$HOME_DIR/config/pi-account"
   out=$(spawn_ship "$id-pi" --harness "env PI_CODING_AGENT_DIR=$CASE/other pi --model openai-codex/gpt-5.5"); rc=$?
   expect_code 1 "$rc" "a wrapped raw Pi launch must refuse under a Pi pin"
-  assert_refused_before_launch "$id-pi" "$out" "cannot prove which runner"
+  assert_refused_before_launch "$id-pi" "$out" "raw launch commands are unsupported"
 
   new_case raw-wrapped-unpinned claude
   out=$(spawn_ship "$id-unpinned" --harness "env FOO=1 claude --print raw"); rc=$?
@@ -425,8 +473,10 @@ test_pi_pin_selects_the_root_and_the_declared_provider
 test_pi_pin_refusals
 test_pi_extension_provider_and_old_pi_fall_back_to_the_model_listing
 test_a_pin_governs_only_its_own_runner
-test_raw_claude_command_receives_the_pin
+test_raw_claude_command_refuses_under_a_pin
 test_raw_claude_account_override_refuses_under_a_pin
+test_raw_account_pin_bypasses_refuse_before_launch
+test_raw_quoted_credentials_refuse_under_either_pin
 test_raw_claude_account_override_is_kept_without_a_pin
 test_raw_launch_without_a_provable_runner_refuses_under_a_pin
 test_local_secondmate_reads_the_launching_home_pin

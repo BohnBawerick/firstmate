@@ -30,10 +30,7 @@
 # passes --provider <that provider>, because without it Pi may resolve a
 # provider-prefixed model under another authenticated provider. A raw Pi
 # launch command is launched verbatim and cannot receive that flag, so a home
-# with config/pi-account refuses raw Pi launches. A raw Claude launch command
-# runs after the pinned root and shed credentials are applied, so its own
-# leading CLAUDE_CONFIG_DIR or shed-credential assignment would override the
-# pin; a home with config/claude-account refuses such a command.
+# with config/pi-account refuses raw Pi launches.
 #
 # The sign-in check asks the runner itself, with only HOME, PATH, TMPDIR,
 # USER, LOGNAME, and the selected root in its environment, so a credential
@@ -217,31 +214,6 @@ fm_worker_account_check() {
   return 0
 }
 
-# fm_worker_account_raw_runner_proven <harness> <config-dir> <raw-command>
-# A raw launch command's runner is read from its first word after leading
-# NAME=value assignments, so a wrapper such as env, command, exec, or bash -c,
-# or a second command after shell syntax, would start a pinned runner that the
-# pin never sees. When this home has either pin file, a raw command must
-# therefore be plain `[NAME=value ...] claude|pi|pi-signed <args>` with no
-# shell control or expansion characters; anything else refuses, because
-# Firstmate cannot prove which runner it starts. Without a pin it returns 0.
-fm_worker_account_raw_runner_proven() {
-  local harness=$1 config=$2 raw=$3
-  [ -n "$raw" ] || return 0
-  [ -e "$config/claude-account" ] || [ -L "$config/claude-account" ] ||
-    [ -e "$config/pi-account" ] || [ -L "$config/pi-account" ] || return 0
-  case "$raw" in
-  *[\;\&\|\<\>\(\)\`\$\\]* | *$'\n'*) ;;
-  *)
-    case "$harness" in
-    claude | pi | pi-signed) return 0 ;;
-    esac
-    ;;
-  esac
-  echo "error: this home pins worker accounts (config/claude-account or config/pi-account), and Firstmate cannot prove which runner the raw launch command starts, so a wrapper or shell syntax could bypass the pin: $raw; under a pin a raw launch must be plain [NAME=value ...] claude|pi|pi-signed <arguments>, or launch with --harness <name>" >&2
-  return 1
-}
-
 # fm_worker_account_select <harness> <config-dir> <model> <executable> [<raw-command>]
 # The whole launch-time decision. Prints nothing for an unpinned runner, so
 # the caller keeps today's launch unchanged. For a pinned one prints
@@ -251,33 +223,19 @@ fm_worker_account_raw_runner_proven() {
 # endpoint exists, and bin/fm-control.sh before a relaunch stops the live
 # agent.
 fm_worker_account_select() {
-  local harness=$1 config=$2 model=$3 executable=$4 raw=${5:-} selection declared root providers word provider=
-  fm_worker_account_raw_runner_proven "$harness" "$config" "$raw" || return 1
+  local harness=$1 config=$2 model=$3 executable=$4 raw=${5:-} selection declared root providers provider=
+  if [ -n "$raw" ] && { [ -e "$config/claude-account" ] || [ -L "$config/claude-account" ] ||
+    [ -e "$config/pi-account" ] || [ -L "$config/pi-account" ]; }; then
+    echo "error: this home pins worker accounts (config/claude-account or config/pi-account), so raw launch commands are unsupported; launch with --harness <name> instead" >&2
+    return 1
+  fi
   selection=$(fm_worker_account_resolve "$harness" "$config") || return 1
   [ -n "$selection" ] || return 0
   declared=${selection%%$'\t'*}
   root=${selection#*$'\t'}
   providers=${root#*$'\t'}
   root=${root%%$'\t'*}
-  if [ "$harness" = claude ]; then
-    for word in $raw; do
-      case "$word" in
-      [A-Za-z_]*=*)
-        case " CLAUDE_CONFIG_DIR $FM_WORKER_ACCOUNT_CLAUDE_SHED " in
-        *" ${word%%=*} "*)
-          echo "error: config/claude-account pins Claude workers, but the raw launch command sets ${word%%=*}, which would override the pinned account; remove ${word%%=*} from the raw command, or change or remove config/claude-account" >&2
-          return 1
-          ;;
-        esac
-        ;;
-      *) break ;;
-      esac
-    done
-  else
-    if [ -n "$raw" ]; then
-      echo "error: config/pi-account pins Pi workers, and a raw Pi launch command runs verbatim, so it cannot carry the pinned --provider; launch with --harness $harness and --model <provider>/<id> instead" >&2
-      return 1
-    fi
+  if [ "$harness" != claude ]; then
     provider=$(fm_worker_account_pi_provider "$model") || {
       echo "error: config/pi-account pins Pi workers to providers ($providers), so a Pi launch needs --model <provider>/<id> naming one of them; '${model:-none}' names no provider, and Firstmate does not guess one" >&2
       return 1
