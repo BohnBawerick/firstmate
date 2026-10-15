@@ -708,6 +708,28 @@ test_no_mistakes_worker_starts_own_validation() {
 # CLAUDE.md to corrections of factually wrong information - including wrong
 # information the task itself introduced - and never invites additions of
 # missing knowledge, because those files tax every agent session of the project.
+# Every ship and scout brief names firstmate home paths (status file, steering
+# inbox, task material), so its worktree rule must bound reading and searching
+# outside the worktree as well as writing.
+test_worktree_rule_bounds_reading_outside_the_worktree() {
+  local home id brief kind
+  home="$TMP_ROOT/worktree-read-home"
+  mkdir -p "$home/data"
+  for kind in no-mistakes direct-PR local-only scout; do
+    id="brief-read-$kind"
+    if [ "$kind" = scout ]; then
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1
+    else
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$kind" >/dev/null 2>&1
+    fi
+    brief="$home/data/$id/brief.md"
+    assert_present "$brief" "$kind brief was not scaffolded"
+    assert_grep "read only the paths and commands this brief names; do not search or browse the rest of the firstmate home" "$brief" \
+      "$kind brief's worktree rule does not bound reading outside the worktree"
+  done
+  pass "fm-brief.sh: ship and scout worktree rules bound reading as well as writing"
+}
+
 test_ship_project_memory_wording() {
   local home id brief
   home="$TMP_ROOT/project-memory-home"
@@ -1899,6 +1921,7 @@ test_no_mistakes_dod_green_detection
 test_pr_based_dod_requires_non_draft
 test_ask_user_escalation_format
 test_ship_project_memory_wording
+test_worktree_rule_bounds_reading_outside_the_worktree
 test_herdr_lab_contract_is_explicit_and_complete
 test_herdr_lab_contract_quotes_foreign_firstmate_path
 test_herdr_lab_omission_is_loud_for_ship_and_scout

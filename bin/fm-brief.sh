@@ -760,6 +760,7 @@ The report is the only thing that survives, so anything worth keeping must be in
 # Rules
 1. Never push to any remote and never open a PR.
 2. Stay inside this worktree; the only files you may write outside it are the report and the status file below.
+   Outside it, read only the paths and commands this brief names; do not search or browse the rest of the firstmate home, whose records are private.
 3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
 4. Report status by appending one line:
    \`$STATUS_APPEND\`
@@ -967,6 +968,7 @@ Then create your branch: \`git checkout -b $BRANCH_Q --\`$SETUP2
 $RULE1
 2. Keep project edits inside this worktree; keep proof and scratch output outside it, under \`$DATA/$ID/\` or a temporary directory.
    Outside the worktree, write only that task material and the status and steering-inbox records authorized below.
+   Outside it, read only the paths and commands this brief names; do not search or browse the rest of the firstmate home, whose records are private.
    Leave the worktree clean before reporting done.
 3. $FORGE_RULE_LINE
 4. Report status by appending one line:
