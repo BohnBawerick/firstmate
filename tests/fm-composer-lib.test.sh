@@ -1252,6 +1252,21 @@ test_cursor_on_proven_box_bottom_classifies_content() {
   pass "fm_composer_classify_screen: a proven box tolerates a bottom-border cursor"
 }
 
+test_selected_slash_popup_preserves_composer_content() {
+  local screen out
+  screen=$(cat "$ROOT/tests/fixtures/claude-2.1.300-exit-popup.txt")
+  out=$(fm_composer_extract_selected_content "$CAPS_STYLED_NOID" "$screen")
+  [ "$out" = /exit ] || fail "the captured slash popup must preserve /exit alone, got '$out'"
+  assert_screen "selected slash popup" pending "$CAPS_STYLED_NOID" "$screen"
+  screen+=$'\n\n❯ /other unsent draft'
+  out=$(fm_composer_extract_selected_content "$CAPS_STYLED_NOID" "$screen")
+  [ "$out" = '/other unsent draft' ] || fail "a lower live draft must still win, got '$out'"
+  screen=$'────────────────────────\n❯ /exit\n────────────────────────\n❯ /exit  unsent draft'
+  out=$(fm_composer_extract_selected_content "$CAPS_STYLED_NOID" "$screen")
+  [ "$out" = '/exit unsent draft' ] || fail "a matching draft at the prompt column must still win, got '$out'"
+  pass "fm_composer_extract_selected_content: a selected slash-menu label is excluded, later drafts are preserved"
+}
+
 test_selected_content_is_composer_scoped_and_wrap_normalized() {
   local screen out
   screen=$'hello captain in transcript\n╭────────────────────╮\n│ unrelated          │\n│ draft               │\n╰────────────────────╯'
@@ -1335,6 +1350,7 @@ test_incomplete_lower_box_invalidates_stale_candidate
 test_titled_bottom_requires_matching_width
 test_cursor_on_proven_box_bottom_classifies_content
 test_selected_content_is_composer_scoped_and_wrap_normalized
+test_selected_slash_popup_preserves_composer_content
 
 test_queued_enter_verdict_busy_pending_is_empty() {
   local out

@@ -1657,7 +1657,7 @@ _fm_composer_bare_rule_sandwich() {  # <plain-screen> <row>
 }
 
 _fm_composer_select_cursorless() {
-  local plain=$1 generic=-1 next boundary raw trimmed glyph bare footer=0
+  local plain=$1 generic=-1 next boundary raw trimmed glyph bare footer=0 indent
   FM_COMPOSER_SELECTED_KIND=
   FM_COMPOSER_SELECTED_FIRST=-1
   FM_COMPOSER_SELECTED_LAST=-1
@@ -1686,6 +1686,21 @@ _fm_composer_select_cursorless() {
     fi
   fi
   if [ "$bare" -gt "$generic" ]; then
+    # Claude's selected slash-menu label repeats the enclosed input with a padded description.
+    if [ "$FM_COMPOSER_SCAN_PI_GLYPH" = '❯' ] \
+       && [ "$bare" -eq "$((FM_COMPOSER_SCAN_PI_CLOSE + 1))" ]; then
+      raw=$(_fm_composer_screen_row "$FM_COMPOSER_SCAN_PI_GLYPH_ROW" "$plain")
+      fm_composer_normalize_spaces_var raw
+      indent=${raw%%[![:space:]]*}
+      fm_composer_normalize_trim_var raw
+      trimmed=$(_fm_composer_screen_row "$bare" "$plain")
+      fm_composer_normalize_spaces_var trimmed
+      case "$raw" in
+        '❯ /'*)
+          case "$trimmed" in "$indent  $raw  "*) bare=$FM_COMPOSER_SCAN_PI_GLYPH_ROW ;; esac
+          ;;
+      esac
+    fi
     generic=$bare
     FM_COMPOSER_SELECTED_KIND=bare
     FM_COMPOSER_SELECTED_FIRST=$bare

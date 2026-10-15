@@ -5494,6 +5494,18 @@ test_composer_state_claude_slash_popup_pushes_composer_above_tail_window() {
   pass "fm_backend_herdr_composer_state: a slash-command popup cannot hide a typed composer"
 }
 
+test_send_text_submit_claude_selected_slash_popup_is_proven_and_submitted() {
+  (
+    TMP_ROOT="$TMP_ROOT/selected-slash-popup"
+    mkdir -p "$TMP_ROOT"
+    # Composer and popup rows captured from real Claude Code 2.1.300 on Herdr 0.9.3.
+    herdr_popup_composer_screen() {
+      cat "$ROOT/tests/fixtures/claude-2.1.300-exit-popup.txt"
+    }
+    test_send_text_submit_claude_slash_popup_composer_is_still_proven_and_submitted
+  ) || fail "the selected slash-menu row must not replace the typed composer"
+}
+
 test_send_text_submit_claude_slash_popup_composer_is_still_proven_and_submitted() {
   local dir log resp fb out enter_count text
   dir="$TMP_ROOT/submit-claude-slash-popup"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
@@ -6469,6 +6481,7 @@ test_send_text_submit_accepts_marked_payloads_whose_read_back_drops_u2063
 test_send_text_submit_refuses_marked_digest_missing_its_head
 test_composer_state_claude_slash_popup_pushes_composer_above_tail_window
 test_send_text_submit_claude_slash_popup_composer_is_still_proven_and_submitted
+test_send_text_submit_claude_selected_slash_popup_is_proven_and_submitted
 test_send_text_submit_claude_grey_slash_command_is_proven_and_submitted
 test_send_text_submit_lone_paste_placeholder_submits_the_long_payload
 test_send_text_submit_multiline_paste_placeholder_submits_the_long_payload
