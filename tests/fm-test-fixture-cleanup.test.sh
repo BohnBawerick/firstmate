@@ -202,7 +202,7 @@ test_registries_avoid_git_worktree_root() {
       fail "fm_test_tmproot placed a fixture root inside the git worktree root: $child_dir"
       ;;
   esac
-  for entry in "$repo"/.fm-test-cleanup.* "$repo"/.fm-test-procevent.* "$repo"/.fm-test-watcher.*; do
+  for entry in "$repo"/.fm-test-cleanup.* "$repo"/.fm-test-procevent.* "$repo"/.fm-test-watcher.* "$repo"/.fm-test-pids.*; do
     [ ! -e "$entry" ] || fail "a live test registry landed in the git worktree root: $entry"
   done
   kill -TERM "$pid"

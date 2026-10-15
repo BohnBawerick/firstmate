@@ -958,6 +958,7 @@ SH
   mkfifo "$fifo"
   ( exec 3> "$fifo"; : > "$dir/capture-blocked"; exec sleep 30 ) &
   holder=$!
+  fm_test_track_pid "$holder"
 
   printf '1002\n' > "$dir/now"
   touch "$state/.secondmate-liveness-tick"

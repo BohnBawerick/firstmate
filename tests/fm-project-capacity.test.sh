@@ -592,6 +592,7 @@ SH
     fm_lock_release "$lock"
   ' _ "$ROOT" "$case_dir/project" "$case_dir/holder" &
   holder=$!
+  fm_test_track_pid "$holder"
   i=0
   while [ ! -f "$case_dir/holder.held" ]; do
     i=$((i + 1))

@@ -377,7 +377,7 @@ fm_test_cleanup() {
 # Registration costs one append and no fork, because it runs at every spawn in
 # suites that start dozens of real processes.
 
-FM_TEST_PID_REGISTRY=$(mktemp "${TMPDIR:-/tmp}/.fm-test-pids.$$.XXXXXX") || return 1
+FM_TEST_PID_REGISTRY=$(mktemp "$FM_TEST_TMPDIR/.fm-test-pids.$$.XXXXXX") || return 1
 # Ticks of 0.05s allowed between TERM and KILL, and again after KILL.
 FM_TEST_REAP_GRACE_TICKS=${FM_TEST_REAP_GRACE_TICKS:-60}
 

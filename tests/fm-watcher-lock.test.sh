@@ -592,6 +592,7 @@ test_lock_stale_steal_single_winner_under_concurrency() {
     IFS= read -r _ < "$5"
   ' _ "$LIB" "$lockdir" "$marker" "$gate" "$hold" &
   waiter=$!
+  fm_test_track_pid "$waiter"
   pids=
   i=1
   while [ "$i" -le 39 ]; do
@@ -603,6 +604,7 @@ test_lock_stale_steal_single_winner_under_concurrency() {
         IFS= read -r _ < "$5"
       fi
     ' _ "$LIB" "$lockdir" "$marker" "$gate" "$hold" &
+    fm_test_track_pid "$!"
     pids="$pids $!"
     i=$((i + 1))
   done
