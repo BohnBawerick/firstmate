@@ -45,6 +45,8 @@ Renewal preserves the subscription ID.
 Replaced signing keys remain valid for five minutes, and callbacks carry space-separated signatures for the current key and all keys still inside that rotation window.
 
 Verification sends a signed, single-use challenge and requires a matching JSON echo with a `2xx` response before storing the subscription.
+Subscriptions reuse successful verification for the same principal and callback URL for five minutes, including across retries, filter changes, renewals, and restarts.
+Cache hits preserve the original verification time; failed challenges do not refresh it.
 An absent correlation ID is omitted from the event payload.
 Both verification and delivery resolve the destination once, reject every non-public address, and connect directly to an address from that validated set.
 If an address fails to connect, subsequent validated candidates share the remaining ten-second connection budget.
