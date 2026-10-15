@@ -15,7 +15,6 @@ set -u
 
 MAILBOX="$ROOT/bin/fm-dot-mailbox.sh"
 TMP_ROOT=$(fm_test_tmproot fm-dot-mailbox)
-DB_PATH="$TMP_ROOT/mailbox.sqlite3"
 
 get_free_port() {
   python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'
@@ -46,7 +45,7 @@ test_unknown_command_fails() {
 
 test_mailbox_crud_and_idempotency() {
   local out rc msg_id
-  export FM_DOT_MAILBOX_DB="$DB_PATH"
+  export FM_HOME="$TMP_ROOT"
 
   # Initial status
   out=$("$MAILBOX" status)
@@ -482,6 +481,125 @@ class MailboxRegressionTests(unittest.TestCase):
         with self.server.guard:
             return [record for record in self.server.received if "eventId" in record["payload"]]
 
+    def test_database_selection_ignores_inherited_override(self):
+        env = os.environ.copy()
+        home = self.directory / "owning-home"
+        ignored_db = self.directory / "ignored.db"
+        env["FM_HOME"] = str(home)
+        env["FM_DOT_MAILBOX_DB"] = str(ignored_db)
+
+        def run(*arguments):
+            return subprocess.run(cli + list(arguments), env=env, capture_output=True, text=True, check=True).stdout
+
+        message = json.loads(run("submit", "--idempotency-key", "home-key", "owning-home nonce"))
+        self.assertTrue((home / "data/dot-mcp/mailbox.sqlite3").is_file())
+        self.assertEqual(json.loads(run("get", message["id"]))["content"], "owning-home nonce")
+        self.assertEqual(json.loads(run("list"))["messages"][0]["id"], message["id"])
+        self.assertEqual(json.loads(run("reply", message["id"], "home result"))["status"], "ok")
+        self.assertIn("total=1 pending=0 replied=1", run("status"))
+        explicit_db = self.directory / "explicit.db"
+        self.assertIn("total=0", run("--db", str(explicit_db), "status"))
+        self.assertTrue(explicit_db.is_file())
+        env.pop("FM_HOME")
+        result = subprocess.run(cli + ["status"], env=env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Set --db or FM_HOME", result.stderr)
+        self.assertFalse(ignored_db.exists())
+
+    def test_delivery_acknowledgment_does_not_read_response_body(self):
+        release = threading.Event()
+
+        class AcknowledgingReceiver(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                verification = payload.get("type") == "verification"
+                if verification and not self.server.oversized_verification:
+                    body = json.dumps({"challenge": payload["challenge"]}).encode()
+                else:
+                    body = b"x" * (256 * 1024 + 1)
+                self.send_response(200 if verification else 202)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.flush()
+                if not verification and self.server.stall:
+                    release.wait(5)
+                    return
+                try:
+                    self.wfile.write(body)
+                except OSError:
+                    pass
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), AcknowledgingReceiver)
+        server.stall, server.oversized_verification = True, False
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        delivery = {"mode": "webhook", "url": f"http://127.0.0.1:{server.server_port}/callback", "secret": secret1}
+        try:
+            self.subscribe(delivery=delivery)
+            for stalled in (True, False):
+                server.stall = stalled
+                message = self.box.submit_message("acknowledged", "work")
+                with patch.object(m, "CALLBACK_TIMEOUT_SEC", .25):
+                    self.box.deliver_pending_events()
+                self.assertFalse(release.is_set())
+                self.assertEqual(self.box.get_message_by_id(message["id"])["delivery"]["delivered"], 1)
+                row = self.box.conn.execute("SELECT state, attempts FROM pending_events WHERE message_id=?", (message["id"],)).fetchone()
+                self.assertEqual(tuple(row), ("delivered", 1))
+            server.oversized_verification = True
+            with self.assertRaisesRegex(ValueError, "response exceeds 256 KiB"):
+                self.box.subscribe_event("message.created", {"queue": "other"}, delivery)
+        finally:
+            release.set()
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+    def test_delivery_state_has_one_owner(self):
+        tables = {row[0] for row in self.box.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        self.assertNotIn("delivery_attempts", tables)
+        self.assertIn("pending_events", tables)
+        self.subscribe()
+        self.server.event_status = 503
+        message = self.box.submit_message("record failed attempt", "work")
+        self.box.deliver_pending_events()
+        row = self.box.conn.execute("SELECT state, attempts, last_error FROM pending_events WHERE message_id=?", (message["id"],)).fetchone()
+        self.assertEqual(tuple(row), ("pending", 1, "HTTP 503"))
+
+    def test_connection_candidates_share_one_budget(self):
+        clock = [1000.0]
+        attempts, closed = [], []
+
+        class UnreachableSocket:
+            def __init__(self, *args):
+                self.timeout = None
+
+            def settimeout(self, timeout):
+                self.timeout = timeout
+
+            def connect(self, address):
+                attempts.append((address, self.timeout))
+                clock[0] += self.timeout
+                raise TimeoutError("unreachable candidate")
+
+            def close(self):
+                closed.append(self)
+
+        addresses = [
+            (socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("2606:4700::1111", 443, 0, 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("93.184.216.34", 443)),
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("93.184.216.35", 443)),
+        ]
+        with patch.object(m.socket, "getaddrinfo", return_value=addresses), patch.object(m.socket, "socket", UnreachableSocket):
+            with patch.object(m.time, "monotonic", side_effect=lambda: clock[0]), patch.object(m, "CALLBACK_TIMEOUT_SEC", .3):
+                with self.assertRaises(TimeoutError):
+                    m.post_callback("https://callback.test/event", b"{}", {})
+        self.assertEqual([address for address, _ in attempts], [entry[4] for entry in addresses])
+        self.assertEqual(len(closed), len(addresses))
+        self.assertLessEqual(clock[0] - 1000, .300001)
+
     def test_atomic_submission_restart_and_stable_retries(self):
         self.subscribe()
         self.server.event_status = 503
@@ -767,9 +885,12 @@ class MailboxRegressionTests(unittest.TestCase):
         class PinnedSocket(real_socket):
             def connect(self, address):
                 connections.append(address)
+                if address[0] == "2606:4700::1111":
+                    raise ConnectionRefusedError("unavailable IPv6 candidate")
                 return super().connect(("127.0.0.1", address[1]))
 
         public = [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("93.184.216.34", server.server_port))]
+        candidates = [(socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("2606:4700::1111", server.server_port, 0, 0))] + public
         private = [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", server.server_port))]
         self.box.allow_local_callbacks = False
         destination = {"mode": "webhook", "url": f"https://callback.test:{server.server_port}/callback", "secret": secret1}
@@ -782,6 +903,15 @@ class MailboxRegressionTests(unittest.TestCase):
                     self.box.deliver_pending_events()
                     self.assertEqual(dns.call_count, 2)
                     self.assertEqual(len(server.received), 1)
+                with patch.object(m.socket, "getaddrinfo", return_value=candidates) as dns:
+                    before = len(connections)
+                    self.subscribe(delivery=destination)
+                    self.assertEqual(connections[before:][-1], public[0][4])
+                    message = self.box.submit_message("second address works", "work")
+                    self.box.deliver_pending_events()
+                    self.assertEqual(self.box.get_message_by_id(message["id"])["delivery"]["delivered"], 1)
+                    self.assertTrue(any(record["payload"].get("data", {}).get("message_id") == message["id"] for record in server.received))
+                    self.assertGreaterEqual(dns.call_count, 2)
                 with patch.object(m.socket, "getaddrinfo", return_value=public):
                     server.event_status = 302
                     status, _ = m.post_callback(destination["url"], b'{"eventId":"redirect"}', {})
@@ -789,7 +919,7 @@ class MailboxRegressionTests(unittest.TestCase):
                     with self.assertRaises(ssl.SSLCertVerificationError):
                         m.post_callback(destination["url"].replace("callback.test", "wrong.test"), b'{}', {})
             self.assertTrue(connections)
-            self.assertTrue(all(address[0] == "93.184.216.34" for address in connections))
+            self.assertTrue(all(address[0] in ("93.184.216.34", "2606:4700::1111") for address in connections))
             for address in ("100.64.0.1", "10.0.0.1", "127.0.0.1", "169.254.1.1", "::1", "::ffff:100.64.0.1"):
                 blocked = [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (address, 443))]
                 with patch.object(m.socket, "getaddrinfo", return_value=blocked):

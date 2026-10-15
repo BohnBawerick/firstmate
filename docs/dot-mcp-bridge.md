@@ -17,7 +17,7 @@ Serialized responses and callback bodies cannot exceed 256 KiB, including JSON e
 Pagination stops at the byte budget and returns the last included sequence as its cursor.
 Oversized writes fail before committing.
 
-Storage resolves from `--db`, then `FM_DOT_MAILBOX_DB`, then `$FM_HOME/data/dot-mcp/mailbox.sqlite3`.
+Storage resolves from `--db` or `$FM_HOME/data/dot-mcp/mailbox.sqlite3`.
 Without an explicit database or `FM_HOME`, commands fail.
 The storage directory must belong to the current user with owner-only permissions.
 New database files use mode `0600`, including SQLite sidecars; unsafe existing storage is rejected.
@@ -34,6 +34,7 @@ Delivery uses at most four attempts with waits of one, two, and four seconds aft
 An interrupted attempt can remain claimed for up to eleven seconds before recovery.
 Each retry keeps the event ID and body and creates a fresh signing timestamp and signature.
 HTTP `410` and `413` stop retries immediately.
+Any `2xx` response acknowledges application delivery without reading its response body.
 After exhaustion, the event remains undelivered and the assignment remains readable.
 Operator `status` and each returned assignment expose pending, delivered, and undelivered event counts.
 Expired or unsubscribed destinations stop receiving queued events.
@@ -46,6 +47,7 @@ Replaced signing keys remain valid for five minutes, and callbacks carry space-s
 Verification sends a signed, single-use challenge and requires a matching JSON echo with a `2xx` response before storing the subscription.
 An absent correlation ID is omitted from the event payload.
 Both verification and delivery resolve the destination once, reject every non-public address, and connect directly to an address from that validated set.
+If an address fails to connect, subsequent validated candidates share the remaining ten-second connection budget.
 TLS checks the original hostname.
 Redirects are not followed, and environment proxy settings do not redirect callback connections.
 The explicit local-testing option permits HTTP and loopback destinations; it does not permit other non-public addresses.
