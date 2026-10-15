@@ -882,6 +882,67 @@ test_answer_records_and_closes() {
   pass "answer records the captain's words, closes idempotently, and releases routed work"
 }
 
+# Done retention moves an answered captain call out of the backlog into the
+# configured Done archive. The completion gate must still accept it from the
+# archived record, which keeps the recorded answer, so a finished scout can be
+# cleaned up after its inventoried calls age out. An archived call that was
+# closed without a recorded answer still fails.
+test_verify_accepts_an_answered_call_archived_by_done_retention() {
+  local home origin err rc
+  home=$(make_home archived-answer)
+  origin=sample-archive-review
+  mkdir -p "$home/data/$origin"
+  tasks_in "$home" add "$origin" "Review that raised two calls" --kind scout --repo sample --start >/dev/null \
+    || fail "could not create the archive-review origin"
+  write_origin_meta "$home" "$origin"
+  printf 'done: report complete\n' > "$home/state/$origin.status"
+  printf '# Review\n\nTwo captain calls.\n' > "$home/data/$origin/report.md"
+  run_captain "$home" hold sample-archived-answered \
+    --title "Answered call" --reason "captain call one" --repo sample >/dev/null \
+    || fail "could not hold the first call"
+  run_captain "$home" hold sample-archived-unanswered \
+    --title "Unanswered call" --reason "captain call two" --repo sample >/dev/null \
+    || fail "could not hold the second call"
+  run_captain "$home" complete "$origin" sample-archived-answered >/dev/null \
+    || fail "completion failed for the first call"
+  printf 'Captain picked option one.\n' > "$home/decision.txt"
+  run_captain "$home" answer sample-archived-answered --decision-file "$home/decision.txt" >/dev/null \
+    || fail "could not answer the first call"
+  tasks_in "$home" prune --keep 0 >/dev/null || fail "could not archive the Done section"
+  if tasks_in "$home" show sample-archived-answered >/dev/null 2>&1; then
+    fail "fixture: the answered call should have left the backlog for the archive"
+  fi
+  assert_grep '- [x] sample-archived-answered - ' "$home/data/done-archive.md" \
+    "fixture: the answered call was not archived"
+
+  run_captain "$home" verify "$origin" >/dev/null \
+    || fail "verify refused an answered captain call archived by Done retention"
+  pass "verify accepts an answered captain call that Done retention archived"
+
+  # The same gate still refuses an archived call with no recorded answer.
+  tasks_in "$home" unhold sample-archived-unanswered >/dev/null 2>&1 || true
+  tasks_in "$home" 'done' sample-archived-unanswered >/dev/null \
+    || fail "fixture: could not close the unanswered call without an answer"
+  tasks_in "$home" prune --keep 0 >/dev/null || fail "could not archive the second call"
+  assert_grep '- [x] sample-archived-unanswered - ' "$home/data/done-archive.md" \
+    "fixture: the unanswered call was not archived"
+  fm_write_meta "$home/state/$origin.meta" \
+    "window=firstmate:fm-$origin" \
+    "worktree=$home/projects/missing-$origin" \
+    "project=$home/projects/sample" \
+    "harness=codex" \
+    "kind=scout" \
+    "spawn_gen=fixture-$origin" \
+    "decisions_reviewed=1" \
+    "decision_keys=sample-archived-answered,sample-archived-unanswered"
+  rc=0
+  err=$(run_captain "$home" verify "$origin" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "verify accepted an archived captain call with no recorded answer"
+  assert_contains "$err" "archived without a recorded captain answer" \
+    "the refusal should name the missing recorded answer"
+  pass "verify still refuses an archived captain call that was never answered"
+}
+
 # --release lifts the hold instead of closing, preserving the work item's own
 # body under the record; a re-held task later accepts a new answer.
 test_release_frees_held_work() {
@@ -4770,6 +4831,7 @@ test_lavish_list_form_feedback_is_complete
 test_retained_body_keeps_its_utf8_bytes
 test_completion_gate_attests_and_transfers
 test_answer_records_and_closes
+test_verify_accepts_an_answered_call_archived_by_done_retention
 test_release_frees_held_work
 test_hold_stamp_precedes_hold_visibility
 test_interrupted_answer_preserves_hold_age

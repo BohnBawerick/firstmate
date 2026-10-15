@@ -565,20 +565,20 @@ CAPTAIN_MIGRATION_SCAN_LOADED=0
 CAPTAIN_MIGRATION_SCAN_JSON=
 NL_SEP=$'\n'
 
-# Section-aware [beads] extraction from a .tasks.toml: only keys inside the
-# [beads] section, comments stripped. Prints "<key> <value>" lines.
-captain_beads_toml_entries() {  # <toml-file>
+# Section-aware extraction from a .tasks.toml: only the named keys inside the
+# named section, comments stripped. Prints "<key> <value>" lines.
+captain_toml_section_entries() {  # <toml-file> <section> <key-alternation>
   [ -f "$1" ] || return 0
-  LC_ALL=C awk '
+  LC_ALL=C awk -v section="[$2]" -v keys="^($3)[[:space:]]*=" '
     function trim(v) { sub(/^[[:space:]]+/, "", v); sub(/[[:space:]]+$/, "", v); return v }
-    BEGIN { inbeads = 0 }
+    BEGIN { insection = 0 }
     {
       line = $0
       sub(/[[:space:]]*#.*/, "", line)
       line = trim(line)
-      if (line ~ /^\[[^]]+\]$/) { inbeads = (line == "[beads]"); next }
-      if (!inbeads) next
-      if (line ~ /^(prefix|path|binary)[[:space:]]*=/) {
+      if (line ~ /^\[[^]]+\]$/) { insection = (line == section); next }
+      if (!insection) next
+      if (line ~ keys) {
         key = line
         sub(/[[:space:]]*=.*/, "", key)
         sub(/^[^=]*=[[:space:]]*/, "", line)
@@ -587,6 +587,10 @@ captain_beads_toml_entries() {  # <toml-file>
       }
     }
   ' "$1"
+}
+
+captain_beads_toml_entries() {  # <toml-file>
+  captain_toml_section_entries "$1" beads 'prefix|path|binary'
 }
 
 captain_beads_setting() {  # <entries-output> <setting>
@@ -743,6 +747,36 @@ resolve_migrated_entry() {  # <origin-or-empty> <entry>
 # beads backend - the migrated row the markdown-to-beads hold migration wrote.
 # Prints "<resolved id> <how>", where <how> is exact, legacy, migrated-note or
 # migrated-prefix, so a caller can record which evidence carried the attestation.
+# --- archived answered calls on the markdown backend ------------------------
+#
+# Done retention ([markdown] done_keep in .tasks.toml) moves a closed row out of
+# the backlog into the configured archive file, so a captain call that was
+# answered and later archived resolves to no task. The archive keeps the row's
+# closed line and its whole body, so an archived Done row whose body carries a
+# recorded resolution is the same durable answer verify_hold_durable accepts
+# from a live row. An archived row with no recorded resolution still fails.
+# Prints the archived row's body without its two-space indent; the last
+# archived copy wins.
+captain_archived_entry_body() {  # <task-id>
+  local data root backend entries archive
+  data=$(fm_backlog_data_absolute "$DATA") || return 1
+  root=$(fm_backlog_root "$data") || return 1
+  backend=$(fm_tasks_axi_backend "$root" 2>/dev/null) || return 1
+  [ "$backend" = markdown ] || return 1
+  entries=$(captain_toml_section_entries "$root/.tasks.toml" markdown archive)
+  archive=$(captain_beads_setting "$entries" archive)
+  [ -n "$archive" ] || return 1
+  case "$archive" in /*) ;; *) archive="$root/$archive" ;; esac
+  [ -f "$archive" ] || return 1
+  LC_ALL=C awk -v id="$1" '
+    index($0, "- [x] " id " - ") == 1 { found = 1; body = ""; inrow = 1; next }
+    inrow && /^  / { body = body substr($0, 3) "\n"; next }
+    inrow && /^$/ { body = body "\n"; next }
+    { inrow = 0 }
+    END { if (!found) exit 1; printf "%s", body }
+  ' "$archive"
+}
+
 resolve_entry() {  # <origin-or-empty> <entry>; prints "<id> <how>" or fails
   local origin=$1 entry=$2 legacy migrated rc
   if task_show "$entry"; then
@@ -763,6 +797,10 @@ resolve_entry() {  # <origin-or-empty> <entry>; prints "<id> <how>" or fails
     2) return 2 ;;
     124) return 124 ;;
   esac
+  if captain_archived_entry_body "$entry" >/dev/null; then
+    printf '%s archived' "$entry"
+    return 0
+  fi
   if [ -n "$origin" ] && [ "$origin" != "$BINDING_ANY" ]; then
     legacy=$(legacy_hold_id "$origin" "$entry")
     fail "no captain-held task $entry and no migrated hold for it in this home's configured backlog (data directory $DATA); the nearest legacy identity $legacy also resolves to nothing"
@@ -875,7 +913,7 @@ refuse_self_inventory() {
 # as absence. The result carries the attestation evidence and whether an
 # origin was recorded, so completion can disclose the legacy fallback.
 verify_entry_durable() {  # <origin-or-empty> <entry>; prints "<id> <how> <origin-state>"
-  local origin=$1 entry=$2 resolved resolve_status=0 id how stored origin_state=unrecorded origin_id stored_id
+  local origin=$1 entry=$2 resolved resolve_status=0 id how stored origin_state=unrecorded origin_id stored_id archived_body
   # The origin task is never its own captain-call inventory: it is the work the
   # calls were found in, so accepting it would let a refused hold look recorded.
   if [ -n "$origin" ] && [ "$origin" != "$BINDING_ANY" ] && [ "$entry" = "$origin" ]; then
@@ -889,10 +927,19 @@ verify_entry_durable() {  # <origin-or-empty> <entry>; prints "<id> <how> <origi
   fi
   id=${resolved%% *}
   how=${resolved##* }
-  verify_hold_durable "$id"
-  id=$(show_field_value "$TASK_SHOW_OUTPUT" id)
-  validate_slug backend-task-id "$id"
-  stored=$(body_hold_origin "$(decode_shown_value "$(show_field "$TASK_SHOW_OUTPUT" body)")")
+  if [ "$how" = archived ]; then
+    validate_slug backend-task-id "$id"
+    archived_body=$(captain_archived_entry_body "$id") \
+      || fail "archived captain-held task $id could not be read back from this home's Done archive"
+    body_has_resolution_record "$archived_body" \
+      || fail "captain-held task $id was archived without a recorded captain answer"
+    stored=$(body_hold_origin "$archived_body")
+  else
+    verify_hold_durable "$id"
+    id=$(show_field_value "$TASK_SHOW_OUTPUT" id)
+    validate_slug backend-task-id "$id"
+    stored=$(body_hold_origin "$(decode_shown_value "$(show_field "$TASK_SHOW_OUTPUT" body)")")
+  fi
   origin_id=$origin
   if [ -n "$origin" ] && [ "$origin" != "$BINDING_ANY" ]; then
     origin_id=$(task_identity "$origin") || exit $?
