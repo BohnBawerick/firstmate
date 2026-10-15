@@ -287,6 +287,48 @@ herdr pane get "$PANE_ID" --session "$SESSION" >/dev/null 2>&1 \
 [ -d "$WT" ] || fail "the control plane must never remove the task's local copy"
 pass "real herdr: no control verb removed the endpoint or the task's local copy"
 
+# --- a reused pane id: the record names a pane that is no longer its task's --
+#
+# Herdr hands pane ids out again after a restart, so a dead task's record can
+# name the pane a newer live worker now runs in, or the supervising session's
+# own pane. hsmoke's live agent stands in for that newer worker: hreuse is a
+# dead record whose recorded pane id is hsmoke's. Its endpoint must read gone,
+# and no control verb on hreuse may reach hsmoke's agent.
+mkdir -p "$HOME_DIR/data/hreuse"
+cp "$HOME_DIR/data/hsmoke/brief.md" "$HOME_DIR/data/hreuse/brief.md"
+sed 's/^endpoint_task_id=hsmoke$/endpoint_task_id=hreuse/' "$HOME_DIR/state/hsmoke.meta" \
+  > "$HOME_DIR/state/hreuse.meta"
+STATE=$(fm_backend_agent_state herdr "$SESSION:$PANE_ID" fm-hreuse)
+[ "$STATE" = missing ] \
+  || fail "a pane in another task's tab should read as this task's endpoint gone, got '$STATE'"
+[ "$(fm_backend_agent_state herdr "$SESSION:$PANE_ID" fm-hsmoke)" = alive ] \
+  || fail "the pane's own task must still read its live agent"
+OUT=$(run_control hreuse interrupt 2>&1) && fail "interrupt must not act through another task's pane: $OUT"
+case "$OUT" in
+  *interrupt-delivered*) fail "interrupt delivered a key into another task's pane: $OUT" ;;
+esac
+OUT=$(run_control hreuse exit) || fail "exit on a record whose pane belongs to another task should report its endpoint gone: $OUT"
+case "$OUT" in
+  "endpoint-gone hreuse"*) : ;;
+  *) fail "exit should report the reused pane as this task's endpoint gone, got: $OUT" ;;
+esac
+[ "$(fm_backend_agent_state herdr "$SESSION:$PANE_ID" fm-hsmoke)" = alive ] \
+  || fail "control verbs on the stale record reached the live worker that now owns the pane"
+# A process running in that very pane (the supervising session, in the
+# reported incident) must not read or drive it as the task.
+as_pane_process() {  # <function and args...>
+  HERDR_PANE_ID="$PANE_ID" HERDR_SESSION="$SESSION" bash -c \
+    '. "$1/bin/fm-backend.sh"; fm_backend_source herdr || exit 9; shift; "$@"' _ "$ROOT" "$@"
+}
+SELF_STATE=$(as_pane_process fm_backend_agent_state herdr "$SESSION:$PANE_ID")
+[ "$SELF_STATE" = missing ] \
+  || fail "a recorded pane that is the caller's own pane should read as the task's endpoint gone, got '$SELF_STATE'"
+if as_pane_process fm_backend_herdr_capture "$SESSION:$PANE_ID" 5 fm-hsmoke >/dev/null; then
+  fail "a labelled read of the caller's own pane must refuse rather than read it as a task's screen"
+fi
+rm -f "$HOME_DIR/state/hreuse.meta"
+pass "real herdr $HERDR_VERSION: a reused pane id reads as the stale task's endpoint gone and is never acted on for it"
+
 # --- the stale registration (issue #4115): the agent process is gone, the ---
 # --- record is not, and recovery must proceed anyway ------------------------
 #

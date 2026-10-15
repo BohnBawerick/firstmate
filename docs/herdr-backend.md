@@ -686,6 +686,13 @@ A restored same-labeled tab with a missing pane or no registered agent is a husk
 Create replaces only a confidently dead or no-agent husk, creates the replacement before closing the old tab, and refuses live or unknown states.
 This prevents closing the workspace's last tab before a replacement exists.
 
+### Reused pane ids
+
+Herdr hands pane ids out again, so after a restart a dead task's recorded pane id can name the supervising session's own pane or a newer worker's pane.
+Every task endpoint lives in a tab labelled `fm-<task-id>`, and labels survive a restart, so the tab label binds a pane to its task.
+A task-aware read of a recorded pane that is the caller's own pane, or that sits in another tab, reports the task's endpoint as gone (`missing`), and labelled captures, key sends, submits, and teardown closes refuse it.
+Recovery then rebinds the task to a fresh endpoint and never acts on the pane that now belongs to someone else; `fm_backend_herdr_pane_label_binding` in `bin/backends/herdr.sh` owns the check.
+
 ### Stale agent registrations
 
 A registration alone never proves an agent.

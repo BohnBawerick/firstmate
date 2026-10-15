@@ -988,7 +988,8 @@ fm_backend_target_exists() {  # <backend> <target> [expected-label]
       # flag on top, so this check is correctly scoped even when the caller's
       # own ambient session (e.g. the primary firstmate's default session) is
       # a DIFFERENT one than the target's.
-      fm_backend_herdr_cli "$session" pane get "$pane" >/dev/null 2>&1
+      fm_backend_herdr_cli "$session" pane get "$pane" >/dev/null 2>&1 || return 1
+      [ -z "$expected_label" ] || ! fm_backend_herdr_target_unbound "$target" "$expected_label"
       ;;
     zellij)
       fm_backend_source zellij || return 1
@@ -1013,7 +1014,11 @@ fm_backend_target_exists() {  # <backend> <target> [expected-label]
 # pane-presence read and prints exactly one of:
 #   alive      - a verified harness agent is running.
 #   dead       - the endpoint exists but confidently has no agent.
-#   missing    - the recorded endpoint is authoritatively absent.
+#   missing    - the recorded endpoint is authoritatively absent. On Herdr this
+#                includes a recorded pane id that now names the caller's own
+#                pane, or a pane outside the task's fm-<task-id> tab
+#                (<expected-label>; any fm-* tab when none is given), because
+#                Herdr hands pane ids out again after a restart.
 #   ambiguous  - the endpoint exists but its process cannot be attributed.
 #   unreadable - a target or inventory read failed or contradicted itself.
 #   unverified - this backend has no recovery classifier.
@@ -1028,12 +1033,12 @@ fm_backend_target_exists() {  # <backend> <target> [expected-label]
 # `missing` only in this recovery-grade view. Zellij remains unverified because
 # its secondmate ghost-tab and agent-process recovery path has not been
 # empirically validated. Orca and cmux do not support secondmate spawns.
-fm_backend_agent_state() {  # <backend> <target>
+fm_backend_agent_state() {  # <backend> <target> [expected-label]
   local backend=$1 target=$2
   fm_backend_source "$backend" || { printf 'unverified'; return 0; }
   case "$backend" in
     tmux) fm_backend_tmux_agent_state "$target" ;;
-    herdr) fm_backend_herdr_agent_state "$target" ;;
+    herdr) fm_backend_herdr_agent_state "$target" "${3:-}" ;;
     *) printf 'unverified' ;;
   esac
 }
@@ -1041,8 +1046,8 @@ fm_backend_agent_state() {  # <backend> <target>
 # Backward-compatible three-state view for existing callers. An
 # authoritatively missing endpoint is confidently not a live agent, while every
 # ambiguous, unreadable, or unverified result stays unknown.
-fm_backend_agent_alive() {  # <backend> <target>
-  case "$(fm_backend_agent_state "$1" "$2")" in
+fm_backend_agent_alive() {  # <backend> <target> [expected-label]
+  case "$(fm_backend_agent_state "$1" "$2" "${3:-}")" in
     alive) printf 'alive' ;;
     dead|missing) printf 'dead' ;;
     *) printf 'unknown' ;;

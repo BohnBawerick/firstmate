@@ -75,6 +75,11 @@
 # fm_backend_herdr_workspace_label falls through to "firstmate" exactly like
 # pre-P3 behavior when a test does not care about home-specific labeling).
 FM_BACKEND_HERDR_ROOT="$(d=${BASH_SOURCE[0]%/*}; [ "$d" != "${BASH_SOURCE[0]}" ] || d=.; cd "${d:-/}/../.." && pwd)"
+# This process's own Herdr pane and session, captured once when the adapter
+# loads, because a caller such as bin/fm-spawn.sh later reuses HERDR_PANE_ID
+# for a task's recorded pane (fm_backend_herdr_pane_label_binding).
+: "${FM_BACKEND_HERDR_CALLER_PANE_ID=${HERDR_PANE_ID:-}}"
+: "${FM_BACKEND_HERDR_CALLER_SESSION=${HERDR_SESSION:-default}}"
 FM_ROOT="${FM_ROOT_OVERRIDE:-${FM_ROOT:-$FM_BACKEND_HERDR_ROOT}}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 
@@ -2248,6 +2253,57 @@ fm_backend_herdr_pane_presence_state() {  # <session> <pane_id>
   [ "$pid" = "$pane_id" ] && printf 'present' || printf 'unknown'
 }
 
+# fm_backend_herdr_pane_label_binding: whether a recorded pane still belongs to
+# the task that recorded it. Herdr pane ids are opaque and are handed out
+# again: after a reboot a dead task's recorded pane id has named the
+# supervising firstmate's own pane, and after another restart a newly spawned
+# worker's pane. Every task endpoint, flat or projected, lives in a tab
+# labelled fm-<task-id>, and a server restart preserves labels, so the tab
+# label is the binding. Prints one of:
+#   self    - the pane is this process's own Herdr pane
+#   foreign - the pane exists in a tab whose label is not <expected-label>, or,
+#             with no expected label, not any fm-* task label
+#   bound   - the pane exists in a tab with the expected (or a task) label
+#   unknown - the pane, its tab, or the label could not be read
+fm_backend_herdr_pane_label_binding() {  # <session> <pane_id> [expected-label]
+  local session=$1 pane_id=$2 expected=${3:-} out tab label
+  if [ -n "$FM_BACKEND_HERDR_CALLER_PANE_ID" ] && [ "$FM_BACKEND_HERDR_CALLER_PANE_ID" = "$pane_id" ] \
+     && [ "$FM_BACKEND_HERDR_CALLER_SESSION" = "$session" ]; then
+    printf 'self'
+    return 0
+  fi
+  out=$(fm_backend_herdr_cli "$session" pane get "$pane_id" 2>/dev/null) || { printf 'unknown'; return 0; }
+  tab=$(printf '%s' "$out" | jq -r --arg pane "$pane_id" '
+    select(.result.pane.pane_id == $pane) | .result.pane.tab_id | select(type == "string")
+  ' 2>/dev/null) || tab=
+  [ -n "$tab" ] || { printf 'unknown'; return 0; }
+  out=$(fm_backend_herdr_cli "$session" tab get "$tab" 2>/dev/null) || { printf 'unknown'; return 0; }
+  label=$(printf '%s' "$out" | jq -r --arg tab "$tab" '
+    select(.result.tab.tab_id == $tab) | .result.tab.label | select(type == "string")
+  ' 2>/dev/null) || label=
+  [ -n "$label" ] || { printf 'unknown'; return 0; }
+  if [ -n "$expected" ]; then
+    [ "$label" = "$expected" ] && printf 'bound' || printf 'foreign'
+    return 0
+  fi
+  case "$label" in
+    fm-?*) printf 'bound' ;;
+    *) printf 'foreign' ;;
+  esac
+}
+
+# fm_backend_herdr_target_unbound: true (0) only when <target> is proven to be
+# this process's own pane or a pane outside <expected-label>'s task tab, so a
+# task-aware caller refuses to read it as the task, type into it, or close it.
+# An unreadable binding is not proof and returns 1.
+fm_backend_herdr_target_unbound() {  # <target> [expected-label]
+  fm_backend_herdr_parse_target "$1" || return 1
+  case "$(fm_backend_herdr_pane_label_binding "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE" "${2:-}")" in
+    self|foreign) return 0 ;;
+  esac
+  return 1
+}
+
 fm_backend_herdr_workspace_presence_state() {  # <session> <workspace_id>
   local session=$1 workspace_id=$2 out matches
   out=$(fm_backend_herdr_cli "$session" workspace list 2>&1)
@@ -2597,10 +2653,21 @@ fm_backend_herdr_server_running_state() {  # <session>
 # on exactly the reads they refused on before. A server that is running, or
 # whose state cannot itself be read, still yields `unreadable` here too: absence
 # is claimed only from positive evidence of it.
-fm_backend_herdr_agent_state() {  # <target>
-  local target=$1
+fm_backend_herdr_agent_state() {  # <target> [expected-label]
+  local target=$1 pane_state
   fm_backend_herdr_parse_target "$target" || { printf 'unreadable'; return 0; }
-  case "$(fm_backend_herdr_pane_agent_state "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE")" in
+  pane_state=$(fm_backend_herdr_pane_agent_state "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE")
+  # A present pane that is now this process's own pane, or another task's, is
+  # not this task's endpoint any more: the task's own endpoint is gone.
+  case "$pane_state" in
+    no-agent|stale-agent|live)
+      if fm_backend_herdr_target_unbound "$target" "${2:-}"; then
+        printf 'missing'
+        return 0
+      fi
+      ;;
+  esac
+  case "$pane_state" in
     dead) printf 'missing' ;;
     no-agent|stale-agent) printf 'dead' ;;
     live) printf 'alive' ;;
@@ -2631,18 +2698,18 @@ fm_backend_herdr_agent_state() {  # <target>
 # pane classifies `dead` (adoptable), a genuinely destroyed pane still reads
 # `missing`, a returning agent reads `alive`, and a server that will not start
 # is `unreadable` - unreachable, which refuses, rather than absence.
-fm_backend_herdr_endpoint_absence_recheck() {  # <target>
+fm_backend_herdr_endpoint_absence_recheck() {  # <target> [expected-label]
   local target=$1
   fm_backend_herdr_parse_target "$target" || { printf 'unreadable'; return 0; }
   fm_backend_herdr_server_ensure "$FM_BACKEND_HERDR_SESSION" >/dev/null 2>&1 \
     || { printf 'unreadable'; return 0; }
-  fm_backend_herdr_agent_state "$target"
+  fm_backend_herdr_agent_state "$target" "${2:-}"
 }
 
 # Backward-compatible three-state view for callers that only need a yes/no
 # agent verdict. The detailed state contract is owned by fm_backend_agent_state.
-fm_backend_herdr_agent_alive() {  # <target>
-  case "$(fm_backend_herdr_agent_state "$1")" in
+fm_backend_herdr_agent_alive() {  # <target> [expected-label]
+  case "$(fm_backend_herdr_agent_state "$1" "${2:-}")" in
     alive) printf 'alive' ;;
     dead|missing) printf 'dead' ;;
     *) printf 'unknown' ;;
@@ -3326,8 +3393,9 @@ fm_backend_herdr_normalize_key() {  # <key>
 
 # fm_backend_herdr_send_key: one named special key. Mirrors fm-send.sh's --key
 # path (tmux's `send-keys -t T key`).
-fm_backend_herdr_send_key() {  # <target> <key>
+fm_backend_herdr_send_key() {  # <target> <key> [expected-label]
   fm_backend_herdr_target_ready "$1" || return 1
+  [ -z "${3:-}" ] || ! fm_backend_herdr_target_unbound "$1" "$3" || return 1
   local key
   key=$(fm_backend_herdr_normalize_key "$2")
   fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane send-keys "$FM_BACKEND_HERDR_PANE" "$key" >/dev/null 2>&1
@@ -3348,8 +3416,11 @@ fm_backend_herdr_send_key() {  # <target> <key>
 # instead, so they need no line count at all). Workaround:
 # always request a generous fetch far above any realistic viewport height, then
 # trim to the caller's requested bound ourselves with `tail`.
-fm_backend_herdr_capture() {  # <target> <lines>
+fm_backend_herdr_capture() {  # <target> <lines> [expected-label]
   fm_backend_herdr_target_ready "$1" || return 1
+  # Labelled reads come from task-aware callers; a pane that is no longer the
+  # task's (fm_backend_herdr_pane_label_binding) must not be read as its screen.
+  [ -z "${3:-}" ] || ! fm_backend_herdr_target_unbound "$1" "$3" || return 1
   local lines=${2:-200} fetch out
   case "$lines" in ''|*[!0-9]*) lines=200 ;; esac
   fetch=$lines
@@ -3362,8 +3433,9 @@ fm_backend_herdr_capture() {  # <target> <lines>
 # visible` is herdr's viewport-bounded read, so it needs none of the --lines
 # workaround above - the bound is the pane itself, and asking for a line count
 # is what triggers the empty-read bug.
-fm_backend_herdr_visible_capture() {  # <target>
+fm_backend_herdr_visible_capture() {  # <target> [expected-label]
   fm_backend_herdr_target_observable "$1" || return 1
+  [ -z "${2:-}" ] || ! fm_backend_herdr_target_unbound "$1" "$2" || return 1
   fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane read "$FM_BACKEND_HERDR_PANE" --source visible 2>/dev/null
 }
 
@@ -3462,7 +3534,11 @@ fm_backend_herdr_composer_read() {  # <target> [styled-only]
 
 # fm_backend_herdr_composer_state: the fleet-wide verdict contract - capture
 # plus capabilities in, shared verdict out. An unreadable pane is unknown.
-fm_backend_herdr_composer_state() {  # <target> -> empty|pending|pending-unproven|unknown
+fm_backend_herdr_composer_state() {  # <target> [expected-label] -> empty|pending|pending-unproven|unknown
+  if [ -n "${2:-}" ] && fm_backend_herdr_target_unbound "$1" "$2"; then
+    printf 'unknown'
+    return 0
+  fi
   fm_backend_herdr_composer_read "$1" || { printf 'unknown'; return 0; }
   printf '%s' "$FM_BACKEND_HERDR_COMPOSER_VERDICT"
 }
@@ -3761,10 +3837,14 @@ fm_backend_herdr_composer_clear() {  # <target> <text>
   return 1
 }
 
-fm_backend_herdr_send_text_submit() {  # <target> <text> <retries> <enter-sleep> <settle>
+fm_backend_herdr_send_text_submit() {  # <target> <text> <retries> <enter-sleep> <settle> [expected-label]
   local target=$1 text=$2 retries=$3 sleep_s=$4 settle=$5 i=0 verdict baseline confirm_sleep
   local raw_status footer_baseline='' allow_rendered=0 enter_sent=0 identity proof=0 content
   fm_backend_herdr_parse_target "$target" || { printf 'unknown'; return 0; }
+  if [ -n "${6:-}" ] && fm_backend_herdr_target_unbound "$target" "$6"; then
+    printf 'send-failed'
+    return 0
+  fi
   # Claude on Herdr is the live-verified truncation shape: Enter is withheld
   # unless the composer, empty before the send, shows this payload. A suffix
   # that then starts a turn must not report empty. Other harnesses keep the
