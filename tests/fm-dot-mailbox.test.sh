@@ -513,8 +513,9 @@ class MailboxRegressionTests(unittest.TestCase):
             return "activity-note: " + json.dumps(payload)
         def reply(text):
             return self.box.reply_message(message["id"], text, message["correlation_id"])
+        retained = []
         def snapshot():
-            return json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test"))
+            return json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test", *retained))
         first = reply(note("pickup-1", "pickup"))
         self.assertEqual(reply(note("pickup-1", "pickup"))["revision"], first["revision"])
         with self.assertRaises(ValueError):
@@ -530,6 +531,7 @@ class MailboxRegressionTests(unittest.TestCase):
         page = json.loads(run("fm-dot-secondmate.sh", "history", "dot-test", "--cursor", history["next_cursor"]))
         self.assertEqual(len(page["events"]), 2)
         child = snapshot()["children"][0]
+        retained.extend(("--child", child["id"]))
         self.assertFalse(child["terminal"])
         self.assertEqual(child["current_state"], "unknown")
         self.assertTrue(child["display_required"])
@@ -644,7 +646,7 @@ class MailboxRegressionTests(unittest.TestCase):
             self.assertEqual(self.box.reply_message(message["id"], text, message["correlation_id"])["revision"], result["revision"])
 
         def children():
-            snapshot = json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test"))
+            snapshot = json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test", "--child", first["id"]))
             self.assertEqual(len(snapshot["children"]), 2)
             return {child["task_id"]: child for child in snapshot["children"]}
 
@@ -783,6 +785,181 @@ class MailboxRegressionTests(unittest.TestCase):
         history = json.loads(run("fm-dot-secondmate.sh", "history", "dot-test"))["events"]
         self.assertTrue(all(event["published"] for event in history))
         self.assertEqual(len(list((home / "state/terminal-outcomes").glob("*.reported"))), 6)
+
+    def routed_dot(self, health_urls=None):
+        parent, home = self.directory / "parent", self.directory / "mate"
+        (parent / "state").mkdir(parents=True)
+        (parent / "data").mkdir()
+        charter = self.directory / "charter.md"
+        charter.write_text("Idle until routed work arrives. Report through the mailbox.\n")
+        env = {**os.environ, "FM_HOME": str(parent), "FM_ROOT_OVERRIDE": str(parent)}
+        for key in ("FM_STATE_OVERRIDE", "FM_DATA_OVERRIDE", "FM_CONFIG_OVERRIDE"):
+            env.pop(key, None)
+        def run(script, *args):
+            result = subprocess.run(["bash", str(root / "bin" / script), *map(str, args)], env=env,
+                capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            return result.stdout
+        urls = health_urls or ("http://127.0.0.1:1/health", "http://127.0.0.1:1/readyz")
+        run("fm-dot-secondmate.sh", "register", "dot-test", self.box.db_path, home, "work", *urls, "Cloud tests", charter)
+        run("fm-send.sh", "dot-test", "Subject: fixture assignment")
+        return parent, home, env, run, self.box.get_messages(queue="work")["messages"][0]
+
+    def test_completed_history_does_not_truncate_current_inventory(self):
+        parent, home, env, run, message = self.routed_dot()
+        for index in range(101):
+            note = {"schema": "fm.activity-note.v1", "event_id": f"completed-{index}", "kind": "done",
+                "observed_at": "2026-01-01T00:00:00Z", "summary": "durable historical result",
+                "task_id": f"historical-task-{index}", "turn_id": "turn"}
+            self.box.reply_message(message["id"], "activity-note: " + json.dumps(note), message["correlation_id"])
+            if index == 0:
+                first = json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test"))["children"][0]["id"]
+        with self.box.transaction():
+            self.box.conn.execute("UPDATE mate_replies SET published=1")
+        for event, kind in (("pending-result", "done"), ("current-task", "task-created")):
+            note.update(event_id=event, task_id=event, kind=kind)
+            self.box.reply_message(message["id"], "activity-note: " + json.dumps(note), message["correlation_id"])
+        snapshot = json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test"))
+        self.assertFalse(snapshot["children_truncated"])
+        self.assertEqual({child["task_id"] for child in snapshot["children"]}, {"pending-result", "current-task"})
+        retained = json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test", "--child", first))
+        self.assertFalse(retained["children_truncated"])
+        retired = next(child for child in retained["children"] if child["id"] == first)
+        self.assertTrue(retired["terminal"] and retired["parent_delivered"])
+        self.assertFalse(retired["display_required"])
+        events, cursor = [], 0
+        while True:
+            page = json.loads(run("fm-dot-secondmate.sh", "history", "dot-test", "--cursor", cursor))
+            events.extend(page["events"])
+            if not page["events"]:
+                break
+            cursor = page["next_cursor"]
+        self.assertEqual(len(events), 103)
+        self.assertEqual(events[0]["activity"]["summary"], "durable historical result")
+
+    def test_fire_and_forget_subject_uses_the_routed_assignment(self):
+        parent, home, env, run, message = self.routed_dot()
+        run("fm-send.sh", "dot-test", "--fire-and-forget", "0123456789abcdef", "Subject: Actual proof label")
+        assignment = self.box.get_messages(queue="work")["messages"][-1]
+        self.assertIn("delivery=0123456789abcdef", assignment["content"])
+        self.box.reply_message(assignment["id"], "working: reply wording is unrelated", assignment["correlation_id"])
+        note = {"schema": "fm.activity-note.v1", "event_id": "subject-created", "kind": "task-created",
+            "observed_at": m.now_iso(), "summary": "different cloud reply", "task_id": "subject-task", "turn_id": "turn"}
+        self.box.reply_message(assignment["id"], "activity-note: " + json.dumps(note), assignment["correlation_id"])
+        snapshot = json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test"))
+        for child in (None, snapshot["children"][0]["id"]):
+            viewer = subprocess.run(["python3", str(root / "bin/fm-dot-view.py"), "--db", self.box.db_path,
+                "dot-test", "--once", *(["--child", child] if child else [])], env=env, capture_output=True, text=True, check=True)
+            self.assertIn("(Actual proof label)", viewer.stdout)
+            self.assertNotIn("delivery=", viewer.stdout)
+            self.assertNotIn("reply wording", viewer.stdout)
+
+    def test_only_explicit_blocker_clearances_resolve_original_parent_keys(self):
+        parent, home, env, run, message = self.routed_dot()
+        def reply(text):
+            return self.box.reply_message(message["id"], text, message["correlation_id"])
+        plain = reply("blocked: missing build tool")
+        note = {"schema": "fm.activity-note.v1", "event_id": "child-blocker", "kind": "blocked",
+            "observed_at": m.now_iso(), "summary": "cloud setup blocked", "task_id": "blocked-task", "turn_id": "turn"}
+        text = "activity-note: " + json.dumps(note)
+        typed = reply(text)
+        self.assertEqual(reply(text)["blocker_key"], typed["blocker_key"])
+        self.box.publish_mate_replies()
+        status = parent / "state/dot-test.status"
+        def open_keys():
+            output = subprocess.run(["bash", "-c", '. "$1/bin/fm-classify-lib.sh"; status_open_decisions "$2" secondmate',
+                "_", str(root), str(status)], env=env, capture_output=True, text=True, check=True).stdout
+            return {line.split("\t")[0] for line in output.splitlines()}
+        reply("working: continuing other work")
+        reply("done: another part completed")
+        self.box.publish_mate_replies()
+        self.assertEqual(open_keys(), {plain["blocker_key"], typed["blocker_key"]})
+        run("fm-send.sh", "dot-test", "Subject: separate owner decision")
+        question = self.box.get_messages(queue="work")["messages"][-1]
+        self.box.reply_message(question["id"], "needs-decision: choose an account", question["correlation_id"])
+        self.box.publish_mate_replies()
+        question_key = "dot-" + question["id"]
+        for outcome in (plain, typed):
+            reply(f"resolved: [key={outcome['blocker_key']}] setup repaired")
+            self.box.publish_mate_replies()
+        self.assertEqual(open_keys(), {question_key})
+        with self.assertRaises(ValueError):
+            self.box.reply_message(question["id"], f"resolved: [key={question_key}] guessed answer", question["correlation_id"])
+        with self.assertRaises(ValueError):
+            reply("resolved: [key=unrelated-owner-key] pretend repair")
+        count = len(status.read_text().splitlines())
+        reply(f"resolved: [key={typed['blocker_key']}] setup repaired")
+        self.box.publish_mate_replies()
+        self.assertEqual(len(status.read_text().splitlines()), count)
+        meta = parent / "state/dot-test.meta"
+        original = meta.read_text()
+        reply("blocked: another transient setup issue")
+        meta.write_text(original.replace("transport=dot-mcp", "transport=unavailable"))
+        self.box.publish_mate_replies()
+        reply(f"resolved: [key={plain['blocker_key']}] transient issue cleared")
+        meta.write_text(original)
+        self.box.publish_mate_replies()
+        self.assertNotIn("transient issue cleared", status.read_text())
+        with patch.object(m.time, "time", return_value=time.time() + 60):
+            self.box.publish_mate_replies()
+        self.assertEqual(open_keys(), {question_key})
+        self.assertIn("transient issue cleared", status.read_text())
+        original_clearance = f"resolved: [key={plain['blocker_key']}] transient issue cleared"
+        accepted = reply(original_clearance)
+        reply("needs-decision: owner must choose the next account")
+        self.box.publish_mate_replies()
+        self.assertEqual(open_keys(), {question_key, plain["blocker_key"]})
+        count = len(status.read_text().splitlines())
+        self.assertEqual(reply(original_clearance)["revision"], accepted["revision"])
+        self.assertEqual(self.box.get_message_by_id(message["id"])["reply"], "needs-decision: owner must choose the next account")
+        self.box.publish_mate_replies()
+        self.assertEqual(len(status.read_text().splitlines()), count)
+        self.assertEqual(open_keys(), {question_key, plain["blocker_key"]})
+        with self.assertRaises(ValueError):
+            reply(f"resolved: [key={plain['blocker_key']}] a new unauthorized answer")
+
+    def test_bridge_readiness_does_not_refresh_old_work_observations(self):
+        class Health(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'ready' if self.path == '/readyz' else b'{"status":"ok","name":"fm-dot-mailbox"}')
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Health)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        urls = (f"http://127.0.0.1:{server.server_port}/health", f"http://127.0.0.1:{server.server_port}/readyz")
+        parent, home, env, run, message = self.routed_dot(urls)
+        self.subscribe()
+        with patch.object(m.time, "time", return_value=time.time() - 1000):
+            self.box.reply_message(message["id"], "working: old plain report", message["correlation_id"])
+        self.box.publish_mate_replies()
+        self.assertTrue(json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test"))["ready"])
+        self.assertIn("state: unknown", run("fm-crew-state.sh", "dot-test"))
+        fleet = json.loads(run("fm-fleet-snapshot.sh", "--json"))
+        self.assertEqual(next(row for row in fleet["secondmate_current"]["records"] if row["id"] == "dot-test")["current"]["state"], "unknown")
+        self.box.reply_message(message["id"], "working: fresh plain report", message["correlation_id"])
+        self.box.publish_mate_replies()
+        self.assertIn("state: working", run("fm-crew-state.sh", "dot-test"))
+        for event, kind in (("old-pickup", "pickup"), ("old-created", "task-created")):
+            note = {"schema": "fm.activity-note.v1", "event_id": event, "kind": kind,
+                "observed_at": "2026-01-01T00:00:00Z", "summary": "old observation"}
+            if kind != "pickup":
+                note.update(task_id="old-task", turn_id="turn")
+            self.box.reply_message(message["id"], "activity-note: " + json.dumps(note), message["correlation_id"])
+        self.box.publish_mate_replies()
+        self.assertIn("state: unknown", run("fm-crew-state.sh", "dot-test"))
+        snapshot = json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test"))
+        self.assertTrue(snapshot["ready"])
+        self.assertEqual(snapshot["children"][0]["current_state"], "unknown")
+        note.update(event_id="fresh-milestone", kind="milestone", observed_at=m.now_iso())
+        self.box.reply_message(message["id"], "activity-note: " + json.dumps(note), message["correlation_id"])
+        self.box.publish_mate_replies()
+        self.assertIn("state: working", run("fm-crew-state.sh", "dot-test"))
 
     def test_dot_secondmate_routes_replies_and_reports_health_without_a_pane(self):
         parent, home = self.directory / "parent", self.directory / "mate"

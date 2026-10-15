@@ -305,13 +305,18 @@ LOG_VERB=$(status_line_verb "$LOG_LINE")
 
 if [ "$TRANSPORT" = dot-mcp ]; then
   [ "$KIND" = secondmate ] || emit unknown mailbox 'dot transport is only valid for a secondmate'
-  if DOT_HEALTH=$("$SCRIPT_DIR/fm-dot-secondmate.sh" health "$ID" 2>&1); then
+  if DOT_SNAPSHOT=$("$SCRIPT_DIR/fm-dot-secondmate.sh" snapshot "$ID" 2>/dev/null); then
+    DOT_HEALTH=$(jq -r '.health' <<< "$DOT_SNAPSHOT")
+    jq -e '.ready == true' <<< "$DOT_SNAPSHOT" >/dev/null || emit unknown mailbox "$DOT_HEALTH"
     if [ -n "$LOG_LINE" ]; then
+      if [ "$(map_log_state "$LOG_LINE")" = working ] && ! jq -e '.work_observation_fresh and (.children_truncated == false)' <<< "$DOT_SNAPSHOT" >/dev/null; then
+        emit unknown mailbox "work observation is stale or missing${SEP}$DOT_HEALTH"
+      fi
       emit "$(map_log_state "$LOG_LINE")" status-log "$(status_line_note "$LOG_LINE")${SEP}$DOT_HEALTH"
     fi
     emit unknown mailbox "$DOT_HEALTH (idle until routed work; dot process state is not observable)"
   fi
-  emit unknown mailbox "$DOT_HEALTH"
+  emit unknown mailbox 'mailbox observations unavailable'
 fi
 
 # --- remote secondmate: the true source is the remote endpoint ---------------

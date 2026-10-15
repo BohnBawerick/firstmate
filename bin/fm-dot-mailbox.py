@@ -60,7 +60,7 @@ def terminal_text(value):
 
 def assignment_subject(content):
     body = content.partition("\n\n## Routed assignment\n")[2] or content
-    body = re.sub(r"^\[fm-from-firstmate\]\u2063(?:corr=[a-fA-F0-9]{16}[ \t]*)?", "", body)
+    body = re.sub(r"^\[fm-from-firstmate\]\u2063(?:(?:corr|delivery)=[a-fA-F0-9]{16}[ \t]*)*", "", body)
     first_line = next((line.strip() for line in body.splitlines() if line.strip()), "Assignment")
     return terminal_text(re.sub(r"^Subject:\s*", "", first_line, flags=re.IGNORECASE))[:256]
 
@@ -107,6 +107,10 @@ def parse_activity(text):
 
 def activity_child_id(note):
     return "cloud-" + hashlib.sha256(note["task_id"].encode()).hexdigest()[:24]
+
+
+def blocker_key(message_id, activity, revision):
+    return f"child-outcome-{activity_child_id(activity)}-blocked-{revision}" if activity else f"dot-{message_id}"
 
 
 def default_db_path():
@@ -537,32 +541,65 @@ class Mailbox:
                 digest = hashlib.sha256(reply_text.encode()).hexdigest()
                 if activity:
                     digest = "event:" + activity["event_id"]
-                    previous = self.conn.execute("""SELECT r.* FROM mate_replies r JOIN messages m ON m.id=r.message_id
-                        WHERE m.mate_id=? AND r.digest=?""", (row["mate_id"], digest)).fetchone()
-                    if previous:
-                        if previous["message_id"] != msg_id or json.loads(previous["activity"]) != activity:
-                            raise ValueError("Activity event_id already binds a different event or assignment")
-                        self.conn.execute("UPDATE mates SET last_contact=? WHERE id=?", (now_iso(), row["mate_id"]))
-                        return {"status": "ok", "message_id": msg_id, "idempotent": True, "revision": previous["seq"]}
+                previous = self.conn.execute("""SELECT r.* FROM mate_replies r JOIN messages m ON m.id=r.message_id
+                    WHERE m.mate_id=? AND r.digest=? AND (r.message_id=? OR r.activity IS NOT NULL)""",
+                    (row["mate_id"], digest, msg_id)).fetchone()
+                if previous:
+                    if previous["message_id"] != msg_id or (activity and json.loads(previous["activity"]) != activity):
+                        raise ValueError("Activity event_id already binds a different event or assignment")
+                    self.conn.execute("UPDATE mates SET last_contact=? WHERE id=?", (now_iso(), row["mate_id"]))
+                    result = {"status": "ok", "message_id": msg_id, "idempotent": True, "revision": previous["seq"]}
+                    if (activity and activity["kind"] == "blocked") or (not activity and previous["line"].startswith("blocked ")):
+                        result["blocker_key"] = blocker_key(msg_id, activity, previous["seq"])
+                    return result
+                if activity:
                     verb = activity["kind"] if activity["kind"] in ("done", "failed", "blocked", "needs-decision") else "working"
                     note = activity["summary"]
                 else:
-                    match = re.fullmatch(r"(working|done|blocked|needs-decision|paused):\s*(.+)", reply_text, re.DOTALL)
-                    if not match:
-                        raise ValueError("Routed replies require a status prefix or activity-note payload")
-                    verb, note = match.groups()
-                key = f" [key=dot-{msg_id}]" if verb in ("blocked", "needs-decision") else ""
+                    resolved = re.fullmatch(r"resolved:\s*\[key=([A-Za-z0-9._-]+)\]\s+(.+)", reply_text, re.DOTALL)
+                    if resolved:
+                        resolution_key, note = resolved.groups()
+                        self._validate_blocker_resolution(row["mate_id"], msg_id, resolution_key)
+                        verb = "resolved"
+                    else:
+                        match = re.fullmatch(r"(working|done|blocked|needs-decision|paused):\s*(.+)", reply_text, re.DOTALL)
+                        if not match:
+                            raise ValueError("Routed replies require a status prefix or activity-note payload")
+                        verb, note = match.groups()
+                key = f" [key={resolution_key}]" if verb == "resolved" else f" [key=dot-{msg_id}]" if verb in ("blocked", "needs-decision") else ""
                 summary = terminal_text(note)[:800]
                 line = f"{verb} [corr={correlation_id}] [at={now_unix()}]{key}: {summary}"
                 self.conn.execute("""INSERT OR IGNORE INTO mate_replies (message_id,digest,body,line,activity)
                                      VALUES (?,?,?,?,?)""", (msg_id, digest, reply_text, line, json.dumps(activity) if activity else None))
+                if activity and verb == "blocked":
+                    event_revision = self.conn.execute("SELECT seq FROM mate_replies WHERE message_id=? AND digest=?", (msg_id, digest)).fetchone()[0]
+                    line = line.replace(f"[key=dot-{msg_id}]", f"[key={blocker_key(msg_id, activity, event_revision)}]", 1)
+                    self.conn.execute("UPDATE mate_replies SET line=? WHERE seq=?", (line, event_revision))
                 self.conn.execute("UPDATE mates SET last_contact=? WHERE id=?", (now_iso(), row["mate_id"]))
-            if row["status"] == "replied" and row["reply"] == reply_text:
+            revision = self.conn.execute("SELECT MAX(seq) FROM mate_replies WHERE message_id=?", (msg_id,)).fetchone()[0]
+            if not row["mate_id"] and row["status"] == "replied" and row["reply"] == reply_text:
                 return {"status": "ok", "message_id": row["id"], "idempotent": True}
             self.conn.execute("UPDATE messages SET reply = ?, status = 'replied', updated_at = ? WHERE id = ?", (reply_text, now_iso(), msg_id))
             bounded_json(tool_result(self._row_to_msg(self.conn.execute("SELECT * FROM messages WHERE id = ?", (msg_id,)).fetchone())))
-            revision = self.conn.execute("SELECT MAX(seq) FROM mate_replies WHERE message_id=?", (msg_id,)).fetchone()[0]
-            return {"status": "ok", "message_id": msg_id, "revision": revision}
+            result = {"status": "ok", "message_id": msg_id, "revision": revision}
+            if row["mate_id"] and verb == "blocked":
+                result["blocker_key"] = blocker_key(msg_id, activity, revision)
+            return result
+
+    def _validate_blocker_resolution(self, mate_id, message_id, key):
+        if key == blocker_key(message_id, None, None):
+            row = self.conn.execute("""SELECT r.* FROM mate_replies r WHERE message_id=? AND activity IS NULL
+                AND (line LIKE 'blocked %' OR line LIKE 'needs-decision %') ORDER BY seq DESC LIMIT 1""", (message_id,)).fetchone()
+            if row and row["line"].startswith("blocked "):
+                return
+        match = re.fullmatch(r"child-outcome-cloud-[a-f0-9]{24}-blocked-([0-9]+)", key)
+        if match:
+            row = self.conn.execute("""SELECT r.* FROM mate_replies r JOIN messages m ON m.id=r.message_id
+                WHERE m.mate_id=? AND r.seq=?""", (mate_id, match[1])).fetchone()
+            note = json.loads(row["activity"]) if row and row["activity"] else None
+            if note and note["kind"] == "blocked" and blocker_key(row["message_id"], note, row["seq"]) == key:
+                return
+        raise ValueError("Resolution must name this mate's reported blocker")
 
     def mate(self, mate_id):
         if not os.environ.get("FM_HOME"):
@@ -679,7 +716,10 @@ class Mailbox:
             with self.transaction():
                 row = self.conn.execute("""SELECT r.*, m.mate_id, p.home, p.parent_home FROM mate_replies r
                     JOIN messages m ON m.id=r.message_id JOIN mates p ON p.id=m.mate_id
-                    WHERE r.published=0 AND r.retry_after<=? ORDER BY r.seq LIMIT 1""", (time.time(),)).fetchone()
+                    WHERE r.published=0 AND r.retry_after<=? AND NOT EXISTS (
+                        SELECT 1 FROM mate_replies earlier JOIN messages owner ON owner.id=earlier.message_id
+                        WHERE owner.mate_id=m.mate_id AND earlier.published=0 AND earlier.seq<r.seq)
+                    ORDER BY r.seq LIMIT 1""", (time.time(),)).fetchone()
                 if row is None:
                     return
                 self.conn.execute("UPDATE mate_replies SET retry_after=? WHERE seq=?", (time.time() + 30, row["seq"]))
@@ -758,16 +798,24 @@ class Mailbox:
                     ORDER BY json_extract(activity,'$.observed_at') DESC,seq DESC) AS task_rank
                 FROM turns WHERE turn_rank=1)
             SELECT * FROM tasks WHERE task_rank=1
-            ORDER BY (json_extract(activity,'$.kind') IN ('done','failed')),seq DESC LIMIT 101""",
-            (mate_id,)).fetchall()
+            ORDER BY (json_extract(activity,'$.kind') IN ('done','failed')),seq DESC""", (mate_id,))
 
-    def mate_snapshot(self, mate_id):
+    def mate_snapshot(self, mate_id, child_ids=()):
+        if any(not re.fullmatch(r"cloud-[a-f0-9]{24}", child) for child in child_ids):
+            raise ValueError("Invalid reported child id")
         mate = self.mate(mate_id)
         ready, health = self.mate_health(mate_id)
         with self.lock:
             expiry = self.conn.execute("""SELECT MAX(refresh_before) FROM subscriptions
                 WHERE filter_queue=? OR filter_queue IS NULL""", (mate["queue"],)).fetchone()[0]
-            children = self._current_children(mate_id)
+            children = []
+            for row in self._current_children(mate_id):
+                note = json.loads(row["activity"])
+                if note["kind"] in ("done", "failed") and row["published"] and activity_child_id(note) not in child_ids:
+                    continue
+                children.append(row)
+                if len(children) > 100:
+                    break
             feed = self.conn.execute("""SELECT r.*, m.content AS assignment FROM mate_replies r JOIN messages m ON m.id=r.message_id
                 WHERE m.mate_id=? ORDER BY r.seq DESC LIMIT 20""", (mate_id,)).fetchall()
         projected = []
@@ -786,6 +834,15 @@ class Mailbox:
             "feed": [{"revision": r["seq"], "line": r["line"], "published": bool(r["published"]),
                       "subject": assignment_subject(r["assignment"]),
                       "activity": json.loads(r["activity"]) if r["activity"] else None} for r in reversed(feed)]}
+        active = [child for child in projected if not child["terminal"]]
+        observed = None
+        if feed:
+            latest = json.loads(feed[0]["activity"]) if feed[0]["activity"] else None
+            stamp = re.search(r"\[at=([0-9]+)\]", feed[0]["line"])
+            observed = (datetime.datetime.fromisoformat(latest["observed_at"].replace("Z", "+00:00")).timestamp()
+                        if latest else int(stamp[1]) if stamp else None)
+        result["work_observation_fresh"] = (all(child["current_state"] != "unknown" for child in active) if active
+            else observed is not None and max(0, int(time.time() - observed)) <= 900)
         while len(json_bytes(result)) > MAX_BODY_BYTES - 4096 and result["children"]:
             result["children"].pop()
             result["children_truncated"] = True
@@ -1371,6 +1428,7 @@ def main():
     p_health.add_argument("mate_id")
     p_snapshot = subparsers.add_parser("mate-snapshot", help="Read reported cloud children and recent activity")
     p_snapshot.add_argument("mate_id")
+    p_snapshot.add_argument("--child", action="append", default=[])
     p_history = subparsers.add_parser("mate-history", help="Read append-only activity by server revision")
     p_history.add_argument("mate_id")
     p_history.add_argument("--cursor", type=int, default=0)
@@ -1416,7 +1474,7 @@ def main():
         sys.exit(0 if ready else 3)
 
     elif args.command == "mate-snapshot":
-        print(bounded_json(mailbox.mate_snapshot(args.mate_id)).decode())
+        print(bounded_json(mailbox.mate_snapshot(args.mate_id, args.child)).decode())
 
     elif args.command == "mate-history":
         print(bounded_json(mailbox.mate_history(args.mate_id, args.cursor, args.limit)).decode())

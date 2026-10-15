@@ -240,10 +240,16 @@ The message's `replied` flag means acknowledged, not that its cloud work finishe
 The initial pickup reaches the parent channel; routine cloud activity does not send a notification per note.
 Actionable and terminal child outcomes use the shared child-outcome publisher and its durable delivery receipts.
 Every distinct `blocked`, `needs-decision`, `done` and `failed` observation reaches the parent once, regardless of later observations in the same or another turn.
+Blocked replies return their original parent `blocker_key`.
+To explicitly clear a blocker, send `resolved: [key=<blocker_key>] <what cleared>` as a plain reply with the assignment's correlation.
+The server accepts only an existing blocker belonging to that mate, and plain assignment blockers require their own assignment's reply.
+Working and terminal reports do not clear blockers, and the dot cannot self-close owner decisions.
 For display state, terminal observations dominate late progress for the same native turn.
 The latest observation among those turn states supplies the task's current state, so a later turn updates the existing child.
 Nonterminal observations older than fifteen minutes display current state as unknown without inventing a completion or cancelling anything.
-The child and activity lists are bounded; a truncated child inventory refuses display cleanup rather than guessing which tasks finished.
+Current child inventory includes active tasks and undelivered terminal results; delivered results remain in durable history without consuming current inventory capacity.
+Snapshots can also retrieve named delivered children for existing display bindings, as documented by `bin/fm-dot-secondmate.sh --help`.
+The current child and activity lists are bounded; a truncated current inventory refuses display cleanup rather than guessing which tasks finished.
 Use the cursor-based `history` command from `bin/fm-dot-secondmate.sh --help` to read all stored revisions.
 
 ## Read-only Herdr view
@@ -268,6 +274,8 @@ A terminal display closes automatically only after its result is stored and the 
 Display bindings are separate from worker metadata and scoped to the parent home and exact session, workspace, tab and pane IDs.
 Presentation locks and focus guards protect unrelated tabs.
 A renamed or ambiguous display is left alone and reported as an error.
+An owned pane with a missing reader is restored only when it contains a proven idle shell; unrelated or unknown processes are left alone.
+Presentation-lock contention skips a watch pass; the next pass resumes reconciliation, while a single sync reports busy.
 Stopping the view process leaves displays and all cloud work untouched.
 Restarting it reuses confirmed bindings and replays durable history; missing observations remain unknown.
 Refresh an existing turn-scoped view after its tracked tasks have durable terminal results and delivered parent outcomes.

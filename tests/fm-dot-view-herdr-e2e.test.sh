@@ -9,8 +9,11 @@ TMP=$(mktemp -d)
 export HERDR_LAB_HELPER=${HERDR_LAB_HELPER:-$ROOT/bin/fm-herdr-lab.sh}
 HERDR_LAB_SESSION=$("$HERDR_LAB_HELPER" name dot-mcp-bridge)
 export HERDR_LAB_SESSION ORIGINAL_PATH=$PATH
+WATCH_PID='' HELD_LOCK=''
 cleanup() {
   local rc=$?
+  if [ -n "$WATCH_PID" ]; then kill -TERM "$WATCH_PID" 2>/dev/null || true; wait "$WATCH_PID" 2>/dev/null || true; fi
+  if [ -n "$HELD_LOCK" ]; then fm_lock_release "$HELD_LOCK" || rc=1; fi
   env PATH="$ORIGINAL_PATH" "$HERDR_LAB_HELPER" teardown "$HERDR_LAB_SESSION" || rc=1
   fm_test_cleanup
   rm -rf "$TMP"
@@ -32,6 +35,9 @@ while [ "$#" -gt 0 ]; do
     args+=("$1"); shift
   fi
 done
+if [ "${args[0]:-}" = pane ] && [ "${args[1]:-}" = run ] && [[ "${args[3]:-}" == exec\ env*fm-dot-view.py* ]]; then
+  args[3]=${args[3]#exec }
+fi
 exec env PATH="$ORIGINAL_PATH" "$HERDR_LAB_HELPER" run "$HERDR_LAB_SESSION" "${args[@]}"
 WRAPPER
 chmod +x "$TMP/fakebin/herdr"
@@ -74,6 +80,19 @@ for _ in {1..100}; do
   sleep .1
 done
 [[ "$rendered" == *native-thread* && "$rendered" == *read-only* ]] || fail 'cloud renderer did not replay durable activity'
+python3 - "$ROOT" <<'PY'
+import importlib.util, json, os, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('mailbox', Path(sys.argv[1]) / 'bin/fm-dot-mailbox.py')
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+b = m.Mailbox(os.environ['DB']); msg = b.get_messages(queue='work')['messages'][0]
+for n in range(101):
+    note = {'schema':'fm.activity-note.v1','event_id':f'past-{n}','kind':'done',
+            'observed_at':'2026-01-01T00:00:00Z','summary':'retained result','task_id':f'past-task-{n}','turn_id':'turn'}
+    b.reply_message(msg['id'], 'activity-note: ' + json.dumps(note), msg['correlation_id'])
+with b.transaction():
+    b.conn.execute("UPDATE mate_replies SET published=1 WHERE json_extract(activity,'$.event_id') LIKE 'past-%'")
+PY
 sync_view
 [ "$(<"$BINDING")" = "$first" ] || fail 'restart reconciliation duplicated displays'
 python3 - "$ROOT" <<'PY'
@@ -96,11 +115,91 @@ for _ in {1..100}; do
   sleep .1
 done
 [[ "$rendered" == *'Turn: native-turn-2'* ]] || fail 'task display did not follow the latest turn'
+. "$ROOT/bin/fm-backend.sh"
+. "$ROOT/bin/backends/herdr.sh"
+. "$ROOT/bin/fm-wake-lib.sh"
+reader_pid() {
+  local target=$1 expected_child=$2 expected info
+  expected=$(jq -n --arg reader "$ROOT/bin/fm-dot-view.py" --arg db "$DB" --arg child "$expected_child" \
+    '[$reader,"--db",$db,"dot-test"] + (if $child == "console" then [] else ["--child",$child] end)')
+  info=$(lab pane process-info --pane "$target")
+  jq -er --arg pane "$target" --argjson expected "$expected" '
+    select(.result.process_info.pane_id==$pane)
+    | .result.process_info.foreground_processes | select(length==1) | .[0]
+    | select(.argv[1:]==$expected and .pid>1) | .pid' <<< "$info"
+}
+stop_reader() {
+  local target=$1 expected_child=$2 pid
+  pid=$(reader_pid "$target" "$expected_child") || fail 'reader identity unavailable'
+  [ "$(reader_pid "$target" "$expected_child")" = "$pid" ] || fail 'reader process identity changed'
+  kill -TERM "$pid"
+  for _ in {1..40}; do
+    if fm_backend_herdr_pane_idle_shell_pid "$HERDR_LAB_SESSION" "$target" >/dev/null; then return; fi
+    sleep .1
+  done
+  fail 'owned pane did not return to its idle shell'
+}
+stop_reader "$pane" "$child"
+stop_reader "$console" console
+sync_view
+[ "$(<"$BINDING")" = "$first" ] || fail 'reader recovery changed display bindings'
+for _ in {1..50}; do
+  if reader_pid "$pane" "$child" >/dev/null && reader_pid "$console" console >/dev/null; then break; fi
+  sleep .1
+done
+reader_pid "$pane" "$child" >/dev/null || fail 'missing child reader was not restored'
+reader_pid "$console" console >/dev/null || fail 'missing console reader was not restored'
+stop_reader "$console" console
+lab pane run "$console" 'sleep 60' >/dev/null
+for _ in {1..50}; do
+  unrelated_pid=$(lab pane process-info --pane "$console" | jq -r '.result.process_info.foreground_processes[]? | select(.name=="sleep") | .pid')
+  [ -n "$unrelated_pid" ] && break
+  sleep .1
+done
+[ -n "$unrelated_pid" ] || fail 'unrelated process fixture did not start'
+if sync_view >/dev/null 2>&1; then fail 'unrelated process was accepted as a reader'; fi
+kill -0 "$unrelated_pid" || fail 'reader recovery touched an unrelated process'
+lab pane get "$console" >/dev/null || fail 'reader recovery removed the unrelated process pane'
+[ "$(lab pane process-info --pane "$console" | jq -r '.result.process_info.foreground_processes[]? | select(.name=="sleep") | .pid')" = "$unrelated_pid" ] || fail 'unrelated process identity changed'
+kill -TERM "$unrelated_pid"
+for _ in {1..40}; do
+  if fm_backend_herdr_pane_idle_shell_pid "$HERDR_LAB_SESSION" "$console" >/dev/null; then break; fi
+  sleep .1
+done
+sync_view
 # Typing in a read-only display must never reach a shell.
 lab pane send-text "$console" "touch $TMP/should-not-exist" >/dev/null
 lab pane send-keys "$console" Enter >/dev/null
 sleep 1
 [ ! -e "$TMP/should-not-exist" ] || fail 'display executed terminal input'
+HELD_LOCK=$(fm_backend_herdr_presentation_session_lock_path "$HERDR_LAB_SESSION")
+fm_lock_try_acquire "$HELD_LOCK" || fail 'could not hold the lab presentation lock'
+if sync_view >/dev/null 2>&1; then fail 'sync ignored presentation lock contention'; fi
+python3 - "$ROOT" <<'PY'
+import importlib.util, json, os, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('mailbox', Path(sys.argv[1]) / 'bin/fm-dot-mailbox.py')
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+b = m.Mailbox(os.environ['DB']); msg = b.get_messages(queue='work')['messages'][0]
+note = {'schema':'fm.activity-note.v1','event_id':'watch-created','kind':'task-created',
+        'observed_at':m.now_iso(),'summary':'watch contention proof','task_id':'watch-task','turn_id':'turn'}
+b.reply_message(msg['id'], 'activity-note: ' + json.dumps(note), msg['correlation_id'])
+PY
+bash "$ROOT/bin/fm-dot-view.sh" watch dot-test "$HERDR_LAB_SESSION" > "$TMP/watch.log" 2>&1 &
+WATCH_PID=$!
+sleep 1
+kill -0 "$WATCH_PID" 2>/dev/null || fail 'watch exited during presentation lock contention'
+fm_lock_release "$HELD_LOCK"
+HELD_LOCK=''
+for _ in {1..80}; do
+  [ "$(jq '.displays | length' "$BINDING")" = 3 ] && break
+  sleep .2
+done
+[ "$(jq '.displays | length' "$BINDING")" = 3 ] || fail 'watch did not reconcile after contention cleared'
+kill -0 "$WATCH_PID" || fail 'watch stopped after contention cleared'
+kill -TERM "$WATCH_PID"
+wait "$WATCH_PID"
+WATCH_PID=''
 python3 - "$ROOT" <<'PY'
 import importlib.util, json, os, sys
 from pathlib import Path
@@ -109,6 +208,8 @@ m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 b = m.Mailbox(os.environ['DB']); msg = b.get_messages(queue='work')['messages'][0]
 note = {'schema':'fm.activity-note.v1','event_id':'result','kind':'done','observed_at':'2026-01-01T00:02:00Z',
         'summary':'read-only proof finished','task_id':'native-thread','turn_id':'native-turn-2'}
+b.reply_message(msg['id'], 'activity-note: ' + json.dumps(note), msg['correlation_id'])
+note.update(event_id='watch-result', task_id='watch-task', turn_id='turn', observed_at=m.now_iso())
 b.reply_message(msg['id'], 'activity-note: ' + json.dumps(note), msg['correlation_id'])
 PY
 sync_view

@@ -1948,7 +1948,7 @@ secondmate_current_json() {  # <parent-tasks-json-file> <output-file>
          reported_children:($dot[0].children // []),
          decisions_open:[],holds:[],queued:[],landed:[],endpoints:[],
          counts:{active_children:([$dot[0].children[]? | select(.terminal == false)] | length),decisions_open:0,holds:0,queued:0,landed:0,endpoints:0},
-         omitted:(if $dot[0].children_truncated then [{surface:"reported_children",reason:"bounded to 100 children"}] else [] end),
+         omitted:(if $dot[0].children_truncated then [{surface:"reported_children",reason:"bounded current display inventory"}] else [] end),
          parent_event:{raw:$event_raw,note:$event_note,age_seconds:$event_age,open_activities:$activities,open_decisions:$decisions,activity_scan:$activity_scan},
          terminal_evidence:$terminal,contradiction:false}' >> "$records_file" || return 1
     fi

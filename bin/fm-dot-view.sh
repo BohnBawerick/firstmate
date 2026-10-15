@@ -58,6 +58,28 @@ launch_reader() { # <pane> <child-or-console>
   fm_backend_herdr_cli "$SESSION" pane run "$pane" "$command" >/dev/null
 }
 
+ensure_reader() {
+  local pane=$1 child=$2 info expected shell_pid
+  expected=$(jq -n --arg reader "$SCRIPT_DIR/fm-dot-view.py" --arg db "$DB" --arg mate "$ID" --arg child "$child" \
+    '[$reader,"--db",$db,$mate] + (if $child == "console" then [] else ["--child",$child] end)')
+  info=$(fm_backend_herdr_cli "$SESSION" pane process-info --pane "$pane") || fail 'display process information unavailable'
+  if jq -e --arg pane "$pane" --argjson expected "$expected" '
+      .result.type == "pane_process_info" and .result.process_info.pane_id == $pane
+      and (.result.process_info.foreground_processes | length == 1)
+      and (.result.process_info.foreground_processes[0].argv as $argv
+        | if ($argv | type)=="array" then
+            if ($argv[0] | type)=="string"
+            then ($argv[0] | split("/")[-1] | test("^python3(\\.[0-9]+)?$")) and $argv[1:] == $expected
+            else false end
+          else false end)' <<< "$info" >/dev/null; then
+    return
+  fi
+  shell_pid=$(fm_backend_herdr_pane_idle_shell_pid "$SESSION" "$pane") || fail 'display contains an unrelated or unknown process'
+  matches "$tab" "$pane" "$label" || fail 'display ownership changed before restoring reader'
+  [ "$(fm_backend_herdr_pane_idle_shell_pid "$SESSION" "$pane")" = "$shell_pid" ] || fail 'display shell changed before restoring reader'
+  launch_reader "$pane" "$child"
+}
+
 matches() { # <tab> <pane> <label>
   local tab=$1 pane=$2 label=$3 tabs panes
   tabs=$(fm_backend_herdr_cli "$SESSION" tab list --workspace "$WS") || return 1
@@ -68,12 +90,22 @@ matches() { # <tab> <pane> <label>
 
 sync_view() {
   local lock record_home record_session presence label info child tab pane focus pair row
+  local -a retained=()
   "$SCRIPT_DIR/fm-dot-secondmate.sh" validate "$ID"
+  if [ -e "$BINDING" ]; then
+    [ ! -L "$BINDING" ] || fail 'unsafe display binding'
+    while IFS= read -r child; do retained+=(--child "$child"); done < <(jq -r '.displays | keys[] | select(.!="console")' "$BINDING")
+  fi
   SNAPSHOT=$(umask 077; mktemp "$DIR/.snapshot.XXXXXX")
-  "$SCRIPT_DIR/fm-dot-secondmate.sh" snapshot "$ID" > "$SNAPSHOT"
+  "$SCRIPT_DIR/fm-dot-secondmate.sh" snapshot "$ID" "${retained[@]}" > "$SNAPSHOT"
   jq -e '.children_truncated == false' "$SNAPSHOT" >/dev/null || fail 'child inventory truncated; refusing display reconciliation'
   lock=$(fm_backend_herdr_presentation_session_lock_path "$SESSION") || fail 'no safe presentation lock'
-  fm_lock_try_acquire "$lock" || fail 'presentation lock busy; retry sync'
+  if ! fm_lock_try_acquire "$lock"; then
+    [ "$COMMAND" = watch ] || fail 'presentation lock busy; retry sync'
+    rm -f "$SNAPSHOT"
+    SNAPSHOT=''
+    return
+  fi
   LOCK=$lock
   if [ -e "$BINDING" ]; then
     [ ! -L "$BINDING" ] || fail 'unsafe display binding'
@@ -105,7 +137,6 @@ sync_view() {
     tab=$FM_BACKEND_HERDR_PROJECTION_TAB_ID pane=$FM_BACKEND_HERDR_PROJECTION_PANE_ID
     RECORD=$(jq --arg ws "$WS" --arg t "$tab" --arg p "$pane" --arg l "$label" '.workspace=$ws | .pending=false | .displays.console={tab:$t,pane:$p,label:$l}' <<< "$RECORD")
     save
-    launch_reader "$pane" console
   fi
   TOKEN=$(jq -r '.token' <<< "$RECORD")
   while IFS= read -r row; do
@@ -120,6 +151,7 @@ sync_view() {
       save
       continue
     fi
+    ensure_reader "$pane" "$child"
     if [ "$child" != console ] && jq -e --arg c "$child" 'any(.children[]; .id==$c and .terminal and .parent_delivered)' "$SNAPSHOT" >/dev/null; then
       fm_backend_herdr_projection_close_pane_focus_preserving "$SESSION" "$pane" || fail 'display close refused'
       [ "$(fm_backend_herdr_pane_presence_state "$SESSION" "$pane")" = dead ] || fail 'display close not confirmed'
@@ -142,7 +174,7 @@ sync_view() {
     read -r tab pane <<< "$pair"
     RECORD=$(jq --arg c "$child" --arg t "$tab" --arg p "$pane" --arg l "$label" '.pending=false | .displays[$c]={tab:$t,pane:$p,label:$l}' <<< "$RECORD")
     save
-    launch_reader "$pane" "$child"
+    ensure_reader "$pane" "$child"
   done < <({ printf 'console\n'; jq -r '.children[] | select(.display_required) | .id' "$SNAPSHOT"; })
   fm_lock_release "$LOCK"
   LOCK=''

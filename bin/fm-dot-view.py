@@ -45,7 +45,7 @@ def activity_line(event, width):
 
 
 def render(box, mate_id, child_id=None):
-    snapshot = box.mate_snapshot(mate_id)
+    snapshot = box.mate_snapshot(mate_id, [child_id] if child_id else [])
     width = max(32, shutil.get_terminal_size((80, 24)).columns)
     health = dict(part.split("=", 1) for part in snapshot["health"].split() if "=" in part)
     seen = local_time(snapshot["last_contact"])

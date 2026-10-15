@@ -5,7 +5,7 @@
 #   fm-dot-secondmate.sh register <id> <db> <home> <queue> <mailbox-health-url> <tunnel-health-url> <scope> <charter-file>
 #   fm-dot-secondmate.sh send <id> <correlation-id> <idempotency-key>  # content on stdin
 #   fm-dot-secondmate.sh health <id>
-#   fm-dot-secondmate.sh snapshot <id>
+#   fm-dot-secondmate.sh snapshot <id> [--child <child-id> ...]
 #   fm-dot-secondmate.sh history <id> [--cursor <revision>] [--limit <1..50>]
 #   fm-dot-secondmate.sh publish-child <id> <home> <db> <child> <state> <revision> <note> <report>
 #   fm-dot-secondmate.sh validate <id>
@@ -25,7 +25,7 @@ case "${1:-}" in
       '  fm-dot-secondmate.sh register <id> <db> <home> <queue> <mailbox-health-url> <tunnel-health-url> <scope> <charter-file>' \
       '  fm-dot-secondmate.sh health <id>' \
       '  fm-dot-secondmate.sh validate <id>' \
-      '  fm-dot-secondmate.sh snapshot <id>' \
+      '  fm-dot-secondmate.sh snapshot <id> [--child <child-id> ...]' \
       '  fm-dot-secondmate.sh history <id> [--cursor <revision>] [--limit <1..50>]' \
       'Route work with fm-send.sh. send and publish are internal transport commands.'
     exit 0
