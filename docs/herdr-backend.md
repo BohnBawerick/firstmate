@@ -556,6 +556,10 @@ Dated measurement: docs/verification/runtime-backends.md "Claude exit behind the
 That comparison ignores whitespace and U+2063, the invisible mark that starts operational inputs and ends the from-firstmate label.
 It ignores U+2063 because Claude's Herdr read-back never shows it.
 
+A composer whose read shows only a suffix of the payload is scrolled to its head with Ctrl+A, read again, and returned to its end with Ctrl+E, because Claude caps its composer at a few visible rows in a narrow or short pane.
+That composer is proven when the head read is a prefix of the payload and the two reads together span it.
+Dated measurement: docs/verification/runtime-backends.md "Claude composer scrolled in a narrow pane".
+
 A composer that holds a shorter suffix, or a placeholder plus a literal remainder, does not receive Enter.
 Instead:
 

@@ -190,6 +190,65 @@ done
   || fail "Claude Code ($VERSION) on $HERDR_VER: operational submit reported '$verdict' but the expected reply never rendered"
 pass "live Herdr submit confirm: Claude Code ($VERSION) on $HERDR_VER submits a U+2063 away-supervisor payload whose read-back drops the mark"
 
+# A narrow, short pane caps Claude's composer at a few visible rows and keeps
+# the cursor row in view, so a payload wrapped past that cap reads as its
+# tail; the pre-Enter proof refused every inbox doorbell on a phone-sized
+# Herdr pane. The proof must scroll the composer to its head and submit the
+# whole payload. A viewer gives the panes a real grid, and the splits shrink
+# the Claude pane; both are undone before the /exit scenario.
+wait_idle() {
+  local n=0 st
+  while [ "$n" -lt 45 ]; do
+    st=$(lab agent get "$PANE" 2>/dev/null | jq -r '.result.agent.agent_status // empty')
+    case "$st" in idle|done) return 0 ;; esac
+    n=$((n + 1))
+    sleep 1
+  done
+  return 1
+}
+wait_idle || fail "Claude Code ($VERSION) on $HERDR_VER never returned to idle before the narrow-pane scenario"
+PATH="$ORIGINAL_PATH" "$LAB_HELPER" viewer start "$SESSION" >/dev/null \
+  || fail "could not attach a lab viewer to size the narrow pane"
+SPLIT_RIGHT=$(lab pane split "$PANE" --direction right --ratio 0.4 --cwd "$ROOT" | jq -er '.result.pane.pane_id') \
+  || fail "could not split the lab pane to narrow it"
+SPLIT_DOWN=$(lab pane split "$PANE" --direction down --ratio 0.55 --cwd "$ROOT" | jq -er '.result.pane.pane_id') \
+  || fail "could not split the lab pane to shorten it"
+sleep 3
+NARROW_TOKEN="FMHERDRNARROW$$_$RANDOM"
+narrow_text="Reply with exactly $NARROW_TOKEN and nothing else. This sentence only pads the request so that it wraps past the composer's visible rows in a narrow pane, and this one pads it a little further."
+# NON-VACUOUSNESS: typed by hand, the payload must read as a scrolled tail, or
+# this pane is not narrow enough to exercise the scroll proof.
+fm_backend_herdr_send_literal "$TARGET" "$narrow_text" || fail "could not type the narrow-pane payload"
+sleep 1
+narrow_seen=$(fm_backend_herdr_composer_content "$TARGET") || narrow_seen=
+if fm_backend_herdr_composer_payload_shown "$narrow_text" "$narrow_seen"; then
+  fail "Claude Code ($VERSION) on $HERDR_VER: the narrow pane showed the whole payload, so the scrolled-composer case is untested"
+fi
+fm_backend_herdr_composer_clear "$TARGET" "$narrow_text" \
+  || fail "Claude Code ($VERSION) on $HERDR_VER: could not clear the hand-typed narrow-pane payload"
+verdict=$(fm_backend_herdr_send_text_submit "$TARGET" "$narrow_text" 3 0.4 0.4) \
+  || fail "send_text_submit failed to run in the narrow pane against Claude Code ($VERSION) on $HERDR_VER"
+[ "$verdict" = empty ] \
+  || fail "Claude Code ($VERSION) on $HERDR_VER: a payload wrapped past the narrow composer must be proven and submitted, got '$verdict'"
+landed=0
+i=0
+while [ "$i" -lt 45 ]; do
+  screen=$(lab pane read "$PANE" --source recent --lines 200 2>/dev/null || true)
+  occurrences=$(printf '%s\n' "$screen" | grep -F -c "$NARROW_TOKEN" || true)
+  if [ "$occurrences" -ge 2 ]; then
+    landed=1
+    break
+  fi
+  i=$((i + 1))
+  sleep 1
+done
+[ "$landed" = 1 ] \
+  || fail "Claude Code ($VERSION) on $HERDR_VER: the narrow-pane submit reported '$verdict' but the expected reply never rendered"
+lab pane close "$SPLIT_DOWN" >/dev/null || fail "could not close the shortening split"
+lab pane close "$SPLIT_RIGHT" >/dev/null || fail "could not close the narrowing split"
+PATH="$ORIGINAL_PATH" "$LAB_HELPER" viewer stop "$SESSION" >/dev/null || fail "could not detach the lab viewer"
+pass "live Herdr submit confirm: Claude Code ($VERSION) on $HERDR_VER proves a payload wrapped past a narrow pane's composer by scrolling to its head, and submits it"
+
 # The fm-control exit regression: a typed slash command (/exit) makes Claude
 # Code 2.1.283 render its command popup between the composer and the pane
 # bottom, which pushed the composer above the old bounded proof read - the

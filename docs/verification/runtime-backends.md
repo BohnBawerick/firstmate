@@ -1438,6 +1438,37 @@ FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh
 ok - live Herdr submit confirm: Claude Code (2.1.283 (Claude Code)) on herdr 0.9.0 proves and submits a typed /exit behind its command popup
 ```
 
+### Claude composer scrolled in a narrow pane
+
+Measured 2026-10-15 against Herdr 0.9.3 and Claude Code 2.1.300 in an isolated `fm-lab-` session with a lab viewer attached, so pane splits shrink the Claude pane to a real grid.
+Claude caps its composer at a few visible rows and keeps the cursor row in view.
+In a 35-column, 22-row pane the 180-character inbox doorbell wrapped to seven rows and the composer showed only the last six, starting `❯ waiting: list`.
+Ctrl+A brought `❯ : Firstmate instruction` back into view with the last row hidden, and Ctrl+E restored the tail view, so the composer held every byte.
+In a 35-column, 38-row pane all seven rows showed.
+The pre-Enter payload proof read the tail view as the head-truncation shape and refused every doorbell, which is the field failure on a 46-column, 16-row pane.
+The adapter now scrolls such a composer to its head with Ctrl+A, reads it, and restores the cursor with Ctrl+E; the payload is proven when the head read is a prefix of it and the two reads together span it.
+
+Portable regressions:
+
+```sh
+tests/fm-backend-herdr.test.sh
+```
+
+```text
+ok - fm_backend_herdr_send_text_submit: a doorbell wrapped past a capped Claude composer is proven by scrolling to its head, then submitted once
+ok - fm_backend_herdr_send_text_submit: a scrolled Claude composer whose head is not the payload start is refused
+```
+
+Live guard (the narrow-pane scenario first asserts that a hand-typed payload reads as a scrolled tail):
+
+```sh
+FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh
+```
+
+```text
+ok - live Herdr submit confirm: Claude Code (2.1.300 (Claude Code)) on herdr 0.9.3 proves a payload wrapped past a narrow pane's composer by scrolling to its head, and submits it
+```
+
 ### Claude background-task exit picker
 
 Measured 2026-10-05 against Claude Code 2.1.289 in an isolated tmux session.
