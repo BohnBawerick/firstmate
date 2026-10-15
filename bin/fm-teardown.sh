@@ -3221,7 +3221,7 @@ preflight_firstmate_home_herdr_children() {  # <home>
     child_backend=$FM_BACKEND_VALIDATED_BACKEND
     child_target=$FM_BACKEND_VALIDATED_TARGET
     if [ "$child_backend" = herdr ]; then
-      teardown_herdr_preflight_target "$child_target" "$child_id" || return 1
+      FM_STATE_OVERRIDE="$sub_state" teardown_herdr_preflight_target "$child_target" "$child_id" || return 1
     fi
     child_kind=$(meta_value "$child_meta" kind)
     [ -n "$child_kind" ] || child_kind=ship
@@ -3308,10 +3308,10 @@ cleanup_firstmate_home_children() {
           echo "error: herdr session presentation lock is not held for child $child_id; retaining that child's durable identity records and stopping forced cleanup" >&2
           return 1
         fi
-        if fm_backend_herdr_target_unbound "$child_t" "fm-$child_id"; then
+        if FM_STATE_OVERRIDE="$sub_state" fm_backend_herdr_target_unbound "$child_t" "fm-$child_id"; then
           echo "warning: herdr pane $child_t no longer belongs to child $child_id; leaving it open and treating that child's endpoint as gone" >&2
         else
-          fm_backend_herdr_kill_serialized "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE" "fm-$child_id" 2>/dev/null || true
+          FM_STATE_OVERRIDE="$sub_state" fm_backend_herdr_kill_serialized "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE" "fm-$child_id" 2>/dev/null || true
           if ! fm_backend_herdr_endpoint_confirmed_gone "$child_t"; then
             echo "error: herdr pane $child_t for child $child_id is not confirmed gone; retaining that child's durable identity records and stopping forced cleanup" >&2
             return 1

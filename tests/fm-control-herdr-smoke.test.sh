@@ -142,6 +142,79 @@ run_control() {
     "$ROOT/bin/fm-control.sh" "$@" 2>&1
 }
 
+export FM_HOME="$HOME_DIR"
+FOREIGN_HOME="$SCRATCH/foreign-home"
+mkdir -p "$FOREIGN_HOME/state"
+FOREIGN_OUT=$(fm_herdr_lab_cli "$SESSION" workspace create --cwd "$WT" --label other-home --no-focus) \
+  || fail "could not create the other home's workspace"
+FOREIGN_WS=$(printf '%s' "$FOREIGN_OUT" | jq -r '.result.workspace.workspace_id')
+FOREIGN_TAB=$(fm_herdr_lab_cli "$SESSION" tab list --workspace "$FOREIGN_WS" | jq -r '.result.tabs[0].tab_id')
+FOREIGN_PANE=$(fm_herdr_lab_cli "$SESSION" pane list --workspace "$FOREIGN_WS" | jq -r '.result.panes[0].pane_id')
+fm_herdr_lab_cli "$SESSION" tab rename "$FOREIGN_TAB" fm-hsmoke >/dev/null || fail "could not name the other home's task"
+awk -F= -v window="$SESSION:$FOREIGN_PANE" -v ws="$FOREIGN_WS" -v tab="$FOREIGN_TAB" -v pane="$FOREIGN_PANE" '
+  $1 == "window" {$0="window=" window}
+  $1 == "herdr_workspace_id" {$0="herdr_workspace_id=" ws}
+  $1 == "herdr_tab_id" {$0="herdr_tab_id=" tab}
+  $1 == "herdr_pane_id" {$0="herdr_pane_id=" pane}
+  {print}
+' "$HOME_DIR/state/hsmoke.meta" > "$FOREIGN_HOME/state/hsmoke.meta"
+cp "$HOME_DIR/state/hsmoke.meta" "$SCRATCH/original.meta"
+awk -F= -v window="$SESSION:$FOREIGN_PANE" -v pane="$FOREIGN_PANE" '
+  $1 == "window" {$0="window=" window}
+  $1 == "herdr_pane_id" {$0="herdr_pane_id=" pane}
+  {print}
+' "$SCRATCH/original.meta" > "$HOME_DIR/state/hsmoke.meta"
+fm_herdr_lab_cli "$SESSION" pane send-text "$FOREIGN_PANE" other-home-private-draft >/dev/null \
+  || fail "could not seed the other home's draft"
+if env FM_HOME="$HOME_DIR" "$ROOT/bin/fm-send.sh" hsmoke --key C-u > "$SCRATCH/foreign-send.out" 2>&1; then
+  fail "a stale address accepted the same task label in another home"
+fi
+if env FM_HOME="$HOME_DIR" "$ROOT/bin/fm-peek.sh" hsmoke 20 > "$SCRATCH/foreign-peek.out" 2>&1; then
+  fail "a stale address read another home's same-named task"
+fi
+[ "$(fm_backend_agent_state herdr "$SESSION:$FOREIGN_PANE" fm-hsmoke)" = missing ] \
+  || fail "another home's task was treated as this home's live endpoint"
+fm_backend_herdr_task_workspace_isolated "$SESSION:$FOREIGN_PANE" fm-hsmoke \
+  && fail "relaunch accepted another home's isolated workspace"
+fm_backend_kill herdr "$SESSION:$FOREIGN_PANE" "" fm-hsmoke \
+  && fail "cleanup accepted another home's same-named task"
+case "$(fm_herdr_lab_cli "$SESSION" pane read "$FOREIGN_PANE" --source visible)" in
+  *other-home-private-draft*) ;;
+  *) fail "a refused cross-home operation changed the other task's draft" ;;
+esac
+[ -z "$(fm_backend_meta_for_window "$SESSION:$FOREIGN_PANE" "$HOME_DIR/state" bound)" ] \
+  || fail "owner lookup accepted the stale home record"
+[ "$(fm_backend_meta_for_window "$SESSION:$FOREIGN_PANE" "$FOREIGN_HOME/state" bound)" = "$FOREIGN_HOME/state/hsmoke.meta" ] \
+  || fail "owner lookup discarded the actual home binding"
+env FM_HOME="$FOREIGN_HOME" "$ROOT/bin/fm-send.sh" hsmoke --key C-u > "$SCRATCH/owner-send.out" 2>&1 \
+  || fail "the actual home could not address its same-named task"
+cp "$SCRATCH/original.meta" "$HOME_DIR/state/hsmoke.meta"
+printf 'herdr_workspace_id=ambiguous\n' >> "$HOME_DIR/state/hsmoke.meta"
+fm_backend_send_key herdr "$SESSION:$PANE_ID" Escape fm-hsmoke \
+  && fail "an ambiguous recorded workspace authorized a key"
+cp "$SCRATCH/original.meta" "$HOME_DIR/state/hsmoke.meta"
+pass "real herdr: matching task labels do not authorize another home's workspace or an ambiguous record"
+
+fm_herdr_lab_cli "$SESSION" tab rename "$FOREIGN_TAB" firstmate >/dev/null || fail "could not name the generic supervisor tab"
+fm_backend_target_exists herdr "$SESSION:$FOREIGN_PANE" || fail "a generic supervisor target was rejected for its label"
+fm_backend_capture herdr "$SESSION:$FOREIGN_PANE" 10 >/dev/null || fail "a generic supervisor capture was rejected"
+fm_herdr_lab_cli "$SESSION" pane report-agent "$FOREIGN_PANE" --source fm-generic-test --agent claude --state working >/dev/null \
+  || fail "could not register the generic supervisor"
+[ "$(fm_backend_herdr_agent_identity_raw "$SESSION" "$FOREIGN_PANE")" = $'claude\tworking' ] \
+  || fail "a generic supervisor identity read required a task label"
+[ "$(fm_backend_herdr_agent_status_raw "$SESSION" "$FOREIGN_PANE")" = working ] \
+  || fail "a generic native-state read required a task label"
+(
+  FM_BACKEND_HERDR_CALLER_SESSION=$SESSION
+  FM_BACKEND_HERDR_CALLER_PANE_ID=$FOREIGN_PANE
+  fm_backend_send_key herdr "$SESSION:$FOREIGN_PANE" Escape && fail "a generic key reached the caller's pane"
+  fm_backend_herdr_send_literal "$SESSION:$FOREIGN_PANE" text && fail "a generic literal send reached the caller's pane"
+  fm_backend_herdr_send_text_line "$SESSION:$FOREIGN_PANE" /bin/true && fail "a generic line send reached the caller's pane"
+  fm_backend_kill herdr "$SESSION:$FOREIGN_PANE" && fail "a generic close reached the caller's pane"
+  exit 0
+) || fail "generic mutation lost self-pane rejection"
+pass "real herdr: generic supervisor reads accept firstmate labels while mutations still reject the caller's pane"
+
 fm_herdr_lab_cli "$SESSION" tab rename "$TAB_ID" fm-other >/dev/null \
   || fail "could not set up a reused endpoint for restart"
 fm_herdr_lab_stop "$SESSION" >/dev/null || fail "could not stop the isolated session"

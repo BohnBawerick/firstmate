@@ -1497,12 +1497,12 @@ wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-h
     triage_log "absorbed $label (agent $agent_state, already reported once, idle ${age}s): $win"
     return 0
   fi
-  reason="stale: $win (idle ${age}s, agent $agent_state - $detail, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup; task $task)"
+  reason="stale: $task (idle ${age}s, agent $agent_state - $detail, so this is not a wedge; reported once and not re-escalated while it stays that way - reconcile this record, and check for unlanded work before any cleanup; task $task)"
   # Append before the marker, for the reason stale_wait_record gives: a marker
   # written ahead of a failed append outlives it, and the next sighting would then
   # absorb the retry - the one way this bound could swallow the report outright
   # rather than deliver it once.
-  fm_wake_append stale "$win" "$reason" || exit 1
+  fm_wake_append stale "$task" "$reason" || exit 1
   printf '%s %s' "$agent_state" "$id" > "$marker"
   clear_write_tracking "$key"
   wake "$reason"

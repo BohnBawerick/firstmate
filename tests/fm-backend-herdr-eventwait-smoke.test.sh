@@ -77,6 +77,10 @@ cat > "$STATE/evwait1.meta" <<EOF
 window=$TARGET
 backend=herdr
 kind=ship
+herdr_session=$SESSION
+herdr_workspace_id=${CONTAINER#*:}
+herdr_tab_id=$_TAB_ID
+herdr_pane_id=$PANE_ID
 EOF
 
 cp "$STATE/evwait1.meta" "$STATE/a.meta"
@@ -90,6 +94,7 @@ watch_once() {
 watch_once || fail "the reused-address watcher did not report the stale task: $(cat "$SCRATCH/watch.out")"
 grep -F 'agent missing' "$SCRATCH/watch.out" >/dev/null || fail "the stale endpoint was not classified missing"
 grep -F 'task a)' "$SCRATCH/watch.out" >/dev/null || fail "the missing endpoint report did not identify task a"
+MISSING_REASON=$(sed -n '/^stale:/p' "$SCRATCH/watch.out")
 FM_STATE_OVERRIDE="$STATE" "$ROOT/bin/fm-wake-drain.sh" > "$SCRATCH/drain.out" 2> "$SCRATCH/drain.err" \
   || fail "could not drain the stale task wake"
 sequence=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through \([0-9][0-9]*\) --recovery-generation .*$/\1/p' "$SCRATCH/drain.err")
@@ -146,20 +151,33 @@ export FM_STATE_OVERRIDE="$STATE"
 export FM_ROOT_OVERRIDE="$ROOT"
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-push-transition-lib.sh"
-wake() { return 0; }
+wake() { PUSH_REASON=$1; }
 printf 'paused: waiting on an external dependency\n' > "$STATE/a.status"
 printf 'blocked: need a captain answer\n' > "$STATE/evwait1.status"
 : > "$STATE/.wake-queue"
 handle_push_transition herdr "$SESSION" "$REC"
 [ -e "$STATE/.wake-queue" ] || fail "handle_push_transition did not create the wake queue"
 grep -q 'stale' "$STATE/.wake-queue" || fail "the wake queue must carry a stale record: $(cat "$STATE/.wake-queue")"
-grep -q "$TARGET" "$STATE/.wake-queue" || fail "the stale record must name the task window $TARGET"
+[ "$(awk -F '\t' '{print $4}' "$STATE/.wake-queue")" = evwait1 ] \
+  || fail "the stale record discarded its resolved task identity"
 grep -q 'herdr: agent blocked' "$STATE/.wake-queue" || fail "the stale payload must name the herdr-blocked cause"
 [ -s "$(status_heartbeat_seen_marker_path "$STATE" evwait1)" ] \
   || fail "the live task's push status was not marked surfaced"
 [ ! -e "$(status_heartbeat_seen_marker_path "$STATE" a)" ] \
   || fail "the push transition was attributed to the stale record"
 pass "real herdr: push supervision uses the live owner despite an earlier paused record at the same address"
+
+[ "$(window_to_task "$TARGET" "$STATE")" = evwait1 ] || fail "notification lookup selected the stale record"
+# shellcheck source=bin/fm-supervise-daemon.sh
+. "$ROOT/bin/fm-supervise-daemon.sh"
+LOG="$SCRATCH/daemon.log"
+FM_ESCALATE_BATCH_SECS=999 handle_wake "$PUSH_REASON" "$STATE"
+grep -F 'need a captain answer' "$STATE/.subsuper-escalations" >/dev/null \
+  || fail "the stale paused task absorbed the live task's notification"
+[ -s "$STATE/.subsuper-seen-status-evwait1" ] || fail "delivery did not retain the live task's status identity"
+FM_ESCALATE_BATCH_SECS=999 handle_wake "$MISSING_REASON" "$STATE"
+[ -e "$STATE/.subsuper-paused-a" ] || fail "the missing endpoint notification was attributed to the current pane owner"
+pass "real herdr: notification delivery preserves live and missing task identities at a reused address"
 
 cleanup_all
 trap - EXIT

@@ -563,7 +563,7 @@ fm_backend_meta_for_window() {  # <target> <state-dir> [bound]
       fm_backend_source herdr || continue
       fm_backend_herdr_parse_target "$target" || continue
       task=${meta##*/}; task=${task%.meta}
-      [ "$(fm_backend_herdr_pane_label_binding "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE" "fm-$task")" = bound ] || continue
+      [ "$(FM_STATE_OVERRIDE="$state" fm_backend_herdr_pane_label_binding "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE" "fm-$task")" = bound ] || continue
     fi
     printf '%s' "$meta"
     return 0

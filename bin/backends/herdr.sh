@@ -2257,16 +2257,9 @@ fm_backend_herdr_pane_presence_state() {  # <session> <pane_id>
 # the task that recorded it. Herdr pane ids are opaque and are handed out
 # again: after a reboot a dead task's recorded pane id has named the
 # supervising firstmate's own pane, and after another restart a newly spawned
-# worker's pane. Every task endpoint, flat or projected, lives in a tab
-# labelled fm-<task-id>, and a server restart preserves labels, so the tab
-# label is the binding. Prints one of:
-#   self    - the pane is this process's own Herdr pane
-#   foreign - the pane exists in a tab whose label is not <expected-label>, or,
-#             with no expected label, not any fm-* task label
-#   bound   - the pane exists in a tab with the expected (or a task) label
-#   unknown - the pane, its tab, or the label could not be read
+# worker's pane.
 fm_backend_herdr_pane_label_binding() {  # <session> <pane_id> [expected-label]
-  local session=$1 pane_id=$2 expected=${3:-} out tab label
+  local session=$1 pane_id=$2 expected=${3:-} out tab label workspace task meta recorded_session recorded_workspace recorded_tab recorded_pane
   if [ -n "$FM_BACKEND_HERDR_CALLER_PANE_ID" ] && [ "$FM_BACKEND_HERDR_CALLER_PANE_ID" = "$pane_id" ] \
      && [ "$FM_BACKEND_HERDR_CALLER_SESSION" = "$session" ]; then
     printf 'self'
@@ -2277,19 +2270,42 @@ fm_backend_herdr_pane_label_binding() {  # <session> <pane_id> [expected-label]
     select(.result.pane.pane_id == $pane) | .result.pane.tab_id | select(type == "string")
   ' 2>/dev/null) || tab=
   [ -n "$tab" ] || { printf 'unknown'; return 0; }
+  [ -n "$expected" ] || { printf 'bound'; return 0; }
+  workspace=$(printf '%s' "$out" | jq -r --arg pane "$pane_id" 'select(.result.pane.pane_id == $pane) | .result.pane.workspace_id // empty' 2>/dev/null)
   out=$(fm_backend_herdr_cli "$session" tab get "$tab" 2>/dev/null) || { printf 'unknown'; return 0; }
   label=$(printf '%s' "$out" | jq -r --arg tab "$tab" '
     select(.result.tab.tab_id == $tab) | .result.tab.label | select(type == "string")
   ' 2>/dev/null) || label=
   [ -n "$label" ] || { printf 'unknown'; return 0; }
-  if [ -n "$expected" ]; then
-    [ "$label" = "$expected" ] && printf 'bound' || printf 'foreign'
+  [ "$label" = "$expected" ] || { printf 'foreign'; return 0; }
+  task=${expected#fm-}
+  case "$task" in ''|*[!A-Za-z0-9._-]*) printf 'unknown'; return 0 ;; esac
+  meta="${FM_STATE_OVERRIDE:-$FM_HOME/state}/$task.meta"
+  if [ "${BACKEND:-}" = herdr ] && [ "${ID:-}" = "$task" ] \
+     && [ "${T:-}" = "$session:$pane_id" ] && [ "${HERDR_SES:-}" = "$session" ] \
+     && [ "${HERDR_PANE_ID:-}" = "$pane_id" ]; then
+    recorded_session=$HERDR_SES
+    recorded_workspace=${HERDR_WORKSPACE_ID:-}
+    recorded_tab=${HERDR_TAB_ID:-}
+    recorded_pane=$HERDR_PANE_ID
+  elif [ -e "$meta" ] || [ -L "$meta" ]; then
+    [ -f "$meta" ] && [ ! -L "$meta" ] || { printf 'unknown'; return 0; }
+    recorded_session=$(fm_backend_meta_exact_value "$meta" herdr_session) || { printf 'unknown'; return 0; }
+    recorded_workspace=$(fm_backend_meta_exact_value "$meta" herdr_workspace_id) || { printf 'unknown'; return 0; }
+    recorded_tab=$(fm_backend_meta_exact_value "$meta" herdr_tab_id) || { printf 'unknown'; return 0; }
+    recorded_pane=$(fm_backend_meta_exact_value "$meta" herdr_pane_id) || { printf 'unknown'; return 0; }
+  else
+    printf 'unknown'
     return 0
   fi
-  case "$label" in
-    fm-?*) printf 'bound' ;;
-    *) printf 'foreign' ;;
-  esac
+  if [ -z "$workspace" ] || [ -z "$recorded_workspace" ] || [ -z "$recorded_tab" ]; then
+    printf 'unknown'
+  elif [ "$session" = "$recorded_session" ] && [ "$workspace" = "$recorded_workspace" ] \
+       && [ "$tab" = "$recorded_tab" ] && [ "$pane_id" = "$recorded_pane" ]; then
+    printf 'bound'
+  else
+    printf 'foreign'
+  fi
 }
 
 # fm_backend_herdr_target_unbound: true (0) only when <target> is proven to be

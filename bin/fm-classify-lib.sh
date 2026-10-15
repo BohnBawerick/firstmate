@@ -2174,35 +2174,27 @@ status_open_activities() {  # <status-file-or-dash>
 # task id from a recorded window target, falling back to the tmux-shaped
 # "<session>:fm-<id>" form when no metadata state is available.
 window_to_task() {
-  local w=$1 state=${2:-${STATE:-${FM_STATE_OVERRIDE:-}}} meta mw mt t line
-  if [ "${3:-}" = bound ]; then
-    meta=$(fm_backend_meta_for_window "$w" "$state" bound) || return 1
-    t=${meta##*/}; printf '%s' "${t%.meta}"
-    return 0
-  fi
+  local w=$1 state=${2:-${STATE:-${FM_STATE_OVERRIDE:-}}} meta t
   if [ -n "$state" ]; then
-    for meta in "$state"/*.meta; do
-      [ -e "$meta" ] || continue
-      # The last window= and terminal= values, read in one pass without the
-      # grep | tail -1 | cut -d= -f2- pipelines this once forked per key.
-      mw=
-      mt=
-      {
-        while IFS= read -r line || [ -n "$line" ]; do
-          case "$line" in
-            window=*) mw=${line#window=} ;;
-            terminal=*) mt=${line#terminal=} ;;
-          esac
-        done < "$meta"
-      } 2>/dev/null
-      [ "$mw" = "$w" ] || [ "$mt" = "$w" ] || continue
-      t=${meta##*/}
-      t=${t%.meta}
-      printf '%s' "$t"
+    if ! declare -F fm_backend_meta_for_window >/dev/null 2>&1; then
+      # shellcheck source=bin/fm-backend.sh
+      . "$_FM_CLASSIFY_LIB_DIR/fm-backend.sh"
+    fi
+    if meta=$(fm_backend_meta_for_selector "$w" "$state"); then
+      t=${meta##*/}; printf '%s' "${t%.meta}"
       return 0
-    done
+    fi
+    if meta=$(fm_backend_meta_for_window "$w" "$state" bound); then
+      t=${meta##*/}; printf '%s' "${t%.meta}"
+      return 0
+    fi
+    [ "${3:-}" != bound ] || return 1
   fi
-  t="${w##*:}"; t="${t#fm-}"; printf '%s' "$t"
+  case "$w" in
+    *:fm-*) t=${w##*:}; printf '%s' "${t#fm-}" ;;
+    *:*) return 1 ;;
+    *) printf '%s' "$w" ;;
+  esac
 }
 
 # --- home-owned status-append ledger ----------------------------------------
