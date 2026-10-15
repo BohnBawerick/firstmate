@@ -603,4 +603,50 @@ test_recorded_line_stays_recorded_across_a_resolve() {
   pass "a recorded line stays recorded across a later resolve"
 }
 
+# A secondmate parent channel accumulates hundreds of decision opens and closes.
+# The whole-file fold runs over it on every home-summary refresh, so its cost
+# must not include a process per line: on a heavily loaded host those forks
+# alone outlasted the refresh deadline. Count the commands the fold runs in a
+# subshell (functrace carries the DEBUG trap into every command substitution)
+# and require that count not to grow with the log, while the folded set stays
+# exact.
+fold_subshell_commands() {  # <status-file> <counter-file>
+  local f=$1 counter=$2
+  : > "$counter"
+  (
+    set -T
+    # shellcheck disable=SC2064 # The counter path and base level are fixed when the trap is set.
+    trap "[ \"\$BASH_SUBSHELL\" -gt $BASH_SUBSHELL ] && printf x >> '$counter'" DEBUG
+    status_open_decisions "$f" ship > /dev/null
+  )
+  wc -c < "$counter" | tr -d '[:space:]'
+}
+
+test_whole_file_fold_cost_does_not_grow_per_line() {
+  local dir long_note i expected='' short_count long_count got
+  dir="$TMP_ROOT/fold-cost"; mkdir -p "$dir"
+  long_note=$(printf 'context %.0s' $(seq 1 40))
+  printf 'needs-decision [key=only]: one open decision\n' > "$dir/short.status"
+  : > "$dir/long.status"
+  for i in $(seq 1 120); do
+    printf 'needs-decision [key=k%s]: decision %s %s\n' "$i" "$i" "$long_note" >> "$dir/long.status"
+    printf 'working: still going on %s\n' "$i" >> "$dir/long.status"
+  done
+  for i in $(seq 2 2 120); do
+    printf 'resolved [key=k%s]: answered %s\n' "$i" "$i" >> "$dir/long.status"
+  done
+  for i in $(seq 1 2 120); do
+    [ -n "$expected" ] && expected="${expected}"$'\n'
+    expected="${expected}k${i}"$'\t'"needs-decision"$'\t'"decision ${i} ${long_note}"
+  done
+  got=$(status_open_decisions "$dir/long.status" ship)
+  [ "$got" = "$expected" ] || fail "the fold over a long decision log returned the wrong open set"
+  short_count=$(fold_subshell_commands "$dir/short.status" "$dir/short.count")
+  long_count=$(fold_subshell_commands "$dir/long.status" "$dir/long.count")
+  [ "$long_count" -le "$short_count" ] \
+    || fail "folding 300 decision lines ran $long_count subshell commands, one line ran $short_count: the fold forks per line"
+  pass "the whole-file fold costs no process per line and stays exact on a long decision log"
+}
+
 test_recorded_line_stays_recorded_across_a_resolve
+test_whole_file_fold_cost_does_not_grow_per_line
