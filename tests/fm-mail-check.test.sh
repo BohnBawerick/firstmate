@@ -530,6 +530,29 @@ test_deadline_miss_that_queued_mail_still_wakes() {
   pass "fm-mail-check: a deadline miss that queued mail still wakes"
 }
 
+test_default_budget_fits_a_slow_healthy_server() {
+  # A healthy server measured at up to about 9 s per poll (TLS, a slow
+  # greeting, then one round trip per IMAP command) must fit the poll's own
+  # deadline under the default budget, so it never reads as a failure. The
+  # fake poll answers only when its granted IMAP deadline covers a 10 s poll.
+  local home out slow_server
+  home=$(make_home default-budget)
+  write_env "$home"
+  slow_server='if [ "${FM_MAIL_POLL_BUDGET_MS:-0}" -lt 10000 ]; then
+  printf "fm-mail poll error: mail poll deadline reached\\n" >&2
+  exit 1
+fi
+printf "uidvalidity\\t80008\\n"'
+  enter_mailbox "$home" "$slow_server"
+  out="$home/out1.txt"
+  run_check "$home" "$out" "$CHECK"
+  [ ! -s "$out" ] || fail "a slow healthy server must not read as a failure: $(cat "$out")"
+  out="$home/out2.txt"
+  run_check "$home" "$out" "$CHECK"
+  [ ! -s "$out" ] || fail "a slow healthy server must not read as a failure on consecutive polls: $(cat "$out")"
+  pass "fm-mail-check: the default budget fits a slow but healthy IMAP server"
+}
+
 test_poll_deadline_preserves_progress_and_bounds_logout() {
   local home harness real_py out count retry_uid mode
   real_py=$(command -v python3)
@@ -642,3 +665,4 @@ test_repeated_heal_failure_stays_silent
 test_missing_mail_plane_is_reported
 test_lone_poll_deadline_miss_stays_quiet
 test_deadline_miss_that_queued_mail_still_wakes
+test_default_budget_fits_a_slow_healthy_server
