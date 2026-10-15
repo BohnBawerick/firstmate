@@ -564,12 +564,13 @@ class MailboxRegressionTests(unittest.TestCase):
         reply(note("late-blocker", "blocked", "2026-01-01T00:01:30Z"))
         self.box.publish_mate_replies()
         self.assertEqual(snapshot()["children"][0]["state"], "done")
-        self.assertEqual(len(status.read_text().splitlines()), 2)
+        self.assertEqual(len(status.read_text().splitlines()), 3)
+        self.assertEqual(len([line for line in status.read_text().splitlines() if line.startswith("blocked ")]), 1)
         with self.box.transaction():
             self.box.conn.execute("UPDATE mate_replies SET published=0,retry_after=0")
         self.box.publish_mate_replies()
-        self.assertEqual(len(status.read_text().splitlines()), 2)
-        self.assertEqual(len(list((home / "state/terminal-outcomes").glob("*.reported"))), 1)
+        self.assertEqual(len(status.read_text().splitlines()), 3)
+        self.assertEqual(len(list((home / "state/terminal-outcomes").glob("*.reported"))), 2)
         with self.assertRaises(ValueError):
             reply(note("bad-url", url="javascript:alert(1)"))
         with self.assertRaises(ValueError):
@@ -706,7 +707,7 @@ class MailboxRegressionTests(unittest.TestCase):
         self.assertEqual({event["activity"]["turn_id"] for event in history}, {"turn-A", "turn-B", "turn-C", "other-turn"})
         self.assertTrue(all(event["activity"]["schema"] == "fm.activity-note.v1" for event in history))
 
-    def test_turn_outcomes_survive_newer_turn_and_restart(self):
+    def test_outcomes_survive_later_observations_and_restart(self):
         parent, home = self.directory / "parent", self.directory / "mate"
         (parent / "state").mkdir(parents=True)
         (parent / "data").mkdir()
@@ -733,37 +734,55 @@ class MailboxRegressionTests(unittest.TestCase):
                 "kind": kind, "observed_at": f"2026-01-01T00:{minute:02d}:00Z", "summary": event_id,
                 "task_id": "native-task", "turn_id": turn_id})
 
+        delivered_count = 0
         for index, kind in enumerate(("done", "failed", "blocked", "needs-decision")):
             with self.subTest(kind=kind):
-                text = activity("outcome-" + kind, f"turn-{index}", kind, index * 2 + 1)
+                text = activity("outcome-" + kind, f"turn-{index}", kind, index * 3 + 1)
                 result = self.box.reply_message(message["id"], text, message["correlation_id"])
+                outcome_revisions = [result["revision"]]
                 meta.write_text(original.replace("transport=dot-mcp", "transport=unavailable"))
                 self.box.publish_mate_replies()
                 self.assertNotIn("outcome-" + kind, status.read_text() if status.exists() else "")
-                next_turn = activity("next-" + kind, f"next-turn-{index}", "task-created", index * 2 + 2)
-                self.box.reply_message(message["id"], next_turn, message["correlation_id"])
+                if kind in ("done", "failed"):
+                    later = activity("later-" + kind, f"turn-{index}", "failed" if kind == "done" else "done", index * 3 + 2)
+                    outcome_revisions.append(self.box.reply_message(message["id"], later, message["correlation_id"])["revision"])
+                    current_turn = f"next-turn-{index}"
+                    followup = activity("next-" + kind, current_turn, "task-created", index * 3 + 3)
+                else:
+                    current_turn = f"turn-{index}"
+                    followup = activity("next-" + kind, current_turn, "milestone", index * 3 + 2)
+                self.box.reply_message(message["id"], followup, message["correlation_id"])
                 self.box.conn.close()
                 self.box = m.Mailbox(self.box.db_path, allow_local_callbacks=True)
                 self.addCleanup(self.box.conn.close)
                 meta.write_text(original)
                 history = json.loads(run("fm-dot-secondmate.sh", "history", "dot-test"))["events"]
-                pending = next(event for event in history if event["revision"] == result["revision"])
-                self.assertFalse(pending["published"])
+                publications = {event["revision"]: event["published"] for event in history}
+                self.assertTrue(all(not publications[revision] for revision in outcome_revisions))
                 with patch.object(m.time, "time", return_value=time.time() + 60):
                     self.box.publish_mate_replies()
                 self.assertIn("outcome-" + kind, status.read_text())
-                self.assertEqual(len(status.read_text().splitlines()), index + 1)
+                if kind in ("done", "failed"):
+                    self.assertIn("later-" + kind, status.read_text())
+                delivered_count += len(outcome_revisions)
+                self.assertEqual(len(status.read_text().splitlines()), delivered_count)
                 history = json.loads(run("fm-dot-secondmate.sh", "history", "dot-test"))["events"]
-                delivered = next(event for event in history if event["revision"] == result["revision"])
-                self.assertTrue(delivered["published"])
+                publications = {event["revision"]: event["published"] for event in history}
+                self.assertTrue(all(publications[revision] for revision in outcome_revisions))
                 snapshot = json.loads(run("fm-dot-secondmate.sh", "snapshot", "dot-test"))
                 self.assertEqual(len(snapshot["children"]), 1)
-                self.assertEqual(snapshot["children"][0]["turn_id"], f"next-turn-{index}")
+                self.assertEqual(snapshot["children"][0]["turn_id"], current_turn)
                 self.assertTrue(snapshot["children"][0]["display_required"])
                 self.assertEqual(self.box.reply_message(message["id"], text, message["correlation_id"])["revision"], result["revision"])
                 self.box.publish_mate_replies()
-                self.assertEqual(len(status.read_text().splitlines()), index + 1)
-        self.assertEqual(len(list((home / "state/terminal-outcomes").glob("*.reported"))), 4)
+                self.assertEqual(len(status.read_text().splitlines()), delivered_count)
+        with self.box.transaction():
+            self.box.conn.execute("UPDATE mate_replies SET published=0,retry_after=0")
+        self.box.publish_mate_replies()
+        self.assertEqual(len(status.read_text().splitlines()), delivered_count)
+        history = json.loads(run("fm-dot-secondmate.sh", "history", "dot-test"))["events"]
+        self.assertTrue(all(event["published"] for event in history))
+        self.assertEqual(len(list((home / "state/terminal-outcomes").glob("*.reported"))), 6)
 
     def test_dot_secondmate_routes_replies_and_reports_health_without_a_pane(self):
         parent, home = self.directory / "parent", self.directory / "mate"

@@ -239,8 +239,8 @@ The message's `replied` flag means acknowledged, not that its cloud work finishe
 
 The initial pickup reaches the parent channel; routine cloud activity does not send a notification per note.
 Actionable and terminal child outcomes use the shared child-outcome publisher and its durable delivery receipts.
-Publication eligibility is per native turn, so a later turn does not suppress an earlier turn's pending outcome.
-Terminal observations dominate late progress for the same native turn.
+Every distinct `blocked`, `needs-decision`, `done` and `failed` observation reaches the parent once, regardless of later observations in the same or another turn.
+For display state, terminal observations dominate late progress for the same native turn.
 The latest observation among those turn states supplies the task's current state, so a later turn updates the existing child.
 Nonterminal observations older than fifteen minutes display current state as unknown without inventing a completion or cancelling anything.
 The child and activity lists are bounded; a truncated child inventory refuses display cleanup rather than guessing which tasks finished.

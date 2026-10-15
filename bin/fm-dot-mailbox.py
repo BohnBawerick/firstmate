@@ -697,15 +697,9 @@ class Mailbox:
                 publish_args = ["publish", row["mate_id"], row["home"], self.db_path, line]
                 if activity and activity["kind"] != "pickup":
                     if activity["kind"] in ("blocked", "needs-decision", "done", "failed"):
-                        with self.lock:
-                            current = self.conn.execute("""SELECT r.seq FROM mate_replies r JOIN messages m ON m.id=r.message_id
-                                WHERE m.mate_id=? AND json_extract(activity,'$.task_id')=? AND json_extract(activity,'$.turn_id')=?
-                                ORDER BY (json_extract(activity,'$.kind') IN ('done','failed')) DESC,
-                                    json_extract(activity,'$.observed_at') DESC,r.seq DESC LIMIT 1""",
-                                (row["mate_id"], activity["task_id"], activity["turn_id"])).fetchone()
-                        publish_args = (["publish-child", row["mate_id"], row["home"], self.db_path,
+                        publish_args = ["publish-child", row["mate_id"], row["home"], self.db_path,
                             activity_child_id(activity), activity["kind"], str(row["seq"]),
-                            terminal_text(activity["summary"])[:800], relative] if current["seq"] == row["seq"] else None)
+                            terminal_text(activity["summary"])[:800], relative]
                     else:
                         publish_args = None
                 if publish_args:
