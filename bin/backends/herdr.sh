@@ -319,7 +319,7 @@ fm_backend_herdr_presentation_floor_warn() {  # <state-dir> <verdict>
       fi
     fi
   fi
-  echo "warning: $reason; using the ordinary flat layout instead. Upgrade herdr to $FM_BACKEND_HERDR_MIN_PRESENTATION_VERSION or newer (herdr update) to restore the projection, or write \"on\" into config/$FM_BACKEND_HERDR_PRESENTATION_CONFIG to force it on this release." >&2
+  echo "warning: $reason; isolated workspace placement requires presentation spaces. Upgrade herdr to $FM_BACKEND_HERDR_MIN_PRESENTATION_VERSION or newer (herdr update) to restore the projection, or write \"on\" into config/$FM_BACKEND_HERDR_PRESENTATION_CONFIG to force it on this release." >&2
   return 0
 }
 
@@ -339,7 +339,7 @@ fm_backend_herdr_presentation_default_supported() {  # <state-dir> [<session>]
 # disposable one-task workspaces (docs/herdr-backend.md "Presentation spaces"
 # owns the full contract). An explicit "off" or "on" is obeyed as written; a
 # home that configured nothing is projected only at or above the version floor,
-# and otherwise falls back to the flat layout with one warning. Sets
+# and otherwise refuses worker placement with one warning. Sets
 # FM_BACKEND_HERDR_PRESENTATION_PREFERENCE for the new-projection boundary to
 # distinguish an unconfigured default from an explicit opt-in.
 fm_backend_herdr_presentation_enabled() {  # <config-dir> [<state-dir>]
@@ -3046,10 +3046,9 @@ fm_backend_herdr_projection_reclaim_rollback() {  # <session> <new-pane>
 # fm_backend_herdr_projection_reclaim_task: replace one exact agent-free
 # restored projection husk inside its original workspace.
 # The caller holds the session presentation lock and has already established
-# that flat fallback is safe across every token match.
+# that every token match is dead or agent-free.
 # Return 0 means exact reclaim, 2 means non-mutating or exactly rolled-back
-# refusal with flat fallback permitted, and 1 means a live/unknown or
-# post-mutation uncertainty that must refuse the launch.
+# refusal, and 1 means a live/unknown or post-mutation uncertainty.
 fm_backend_herdr_projection_reclaim_task() {  # <session> <journal> <task-id> <home> <meta-workspace> <meta-tab> <meta-pane> <parent-label> <task-label> <cwd>
   local session=$1 journal=$2 id=$3 home=$4 meta_workspace=$5 meta_tab=$6 meta_pane=$7
   local parent_label=$8 task_label=$9 cwd=${10} canonical_home state focus_before active_tab out new_tab new_pane info close_status
@@ -3057,11 +3056,11 @@ fm_backend_herdr_projection_reclaim_task() {  # <session> <journal> <task-id> <h
   FM_BACKEND_HERDR_PROJECTION_PANE_ID=""
   fm_backend_herdr_projection_journal_snapshot "$journal" "$id" || return 1
   if [ "$FM_BACKEND_HERDR_JOURNAL_VERSION" != 2 ]; then
-    echo "warning: herdr presentation journal for $id has no exact restart binding; spawning flat" >&2
+    echo "warning: herdr presentation journal for $id has no exact restart binding; refusing isolated workspace placement" >&2
     return 2
   fi
   canonical_home=$(fm_backend_herdr_projection_home_identity "$home") || {
-    echo "warning: herdr presentation home for $id could not be resolved exactly; spawning flat" >&2
+    echo "warning: herdr presentation home for $id could not be resolved exactly; refusing isolated workspace placement" >&2
     return 2
   }
   if [ "$FM_BACKEND_HERDR_JOURNAL_HOME" != "$canonical_home" ] \
@@ -3071,7 +3070,7 @@ fm_backend_herdr_projection_reclaim_task() {  # <session> <journal> <task-id> <h
      || [ "$FM_BACKEND_HERDR_JOURNAL_PANE_ID" != "$meta_pane" ] \
      || [ "$FM_BACKEND_HERDR_JOURNAL_PARENT_LABEL" != "$parent_label" ] \
      || [ "$FM_BACKEND_HERDR_JOURNAL_TASK_LABEL" != "$task_label" ]; then
-    echo "warning: herdr presentation binding for $id does not match its exact home, endpoint, or parent; spawning flat" >&2
+    echo "warning: herdr presentation binding for $id does not match its exact home, endpoint, or parent; refusing isolated workspace placement" >&2
     return 2
   fi
   if ! fm_backend_herdr_projection_live_binding_matches \
@@ -3079,14 +3078,14 @@ fm_backend_herdr_projection_reclaim_task() {  # <session> <journal> <task-id> <h
     "$meta_workspace" "$meta_tab" "$meta_pane" \
     "$FM_BACKEND_HERDR_JOURNAL_PARENT_WORKSPACE_ID" "$parent_label" \
     "$FM_BACKEND_HERDR_JOURNAL_WORKSPACE_LABEL" "$task_label"; then
-    echo "warning: herdr presentation binding for $id has an ambiguous, renamed, foreign, or non-nested live shape; spawning flat" >&2
+    echo "warning: herdr presentation binding for $id has an ambiguous, renamed, foreign, or non-nested live shape; refusing isolated workspace placement" >&2
     return 2
   fi
   state=$(fm_backend_herdr_pane_agent_state "$session" "$meta_pane")
   case "$state" in
     no-agent) ;;
     dead)
-      echo "warning: exact herdr presentation pane for $id is gone; spawning flat" >&2
+      echo "warning: exact herdr presentation pane for $id is gone; refusing isolated workspace placement" >&2
       return 2
       ;;
     live|stale-agent|unknown)
@@ -3095,25 +3094,25 @@ fm_backend_herdr_projection_reclaim_task() {  # <session> <journal> <task-id> <h
       ;;
   esac
   focus_before=$(fm_backend_herdr_projection_focus_snapshot "$session") || {
-    echo "warning: herdr presentation reclaim for $id could not capture exact focus; spawning flat" >&2
+    echo "warning: herdr presentation reclaim for $id could not capture exact focus; refusing isolated workspace placement" >&2
     return 2
   }
   active_tab=${focus_before#*$'\t'}
   if [ "$active_tab" = "$meta_tab" ]; then
-    echo "warning: herdr presentation reclaim for $id would replace the active tab; spawning flat" >&2
+    echo "warning: herdr presentation reclaim for $id would replace the active tab; refusing isolated workspace placement" >&2
     return 2
   fi
   if ! out=$(fm_backend_herdr_cli "$session" tab create \
     --workspace "$meta_workspace" --cwd "$cwd" --label "$task_label" --no-focus 2>/dev/null); then
     fm_backend_herdr_projection_focus_restore "$session" "$focus_before" "husk replacement create" || return 1
-    echo "warning: herdr presentation reclaim for $id could not create an exact replacement; spawning flat" >&2
+    echo "warning: herdr presentation reclaim for $id could not create an exact replacement; refusing isolated workspace placement" >&2
     return 2
   fi
   new_tab=$(printf '%s' "$out" | jq -r '.result.tab.tab_id // empty' 2>/dev/null)
   new_pane=$(printf '%s' "$out" | jq -r '.result.root_pane.pane_id // empty' 2>/dev/null)
   if [ -z "$new_tab" ] || [ -z "$new_pane" ]; then
     fm_backend_herdr_projection_focus_restore "$session" "$focus_before" "husk replacement create" || return 1
-    echo "warning: herdr presentation reclaim for $id returned ambiguous replacement ids; spawning flat" >&2
+    echo "warning: herdr presentation reclaim for $id returned ambiguous replacement ids; refusing isolated workspace placement" >&2
     return 2
   fi
   fm_backend_herdr_projection_focus_restore "$session" "$focus_before" "husk replacement create" || return 1
@@ -3122,7 +3121,7 @@ fm_backend_herdr_projection_reclaim_task() {  # <session> <journal> <task-id> <h
     .result.tab.tab_id == $tab and .result.tab.workspace_id == $workspace
   ' >/dev/null 2>&1; then
     fm_backend_herdr_projection_reclaim_rollback "$session" "$new_pane" || return 1
-    echo "warning: herdr presentation reclaim for $id could not verify its replacement tab; spawning flat" >&2
+    echo "warning: herdr presentation reclaim for $id could not verify its replacement tab; refusing isolated workspace placement" >&2
     return 2
   fi
   info=$(fm_backend_herdr_cli "$session" pane get "$new_pane" 2>/dev/null) || info=
@@ -3132,7 +3131,7 @@ fm_backend_herdr_projection_reclaim_task() {  # <session> <journal> <task-id> <h
     and .result.pane.workspace_id == $workspace
   ' >/dev/null 2>&1; then
     fm_backend_herdr_projection_reclaim_rollback "$session" "$new_pane" || return 1
-    echo "warning: herdr presentation reclaim for $id could not verify its replacement pane; spawning flat" >&2
+    echo "warning: herdr presentation reclaim for $id could not verify its replacement pane; refusing isolated workspace placement" >&2
     return 2
   fi
   state=$(fm_backend_herdr_pane_agent_state "$session" "$meta_pane")
@@ -3145,7 +3144,7 @@ fm_backend_herdr_projection_reclaim_task() {  # <session> <journal> <task-id> <h
       ;;
     dead)
       fm_backend_herdr_projection_reclaim_rollback "$session" "$new_pane" || return 1
-      echo "warning: herdr presentation pane for $id disappeared during reclaim; spawning flat" >&2
+      echo "warning: herdr presentation pane for $id disappeared during reclaim; refusing isolated workspace placement" >&2
       return 2
       ;;
   esac
@@ -3166,7 +3165,7 @@ fm_backend_herdr_projection_reclaim_task() {  # <session> <journal> <task-id> <h
         return 1
         ;;
     esac
-    echo "warning: herdr presentation reclaim for $id could not close the exact old husk; spawning flat" >&2
+    echo "warning: herdr presentation reclaim for $id could not close the exact old husk; refusing isolated workspace placement" >&2
     return 2
   fi
   if [ "$(fm_backend_herdr_pane_agent_state "$session" "$meta_pane")" != dead ]; then
@@ -3179,13 +3178,13 @@ fm_backend_herdr_projection_reclaim_task() {  # <session> <journal> <task-id> <h
     "$FM_BACKEND_HERDR_JOURNAL_PARENT_WORKSPACE_ID" "$parent_label" \
     "$FM_BACKEND_HERDR_JOURNAL_WORKSPACE_LABEL" "$task_label"; then
     fm_backend_herdr_projection_reclaim_rollback "$session" "$new_pane" || return 1
-    echo "warning: herdr presentation reclaim for $id did not converge exactly; spawning flat" >&2
+    echo "warning: herdr presentation reclaim for $id did not converge exactly; refusing isolated workspace placement" >&2
     return 2
   fi
   if ! fm_backend_herdr_projection_journal_replace_endpoint \
     "$journal" "$id" "$meta_tab" "$meta_pane" "$new_tab" "$new_pane"; then
     fm_backend_herdr_projection_reclaim_rollback "$session" "$new_pane" || return 1
-    echo "warning: herdr presentation reclaim for $id could not publish its replacement binding; spawning flat" >&2
+    echo "warning: herdr presentation reclaim for $id could not publish its replacement binding; refusing isolated workspace placement" >&2
     return 2
   fi
   FM_BACKEND_HERDR_PROJECTION_TAB_ID=$new_tab
@@ -3196,9 +3195,8 @@ fm_backend_herdr_projection_reclaim_task() {  # <session> <journal> <task-id> <h
 # fm_backend_herdr_projection_recovery_allows_flat: inspect an existing
 # journal's exact token matches without adopting, reusing, renaming, closing,
 # or deleting anything.
-# Missing matches safely degrade to the normal flat workspace.
-# One or more matches allow flat fallback only when every pane is positively
-# dead or agent-free; a live or unknown pane refuses a duplicate launch.
+# Every matching pane must be positively dead or agent-free before exact
+# recovery; a live or unknown pane refuses a duplicate launch.
 fm_backend_herdr_projection_recovery_allows_flat() {  # <session> <journal> <task-id>
   local session=$1 journal=$2 id=$3 token list wsids count wsid panes pane_ids pane state
   token=$(fm_backend_herdr_projection_journal_token "$journal" "$id") || {
@@ -3221,7 +3219,7 @@ fm_backend_herdr_projection_recovery_allows_flat() {  # <session> <journal> <tas
     '.result.workspaces[]? | select((.label | type) == "string" and (.label | endswith($suffix))) | .workspace_id' 2>/dev/null)
   count=$(printf '%s\n' "$wsids" | awk 'NF { n += 1 } END { print n + 0 }')
   if [ "$count" -eq 0 ]; then
-    echo "warning: no exact herdr presentation token match for $id; leaving any stale space untouched and spawning flat" >&2
+    echo "warning: no exact herdr presentation token match for $id; leaving any stale space untouched without authorizing new placement" >&2
     return 0
   fi
   if [ "$count" -gt 1 ]; then
@@ -3254,7 +3252,7 @@ EOF
   done <<EOF
 $wsids
 EOF
-  echo "warning: quarantined herdr presentation for $id is dead or agent-free; exact bound reclaim may proceed, otherwise spawning flat" >&2
+  echo "warning: quarantined herdr presentation for $id is dead or agent-free; exact bound reclaim may proceed, otherwise launch must refuse" >&2
   return 0
 }
 
