@@ -157,7 +157,7 @@ Rename it manually before expecting new tasks or recovery to use it.
 
 Recovery and list-live still scan the first workspace matching the home label, because they address panes they already recorded rather than choosing where new work goes.
 The one recovery that does place new work is the control plane's reclaim of a destroyed endpoint.
-It mints a replacement tab through this section's ordinary placement rules while pinning the herdr session the task's record names ([`agent-control.md`](agent-control.md) "Reclaiming a task whose endpoint is gone").
+It pins the herdr session the task's record names, and creates the replacement in a fresh one-task workspace when the home projects tasks ([Presentation spaces](#presentation-spaces)), or as a tab through this section's ordinary placement rules otherwise ([`agent-control.md`](agent-control.md) "Reclaiming a task whose endpoint is gone").
 
 Existing task operations use recorded endpoint ids and do not move a live task when labels change.
 The per-home workspace is reused while it has task tabs.
@@ -247,7 +247,8 @@ An unconverged opt-out keeps the default projection in that home until convergen
 Presentation is a best-effort visual projection, never task ownership or lifecycle authority.
 A presentation journal is the per-task record in this home's `state/` that binds a task to its projected workspace.
 
-Only a fresh task with neither metadata nor an existing presentation journal is eligible for projected creation.
+Only a fresh task with neither metadata nor an existing presentation journal is eligible for projected creation, plus the reclaim of a task whose recorded endpoint is proven gone.
+That reclaim first retires the task's previous journal, and only once the workspace it names is confirmed gone; a workspace still standing or unreadable keeps the reclaim flat.
 Creation proceeds in this order:
 
 1. Firstmate atomically publishes a three-field version 1 journal containing a random 128-bit base64url token, before asking Herdr to create anything.

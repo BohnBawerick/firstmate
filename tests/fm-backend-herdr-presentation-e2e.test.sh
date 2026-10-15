@@ -524,7 +524,7 @@ mkdir -p "$HOME_DIR/state" "$HOME_DIR/config" \
   "$HOME_DIR/data/order-fail" "$HOME_DIR/data/fm-hibit-resume-r1" \
   "$HOME_DIR/data/wheelhouse-healing-r1"
 mkdir -p "$HOME_DIR/data/active-seeded" "$HOME_DIR/data/abort-a" "$HOME_DIR/data/abort-b" \
-  "$HOME_DIR/data/lock-contended" "$HOME_DIR/data/lock-waited" "$HOME_DIR/data/default-on"
+  "$HOME_DIR/data/lock-contended" "$HOME_DIR/data/lock-waited" "$HOME_DIR/data/reclaim-proj" "$HOME_DIR/data/default-on"
 touch "$HOME_DIR/state/.last-watcher-beat"
 # Presentation spaces are on by default, so the flat baseline below opts out
 # explicitly; the projected cases each restate the setting they exercise.
@@ -541,6 +541,7 @@ write_ship_brief "$HOME_DIR" abort-a 'Projection abort fixture A.'
 write_ship_brief "$HOME_DIR" abort-b 'Projection abort fixture B.'
 write_ship_brief "$HOME_DIR" lock-contended 'Projection lock contention fixture.'
 write_ship_brief "$HOME_DIR" lock-waited 'Projection lock wait fixture.'
+write_ship_brief "$HOME_DIR" reclaim-proj 'Projection reclaim fixture.'
 write_ship_brief "$HOME_DIR" default-on 'Projection default-on fixture.'
 make_project "$PROJECT_DIR"
 make_project "$RECOVERY_PROJECT_DIR"
@@ -809,6 +810,41 @@ pass "real Herdr lab: a spawn started while another holds the presentation lock 
 # The ordering scenarios below read the move log cumulatively against the
 # projected workspaces still live, so the retired one's move is dropped again.
 cp "$TMP_ROOT/move-log-before-lock-waited" "$MOVE_CALL_LOG"
+
+# Reclaiming a task whose endpoint is gone (a reboot or an external close) puts
+# the replacement in its own one-task workspace, exactly as a fresh spawn does,
+# never in a tab of the firstmate workspace.
+cp "$MOVE_CALL_LOG" "$TMP_ROOT/move-log-before-reclaim"
+spawn_task reclaim-proj "$HOME_DIR" "$PROJECT_DIR" > "$TMP_ROOT/reclaim-proj.out" 2> "$TMP_ROOT/reclaim-proj.err" \
+  || fail "projected reclaim fixture spawn failed: $(cat "$TMP_ROOT/reclaim-proj.err")"
+RECLAIM_META="$HOME_DIR/state/reclaim-proj.meta"
+remember_meta_worktree "$RECLAIM_META" >/dev/null
+RECLAIM_OLD_PANE=$(grep '^herdr_pane_id=' "$RECLAIM_META" | cut -d= -f2-)
+RECLAIM_OLD_WSID=$(grep '^herdr_workspace_id=' "$RECLAIM_META" | cut -d= -f2-)
+[ -n "$RECLAIM_OLD_PANE" ] && [ "$RECLAIM_OLD_WSID" != "$FIRSTMATE_WSID" ] \
+  || fail "the reclaim fixture was not projected to begin with"
+lab pane close "$RECLAIM_OLD_PANE" >/dev/null || fail "could not destroy the reclaim fixture's endpoint"
+FM_GATE_REFUSE_BYPASS=1 FM_SPAWN_NO_GUARD=1 FM_HOME="$HOME_DIR" FM_ROOT_OVERRIDE="$ROOT" \
+  "$ROOT/bin/fm-spawn.sh" reclaim-proj --relaunch --harness "sh -c 'while :; do sleep 60; done'" \
+  > "$TMP_ROOT/reclaim-proj-relaunch.out" 2> "$TMP_ROOT/reclaim-proj-relaunch.err" \
+  || fail "reclaiming a projected task whose endpoint is gone failed: $(cat "$TMP_ROOT/reclaim-proj-relaunch.err")"
+RECLAIM_NEW_PANE=$(grep '^herdr_pane_id=' "$RECLAIM_META" | cut -d= -f2-)
+RECLAIM_NEW_WSID=$(grep '^herdr_workspace_id=' "$RECLAIM_META" | cut -d= -f2-)
+[ -n "$RECLAIM_NEW_PANE" ] && [ "$RECLAIM_NEW_PANE" != "$RECLAIM_OLD_PANE" ] \
+  || fail "the reclaim did not rebind the task to a fresh endpoint"
+[ -n "$RECLAIM_NEW_WSID" ] && [ "$RECLAIM_NEW_WSID" != "$FIRSTMATE_WSID" ] \
+  || fail "the reclaim put the replacement in a tab of the firstmate workspace instead of its own workspace"
+RECLAIM_JOURNAL="$HOME_DIR/state/reclaim-proj.herdr-presentation"
+[ "$(grep '^pane_id=' "$RECLAIM_JOURNAL" 2>/dev/null | cut -d= -f2-)" = "$RECLAIM_NEW_PANE" ] \
+  || fail "the reclaim did not bind its presentation journal to the replacement endpoint"
+assert_focus_is "$CAPTAIN_FOCUS" "projected reclaim"
+teardown_task reclaim-proj "$HOME_DIR" > "$TMP_ROOT/reclaim-proj-teardown.out" 2> "$TMP_ROOT/reclaim-proj-teardown.err" \
+  || fail "projected reclaim fixture teardown failed: $(cat "$TMP_ROOT/reclaim-proj-teardown.err")"
+if lab workspace get "$RECLAIM_NEW_WSID" >/dev/null 2>&1; then
+  fail "projected reclaim teardown left its disposable workspace behind"
+fi
+cp "$TMP_ROOT/move-log-before-reclaim" "$MOVE_CALL_LOG"
+pass "real Herdr lab: reclaiming a task whose endpoint is gone gives the replacement its own workspace"
 PROJECTION_ORDER_START=$(log_line_count)
 
 [ "$OFF_WT" = "$ON_WT" ] || fail "Treehouse did not reuse the same fixture worktree, so byte comparison is inconclusive"
