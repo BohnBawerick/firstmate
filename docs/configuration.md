@@ -1074,6 +1074,8 @@ When a file is present, every launch of that runner from this home uses it: ship
 A raw Claude launch command refuses if its leading assignments set `CLAUDE_CONFIG_DIR` or a credential that a pinned launch unsets, such as `ANTHROPIC_API_KEY`.
 The assignment would override the pin.
 The refusal names the variable; remove that assignment from the raw command, or change or remove `config/claude-account`.
+While either file is present, a raw launch command must be plain `[NAME=value ...] claude|pi|pi-signed <arguments>`.
+A wrapper such as `env`, `command`, `exec`, or `bash -c`, any other runner, or shell control or expansion syntax refuses, because Firstmate cannot prove which runner such a command starts.
 
 Before any worker endpoint, local copy, or task record exists, and before a relaunch stops the running worker, Firstmate asks the runner itself whether the pinned account is signed in: `claude auth status` for Claude, and `pi auth check --provider <provider> --json --no-refresh` for Pi, falling back to `pi --list-models <provider>` for a provider an extension registers.
 The check runs with only `HOME`, `PATH`, `TMPDIR`, `USER`, `LOGNAME`, and the pinned root in its environment, so a credential variable in firstmate's own environment cannot answer for an empty root.

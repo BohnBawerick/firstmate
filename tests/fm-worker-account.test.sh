@@ -359,6 +359,38 @@ test_raw_claude_account_override_is_kept_without_a_pin() {
   pass "an unpinned home keeps a raw Claude account override"
 }
 
+test_raw_launch_without_a_provable_runner_refuses_under_a_pin() {
+  local out rc id=acct-raw-wrapped raw n=0
+  new_case raw-wrapped claude
+  signed_in_claude_root "$CASE/work"
+  signed_in_claude_root "$CASE/other"
+  printf '%s\n' "$CASE/work" > "$HOME_DIR/config/claude-account"
+  for raw in "env CLAUDE_CONFIG_DIR=$CASE/other claude --print raw" \
+    "command claude --print raw" \
+    "exec claude --print raw" \
+    "bash -c 'claude --print raw'" \
+    "claude --print raw; CLAUDE_CONFIG_DIR=$CASE/other claude --print raw" \
+    "claude --print \$(echo raw)"; do
+    n=$((n + 1))
+    out=$(spawn_ship "$id-$n" --harness "$raw"); rc=$?
+    expect_code 1 "$rc" "a raw launch whose runner cannot be proven must refuse under a pin: $raw"
+    assert_refused_before_launch "$id-$n" "$out" "cannot prove which runner"
+  done
+  assert_absent "$CASE/claude-worker" "a refused wrapped raw launch must never start Claude"
+
+  new_case raw-wrapped-pi pi
+  mkdir -p "$CASE/pi-work"
+  printf '%s\nopenai-codex\n' "$CASE/pi-work" > "$HOME_DIR/config/pi-account"
+  out=$(spawn_ship "$id-pi" --harness "env PI_CODING_AGENT_DIR=$CASE/other pi --model openai-codex/gpt-5.5"); rc=$?
+  expect_code 1 "$rc" "a wrapped raw Pi launch must refuse under a Pi pin"
+  assert_refused_before_launch "$id-pi" "$out" "cannot prove which runner"
+
+  new_case raw-wrapped-unpinned claude
+  out=$(spawn_ship "$id-unpinned" --harness "env FOO=1 claude --print raw"); rc=$?
+  expect_code 0 "$rc" "an unpinned home should accept a wrapped raw launch: $out"
+  pass "a pinned home refuses a raw launch whose effective runner it cannot prove"
+}
+
 test_local_secondmate_reads_the_launching_home_pin() {
   local out rc id=acct-sm sm
   new_case secondmate claude
@@ -396,6 +428,7 @@ test_a_pin_governs_only_its_own_runner
 test_raw_claude_command_receives_the_pin
 test_raw_claude_account_override_refuses_under_a_pin
 test_raw_claude_account_override_is_kept_without_a_pin
+test_raw_launch_without_a_provable_runner_refuses_under_a_pin
 test_local_secondmate_reads_the_launching_home_pin
 
 echo "# all fm-worker-account tests passed"

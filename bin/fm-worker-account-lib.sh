@@ -217,6 +217,31 @@ fm_worker_account_check() {
   return 0
 }
 
+# fm_worker_account_raw_runner_proven <harness> <config-dir> <raw-command>
+# A raw launch command's runner is read from its first word after leading
+# NAME=value assignments, so a wrapper such as env, command, exec, or bash -c,
+# or a second command after shell syntax, would start a pinned runner that the
+# pin never sees. When this home has either pin file, a raw command must
+# therefore be plain `[NAME=value ...] claude|pi|pi-signed <args>` with no
+# shell control or expansion characters; anything else refuses, because
+# Firstmate cannot prove which runner it starts. Without a pin it returns 0.
+fm_worker_account_raw_runner_proven() {
+  local harness=$1 config=$2 raw=$3
+  [ -n "$raw" ] || return 0
+  [ -e "$config/claude-account" ] || [ -L "$config/claude-account" ] ||
+    [ -e "$config/pi-account" ] || [ -L "$config/pi-account" ] || return 0
+  case "$raw" in
+  *[\;\&\|\<\>\(\)\`\$\\]* | *$'\n'*) ;;
+  *)
+    case "$harness" in
+    claude | pi | pi-signed) return 0 ;;
+    esac
+    ;;
+  esac
+  echo "error: this home pins worker accounts (config/claude-account or config/pi-account), and Firstmate cannot prove which runner the raw launch command starts, so a wrapper or shell syntax could bypass the pin: $raw; under a pin a raw launch must be plain [NAME=value ...] claude|pi|pi-signed <arguments>, or launch with --harness <name>" >&2
+  return 1
+}
+
 # fm_worker_account_select <harness> <config-dir> <model> <executable> [<raw-command>]
 # The whole launch-time decision. Prints nothing for an unpinned runner, so
 # the caller keeps today's launch unchanged. For a pinned one prints
@@ -227,6 +252,7 @@ fm_worker_account_check() {
 # agent.
 fm_worker_account_select() {
   local harness=$1 config=$2 model=$3 executable=$4 raw=${5:-} selection declared root providers word provider=
+  fm_worker_account_raw_runner_proven "$harness" "$config" "$raw" || return 1
   selection=$(fm_worker_account_resolve "$harness" "$config") || return 1
   [ -n "$selection" ] || return 0
   declared=${selection%%$'\t'*}
