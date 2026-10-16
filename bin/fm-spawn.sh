@@ -3746,14 +3746,9 @@ BRIEF_REAL="$BRIEF_DIR_REAL/$(basename "$BRIEF")"
 # (docs/herdr-backend.md "Known gaps").
 PROJ_ABS_REAL=$(fm_canonical_dir "$PROJ_ABS")
 
-# Session-provider container-ensure + task creation. tmux stays exactly as P1
-# left it (same session-name / new-window sequence, see bin/backends/tmux.sh);
-# a herdr spawn goes through the version-gated, workspace-per-HOME,
-# tab-per-task sequence in bin/backends/herdr.sh instead (D4/D5 as refined by
-# docs/herdr-backend.md's "workspace-per-home" pass, AGENTS.md task
-# herdr-sm-spaces-k4). Both branches converge on the same $T ("target") string
-# that every downstream operation (send/capture/kill) already treats as opaque
-# per-backend routing (fm_backend_resolve_selector).
+# Each session-provider branch returns an opaque $T target for downstream
+# send/capture/kill calls through fm_backend_resolve_selector.
+# Herdr placement is owned by docs/herdr-backend.md "Presentation spaces".
 
 # True when <path> is an isolated worktree of the spawning project: a real
 # directory that is its own worktree root, is not the spawning project itself,

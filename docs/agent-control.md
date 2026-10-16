@@ -100,7 +100,7 @@ The task's worktree, branch, commits, and uncommitted changes all survive that; 
 
 **Reclaim is Herdr-only.** On tmux, both verbs refuse a `missing` endpoint, leaving it exactly as deadlocked as it was before this mechanism existed - deliberately, and with the reason stated rather than guessed past.
 
-Two endpoint verdicts are agent-free, and both license a relaunch:
+Two endpoint verdicts are agent-free and let relaunch proceed to its remaining checks:
 
 - `dead` - the endpoint exists and confidently holds no agent. It is **adopted**, so the task keeps its exact recorded address.
 - gone, **proven** - there is no endpoint and therefore no agent, and it cannot be adopted, so the launch owner **creates one fresh endpoint in the recorded worktree** and the republished record rebinds the task to it.

@@ -156,7 +156,7 @@ Rename it manually before expecting new tasks or recovery to use it.
 
 ### Recovery and existing tasks
 
-Recovery and list-live still scan the first workspace matching the home label, because they address panes they already recorded rather than choosing where new work goes.
+Legacy orphan discovery through list-live still scans the first workspace matching the home label.
 The one recovery that does place new work is the control plane's reclaim of a destroyed endpoint.
 It pins the herdr session the task's record names and follows the same [isolated workspace contract](#presentation-spaces) as fresh creation ([`agent-control.md`](agent-control.md) "Reclaiming a task whose endpoint is gone").
 
@@ -365,8 +365,8 @@ Once the exact pane is confirmed gone, teardown retires the task's own journal w
 
 ### Restart recovery
 
-Recovery is deliberately conservative and presentation-only.
-An existing journal suppresses another projected create.
+This section covers exact husk replacement through an existing presentation journal.
+For direct relaunch and dead-endpoint reclaim, see [Recovery and existing tasks](#recovery-and-existing-tasks).
 Before any recovery mutation, Firstmate holds both the task spawn lock and the named-session presentation lock.
 That presentation lock lives in a namespace private to the OS account, so another account on the same host running its own Firstmate on Herdr cannot block this account's spawn, recovery, or teardown.
 A namespace at this account's name that another account owns, or that is not mode 700, is still refused and is never adopted, chowned, or removed.
@@ -461,7 +461,7 @@ Any of these preserves the candidate and lets session startup continue with at m
 ### Operational compromises
 
 - Grouping is best-effort; only an exact same-identity version 2 binding survives a Herdr restart in place.
-- A failed journal publication or projected workspace create stops that spawn.
+- A failed initial journal publication or projected workspace create stops that spawn.
   An unavailable session server, contended presentation lock, or ambiguous parent also refuses placement.
 - Recovery of an existing presentation journal refuses by default when the shared presentation lock is contended, rather than falling back flat.
   [The spawn header](../bin/fm-spawn.sh) owns lock-wait bounds and the exact-resume wait opt-in.
