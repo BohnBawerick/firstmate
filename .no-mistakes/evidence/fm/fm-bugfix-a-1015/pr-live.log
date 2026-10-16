@@ -1,0 +1,11 @@
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+armed: state/poll.check.sh
+check: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/pr-home/state/poll.check.sh: merged
+[2026-10-16T09:01:53+0800] re-recorded PR poll identity for poll after its state volume device number changed
+[2026-10-16T09:01:55+0800] no matching persisted merge authority for poll; recording an external merge outcome

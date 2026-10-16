@@ -1,0 +1,24 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+teardown: reaping leaked worktree process(es) for coder: 3082107 3086227
+teardown: force-killing leaked worktree process(es) for coder: 3082107
+A new version of treehouse is available: v3.1.3 → v3.1.4
+Run "treehouse update" to update
+
+🌳 Worktree returned to pool.
+warning: herdr presentation journal for coder was not retired by its close; no workspace cleanup was attempted
+teardown coder complete (window fm-lab-bundle-a-1783867-27742:w9:p2, worktree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/project-7db4a9/1/project)
+Backlog: coder just finished (this home keeps no markdown backlog at /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/data/backlog.md). Update /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/data/backlog.md - move coder to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+teardown: reaping leaked worktree process(es) for clauder: 2033359 2041449
+teardown: force-killing leaked worktree process(es) for clauder: 2033359
+A new version of treehouse is available: v3.1.3 → v3.1.4
+Run "treehouse update" to update
+
+🌳 Worktree returned to pool.
+teardown clauder complete (window fm-lab-bundle-a-1783867-27742:w3:p2, worktree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/project-7db4a9/2/project)
+Backlog: clauder just finished (this home keeps no markdown backlog at /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/data/backlog.md). Update /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/data/backlog.md - move clauder to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+teardown mate complete (window fm-lab-bundle-a-1783867-27742:w7:p2, worktree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/mate-home)

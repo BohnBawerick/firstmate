@@ -1,0 +1,4 @@
+ok - fm-teardown: a pool slot named by a second task record is never returned, killed, or reset
+ok - fm-teardown: a pool slot held by another firstmate home is never returned
+ok - fm-teardown: a stale record on a claimed slot retires, then the claimant tears down
+ok - fm-teardown: a task's own slot claim, and an unclaimed slot, both still tear down

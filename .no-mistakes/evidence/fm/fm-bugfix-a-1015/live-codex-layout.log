@@ -1,0 +1,34 @@
+window=fm-lab-bundle-a-1783867-27742:w2:p2
+endpoint_task_id=coder
+worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/project-7db4a9/1/project
+project=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/project
+harness=codex
+kind=scout
+tasktmp=/tmp/fm-coder
+model=default
+effort=default
+spawn_gen=s1792111651.1807278.30279
+backend=herdr
+herdr_session=fm-lab-bundle-a-1783867-27742
+herdr_workspace_id=w2
+herdr_tab_id=w2:t2
+herdr_pane_id=w2:p2
+{"id":"cli:workspace:list","result":{"type":"workspace_list","workspaces":[{"active_tab_id":"w1:t1","agent_status":"unknown","focused":true,"label":"firstmate","number":1,"pane_count":1,"tab_count":1,"workspace_id":"w1"},{"active_tab_id":"w2:t2","agent_status":"blocked","focused":false,"label":"└ coder · p:WXia81fbCwYalmL932A4Gw","number":2,"pane_count":1,"tab_count":1,"workspace_id":"w2"}]}}
+{"id":"cli:tab:list","result":{"tabs":[{"agent_status":"blocked","focused":false,"label":"fm-coder","number":2,"pane_count":1,"tab_id":"w2:t2","workspace_id":"w2"}],"type":"tab_list"}}
+{"id":"cli:pane:list","result":{"panes":[{"agent":"codex","agent_status":"blocked","cwd":"/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/project","focused":false,"foreground_cwd":"/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/project-7db4a9/1/project","pane_id":"w2:p2","revision":1,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":40},"tab_id":"w2:t2","terminal_id":"term_65dea823084c13","terminal_title":"bohn@blade-omarchy:~/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/project-7db4a9/1/project","terminal_title_stripped":"bohn@blade-omarchy:~/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/project-7db4a9/1/project","workspace_id":"w2"}],"type":"pane_list"}}
+
+  Folder access
+  /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/project
+  -7db4a9/1/project
+
+  Note: You’re in a subdirectory of a Git project. Trusting will apply to the repository root:
+  /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/project
+
+  Trust this folder? Codex can read, edit, and run files here, subject to your permission settings. Folder settings
+  can run code automatically, even without a model request. Continue only if you trust these files. Your trust
+  decision will be saved.
+
+› 1. Trust and continue
+  2. Quit
+
+  enter continue · esc quit

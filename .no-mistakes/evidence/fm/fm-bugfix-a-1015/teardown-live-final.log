@@ -1,0 +1,22 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+REFUSED: task ctracked's recorded worktree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/project-7db4a9/3/project is also task superseded's recorded worktree.
+Returning that pool slot would kill superseded's processes and reset its copy, so nothing was changed - not even with --force.
+Reconcile whichever record is wrong (bin/fm-crew-state.sh ctracked; bin/fm-crew-state.sh superseded), then re-run teardown.
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+warning: task superseded's recorded worktree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/project-7db4a9/3/project was reassigned to task ctracked (home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z), which claimed that pool slot after this record was written; that slot is no longer superseded's, so its processes, copy, and claim are left untouched and only superseded's own cleanup runs.
+teardown superseded complete (window fm-lab-bundle-a-1783867-27742:w999:p999; pool slot /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/project-7db4a9/3/project left to task ctracked (home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z), which it was reassigned to)
+Backlog: superseded just finished (this home keeps no markdown backlog at /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/data/backlog.md). Update /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/data/backlog.md - move superseded to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+teardown: reaping leaked worktree process(es) for ctracked: 2976026 2980583
+teardown: force-killing leaked worktree process(es) for ctracked: 2976026
+A new version of treehouse is available: v3.1.3 → v3.1.4
+Run "treehouse update" to update
+
+🌳 Worktree returned to pool.
+warning: herdr presentation journal for ctracked was not retired by its close; no workspace cleanup was attempted
+teardown ctracked complete (window fm-lab-bundle-a-1783867-27742:w8:p2, worktree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/project-7db4a9/3/project)
+Backlog: ctracked just finished (this home keeps no markdown backlog at /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/data/backlog.md). Update /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/data/backlog.md - move ctracked to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+Returned pool copy keeps tracked settings and has no tracked deletion

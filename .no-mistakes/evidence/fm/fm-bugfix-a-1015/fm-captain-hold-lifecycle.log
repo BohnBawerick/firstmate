@@ -1,0 +1,107 @@
+ok - archived legacy identities verify with explicit, default, and absent local archive configuration
+ok - marked hold reasons round-trip through public reads, fleet, startup, and return without changing other fields
+ok - new, active, and released holds require the origin first with and without deferral
+ok - historical self-inventories name a workable repair that preserves sibling entries
+ok - completion and verification compare backend identities for entries and current or stored origins
+ok - complete refuses the origin as its own captain-call inventory
+ok - complete refuses an entry held for another origin and flags one with none recorded
+ok - report-only unresolved captain call is reproduced and completion refuses before loss
+ok - both body-decoding paths work without the allow_nonref default
+ok - Lavish list-form feedback preserves annotations, choices, attachments, and incomplete captures
+ok - cleanup preserves every byte of a retained body's non-ASCII characters
+ok - the completion gate attests captain-held inventory and transfers open status decisions
+ok - answer records the captain's words, closes idempotently, and releases routed work
+ok - verify accepts an answered captain call that Done retention archived
+ok - verify still refuses an archived captain call that was never answered
+ok - release frees held work with the captain's words recorded and the body preserved
+ok - captain holds become visible only after their hold-set timestamp is durable
+ok - an interrupted answer preserves its hold age until close retry
+ok - a deferred captain call leaves the live Captain's Call until its date and stays answerable
+ok - an out-of-band close is recordable with the captain's word and nothing else
+ok - ended visual review follows the same captain-hold completion owner
+ok - resolved findings and decision-like prose do not create captain-held tasks
+ok - terminal single-owner stale status decisions do not block empty inventory
+not ok - secondmate captain call did not surface with authoritative owner: {
+  "schema": "fm-bearings.v1",
+  "home": "fm-captain-hold.EYcRAp/main-routing",
+  "generated": "2026-07-14T12:00:00Z",
+  "prs": "not_requested (run: /bearings include PRs)",
+  "contributions": {
+    "scope": "owned contributions per home",
+    "known": 0,
+    "checked": 0,
+    "counts": {
+      "captain": 0,
+      "fleet": 0,
+      "maintainer": 0,
+      "nobody": 0
+    },
+    "complete": false,
+    "proven_clear": false,
+    "unmeasured_homes": 1,
+    "unreadable_records": 0,
+    "unmeasured": 0,
+    "stale_verdicts": 0,
+    "missing_verdicts": 0,
+    "captain_omitted": 0,
+    "captain": []
+  },
+  "in_flight": [],
+  "secondmates": [
+    {
+      "id": "sample-mate",
+      "state": "unknown",
+      "doing": "invalid home: secondmate home cannot be inside the firstmate repo",
+      "provenance": "parent-event-fallback",
+      "freshness": "historical-event",
+      "age_seconds": 0,
+      "contradiction": false,
+      "reason": "invalid home: secondmate home cannot be inside the firstmate repo"
+    }
+  ],
+  "secondmate_reconcile": [],
+  "decisions_open": [],
+  "landed": [],
+  "gates": [],
+  "reports": [],
+  "recorded_prs": [],
+  "unhealthy_endpoints": [
+    {
+      "id": "sample-mate",
+      "backend": "tmux",
+      "target": "firstmate:fm-sample-mate",
+      "exists": true,
+      "agent": "dead"
+    }
+  ],
+  "omitted": [
+    {
+      "surface": "backlog item bodies",
+      "reveal": "--fields bodies"
+    },
+    {
+      "surface": "task paths",
+      "reveal": "--fields paths"
+    },
+    {
+      "surface": "watch/steer actions",
+      "reveal": "--fields actions"
+    },
+    {
+      "surface": "healthy endpoint detail",
+      "reveal": "--fields endpoints"
+    },
+    {
+      "surface": "full scout-report inventory",
+      "reveal": "--all-reports"
+    },
+    {
+      "surface": "secondmate home(s) with unreadable structured state: 1",
+      "reveal": "inspect the listed secondmate home ledgers"
+    },
+    {
+      "surface": "live PR discovery + checks",
+      "reveal": "--include-prs"
+    }
+  ]
+}

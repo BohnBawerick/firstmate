@@ -1,0 +1,4 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: 2 herdr workspaces in session 'fm-lab-bundle-a-1783867-27742' are labeled 'firstmate' (w1 wA) and this spawn has no herdr parent pane to identify which one is its own; rename or close the extras, or run firstmate inside the workspace its workers belong in
+error: herdr presentation parent is absent or ambiguous; refusing isolated workspace placement

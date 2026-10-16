@@ -1,0 +1,695 @@
++ set -u
+++ dirname tests/fm-secondmate-liveness.test.sh
++ . tests/lib.sh
+++ '[' -n '' ']'
+++ FM_TEST_LIB_SOURCED=1
+++ umask 022
++++ dirname tests/lib.sh
+++ . tests/git-config-helpers.sh
++++ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
++++ GIT_CONFIG_GLOBAL=/dev/null
++++ GIT_CONFIG_NOSYSTEM=1
++++ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
+++ export FM_GATE_REFUSE_BYPASS=1
+++ FM_GATE_REFUSE_BYPASS=1
+++ unset CLAUDE_PID CLAUDE_CODE_SESSION_ID
+++ export FM_TEST_SEAM=1
+++ FM_TEST_SEAM=1
+++ unset FM_TASK_ID
+++ unset TASKS_AXI_FILE TASKS_AXI_BACKEND
+++++ dirname tests/lib.sh
++++ cd tests/..
++++ pwd
+++ ROOT=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++++ fm_test_tmpdir
++++ local base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp physical
++++ base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ '[' -n /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp ']'
++++ case "$base" in
+++++ CDPATH=
+++++ cd -- /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
+++++ pwd -P
++++ physical=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ '[' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.git ']'
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
+++ FM_TEST_TMPDIR=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
+++ FM_TEST_CLEANUP_DIRS=()
++++ mktemp /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-cleanup.1462222.XXXXXX
+++ FM_TEST_CLEANUP_REGISTRY=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-cleanup.1462222.A2hihx
++++ fm_test_pid_identity 1462222
++++ local pid=1462222
++++ FM_STATE_OVERRIDE=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ bash -c '. "$1"; fm_pid_identity "$2"' _ /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/bin/fm-wake-lib.sh 1462222
+++ FM_TEST_OWNER_IDENTITY='linux-starttime=5515576 cmdline-hex=62617368002d780074657374732f666d2d7365636f6e646d6174652d6c6976656e6573732e746573742e736800'
++++ mktemp /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-procevent.1462222.XXXXXX
+++ FM_TEST_PROCEVENT_REGISTRY=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-procevent.1462222.mnRG9V
++++ mktemp /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-watcher.1462222.XXXXXX
+++ FM_TEST_WATCHER_REGISTRY=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-watcher.1462222.uGM9ly
+++ FM_TEST_STUB_MAX_BLOCK_SECONDS=120
+++ export FM_TEST_STUB_MAX_BLOCK_SECONDS
++++ mktemp /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-pids.1462222.XXXXXX
+++ FM_TEST_PID_REGISTRY=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-pids.1462222.Y4bjTN
+++ FM_TEST_REAP_GRACE_TICKS=60
+++ trap fm_test_cleanup EXIT
+++ trap 'fm_test_cleanup; exit 130' INT
+++ trap 'fm_test_cleanup; exit 143' TERM
+++ trap 'fm_test_cleanup; exit 129' HUP
+++ trap 'fm_test_cleanup; exit 131' QUIT
+++ FM_TEST_ORPHAN_MAX_AGE_SECONDS=3600
+++ '[' 0 '!=' 1 ']'
+++ fm_test_reap_orphans
+++ local marker dir mtime now owner_pid owner_identity current_identity
++++ date +%s
+++ now=1792111421
+++ for marker in "$FM_TEST_TMPDIR"/fm-*/.fm-test-fixture
+++ '[' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-captain-hold.EYcRAp/.fm-test-fixture ']'
++++ sed -n 1p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-captain-hold.EYcRAp/.fm-test-fixture
+++ owner_pid=1368715
++++ sed -n '2,$p' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-captain-hold.EYcRAp/.fm-test-fixture
+++ owner_identity='linux-starttime=5510231 cmdline-hex=626173680074657374732f666d2d6361707461696e2d686f6c642d6c6966656379636c652e746573742e736800'
+++ case "$owner_pid" in
++++ fm_test_pid_identity 1368715
+++ current_identity='linux-starttime=5510231 cmdline-hex=626173680074657374732f666d2d6361707461696e2d686f6c642d6c6966656379636c652e746573742e736800'
+++ '[' -n 'linux-starttime=5510231 cmdline-hex=626173680074657374732f666d2d6361707461696e2d686f6c642d6c6966656379636c652e746573742e736800' ']'
+++ '[' 'linux-starttime=5510231 cmdline-hex=626173680074657374732f666d2d6361707461696e2d686f6c642d6c6966656379636c652e746573742e736800' = 'linux-starttime=5510231 cmdline-hex=626173680074657374732f666d2d6361707461696e2d686f6c642d6c6966656379636c652e746573742e736800' ']'
+++ continue
+++ for marker in "$FM_TEST_TMPDIR"/fm-*/.fm-test-fixture
+++ '[' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-control-relaunch.fVj3JJ/.fm-test-fixture ']'
++++ sed -n 1p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-control-relaunch.fVj3JJ/.fm-test-fixture
+++ owner_pid=1369615
++++ sed -n '2,$p' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-control-relaunch.fVj3JJ/.fm-test-fixture
+++ owner_identity='linux-starttime=5510347 cmdline-hex=626173680074657374732f666d2d636f6e74726f6c2d72656c61756e63682e746573742e736800'
+++ case "$owner_pid" in
++++ fm_test_pid_identity 1369615
+++ current_identity='linux-starttime=5510347 cmdline-hex=626173680074657374732f666d2d636f6e74726f6c2d72656c61756e63682e746573742e736800'
+++ '[' -n 'linux-starttime=5510347 cmdline-hex=626173680074657374732f666d2d636f6e74726f6c2d72656c61756e63682e746573742e736800' ']'
+++ '[' 'linux-starttime=5510347 cmdline-hex=626173680074657374732f666d2d636f6e74726f6c2d72656c61756e63682e746573742e736800' = 'linux-starttime=5510347 cmdline-hex=626173680074657374732f666d2d636f6e74726f6c2d72656c61756e63682e746573742e736800' ']'
+++ continue
++ BASE_PATH=/usr/bin:/bin:/usr/sbin:/sbin
++ fm_git_identity fmtest fmtest@example.com
++ export GIT_AUTHOR_NAME=fmtest GIT_AUTHOR_EMAIL=fmtest@example.com
++ GIT_AUTHOR_NAME=fmtest
++ GIT_AUTHOR_EMAIL=fmtest@example.com
++ export GIT_COMMITTER_NAME=fmtest GIT_COMMITTER_EMAIL=fmtest@example.com
++ GIT_COMMITTER_NAME=fmtest
++ GIT_COMMITTER_EMAIL=fmtest@example.com
+++ fm_test_tmproot fm-secondmate-liveness
+++ local prefix=fm-secondmate-liveness root tmp_base
++++ fm_test_tmpdir
++++ local base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp physical
++++ base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ '[' -n /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp ']'
++++ case "$base" in
+++++ CDPATH=
+++++ cd -- /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
+++++ pwd -P
++++ physical=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ '[' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.git ']'
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
+++ tmp_base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
+++ tmp_base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ mktemp -d /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.XXXXXX
+++ root=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz
++++ cd -P -- /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz
++++ pwd -P
+++ root=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz
+++ printf '%s\n%s\n' 1462222 'linux-starttime=5515576 cmdline-hex=62617368002d780074657374732f666d2d7365636f6e646d6174652d6c6976656e6573732e746573742e736800'
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz
++ TMP_ROOT=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz
++ '[' '' = --respawn-regressions ']'
++ test_tmux_agent_state_classifies
++ local fb out
++ for harness in claude codex opencode grok kimi pi pi-signed pi-launcher Pi
+++ make_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-claude claude
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-claude comm=claude fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-claude
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-claude fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-claude/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-claude/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-claude/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-claude/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-claude/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-claude/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-claude/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-claude/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=alive
++ '[' alive = alive ']'
++ for harness in claude codex opencode grok kimi pi pi-signed pi-launcher Pi
+++ make_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-codex codex
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-codex comm=codex fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-codex
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-codex fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-codex/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-codex/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-codex/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-codex/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-codex/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-codex/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-codex/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-codex/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=alive
++ '[' alive = alive ']'
++ for harness in claude codex opencode grok kimi pi pi-signed pi-launcher Pi
+++ make_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-opencode opencode
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-opencode comm=opencode fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-opencode
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-opencode fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-opencode/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-opencode/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-opencode/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-opencode/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-opencode/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-opencode/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-opencode/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-opencode/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=alive
++ '[' alive = alive ']'
++ for harness in claude codex opencode grok kimi pi pi-signed pi-launcher Pi
+++ make_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-grok grok
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-grok comm=grok fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-grok
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-grok fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-grok/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-grok/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-grok/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-grok/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-grok/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-grok/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-grok/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-grok/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=alive
++ '[' alive = alive ']'
++ for harness in claude codex opencode grok kimi pi pi-signed pi-launcher Pi
+++ make_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-kimi kimi
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-kimi comm=kimi fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-kimi
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-kimi fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-kimi/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-kimi/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-kimi/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-kimi/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-kimi/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-kimi/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-kimi/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-kimi/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=alive
++ '[' alive = alive ']'
++ for harness in claude codex opencode grok kimi pi pi-signed pi-launcher Pi
+++ make_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi pi
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi comm=pi fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=alive
++ '[' alive = alive ']'
++ for harness in claude codex opencode grok kimi pi pi-signed pi-launcher Pi
+++ make_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-signed pi-signed
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-signed comm=pi-signed fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-signed
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-signed fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-signed/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-signed/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-signed/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-signed/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-signed/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-signed/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-signed/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-signed/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=alive
++ '[' alive = alive ']'
++ for harness in claude codex opencode grok kimi pi pi-signed pi-launcher Pi
+++ make_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-launcher pi-launcher
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-launcher comm=pi-launcher fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-launcher
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-launcher fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-launcher/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-launcher/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-launcher/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-launcher/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-launcher/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-launcher/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-launcher/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-pi-launcher/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=alive
++ '[' alive = alive ']'
++ for harness in claude codex opencode grok kimi pi pi-signed pi-launcher Pi
+++ make_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-Pi Pi
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-Pi comm=Pi fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-Pi
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-Pi fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-Pi/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-Pi/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-Pi/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-Pi/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-Pi/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-Pi/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-Pi/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-Pi/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=alive
++ '[' alive = alive ']'
++ for shell in zsh bash -zsh
+++ make_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh zsh
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh comm=zsh fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=dead
++ '[' dead = dead ']'
++ for shell in zsh bash -zsh
+++ make_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-bash bash
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-bash comm=bash fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-bash
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-bash fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-bash/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-bash/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-bash/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-bash/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-bash/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-bash/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-bash/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-bash/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=dead
++ '[' dead = dead ']'
++ for shell in zsh bash -zsh
+++ make_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh -zsh
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh comm=-zsh fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-zsh/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=dead
++ '[' dead = dead ']'
+++ make_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-node node
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-node comm=node fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-node
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-node fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-node/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-node/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-node/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-node/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-node/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-node/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-node/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-node/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=ambiguous
++ '[' ambiguous = ambiguous ']'
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-node/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_alive tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ '[' unknown = unknown ']'
+++ make_failed_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing missing
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing inventory=missing fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:fm-sm1' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=missing
++ '[' missing = missing ']'
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_alive tmux sess:fm-sm1' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ '[' dead = dead ']'
++ for inventory in present unreadable
+++ make_failed_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-present present
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-present inventory=present fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-present
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-present fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-present/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-present/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-present/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-present/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-present/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-present/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-present/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-present/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:fm-sm1' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=unreadable
++ '[' unreadable = unreadable ']'
++ for inventory in present unreadable
+++ make_failed_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-unreadable unreadable
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-unreadable inventory=unreadable fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-unreadable
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-unreadable fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-unreadable/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-unreadable/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-unreadable/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-unreadable/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-unreadable/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-unreadable/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-unreadable/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-unreadable/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:fm-sm1' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=unreadable
++ '[' unreadable = unreadable ']'
++ for inventory in missing-session missing-server missing-socket
+++ make_failed_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-session missing-session
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-session inventory=missing-session fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-session
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-session fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-session/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-session/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-session/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-session/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-session/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-session/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-session/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-session/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:fm-sm1' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=missing
++ '[' missing = missing ']'
++ for inventory in missing-session missing-server missing-socket
+++ make_failed_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-server missing-server
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-server inventory=missing-server fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-server
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-server fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-server/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-server/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-server/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-server/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-server/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-server/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-server/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-server/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:fm-sm1' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=missing
++ '[' missing = missing ']'
++ for inventory in missing-session missing-server missing-socket
+++ make_failed_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-socket missing-socket
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-socket inventory=missing-socket fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-socket
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-socket fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-socket/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-socket/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-socket/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-socket/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-socket/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-socket/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-socket/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-missing-socket/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:fm-sm1' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=missing
++ '[' missing = missing ']'
++ pass 'fm_backend_tmux_agent_state: separates live, dead, missing, ambiguous, and unreadable'
++ printf 'ok - %s\n' 'fm_backend_tmux_agent_state: separates live, dead, missing, ambiguous, and unreadable'
+ok - fm_backend_tmux_agent_state: separates live, dead, missing, ambiguous, and unreadable
++ test_tmux_agent_state_rejects_malformed_targets_before_probe
++ local fakebin marker target out
+++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed/fakebin
+++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed/fakebin
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed/fakebin
++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed/fakebin
++ marker=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed-called
++ cat
++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed/fakebin/tmux
++ for target in sess sess: :win sess:win:extra
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ FM_TEST_TMUX_MARKER=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed-called
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux "$1"' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX sess
++ out=unreadable
++ '[' unreadable = unreadable ']'
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed-called ']'
++ for target in sess sess: :win sess:win:extra
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ FM_TEST_TMUX_MARKER=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed-called
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux "$1"' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX sess:
++ out=unreadable
++ '[' unreadable = unreadable ']'
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed-called ']'
++ for target in sess sess: :win sess:win:extra
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ FM_TEST_TMUX_MARKER=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed-called
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux "$1"' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX :win
++ out=unreadable
++ '[' unreadable = unreadable ']'
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed-called ']'
++ for target in sess sess: :win sess:win:extra
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ FM_TEST_TMUX_MARKER=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed-called
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux "$1"' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX sess:win:extra
++ out=unreadable
++ '[' unreadable = unreadable ']'
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/tmux-malformed-called ']'
++ pass 'fm_backend_tmux_agent_state: rejects malformed targets before probing tmux'
++ printf 'ok - %s\n' 'fm_backend_tmux_agent_state: rejects malformed targets before probing tmux'
+ok - fm_backend_tmux_agent_state: rejects malformed targets before probing tmux
++ test_herdr_agent_state_preserves_husk_classifier
++ local pane_state expected out
++ for row in 'dead missing' 'no-agent dead' 'stale-agent dead' 'live alive' 'unknown unreadable'
++ pane_state=dead
++ expected=missing
+++ FM_TEST_PANE_STATE=dead
+++ bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_pane_agent_state() { printf "%s" "$FM_TEST_PANE_STATE"; }; fm_backend_herdr_server_running_state() { printf running; }; fm_backend_herdr_agent_state "sess:p1"' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=missing
++ '[' missing = missing ']'
++ for row in 'dead missing' 'no-agent dead' 'stale-agent dead' 'live alive' 'unknown unreadable'
++ pane_state=no-agent
++ expected=dead
+++ FM_TEST_PANE_STATE=no-agent
+++ bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_pane_agent_state() { printf "%s" "$FM_TEST_PANE_STATE"; }; fm_backend_herdr_server_running_state() { printf running; }; fm_backend_herdr_agent_state "sess:p1"' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=dead
++ '[' dead = dead ']'
++ for row in 'dead missing' 'no-agent dead' 'stale-agent dead' 'live alive' 'unknown unreadable'
++ pane_state=stale-agent
++ expected=dead
+++ FM_TEST_PANE_STATE=stale-agent
+++ bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_pane_agent_state() { printf "%s" "$FM_TEST_PANE_STATE"; }; fm_backend_herdr_server_running_state() { printf running; }; fm_backend_herdr_agent_state "sess:p1"' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=dead
++ '[' dead = dead ']'
++ for row in 'dead missing' 'no-agent dead' 'stale-agent dead' 'live alive' 'unknown unreadable'
++ pane_state=live
++ expected=alive
+++ FM_TEST_PANE_STATE=live
+++ bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_pane_agent_state() { printf "%s" "$FM_TEST_PANE_STATE"; }; fm_backend_herdr_server_running_state() { printf running; }; fm_backend_herdr_agent_state "sess:p1"' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=alive
++ '[' alive = alive ']'
++ for row in 'dead missing' 'no-agent dead' 'stale-agent dead' 'live alive' 'unknown unreadable'
++ pane_state=unknown
++ expected=unreadable
+++ FM_TEST_PANE_STATE=unknown
+++ bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_pane_agent_state() { printf "%s" "$FM_TEST_PANE_STATE"; }; fm_backend_herdr_server_running_state() { printf running; }; fm_backend_herdr_agent_state "sess:p1"' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=unreadable
++ '[' unreadable = unreadable ']'
+++ bash -c $'. "$0/bin/backends/herdr.sh"\n    fm_backend_herdr_pane_agent_state() { printf unknown; }\n    fm_backend_herdr_server_running_state() { printf stopped; }\n    fm_backend_herdr_agent_state "sess:p1"' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=missing
++ '[' missing = missing ']'
+++ bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_agent_state "no-colon-target"' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=unreadable
++ '[' unreadable = unreadable ']'
+++ bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_pane_agent_state() { printf "no-agent"; }; fm_backend_herdr_agent_alive "sess:p1"' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=dead
++ '[' dead = dead ']'
++ pass 'fm_backend_herdr_agent_state: preserves missing/no-agent/live/unknown husk behavior'
++ printf 'ok - %s\n' 'fm_backend_herdr_agent_state: preserves missing/no-agent/live/unknown husk behavior'
+ok - fm_backend_herdr_agent_state: preserves missing/no-agent/live/unknown husk behavior
++ test_agent_state_dispatcher_and_compatibility
++ local fb out
+++ make_probe_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/dispatch-tmux claude
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/dispatch-tmux comm=claude fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/dispatch-tmux
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/dispatch-tmux fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/dispatch-tmux/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/dispatch-tmux/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/dispatch-tmux/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/dispatch-tmux/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/dispatch-tmux/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/dispatch-tmux/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/dispatch-tmux/fakebin
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/dispatch-tmux/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state tmux sess:win' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=alive
++ '[' alive = alive ']'
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_source herdr; fm_backend_herdr_pane_agent_state() { printf "live"; }; fm_backend_agent_state herdr sess:p1' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=alive
++ '[' alive = alive ']'
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_state zellij sess:7' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=unverified
++ '[' unverified = unverified ']'
+++ bash -c '. "$0/bin/fm-backend.sh"; fm_backend_agent_alive zellij sess:7' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX
++ out=unknown
++ '[' unknown = unknown ']'
++ pass 'fm_backend_agent_state: routes tmux/Herdr and keeps Zellij unverified'
++ printf 'ok - %s\n' 'fm_backend_agent_state: routes tmux/Herdr and keeps Zellij unverified'
+ok - fm_backend_agent_state: routes tmux/Herdr and keeps Zellij unverified
++ test_sweep_respawns_confirmed_dead_secondmate
++ local w fb tmuxfb log out
+++ new_world sweep-dead
+++ local name=sweep-dead w
+++ w=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead
+++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/home/state /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/home/config
+++ touch /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/home/state/.last-watcher-beat
+++ printf 'codex\n'
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead
++ w=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead
++ add_sm_home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead sm1 firstmate:fm-sm1
++ local w=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead id=sm1 window=firstmate:fm-sm1 harness=claude
++ local home=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/sm1
++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/sm1/bin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/sm1/data /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/sm1/state /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/sm1/config /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/sm1/projects
++ printf '%s\n' sm1
++ printf '# Firstmate\n'
++ printf 'charter\n'
++ printf '%s\n' projects/ state/ data/ config/ .no-mistakes/
++ git -C /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/sm1 init -q -b main
++ printf 'window=%s\n' firstmate:fm-sm1
++ printf 'kind=secondmate\n'
++ printf 'harness=%s\n' claude
++ printf 'home=%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/sm1
+++ make_toolchain /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin
+++ fm_fake_exit0 /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin node chrome-devtools-axi pi-signed
+++ local fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin tool
+++ shift
+++ for tool in "$@"
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin/node
+++ for tool in "$@"
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin/chrome-devtools-axi
+++ for tool in "$@"
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin/pi-signed
+++ fm_fake_version_tool /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin lavish-axi FM_FAKE_LAVISH_AXI_VERSION 0.1.80
+++ local fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin tool=lavish-axi override=FM_FAKE_LAVISH_AXI_VERSION default=0.1.80
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin/lavish-axi
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin/gh-axi
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin/gh
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin/treehouse
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin/no-mistakes
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin/tasks-axi
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin/quota-axi
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin
++ fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin
+++ make_liveness_tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead
+++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead fakebin
++++ fm_fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead
++++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin
++++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin
+++ fakebin=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin/tmux
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin
++ tmuxfb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin
++ log=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/calls.log
++ :
+++ run_bootstrap /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin:/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/home zsh /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/calls.log
+++ local fb=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin:/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin home=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/home cmd=zsh log=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/calls.log
+++ shift 4
+++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin:/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/fakebin:/usr/bin:/bin:/usr/sbin:/sbin
+++ TMUX=
+++ FM_BACKEND=tmux
+++ FM_HOME=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/home
+++ FM_TEST_PANE_CMD=zsh
+++ FM_TMUX_CALL_LOG=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/calls.log
+++ env /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/bin/fm-bootstrap.sh
++ out=$'SECONDMATE_LIVENESS: secondmate sm1: respawn failed after confirmed agent absence on existing endpoint: error: secondmate home cannot be inside the firstmate repo: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/sm1\nSECONDMATE_SYNC: secondmate sm1: skipped: primary default-branch commit cannot be resolved'
++ assert_not_contains $'SECONDMATE_LIVENESS: secondmate sm1: respawn failed after confirmed agent absence on existing endpoint: error: secondmate home cannot be inside the firstmate repo: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/sm1\nSECONDMATE_SYNC: secondmate sm1: skipped: primary default-branch commit cannot be resolved' 'SECONDMATE_LIVENESS: secondmate sm1: respawned' 'a successfully respawned secondmate should be handled silently'
++ case "$1" in
++ :
+++ cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/calls.log
++ assert_contains 'kill-window -t =firstmate:=fm-sm1' 'kill-window -t =firstmate:=fm-sm1' 'the stale endpoint must be killed before respawn (tmux refuses a same-named window over a live one)'
++ case "$1" in
++ :
+++ cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz/sweep-dead/calls.log
++ assert_contains 'kill-window -t =firstmate:=fm-sm1' new-window 'a confirmed-dead secondmate should actually be relaunched'
++ case "$1" in
++ fail $'a confirmed-dead secondmate should actually be relaunched (missing: \'new-window\')\n--- output ---\nkill-window -t =firstmate:=fm-sm1'
++ printf 'not ok - %s\n' $'a confirmed-dead secondmate should actually be relaunched (missing: \'new-window\')\n--- output ---\nkill-window -t =firstmate:=fm-sm1'
+not ok - a confirmed-dead secondmate should actually be relaunched (missing: 'new-window')
+--- output ---
+kill-window -t =firstmate:=fm-sm1
++ exit 1
++ fm_test_cleanup
++ local d
++ fm_test_reap_tracked_pids
++ local pid live
++ '[' -n /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-pids.1462222.Y4bjTN ']'
++ '[' -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-pids.1462222.Y4bjTN ']'
++ live=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-pids.1462222.Y4bjTN.live
++ :
++ jobs -rp
++ jobs -sp
++ fm_test_descendant_pids 1462222
++ IFS=
++ read -r pid
++ rm -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-pids.1462222.Y4bjTN.live /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-pids.1462222.Y4bjTN
++ fm_test_reap_watchers
++ local state lock_home $'seen=\n'
++ '[' -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-watcher.1462222.uGM9ly ']'
++ IFS=
++ read -r state
++ rm -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-watcher.1462222.uGM9ly
++ fm_test_reap_procevent_homes
++ local home claim_root $'seen=\n'
++ '[' -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-procevent.1462222.mnRG9V ']'
++ IFS=$'\t'
++ read -r home claim_root
++ rm -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-procevent.1462222.mnRG9V
++ for d in "${FM_TEST_CLEANUP_DIRS[@]:-}"
++ '[' -n '' ']'
++ '[' -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-cleanup.1462222.A2hihx ']'
++ IFS=
++ read -r d
++ '[' -n /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz ']'
++ fm_test_remove_tree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz
++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz
++ '[' -d /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz ']'
++ '[' '!' -L /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz ']'
++ find /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz -type d -exec chmod u+rwx '{}' +
++ rm -rf /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-secondmate-liveness.QcFoZz
++ IFS=
++ read -r d
++ rm -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-cleanup.1462222.A2hihx

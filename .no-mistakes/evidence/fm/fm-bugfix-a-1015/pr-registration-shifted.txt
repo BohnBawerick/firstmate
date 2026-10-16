@@ -1,0 +1,11 @@
+fm-pr-poll-registration-v2
+poll
+github
+https://github.com/cli/cli/pull/1
+github.com
+cli/cli
+1
+48e3ddf6ecaacbbdb3fc1a11463e4f6291b2df054f5ee5a343f14a65a58b8f47
+1ecb514c04dca8c7ff1d253998499335c162d73b76b143a2506d7b3627466dfe
+60:66751429
+60:66751431

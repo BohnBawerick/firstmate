@@ -1,0 +1,15 @@
+window=fm-lab-bundle-a-1783867-27742:w9:p2
+endpoint_task_id=coder
+worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/project-7db4a9/1/project
+project=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/project
+harness=codex
+kind=scout
+tasktmp=/tmp/fm-coder
+model=default
+effort=default
+spawn_gen=s1792112764.3080683.15758
+backend=herdr
+herdr_session=fm-lab-bundle-a-1783867-27742
+herdr_workspace_id=w9
+herdr_tab_id=w9:t2
+herdr_pane_id=w9:p2

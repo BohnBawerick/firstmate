@@ -1,0 +1,438 @@
++ set -u
+++ dirname .nm-live-test/code/tests/metadata-lock-diagnostic.sh
++ . .nm-live-test/code/tests/lib.sh
+++ '[' -n '' ']'
+++ FM_TEST_LIB_SOURCED=1
+++ umask 022
++++ dirname .nm-live-test/code/tests/lib.sh
+++ . .nm-live-test/code/tests/git-config-helpers.sh
++++ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
++++ GIT_CONFIG_GLOBAL=/dev/null
++++ GIT_CONFIG_NOSYSTEM=1
++++ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
+++ export FM_GATE_REFUSE_BYPASS=1
+++ FM_GATE_REFUSE_BYPASS=1
+++ unset CLAUDE_PID CLAUDE_CODE_SESSION_ID
+++ export FM_TEST_SEAM=1
+++ FM_TEST_SEAM=1
+++ unset FM_TASK_ID
+++ unset TASKS_AXI_FILE TASKS_AXI_BACKEND
+++++ dirname .nm-live-test/code/tests/lib.sh
++++ cd .nm-live-test/code/tests/..
++++ pwd
+++ ROOT=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code
++++ fm_test_tmpdir
++++ local base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp physical
++++ base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ '[' -n /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp ']'
++++ case "$base" in
+++++ CDPATH=
+++++ cd -- /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
+++++ pwd -P
++++ physical=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ '[' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.git ']'
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
+++ FM_TEST_TMPDIR=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
+++ FM_TEST_CLEANUP_DIRS=()
++++ mktemp /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-cleanup.3122420.XXXXXX
+++ FM_TEST_CLEANUP_REGISTRY=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-cleanup.3122420.FPEUt8
++++ fm_test_pid_identity 3122420
++++ local pid=3122420
++++ FM_STATE_OVERRIDE=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ bash -c '. "$1"; fm_pid_identity "$2"' _ /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/bin/fm-wake-lib.sh 3122420
+++ FM_TEST_OWNER_IDENTITY='linux-starttime=5655220 cmdline-hex=62617368002d78002e6e6d2d6c6976652d746573742f636f64652f74657374732f6d657461646174612d6c6f636b2d646961676e6f737469632e736800'
++++ mktemp /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-procevent.3122420.XXXXXX
+++ FM_TEST_PROCEVENT_REGISTRY=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-procevent.3122420.wnXGwD
++++ mktemp /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-watcher.3122420.XXXXXX
+++ FM_TEST_WATCHER_REGISTRY=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-watcher.3122420.XA6jAe
+++ FM_TEST_STUB_MAX_BLOCK_SECONDS=120
+++ export FM_TEST_STUB_MAX_BLOCK_SECONDS
++++ mktemp /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-pids.3122420.XXXXXX
+++ FM_TEST_PID_REGISTRY=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-pids.3122420.TX6bsJ
+++ FM_TEST_REAP_GRACE_TICKS=60
+++ trap fm_test_cleanup EXIT
+++ trap 'fm_test_cleanup; exit 130' INT
+++ trap 'fm_test_cleanup; exit 143' TERM
+++ trap 'fm_test_cleanup; exit 129' HUP
+++ trap 'fm_test_cleanup; exit 131' QUIT
+++ FM_TEST_ORPHAN_MAX_AGE_SECONDS=3600
+++ '[' 0 '!=' 1 ']'
+++ fm_test_reap_orphans
+++ local marker dir mtime now owner_pid owner_identity current_identity
++++ date +%s
+++ now=1792112817
+++ for marker in "$FM_TEST_TMPDIR"/fm-*/.fm-test-fixture
+++ '[' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-control-auth.Uy4K6l/.fm-test-fixture ']'
++++ sed -n 1p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-control-auth.Uy4K6l/.fm-test-fixture
+++ owner_pid=1369615
++++ sed -n '2,$p' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-control-auth.Uy4K6l/.fm-test-fixture
+++ owner_identity='linux-starttime=5510347 cmdline-hex=626173680074657374732f666d2d636f6e74726f6c2d72656c61756e63682e746573742e736800'
+++ case "$owner_pid" in
++++ fm_test_pid_identity 1369615
+++ current_identity=
+++ current_identity=
+++ '[' -n 'linux-starttime=5510347 cmdline-hex=626173680074657374732f666d2d636f6e74726f6c2d72656c61756e63682e746573742e736800' ']'
+++ '[' '' = 'linux-starttime=5510347 cmdline-hex=626173680074657374732f666d2d636f6e74726f6c2d72656c61756e63682e746573742e736800' ']'
++++ stat -c %Y /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-control-auth.Uy4K6l/.fm-test-fixture
+++ mtime=1792111436
+++ '[' 1381 -ge 3600 ']'
+++ continue
+++ for marker in "$FM_TEST_TMPDIR"/fm-*/.fm-test-fixture
+++ '[' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-control-auth.dMXCZf/.fm-test-fixture ']'
++++ sed -n 1p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-control-auth.dMXCZf/.fm-test-fixture
+++ owner_pid=1514062
++++ sed -n '2,$p' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-control-auth.dMXCZf/.fm-test-fixture
+++ owner_identity='linux-starttime=5519573 cmdline-hex=62617368002e6e6d2d6c6976652d746573742f636f64652f74657374732f666d2d636f6e74726f6c2d72656c61756e63682e746573742e736800'
+++ case "$owner_pid" in
++++ fm_test_pid_identity 1514062
+++ current_identity=
+++ current_identity=
+++ '[' -n 'linux-starttime=5519573 cmdline-hex=62617368002e6e6d2d6c6976652d746573742f636f64652f74657374732f666d2d636f6e74726f6c2d72656c61756e63682e746573742e736800' ']'
+++ '[' '' = 'linux-starttime=5519573 cmdline-hex=62617368002e6e6d2d6c6976652d746573742f636f64652f74657374732f666d2d636f6e74726f6c2d72656c61756e63682e746573742e736800' ']'
++++ stat -c %Y /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-control-auth.dMXCZf/.fm-test-fixture
+++ mtime=1792111525
+++ '[' 1292 -ge 3600 ']'
+++ continue
++ TEARDOWN=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/bin/fm-teardown.sh
+++ fm_test_tmproot fm-teardown-endpoint-safety
+++ local prefix=fm-teardown-endpoint-safety root tmp_base
++++ fm_test_tmpdir
++++ local base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp physical
++++ base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ '[' -n /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp ']'
++++ case "$base" in
+++++ CDPATH=
+++++ cd -- /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
+++++ pwd -P
++++ physical=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ '[' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.git ']'
++++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
+++ tmp_base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
+++ tmp_base=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp
++++ mktemp -d /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.XXXXXX
+++ root=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq
++++ cd -P -- /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq
++++ pwd -P
+++ root=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq
+++ printf '%s\n%s\n' 3122420 'linux-starttime=5655220 cmdline-hex=62617368002d78002e6e6d2d6c6976652d746573742f636f64652f74657374732f6d657461646174612d6c6f636b2d646961676e6f737469632e736800'
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq
++ TMP_ROOT=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq
+++ command -v tmux
++ REAL_TMUX=/usr/bin/tmux
++ set -eE
++ trap 'status=$?; cat "$TMP_ROOT/metadata-lock/stdout"; cat "$TMP_ROOT/metadata-lock/stderr" >&2; fm_test_cleanup; exit $status' EXIT
++ test_metadata_lock_serializes_destructive_cleanup
++ local dir id=metadata-locked-task lock ready release holder teardown_pid i=0 rc
+++ make_case metadata-lock
+++ local dir=metadata-lock
+++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/data /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/config /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/fakebin /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/worktree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/project
+++ git init -q /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/project
+++ :
+++ :
+++ cat
+++ cat
+++ chmod +x /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/fakebin/tmux /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/fakebin/treehouse
+++ printf '%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock
++ dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock
++ fm_write_meta /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/metadata-locked-task.meta window=isolated:fm-metadata-locked-task endpoint_task_id=metadata-locked-task worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/worktree project=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/project kind=scout
++ local file=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/metadata-locked-task.meta kv
++ shift
++ :
++ for kv in "$@"
++ printf '%s\n' window=isolated:fm-metadata-locked-task
++ for kv in "$@"
++ printf '%s\n' endpoint_task_id=metadata-locked-task
++ for kv in "$@"
++ printf '%s\n' worktree=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/worktree
++ for kv in "$@"
++ printf '%s\n' project=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/project
++ for kv in "$@"
++ printf '%s\n' kind=scout
++ lock=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
++ ready=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-ready
++ release=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release
++ holder=3122539
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-ready ']'
++ '[' 0 -lt 100 ']'
++ sleep 0.1
++ . /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/bin/fm-wake-lib.sh
++++ d=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/bin
++++ '[' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/bin '!=' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/bin/fm-wake-lib.sh ']'
++++ cd /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/bin
++++ pwd
+++ FM_WAKE_LIB_DIR=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/bin
++++ cd /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/bin/..
++++ pwd
+++ FM_WAKE_DEFAULT_ROOT=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code
+++ FM_ROOT=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code
+++ FM_HOME=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code
+++ STATE=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/state
+++ FM_WAKE_QUEUE=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/state/.wake-queue
+++ FM_WAKE_QUEUE_LOCK=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/state/.wake-queue.lock
+++ FM_LOCK_STALE_AFTER=2
+++ . /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/bin/fm-path-lib.sh
++++ uname
+++ _FM_UNAME=Linux
+++ mkdir -p /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/state
+++ '[' 5 -gt 4 ']'
+++ FM_WATCHER_MATCHED_IDENTITY=
+++ FM_WATCHER_HEALTHY_PID=
+++ FM_WATCHER_HEALTHY_IDENTITY=
+++ FM_AWAY_TICK_GRACE=180
+++ FM_WATCHER_VERDICT_OK=false
+++ FM_WATCHER_VERDICT_REASON=stale-beacon
+++ FM_RECOVERY_MARKER_TOKEN=
+++ FM_RECOVERY_MARKER_ACTION=none
+++ FM_RECOVERY_MARKER_WRITTEN_TOKEN=
+++ FM_WAKE_APPEND_RECOVERY_PREVIOUS_TOKEN=
+++ FM_WAKE_APPEND_RECOVERY_PUBLISHED_TOKEN=
+++ FM_RECOVERY_HANDOVER_TOKEN=
+++ FM_RECOVERY_HANDOVER_SEQ=
+++ FM_WAKE_STATUS_KEY=
+++ FM_WAKE_STATUS_HISTORICAL=false
+++ FM_WAKE_EVENT_LINE=
+++ FM_WAKE_UNREAD_LINES=
++ fm_lock_try_acquire /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
++ local lockdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock pid steal cur rc steal_owner primary_owner current
++ FM_LOCK_HELD_PID=
++ FM_LOCK_OWNER_DIR=
++ FM_LOCK_RECOVERED_PID=
++ fm_lock_try_create /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
++ local lockdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock allowed_steal_owner= ownerdir
++ FM_LOCK_OWNER_DIR=
+++ fm_lock_owner_dir /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
+++ local lockdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock lock_abs
++++ fm_lock_abs_path /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
++++ local path=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock dir base
++++ fm_dirname_to dir /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
++++ local fm_path=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
++++ case "$fm_path" in
++++ fm_path=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
++++ case "$fm_path" in
++++ fm_path=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state
++++ fm_path=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state
++++ '[' -n /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state ']'
++++ '[' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state '!=' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state ']'
++++ printf -v dir %s /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state
++++ fm_basename_to base /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
++++ local fm_path=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
++++ case "$fm_path" in
++++ fm_path=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
++++ fm_path=.meta-metadata-locked-task.lock
++++ '[' .meta-metadata-locked-task.lock '!=' .meta-metadata-locked-task.lock ']'
++++ printf -v base %s .meta-metadata-locked-task.lock
+++++ cd /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state
+++++ pwd -P
++++ dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state
++++ printf '%s/%s\n' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state .meta-metadata-locked-task.lock
+++ lock_abs=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
+++ mktemp -d /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.XXXXXX
++ ownerdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
++ '[' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock ']'
++ '[' -L /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock ']'
++ fm_lock_prepare_owner /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
++ local ownerdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 mypid back
++ fm_current_pid mypid
++ local fm_pid
++ fm_pid=3122539
++ case "$fm_pid" in
++ '[' 1 -gt 0 ']'
++ printf -v mypid %s 3122539
++ printf '%s\n' 3122539
+++ cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9/pid
++ back=3122539
++ '[' 3122539 = 3122539 ']'
++ ln -s /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
++ fm_lock_points_to_owner /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
++ local lockdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock ownerdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 actual
+++ readlink /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
++ actual=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
++ '[' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 = /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 ']'
++ fm_lock_claim /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 ''
++ local lockdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock ownerdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 allowed_steal_owner= mypid back
++ fm_current_pid mypid
++ local fm_pid
++ fm_pid=3122539
++ case "$fm_pid" in
++ '[' 1 -gt 0 ']'
++ printf -v mypid %s 3122539
+++ cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9/pid
++ back=3122539
++ '[' 3122539 '!=' 3122539 ']'
++ fm_lock_points_to_owner /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
++ local lockdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock ownerdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 actual
+++ readlink /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
++ actual=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
++ '[' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 = /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 ']'
++ fm_lock_claim_blocked_by_steal /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock ''
++ local lockdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock allowed_steal_owner= steal
++ steal=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.steal
++ '[' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.steal ']'
++ '[' -L /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.steal ']'
++ return 1
++ return 0
++ FM_LOCK_OWNER_DIR=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
++ return 0
++ return 0
++ trap 'fm_lock_release "$lock"' EXIT
++ :
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ i=1
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-ready ']'
++ '[' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-ready ']'
++ teardown_pid=3122630
++ sleep 0.2
++ run_case /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock metadata-locked-task
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
++ sleep 0.01
++ kill -0 3122630
++ assert_present /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/metadata-locked-task.meta 'metadata-lock contention removed task metadata'
++ '[' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/metadata-locked-task.meta ']'
++ assert_present /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/worktree/sentinel 'metadata-lock contention changed the worktree'
++ '[' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/worktree/sentinel ']'
++ '[' '!' -s /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/runtime.log ']'
++ :
++ wait 3122539
++ '[' '!' -e /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/meta-lock-release ']'
+++ fm_lock_release /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
+++ local lockdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock pid current ownerdir
+++ fm_current_pid current
+++ local fm_pid
+++ fm_pid=3122539
+++ case "$fm_pid" in
+++ '[' 1 -gt 0 ']'
+++ printf -v current %s 3122539
+++ '[' -L /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock ']'
++++ fm_lock_link_owner /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
+++ ownerdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
+++ '[' -n /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 ']'
++++ cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9/pid
+++ pid=3122539
+++ '[' 3122539 = 3122539 ']'
+++ fm_lock_points_to_owner /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
+++ local lockdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock ownerdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 actual
++++ readlink /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
+++ actual=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
+++ '[' /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 = /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 ']'
+++ rm -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock
+++ fm_lock_discard_owner /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
+++ local ownerdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
+++ '[' -n /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9 ']'
+++ fm_lock_clean_known_files /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
+++ local lockdir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
+++ rm -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9/pid /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9/fm-home /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9/pid-identity /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9/role /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9/watcher-path
+++ rmdir /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home/state/.meta-metadata-locked-task.lock.owner.H3RvV9
+++ return 0
++ wait 3122630
++ status=1
++ cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/stdout
++ cat /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/stderr
++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock id=metadata-locked-task
++ FM_HOME=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/home
++ FM_ROOT_OVERRIDE=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code
++ FM_RUNTIME_LOG=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/runtime.log
++ PATH=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/fakebin:/home/bohn/.local/share/mise/installs/codex/0.162.1/codex-path:/home/bohn/.codex/tmp/arg0/codex-arg0gGsTvT:/home/bohn/.local/share/mise/installs/codex/0.162.1/codex-path:/home/bohn/.local/bin:/home/bohn/.kimi-code/bin:/home/bohn/.grok/bin:/home/bohn/.dotnet:/home/bohn/.dotnet/tools:/home/bohn/.local/share/pnpm:/home/bohn/.opencode/bin:/home/bohn/.local/share/mise/installs/codex/latest/bin:/home/bohn/.local/share/mise/installs/claude/latest:/home/bohn/.local/share/mise/installs/cursor-agent/latest/bin:/home/bohn/.local/share/mise/installs/gemini/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/gh/latest/gh_2.102.0_linux_amd64/bin:/home/bohn/.local/share/mise/installs/github-can1357-oh-my-pi/latest:/home/bohn/.local/share/mise/installs/go/1.25.14/bin:/home/bohn/.local/share/mise/installs/http-muse/latest:/home/bohn/.local/share/mise/installs/pnpm/10.33.4:/home/bohn/.local/share/mise/installs/node/26.7.0/bin:/home/bohn/.local/share/mise/installs/npm-xai-official-grok/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-playwright/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-opencode-cli/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/pi/latest/pi:/home/bohn/.local/share/mise/installs/npm-gh-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-lavish-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-chrome-devtools-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-quota-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/npm-tasks-axi/latest/node_modules/.bin:/home/bohn/.local/share/mise/installs/java/temurin-21/bin:/home/bohn/.local/share/mise/shims:/home/bohn/go/bin:/home/bohn/.cargo/bin:/home/bohn/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/cuda/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl
++ /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/code/bin/fm-teardown.sh metadata-locked-task --force
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+warning: failed to remove ./: Invalid argument
+error: could not clean scratch in worktree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq/metadata-lock/worktree before returning it; teardown aborted
++ fm_test_cleanup
++ local d
++ fm_test_reap_tracked_pids
++ local pid live
++ '[' -n /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-pids.3122420.TX6bsJ ']'
++ '[' -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-pids.3122420.TX6bsJ ']'
++ live=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-pids.3122420.TX6bsJ.live
++ :
++ jobs -rp
++ jobs -sp
++ fm_test_descendant_pids 3122420
++ IFS=
++ read -r pid
++ rm -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-pids.3122420.TX6bsJ.live /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-pids.3122420.TX6bsJ
++ fm_test_reap_watchers
++ local state lock_home $'seen=\n'
++ '[' -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-watcher.3122420.XA6jAe ']'
++ IFS=
++ read -r state
++ rm -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-watcher.3122420.XA6jAe
++ fm_test_reap_procevent_homes
++ local home claim_root $'seen=\n'
++ '[' -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-procevent.3122420.wnXGwD ']'
++ IFS=$'\t'
++ read -r home claim_root
++ rm -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-procevent.3122420.wnXGwD
++ for d in "${FM_TEST_CLEANUP_DIRS[@]:-}"
++ '[' -n '' ']'
++ '[' -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-cleanup.3122420.FPEUt8 ']'
++ IFS=
++ read -r d
++ '[' -n /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq ']'
++ fm_test_remove_tree /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq
++ local dir=/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq
++ '[' -d /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq ']'
++ '[' '!' -L /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq ']'
++ find /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq -type d -exec chmod u+rwx '{}' +
++ rm -rf /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-teardown-endpoint-safety.TmwxCq
++ IFS=
++ read -r d
++ rm -f /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/.fm-test-cleanup.3122420.FPEUt8
++ exit 1

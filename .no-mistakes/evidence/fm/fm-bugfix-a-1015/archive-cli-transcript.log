@@ -1,0 +1,107 @@
+
+fm-captain-hold.sh hold review-decision-pick-one --title Pick --reason Choice --origin review
+review-decision-pick-one
+
+fm-captain-hold.sh complete review pick-one
+complete: review captain-call inventory reviewed (pick-one)
+
+fm-captain-hold.sh answer review-decision-pick-one --decision-file /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-captain-hold.w9SNqQ/archived-legacy-default/answer.txt
+answered: review-decision-pick-one
+
+fm-captain-hold.sh verify review
+verified: review captain-call inventory
+verify exit=0
+
+## Archived 2026-10-16
+- [x] review-decision-pick-one - Pick (repo: sample) (kind: captain) (done 2026-10-16) (hold: fm-hold-v1:Q2hvaWNl) (hold-kind: captain)
+  Resolution recorded by fm-captain-hold.
+  Decision digest: 0f397fab78cac7abb34cfe34c119dbeb9a0a257923f704168d06711c9a6bba96
+  Resolution mode: answered
+
+  Captain decision:
+  Choose option A.
+
+  Captain hold origin: review
+
+  Origin: review
+
+
+fm-captain-hold.sh verify review
+verified: review captain-call inventory
+verify exit=0
+
+## Archived 2026-10-16
+- [x] review-decision-pick-one - Pick (repo: sample) (kind: captain) (done 2026-10-16) (hold: fm-hold-v1:Q2hvaWNl) (hold-kind: captain)
+  Resolution recorded by fm-captain-hold.
+  Decision digest: 0f397fab78cac7abb34cfe34c119dbeb9a0a257923f704168d06711c9a6bba96
+  Resolution mode: answered
+
+  Captain decision:
+  Choose option A.
+
+  Captain hold origin: review
+
+  Origin: review
+
+
+fm-captain-hold.sh verify review
+verified: review captain-call inventory
+verify exit=0
+
+## Archived 2026-10-16
+- [x] review-decision-pick-one - Pick (repo: sample) (kind: captain) (done 2026-10-16) (hold: fm-hold-v1:Q2hvaWNl) (hold-kind: captain)
+  Resolution recorded by fm-captain-hold.
+  Decision digest: 0f397fab78cac7abb34cfe34c119dbeb9a0a257923f704168d06711c9a6bba96
+  Resolution mode: answered
+
+  Captain decision:
+  Choose option A.
+
+  Captain hold origin: review
+
+  Origin: review
+
+
+fm-captain-hold.sh hold sample-archived-answered --title Answered call --reason captain call one --repo sample
+sample-archived-answered
+
+fm-captain-hold.sh hold sample-archived-unanswered --title Unanswered call --reason captain call two --repo sample
+sample-archived-unanswered
+
+fm-captain-hold.sh complete sample-archive-review sample-archived-answered
+complete: sample-archive-review captain-call inventory reviewed (sample-archived-answered) [no recorded origin on: sample-archived-answered; not checked against sample-archive-review]
+
+fm-captain-hold.sh answer sample-archived-answered --decision-file /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-captain-hold.w9SNqQ/archived-answer/decision.txt
+answered: sample-archived-answered
+
+fm-captain-hold.sh verify sample-archive-review
+verified: sample-archive-review captain-call inventory
+verify exit=0
+
+## Archived 2026-10-16
+- [x] sample-archived-answered - Answered call (repo: sample) (kind: captain) (done 2026-10-16) (hold: fm-hold-v1:Y2FwdGFpbiBjYWxsIG9uZQ==) (hold-kind: captain)
+  Resolution recorded by fm-captain-hold.
+  Decision digest: 52d1551f7cd72c88f9e3fab918dc8ac645eb314d12bbe1cf8fc6a2e5b2f5ec8e
+  Resolution mode: answered
+
+  Captain decision:
+  Captain picked option one.
+
+
+fm-captain-hold.sh verify sample-archive-review
+fm-captain-hold: captain-held task sample-archived-unanswered was archived without a recorded captain answer
+verify exit=1
+
+## Archived 2026-10-16
+- [x] sample-archived-answered - Answered call (repo: sample) (kind: captain) (done 2026-10-16) (hold: fm-hold-v1:Y2FwdGFpbiBjYWxsIG9uZQ==) (hold-kind: captain)
+  Resolution recorded by fm-captain-hold.
+  Decision digest: 52d1551f7cd72c88f9e3fab918dc8ac645eb314d12bbe1cf8fc6a2e5b2f5ec8e
+  Resolution mode: answered
+
+  Captain decision:
+  Captain picked option one.
+
+
+## Archived 2026-10-16
+- [x] sample-archived-unanswered - Unanswered call (repo: sample) (kind: captain) (done 2026-10-16)
+  Captain hold set: 2026-10-16T01:04:04Z

@@ -1,0 +1,68 @@
+{"feedbackDrafts":"off","attribution":{"commit":"","pr":"","sessionUrl":false},"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"'/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/bin/fm-busy-event.sh' apply '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/state' 'clauder' busy --gen 'g1792111847.2037737.31731' --source claude-hook --event user-prompt-submit 2>/dev/null || true"}]}],"Stop":[{"hooks":[{"type":"command","command":"touch '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/state/clauder.turn-ended'; '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/bin/fm-busy-event.sh' apply '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/state' 'clauder' idle --gen 'g1792111847.2037737.31731' --source claude-hook --event stop 2>/dev/null || true"}]}],"StopFailure":[{"hooks":[{"type":"command","command":"'/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/bin/fm-busy-event.sh' apply '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/state' 'clauder' idle --gen 'g1792111847.2037737.31731' --source claude-hook --event stop-failure 2>/dev/null || true"}]}],"SessionEnd":[{"hooks":[{"type":"command","command":"'/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/bin/fm-busy-event.sh' apply '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/state' 'clauder' idle --gen 'g1792111847.2037737.31731' --source claude-hook --event session-end 2>/dev/null || true"}]}]}}
+
+project on  main
+❯ treehouse get
+A new version of treehouse is available: v3.1.3 → v3.1.4
+Run "treehouse update" to update
+
+🌳 Setting up worktree...
+🌳 Entered worktree at ~/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehou
+se/project-7db4a9/2/project. Type 'exit' to return.
+
+project on  HEAD
+❯ cd -- '/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/pr
+oject-7db4a9/2/project'
+󱞩 /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/project-7
+db4a9/2/project
+
+project on  HEAD
+❯ export GOTMPDIR=/tmp/fm-clauder/gotmp
+export COMPACT_ADVISER_DISABLE=1
+export FM_TASK_ID=clauder
+
+project on  HEAD
+❯ export COMPACT_ADVISER_DISABLE=1
+
+project on  HEAD
+❯ export FM_TASK_ID=clauder
+
+project on  HEAD
+❯ . '/tmp/fm-clauder+f6040b2fcd39de3c57827503a707f77d6bcd781baad1bccd38fc191221c7f67c/launch.s1792111847.2028928.30619.s
+h'
+Welcome to Claude Code v2.1.300
+..........................................................
+
+     *                                       █████▓▓░
+                                 *         ███▓░     ░░
+            ░░░░░░                        ███▓░
+    ░░░   ░░░░░░░░░░                      ███▓░
+   ░░░░░░░░░░░░░░░░░░░    *                ██▓░░      ▓
+                                             ░▓▓███▓▓░
+ *                                 ░░░░
+                                 ░░░░░░░░
+                               ░░░░░░░░░░░░░░░░
+       █████████                                        *
+      ██▄█████▄██                        *
+       █████████      *
+.......█ █   █ █..........................................
+
+ Let's get started.
+
+ Choose the text style that looks best with your terminal
+ To change this later, run /theme
+
+     Auto (match terminal)
+ ❯ ✔ Dark mode
+     Light mode
+     Dark mode (colorblind-friendly)
+     Light mode (colorblind-friendly)
+     Dark mode (ANSI colors only)
+     Light mode (ANSI colors only)
+
+ ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+  1  function greet() {
+  2 -  console.log("Hello, World!");
+  2 +  console.log("Hello, Claude!");
+  3  }
+ ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+  Syntax theme: Monokai Extended (ctrl+t to disable)

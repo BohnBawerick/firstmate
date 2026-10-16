@@ -12,4 +12,4 @@ ok - real Herdr lab: exact projected teardown removes its task pane and preserve
 ok - real Herdr lab: exact task-pane close removes the projected workspace with no unrestored wrong-focus interval
 ok - real Herdr lab: concurrent projected cleanup is serialized and leaves active workspace/tab unchanged
 ok - real Herdr lab: three repeated concurrent create/order/cleanup waves have zero active workspace or tab drift
-not ok - secondmate alpha spawn failed: error: secondmate home cannot be inside the firstmate repo: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M50CT45BXDZ23N5NRP9RSPP0/.test-work/tmp/fm-herdr-presentation.p7yMCh/home-2ndmate-alpha
+not ok - secondmate alpha spawn failed: error: secondmate home cannot be inside the firstmate repo: /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/tmp/fm-herdr-presentation.m2q5nW/home-2ndmate-alpha

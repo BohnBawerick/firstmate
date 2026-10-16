@@ -1,0 +1,2 @@
+ok - sweep: a respawned secondmate keeps its armed PR binding parseable
+ok - sweep: failed launch sends and retries preserve the secondmate record and PR binding

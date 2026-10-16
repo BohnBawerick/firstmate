@@ -1,0 +1,40 @@
+{"id":"cli:pane:get","result":{"pane":{"agent":"opencode","agent_session":{"agent":"opencode","kind":"id","source":"herdr:opencode","value":"ses_ebdd06f54ffe97c074pfmNg1OZ"},"agent_status":"done","cwd":"/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/project","focused":false,"foreground_cwd":"/home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/pool/.treehouse/project-7db4a9/1/project","pane_id":"w2:p2","revision":3,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":40},"tab_id":"w2:t2","terminal_id":"term_65dea823084c13","terminal_title":"OC | Disposable launch check — ready and w…","terminal_title_stripped":"OC | Disposable launch check — ready and w…","workspace_id":"w2"},"type":"pane_info"}}
+  ┃  your board with bin/fm-procevent-lavish.sh arm <artifact.html> --for <task-id>; never run lavish-axi poll
+  ┃  yourself. Re-arm with the reply after each nonterminal round to acknowledge it, route the board feedback through
+  ┃  your steering inbox, write needs-decision [key=board-review] with the live board URL when the captain owes a
+  ┃  decision, and stop at session_ended or an empty End without re-arming - acknowledge that final round with bin/fm-
+  ┃  procevent.sh handled <source-id> <sequence> to conclude and retire your board.
+  ┃  Before reporting done, read and follow `/home/bohn/.no-mistakes/worktrees/842a31c92d33/
+  ┃  01M511MJZT6SK2GSXCKTH7TNKX/.agents/skills/captain-hold-lifecycle/SKILL.md` and pass its shared completion gate
+  ┃  for the report and any visual review.
+  ┃  When the report is complete, append `done [at=<epoch>]: {one-line conclusion}` to the status file and stop.
+  ┃  If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the
+  ┃  report; firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a
+  ┃  follow-up message.
+  ┃
+  ┃  ## Progress note (2026-10-16T00:49:26Z)
+  ┃
+  ┃  This task was relaunched. Continue from here; the local copy and every
+  ┃  uncommitted change are exactly as the previous worker left them.
+  ┃
+  ┃  First, check your instruction inbox: list /home/bohn/.no-mistakes/worktrees/842a31c92d33/
+  ┃  01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/state/coder.inbox/*.msg, act on
+  ┃  each message in numeric order, then mv each handled file into
+  ┃  /home/bohn/.no-mistakes/worktrees/842a31c92d33/01M511MJZT6SK2GSXCKTH7TNKX/.nm-live-test/live/home.V46G6Z/state/
+  ┃  coder.inbox/handled/. A steer sent before the relaunch survives there.
+  ┃
+  ┃  Disposable recovery check. Do not edit files or run tools. Reply ready and wait.
+  ┃
+
+     + Thought · 4.4s
+
+     Ready and waiting.
+
+     Build · DeepSeek V4.1 Flash · 9.4s · 81.4 tok/s
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · DeepSeek V4.1 Flash OpenCode Go · max
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  …/01M511MJZT6SK2GS…/.nm-live-test/live/pool/.treehouse/project-7db4a9/1/project  49.5K (5%) · $0.01  ctrl+p commands
