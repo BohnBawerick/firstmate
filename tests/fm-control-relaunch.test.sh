@@ -2424,6 +2424,40 @@ herdr_case_or_skip() {  # <name> <id> [session] [surviving-pane]
   return 0
 }
 
+test_herdr_relaunch_accepts_a_renamed_isolated_tab() {
+  local dir out rc entry id
+  for entry in spawn control; do
+    id="renamed-tab-$entry"
+    herdr_case_or_skip "$id" "$id" || {
+      echo "skip - herdr relaunch needs jq (the herdr adapter parses JSON with it)"
+      return 0
+    }
+    dir=$HERDR_CASE_DIR
+    rm -f "$dir/fake/herdr-stopped"
+    jq '(.tabs[] | select(.tab_id == "tab1")).label = "manually-renamed-worker"' \
+      "$dir/fake/herdr-layout.json" > "$dir/fake/layout.tmp"
+    mv "$dir/fake/layout.tmp" "$dir/fake/herdr-layout.json"
+    cp "$dir/fake/herdr-layout.json" "$dir/fake/layout-before.json"
+    rc=0
+    if [ "$entry" = spawn ]; then
+      out=$(run_spawn "$dir" "$id" --relaunch --harness claude) || rc=$?
+    else
+      out=$(run_control "$dir" "$id" relaunch --note "Continue after renaming the worker tab") || rc=$?
+    fi
+    expect_code 0 "$rc" "$entry relaunch should accept a renamed isolated tab"$'\n'"$out"
+    [ -s "$dir/fake/launched-command" ] || fail "$entry relaunch did not deliver the replacement launch"
+    [ "$(meta_field "$dir" "$id" window)" = 'fmlab:%7' ] \
+      || fail "$entry relaunch replaced the recorded endpoint"
+    [ "$(meta_field "$dir" "$id" herdr_workspace_id)" = ws1 ] \
+      || fail "$entry relaunch replaced the recorded workspace"
+    [ "$(meta_field "$dir" "$id" herdr_tab_id)" = tab1 ] \
+      || fail "$entry relaunch replaced the renamed tab"
+    cmp -s "$dir/fake/layout-before.json" "$dir/fake/herdr-layout.json" \
+      || fail "$entry relaunch changed the isolated workspace layout or tab label"
+  done
+  pass "Herdr direct and control relaunch accept a renamed isolated worker tab"
+}
+
 test_herdr_relaunch_resumes_only_the_registered_pi_session() {
   local dir out rc=0 command registered
   for registered in pi claude; do
@@ -2750,6 +2784,7 @@ SH
 }
 
 if [ "${1:-}" = --herdr-recovery-regressions ]; then
+  test_herdr_relaunch_accepts_a_renamed_isolated_tab
   test_herdr_relaunch_resumes_only_the_registered_pi_session
   test_herdr_reclaim_adopts_a_pane_that_outlived_its_server
   test_herdr_exit_reports_already_stopped_when_the_pane_outlived_its_server
@@ -2841,6 +2876,7 @@ test_tmux_refuses_a_window_missing_from_its_session
 test_tmux_refuses_a_session_that_cannot_be_found
 test_tmux_refuses_when_the_server_is_gone
 test_reclaim_refuses_an_unreadable_endpoint
+test_herdr_relaunch_accepts_a_renamed_isolated_tab
 test_herdr_relaunch_resumes_only_the_registered_pi_session
 test_herdr_reclaim_adopts_a_pane_that_outlived_its_server
 test_herdr_exit_reports_already_stopped_when_the_pane_outlived_its_server

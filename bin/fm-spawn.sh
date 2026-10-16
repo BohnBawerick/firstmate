@@ -4149,7 +4149,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
     WT_TARGET=$T
   fi
   if [ "$BACKEND" = herdr ] && [ "$KIND" != secondmate ]; then
-    fm_backend_herdr_task_workspace_isolated "$T" "$W" || {
+    fm_backend_herdr_task_workspace_isolated "$T" || {
       echo "error: task $ID lacks verified one-task workspace isolation; refusing relaunch" >&2
       exit 1
     }

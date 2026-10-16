@@ -162,7 +162,7 @@ It pins the herdr session the task's record names and follows the same [isolated
 
 Existing task operations use recorded endpoint ids and do not move a live task when labels change.
 Existing shared workspaces remain until their recorded tasks are closed.
-Relaunch of a surviving ship or scout endpoint requires exactly one task-labeled tab and one pane in its workspace.
+Relaunch of a surviving ship or scout endpoint requires exactly one tab and one pane in its workspace.
 The workspace must be outside the top-level `firstmate` and `2ndmate-<id>` parents; isolated legacy child workspaces such as `2ndmate-<id>/<task> · p:<token>` remain supported.
 
 ## Presentation spaces

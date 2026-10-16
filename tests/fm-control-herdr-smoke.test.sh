@@ -232,6 +232,9 @@ cmp -s "$HOME_DIR/state/hsmoke.meta" "$SCRATCH/shared-before.meta" \
   || fail "could not remove the shared-workspace fixture"
 pass "real herdr: surviving shared-tab relaunch refuses before launch or metadata publication"
 
+fm_herdr_lab_cli "$SESSION" tab rename "$TAB_ID" renamed-hsmoke >/dev/null \
+  || fail "could not rename the isolated worker tab"
+
 OUT=$(env FM_HOME="$HOME_DIR" HERDR_SESSION="$SESSION" FM_SPAWN_NO_GUARD=1 \
   "$ROOT/bin/fm-spawn.sh" hsmoke --relaunch --harness codex) \
   || fail "a drifted, agent-free Herdr pane should be re-homed and relaunched: $OUT"
@@ -246,6 +249,9 @@ done
   || fail "the Herdr relaunch replaced its endpoint instead of reusing it"
 herdr pane get "$PANE_ID" --session "$SESSION" >/dev/null 2>&1 \
   || fail "the Herdr relaunch removed the endpoint it was required to reuse"
+[ "$(fm_herdr_lab_cli "$SESSION" tab get "$TAB_ID" | jq -r '.result.tab.label')" = renamed-hsmoke ] \
+  || fail "relaunch changed the renamed isolated worker tab"
+pass "real herdr: a renamed isolated worker tab still relaunches"
 for WORKSPACE_LABEL in \
   '└ hsmoke · p:AbCdEfGhIjKlMnOpQrStUv' \
   'firstmate/hsmoke · p:AbCdEfGhIjKlMnOpQrStUv' \
@@ -253,13 +259,13 @@ for WORKSPACE_LABEL in \
 do
   fm_herdr_lab_cli "$SESSION" workspace rename "$WORKSPACE_ID" "$WORKSPACE_LABEL" >/dev/null \
     || fail "could not set the child workspace label"
-  fm_backend_herdr_task_workspace_isolated "$SESSION:$PANE_ID" fm-hsmoke \
+  fm_backend_herdr_task_workspace_isolated "$SESSION:$PANE_ID" \
     || fail "an isolated child workspace was rejected: $WORKSPACE_LABEL"
 done
 for WORKSPACE_LABEL in firstmate 2ndmate-alpha; do
   fm_herdr_lab_cli "$SESSION" workspace rename "$WORKSPACE_ID" "$WORKSPACE_LABEL" >/dev/null \
     || fail "could not set the parent workspace label"
-  if fm_backend_herdr_task_workspace_isolated "$SESSION:$PANE_ID" fm-hsmoke; then
+  if fm_backend_herdr_task_workspace_isolated "$SESSION:$PANE_ID"; then
     fail "a top-level parent workspace was accepted: $WORKSPACE_LABEL"
   fi
 done
@@ -404,6 +410,8 @@ OUT=$(FM_CONTROL_LAUNCH_WAIT=10 run_control hsmoke relaunch --harness codex --no
 [ -e "$SCRATCH/codex-launched" ] || fail "control relaunch did not launch the replacement harness"
 [ "$(sed -n 's/^window=//p' "$HOME_DIR/state/hsmoke.meta" | tail -1)" = "$SESSION:$PANE_ID" ] \
   || fail "control relaunch replaced the legacy child endpoint"
+[ "$(fm_herdr_lab_cli "$SESSION" tab get "$TAB_ID" | jq -r '.result.tab.label')" = renamed-hsmoke ] \
+  || fail "control relaunch changed the renamed isolated worker tab"
 kill "$(cat "$SCRATCH/control-codex.pid")" || fail "could not stop the control relaunch stand-in"
 wait_process_state shell 50 || fail "the control relaunch stand-in did not exit to its shell"
 awk -F= '$1 == "harness" {$0="harness=claude"} {print}' "$HOME_DIR/state/hsmoke.meta" \

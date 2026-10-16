@@ -2957,7 +2957,7 @@ fm_backend_herdr_projection_live_binding_matches() {  # <session> <token> <works
 }
 
 fm_backend_herdr_task_workspace_isolated() {
-  local target=$1 expected=$2 session pane out tab workspace label tabs panes
+  local target=$1 session pane out tab workspace label tabs panes
   fm_backend_herdr_parse_target "$target" || return 1
   session=$FM_BACKEND_HERDR_SESSION
   pane=$FM_BACKEND_HERDR_PANE
@@ -2970,9 +2970,9 @@ fm_backend_herdr_task_workspace_isolated() {
   case "$label" in ''|firstmate) return 1 ;; esac
   if [[ "$label" =~ ^2ndmate-[^/]+$ ]]; then return 1; fi
   tabs=$(fm_backend_herdr_cli "$session" tab list --workspace "$workspace" 2>/dev/null) || return 1
-  printf '%s' "$tabs" | jq -e --arg tab "$tab" --arg expected "$expected" '
+  printf '%s' "$tabs" | jq -e --arg tab "$tab" '
     (.result.tabs | type) == "array" and (.result.tabs | length) == 1
-    and .result.tabs[0].tab_id == $tab and .result.tabs[0].label == $expected
+    and .result.tabs[0].tab_id == $tab
   ' >/dev/null 2>&1 || return 1
   panes=$(fm_backend_herdr_cli "$session" pane list --workspace "$workspace" 2>/dev/null) || return 1
   printf '%s' "$panes" | jq -e --arg tab "$tab" --arg pane "$pane" '
