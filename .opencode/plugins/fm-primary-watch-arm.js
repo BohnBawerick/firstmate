@@ -1,3 +1,4 @@
+import { v2WorkerOnly } from "./lib/fm-v2-worker-only.js";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
@@ -581,3 +582,5 @@ export const FmPrimaryWatchArm = async ({ client, directory, worktree }) => {
     },
   };
 };
+
+export default v2WorkerOnly("firstmate.fm-primary-watch-arm");

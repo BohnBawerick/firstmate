@@ -227,6 +227,64 @@ test_opencode_plugin_semantic_lifecycle() {
   pass "opencode plugin classifies from session.status, scoped to the latched worker session"
 }
 
+drive_oc_v2_plugin() {
+  local plugin=$1
+  shift
+  FM_OPENCODE_SESSION=main PLUGIN_PATH="$plugin" node --input-type=module - "$@" 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+import { dirname, resolve } from "node:path";
+const mod = await import(pathToFileURL(process.env.PLUGIN_PATH).href);
+const directory = resolve(dirname(process.env.PLUGIN_PATH), "../..");
+let drained;
+const done = new Promise((resolve) => { drained = resolve; });
+const cleanup = await mod.default.setup({
+  location: { directory },
+  session: { get: async ({sessionID}) => ({ data: {
+    location: { directory: sessionID === "foreign" ? "/other-location" : directory },
+    parentID: sessionID === "child" ? "main" : undefined,
+  } }) },
+  event: { async *subscribe({signal}) {
+    for (const arg of process.argv.slice(2)) yield JSON.parse(arg);
+    drained();
+    await new Promise((resolve) => signal.addEventListener("abort", resolve, {once:true}));
+  } },
+});
+await done;
+cleanup();
+EOF
+}
+
+oc_v2_execution() {
+  printf '{"type":"session.execution.%s","data":{"sessionID":"%s"}}' "$2" "$1"
+}
+
+test_opencode_v2_plugin_semantic_lifecycle() {
+  local rec id=busy-oc-v2 out state plugin
+  rec=$(make_spawn_case oc-v2 opencode "$id")
+  read_case_record "$rec"
+  out=$(FM_FAKE_OPENCODE_VERSION='opencode v2.0.30' run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
+  expect_code 0 $? "v2 spawn should succeed: $out"
+  state="$HOME_DIR/state"
+  plugin="$WT_DIR/.opencode/plugins/fm-busy-state.js"
+  out=$(drive_oc_v2_plugin "$plugin" "$(oc_v2_execution foreign started)" "$(oc_v2_execution child started)") || fail "v2 foreign drive: $out"
+  [ "$(classify opencode "$id" "$state")" = "busy fm-spawn" ] || fail "foreign/child execution must not bind a worker"
+  out=$(drive_oc_v2_plugin "$plugin" "$(oc_v2_execution main started)" "$(oc_v2_execution foreign succeeded)" "$(oc_v2_execution child succeeded)") || fail "v2 busy drive: $out"
+  [ "$(classify opencode "$id" "$state")" = "busy opencode-plugin" ] || fail "another session must not clear v2 busy"
+  local ending
+  for ending in succeeded failed interrupted; do
+    rm -f "$state/$id.turn-ended"
+    out=$(drive_oc_v2_plugin "$plugin" "$(oc_v2_execution main started)" "$(oc_v2_execution main "$ending")") || fail "v2 $ending drive: $out"
+    [ "$(classify opencode "$id" "$state")" = "idle opencode-plugin" ] || fail "v2 $ending must settle idle"
+    [ -f "$state/$id.turn-ended" ] || fail "v2 $ending must notify turn end"
+  done
+  "$ROOT/bin/fm-busy-event.sh" arm "$state" "$id" >/dev/null
+  rm -f "$state/$id.turn-ended"
+  out=$(drive_oc_v2_plugin "$plugin" "$(oc_v2_execution main started)" "$(oc_v2_execution main succeeded)") || fail "v2 stale drive: $out"
+  [ "$(classify opencode "$id" "$state")" = "busy fm-spawn" ] || fail "a stale v2 plugin must not change a replacement"
+  [ ! -e "$state/$id.turn-ended" ] || fail "a stale v2 plugin must not notify the replacement"
+  pass "OpenCode v2 filters locations and children, tracks execution settlement, and rejects stale generations"
+}
+
 run_claude_hook() {  # <settings.json> <hook-event>
   local cmd
   cmd=$(jq -r ".hooks[\"$2\"][0].hooks[0].command" "$1")
@@ -900,6 +958,7 @@ test_pi_extension_serializes_settle_before_next_start
 test_pi_extension_stale_incarnation_rejected
 test_kimi_and_grok_install_no_unverified_wiring
 test_opencode_plugin_semantic_lifecycle
+test_opencode_v2_plugin_semantic_lifecycle
 test_claude_hooks_semantic_lifecycle
 test_claude_hooks_stale_incarnation_harmless
 test_claude_spawn_leaves_a_tracked_settings_local_untouched

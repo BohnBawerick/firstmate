@@ -1,3 +1,4 @@
+import { v2WorkerOnly } from "./lib/fm-v2-worker-only.js";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -62,3 +63,5 @@ export const FmPrimaryPretoolCheck = async ({ directory, worktree }) => {
     },
   };
 };
+
+export default v2WorkerOnly("firstmate.fm-primary-pretool-check");

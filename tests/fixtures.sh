@@ -300,6 +300,7 @@ fm_test_make_spawn_fakebin() {
   fakebin=$(fm_fakebin "$dir")
   fm_test_fake_tmux_spawn "$fakebin"
   fm_fake_exit0 "$fakebin" treehouse "$@"
+  fm_fake_version_tool "$fakebin" opencode FM_FAKE_OPENCODE_VERSION 1.18.33
   printf '%s\n' "$fakebin"
 }
 

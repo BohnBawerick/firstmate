@@ -507,7 +507,7 @@ FM_COMPOSER_IDLE_RE_DEFAULT='^Type a message\.\.\.$|^Ask anything(\.\.\.|…)|^P
 # Opencode draws a mode/model footer line INSIDE its left-bar composer
 # ("Build · GPT-5.5 Fast OpenAI · high"). It is composer furniture, not typed
 # text, and only the run's LAST row is ever matched against it.
-FM_COMPOSER_LEFTBAR_FOOTER_RE_DEFAULT='^(Build|Plan)[[:space:]]+·[[:space:]]+'
+FM_COMPOSER_LEFTBAR_FOOTER_RE_DEFAULT='^(Build|Plan)( auto)?[[:space:]]+·[[:space:]]+'
 # Claude draws its permission-mode hint on its own row directly below the
 # composer (` ⏵⏵ bypass permissions on (shift+tab to cycle)`, ` ⏵⏵ accept edits
 # on`, ` ⏸ plan mode on`; verified live through Herdr on claude 2.1.236). The
@@ -1544,6 +1544,20 @@ _fm_composer_leftbar_floor_row() {  # <trimmed-row>
   [ -z "${blocks//▀/}" ]
 }
 
+# V2 puts its cwd or busy animation below the floor, alongside command hints.
+# Only this single status row may sit between a proven left-bar and blank space.
+_fm_composer_leftbar_status_row() {  # <trimmed-row>
+  local row=$1
+  case "$row" in
+    *'ctrl+p commands'|*'shift+tab agents'*) ;;
+    *) return 1 ;;
+  esac
+  case "$row" in
+    /*|\~/*|*'esc interrupt'*) return 0 ;;
+  esac
+  return 1
+}
+
 # _fm_composer_row_is_composer_furniture: 0 when <trimmed-row> is DEMONSTRABLY
 # a harness's own furniture drawn below its composer, given <proof-glyph> - the
 # agent glyph that proved the envelope above it. Exactly four things qualify,
@@ -1786,6 +1800,13 @@ _fm_composer_select_cursorless() {
     raw=$(_fm_composer_screen_row "$next" "$plain")
     trimmed=$raw
     fm_composer_normalize_trim_var trimmed
+    if [ "$FM_COMPOSER_SELECTED_KIND" = leftbar ] \
+       && [ "$boundary" -gt "$FM_COMPOSER_SELECTED_LAST" ] \
+       && _fm_composer_leftbar_status_row "$trimmed"; then
+      raw=$(_fm_composer_screen_row "$((next + 1))" "$plain")
+      trimmed=$raw
+      fm_composer_normalize_trim_var trimmed
+    fi
     if [ -n "$trimmed" ] && ! fm_composer_row_has_edge "$trimmed"; then
       FM_COMPOSER_SELECTED_KIND=
       return 1

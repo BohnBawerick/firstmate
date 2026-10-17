@@ -108,10 +108,10 @@
 #   from that harness's launch rather than guessed. Ultra is the explicit
 #   exception: bin/fm-harness.sh validate-native-effort owns its model scope;
 #   supported Pi launches receive --codex-effort ultra, never --thinking ultra.
-#   OpenCode has no interactive effort flag, so its effort is written as the
-#   build agent's variant, keyed to the resolved model, inside the
-#   OPENCODE_CONFIG_CONTENT JSON its launch already carries (config schema
-#   verified on opencode 1.18.32); without a model the axis is recorded but omitted.
+#   OpenCode 1.x carries effort through agent.build.variant in its existing
+#   OPENCODE_CONFIG_CONTENT overlay. V2 uses fm-opencode-launch.sh to select a
+#   model and advertised variant through its API before attaching a private TUI.
+#   V2 supports workers only; secondmates refuse until primary hooks are ported.
 #   --backend <name> is the explicit runtime session-provider backend for this
 #   exact task only (docs/configuration.md "Runtime backend" owns when that flag
 #   is authorized). Without it, the script resolves FM_BACKEND, then
@@ -2669,6 +2669,19 @@ case "$ARG3" in
   ;;
 esac
 
+OPENCODE_MAJOR=1
+if [ "$HARNESS" = opencode ] && [ "$RAW_LAUNCH" -eq 0 ]; then
+  OPENCODE_MAJOR=$("$SCRIPT_DIR/fm-opencode-launch.sh" --major-version) || exit 1
+  if [ "$OPENCODE_MAJOR" = 2 ]; then
+    if [ "$KIND" = secondmate ]; then
+      echo "error: OpenCode v2 is verified for workers only; its primary supervision plugins are not ported. Select a harness verified for secondmates." >&2
+      exit 1
+    fi
+    # shellcheck disable=SC2016 # Expanded by the worker shell after placeholder substitution.
+    LAUNCH='__OPENCODELAUNCH__ --model __OPENCODEMODEL__ --effort __OPENCODEEFFORT__ --prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
+  fi
+fi
+
 # muse, gemini, agy, devin, and commandcode are verified as CREWMATE/SCOUT adapters only. A secondmate is
 # a firstmate instance, so it needs a primary supervision protocol.
 # gemini has none: docs/supervision-protocols/ carries no gemini wake protocol
@@ -5209,58 +5222,10 @@ EOF
     ;;
   opencode*)
     mkdir -p "$WT/.opencode/plugins"
-    cat >"$WT/.opencode/plugins/fm-busy-state.js" <<EOF
-// Firstmate semantic busy-state events + turn-end notification; written by
-// fm-spawn under the contract owned by bin/fm-busy-lib.sh.
-// Semantic state comes from OpenCode's session.status events: busy and retry
-// are active, idle is inactive. Scoping latches the first session that
-// reports activity (the worker's main session - a subagent child session can
-// only start while the main session is already busy) and ignores other
-// sessions' status until the latched session settles, so a child's idle can
-// never clear the worker's busy state. The session.idle touch stays the
-// watcher's wake NOTIFICATION, never current-state truth.
-import { execFile } from "node:child_process";
-const notifyTurnEnd = $busy_notify_turnend;
-const busyEvent = (state, event) =>
-  new Promise((resolve) => {
-    execFile("$FM_ROOT/bin/fm-busy-event.sh", [
-      "apply", "$STATE_REAL", "$ID", state,
-      "--gen", "$BUSY_GEN", "--source", "opencode-plugin", "--event", event,
-    ], () => resolve());
-  });
-export const FmBusyState = async () => {
-  let activeSession = null;
-  return {
-    event: async ({ event }) => {
-      if (event.type === "session.status") {
-        const sessionID = event.properties.sessionID;
-        const statusType = event.properties.status && event.properties.status.type;
-        if (statusType === "busy" || statusType === "retry") {
-          if (activeSession === null) activeSession = sessionID;
-          if (sessionID === activeSession) await busyEvent("busy", "session-" + statusType);
-          return;
-        }
-        if (statusType === "idle" && sessionID === activeSession) {
-          activeSession = null;
-          await busyEvent("idle", "session-status-idle");
-        }
-        return;
-      }
-      if (event.type === "session.idle") {
-        if (event.properties.sessionID === activeSession) {
-          activeSession = null;
-          await busyEvent("idle", "session-idle");
-        }
-        if (notifyTurnEnd) {
-          await new Promise((resolve) => {
-            execFile("touch", ["$TURNEND"], () => resolve());
-          });
-        }
-      }
-    },
-  };
-};
-EOF
+    # shellcheck source=bin/fm-opencode-busy-lib.sh
+    . "$SCRIPT_DIR/fm-opencode-busy-lib.sh"
+    fm_opencode_write_busy_plugin "$WT/.opencode/plugins/fm-busy-state.js" "$OPENCODE_MAJOR" \
+      "$FM_ROOT" "$STATE_REAL" "$ID" "$BUSY_GEN" "$TURNEND" "$busy_notify_turnend" || exit 1
     exclude_path '.opencode/plugins/fm-busy-state.js'
     ;;
   pi | pi-signed)
@@ -5771,6 +5736,9 @@ MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL")
 # A pinned Pi launch confines Pi's model lookup to the declared provider.
 [ -z "$WORKER_ACCOUNT_PROVIDER" ] || MODELFLAG="--provider $(shell_quote "$WORKER_ACCOUNT_PROVIDER") $MODELFLAG"
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT" "$MODEL") || exit 1
+LAUNCH=${LAUNCH//__OPENCODELAUNCH__/$(shell_quote "$FM_ROOT/bin/fm-opencode-launch.sh")}
+LAUNCH=${LAUNCH//__OPENCODEMODEL__/$(shell_quote "$MODEL")}
+LAUNCH=${LAUNCH//__OPENCODEEFFORT__/$(shell_quote "$EFFORT")}
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
 LAUNCH=${LAUNCH//__EFFORTFLAG__/$EFFORTFLAG}
 # Relaunch session continuity. Computed here, where the adopted endpoint (T) is

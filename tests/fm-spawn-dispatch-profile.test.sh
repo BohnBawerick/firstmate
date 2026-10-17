@@ -107,6 +107,7 @@ run_spawn() {
   CLAUDE_CONFIG_DIR="${FM_TEST_CLAUDE_CONFIG_DIR:-}" \
     FM_FAKE_LAUNCH_LOG="$launchlog" FM_FAKE_PANE_LOG="${FM_TEST_PANE_LOG:-}" \
     FM_FAKE_PI_VERSION="${FM_TEST_PI_VERSION:-0.84.0}" \
+    FM_FAKE_OPENCODE_VERSION="${FM_TEST_OPENCODE_VERSION:-1.18.33}" \
     FM_FAKE_CURSOR_MODELS="${FM_TEST_CURSOR_MODELS:-}" \
     FM_FAKE_CURSOR_LIST_STATUS="${FM_TEST_CURSOR_LIST_STATUS:-0}" \
     CODEX_HOME="${FM_TEST_CODEX_HOME:-$home/user-home/.codex}" \
@@ -881,6 +882,34 @@ test_opencode_threads_model_and_effort_variant() {
   assert_not_contains "$launch" "--variant" "opencode launch must not pass run-only --variant"
   assert_not_contains "$launch" "--thinking" "opencode launch must not pass pi thinking flag"
   pass "opencode receives --model and the effort as its config's agent variant"
+}
+
+test_opencode_v2_uses_selected_session_launcher() {
+  local rec id=profile-opencode-v2 out status launch
+  rec=$(make_spawn_case profile-opencode-v2 opencode "$id")
+  read_case_record "$rec"
+  out=$(FM_TEST_OPENCODE_VERSION='opencode v2.0.30' run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model opencode/deepseek-v4.1-flash-free --effort high)
+  status=$?
+  expect_code 0 "$status" "v2 spawn should succeed: $out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "fm-opencode-launch.sh' --model 'opencode/deepseek-v4.1-flash-free' --effort 'high' --prompt" "v2 must create a selected session before attaching"
+  assert_not_contains "$launch" 'OPENCODE_CONFIG_CONTENT=' "v2 must not rely on the removed config overlay"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" opencode opencode/deepseek-v4.1-flash-free high
+  pass "OpenCode v2 routes model and effort through its selected-session launcher"
+}
+
+test_opencode_v2_refuses_secondmate() {
+  local rec id=profile-opencode-v2-secondmate out sm
+  rec=$(make_spawn_case profile-opencode-v2-secondmate opencode "$id")
+  read_case_record "$rec"
+  sm="$CASE_DIR/secondmate"
+  make_seeded_secondmate_home "$sm" "$id"
+  if out=$(FM_TEST_OPENCODE_VERSION='opencode v2.0.30' run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$sm" --secondmate 2>&1); then
+    fail "v2 secondmate must refuse"
+  fi
+  assert_contains "$out" 'primary supervision plugins are not ported' "v2 secondmate refusal must explain the missing integration"
+  [ ! -f "$HOME_DIR/state/$id.meta" ] || fail "v2 secondmate published metadata before refusing"
+  pass "OpenCode v2 refuses unported secondmate supervision before launch"
 }
 
 test_opencode_without_effort_keeps_launch_config_unchanged() {
@@ -2330,6 +2359,8 @@ test_cursor_threads_model_workspace_and_omits_effort_axis
 test_cursor_refuses_model_absent_from_live_catalog
 test_cursor_failed_catalog_probe_does_not_block_spawn
 test_opencode_threads_model_and_effort_variant
+test_opencode_v2_uses_selected_session_launcher
+test_opencode_v2_refuses_secondmate
 test_opencode_without_effort_keeps_launch_config_unchanged
 test_opencode_emits_variant_for_openai_family_effort
 test_opencode_omits_variant_when_model_family_lacks_effort

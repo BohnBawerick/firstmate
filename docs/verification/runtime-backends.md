@@ -913,6 +913,36 @@ The path start is checked on that top fragment's own bytes rather than on the co
 A lone `/` (or a slash-only token) is deliberately not accepted, because a composer holding only `/` is the first keystroke of a slash command and must never read `empty`; a typed slash command such as `/exit` starts at the left edge and fails the position gate.
 The footer row itself, tail fragment included, stays furniture through the existing last-row footer regex and is not read by the recognition.
 
+### OpenCode v2 workers
+
+Verified on 2026-10-17 on Linux with OpenCode 2.0.32 in an isolated named Herdr session.
+The earlier 2.0.30 launch reproduced `Unrecognized flag: --model in command opencode`.
+The current adapter's version split is covered by `tests/fm-opencode-launch.test.sh` and `tests/fm-spawn-dispatch-profile.test.sh`; the 1.x command construction was regression-tested, without claiming a new live 1.x run on this host.
+
+Refresh with:
+
+```sh
+FM_OPENCODE_V2_LIVE=1 bash bin/fm-test-run.sh tests/fm-opencode-v2-live-e2e.test.sh
+```
+
+Exact live guard output:
+
+```text
+ok - opencode v2.0.32 launch submits its prompt at DeepSeek high and plugin settles idle
+ok - opencode v2.0.32 idle and busy steering clear the composer and reach the model
+ok - opencode v2.0.32 Double Escape interrupts and plugin settles idle
+ok - opencode v2.0.32 /exit and --continue preserve the session and refresh the busy generation
+ok - opencode v2.0.32 requested max and high both reach the pane through session model.variant
+```
+
+The guard loads the production-generated busy plugin and the tracked primary plugin compatibility entrypoints in a scratch project, and drives the production Herdr composer and submit functions.
+The v2 semantic source is `session.execution.started` with `succeeded`, `failed`, and `interrupted` settlement, rather than `session.status`; `tests/fm-busy-adapter-wiring.test.sh` also covers foreign sessions, children, and stale generations.
+An actual launch and interrupted turn proved busy and idle through the plugin's record, and native `--continue` loaded a replacement generation and submitted its prompt.
+Styled idle, busy, and pending captures are in `tests/fixtures/opencode-v2/`; `tests/fm-composer-lib.test.sh` covers the `Build auto` footer and the status row below its floor, including independent command hints and lower-shell refusal.
+Busy Enter cleared the composer immediately on v2, so the v1 retained-text conversion remains specific to the older behavior.
+Primary and secondmate supervision remains unsupported on v2 and refuses explicitly; the [OpenCode adapter reference](../../.agents/skills/harness-adapters/references/harness/opencode.md) owns that boundary and the operating facts.
+The guarded Herdr teardown passed its default-session tripwire.
+
 ### 2026-10-14 OpenCode 1.18.31 absolute cwd rail on a wide tmux pane
 
 Verified on 2026-10-14 on Linux against OpenCode 1.18.31 tmux workers whose worktrees live under an absolute path outside `$HOME` (308-column panes), busy and idle alike.

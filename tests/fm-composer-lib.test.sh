@@ -784,6 +784,27 @@ test_matrix_opencode_leftbar_signals() {
   pass "matrix: opencode's left-bar composer reads empty everywhere and scans the full active run"
 }
 
+test_matrix_opencode_v2_status_furniture() {
+  local busy idle pending footer out
+  busy=$(cat "$ROOT/tests/fixtures/opencode-v2/opencode-2.0.32-busy.ansi")
+  idle=$(cat "$ROOT/tests/fixtures/opencode-v2/opencode-2.0.32-idle.ansi")
+  pending=$(cat "$ROOT/tests/fixtures/opencode-v2/opencode-2.0.32-pending.ansi")
+  assert_screen "OpenCode v2 busy status below floor" empty "$CAPS_STYLED" "$busy"
+  assert_screen "OpenCode v2 idle cwd below floor" empty "$CAPS_STYLED" "$idle"
+  assert_screen "OpenCode v2 typed input above auto footer" pending "$CAPS_STYLED" "$pending"
+  assert_screen "OpenCode v2 plain typed input still defers" unknown "$CAPS_PLAIN" "$pending"
+  assert_screen "OpenCode v2 status cannot hide a shell" unknown "$CAPS_STYLED" "$idle"$'\n$ '
+  # Lose either hint independently, retaining the status's second signal.
+  footer=$'┃\n┃\n┃  Build auto · DeepSeek OpenCode · high\n╹▀▀▀▀▀▀▀▀\n/tmp/proof    shift+tab agents  ctrl+p commands'
+  out=$(fm_composer_classify_screen "$CAPS_STYLED" "${footer/ctrl+p commands/}")
+  [ "$out" = empty ] || fail "agent hint alone should prove the status row"
+  out=$(fm_composer_classify_screen "$CAPS_STYLED" "${footer/shift+tab agents/}")
+  [ "$out" = empty ] || fail "command hint alone should prove the status row"
+  footer=${footer/ctrl+p commands/}
+  assert_screen "unclaimed path below floor still refuses" unknown "$CAPS_STYLED" "${footer/shift+tab agents/}"
+  pass "matrix: OpenCode v2 auto footer and status row preserve real typed input and stale-shell refusal"
+}
+
 test_matrix_opencode_leftbar_cwd_furniture() {
   # Real idle OpenCode 1.18.31, captured live on 2026-09-18 from a firstmate
   # tmux worker pane (fixtures/opencode-1.18.31-cwd/opencode-1.18.31-idle-cwd.ansi,
@@ -1333,6 +1354,7 @@ test_matrix_pi_separated_needs_identity
 test_matrix_agy_separated_shell_prompt
 test_matrix_pi_dollar_status_footer_is_empty
 test_matrix_opencode_leftbar_signals
+test_matrix_opencode_v2_status_furniture
 test_matrix_opencode_leftbar_cwd_furniture
 test_matrix_opencode_leftbar_abs_cwd_furniture
 test_matrix_grok_titled_bottom_border

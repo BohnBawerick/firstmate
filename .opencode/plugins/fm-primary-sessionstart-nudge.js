@@ -1,3 +1,4 @@
+import { v2WorkerOnly } from "./lib/fm-v2-worker-only.js";
 import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
@@ -58,3 +59,5 @@ export const FmPrimarySessionstartNudge = async ({ client, directory, worktree }
     },
   };
 };
+
+export default v2WorkerOnly("firstmate.fm-primary-sessionstart-nudge");
