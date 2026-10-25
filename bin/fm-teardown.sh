@@ -2827,7 +2827,7 @@ t3code_secondmate_home_shutdown_barrier() {  # <home> <task-id>
   reap_task_worktree_processes "secondmate home" "$1"
 }
 
-remove_firstmate_home() {  # <home> <label> <task-id> <backend>
+remove_firstmate_home() {  # <home> <label> <task-id> <backend> <parent-state>
   local home=$1 label=$2 expected_id=${3:-} backend=${4:-} abs_home_path process_event_backup
   [ -n "$home" ] || return 0
   [ -e "$home" ] || return 0
@@ -2836,7 +2836,7 @@ remove_firstmate_home() {  # <home> <label> <task-id> <backend>
   # A T3 secondmate's home carries the environment its spawn wrote there.
   # Remove it after home validation and before returning its pooled Git index.
   if [ "$backend" = t3code ]; then
-    { fm_backend_source t3code && fm_backend_t3code_home_env_cleanup "$abs_home_path"; } || return 1
+    { fm_backend_source t3code && fm_backend_t3code_home_env_cleanup "$abs_home_path" "$5" "$expected_id"; } || return 1
   fi
   process_event_backup=$(snapshot_firstmate_home_process_events "$abs_home_path" "$label") || return 1
   if ! cleanup_firstmate_home_process_events "$abs_home_path" "$label"; then
@@ -3455,7 +3455,7 @@ cleanup_firstmate_home_children() {
       [ -n "$child_home" ] || child_home=$child_wt
       if [ -n "$child_home" ] && [ -d "$child_home" ]; then
         cleanup_firstmate_home_children "$child_home" "$archive_parent/children/$child_id" || return $?
-        remove_firstmate_home "$child_home" "child firstmate home" "$child_id" "$child_backend" || return $?
+        remove_firstmate_home "$child_home" "child firstmate home" "$child_id" "$child_backend" "$sub_state" || return $?
       fi
     elif [ "$child_backend" = orca ]; then
       if [ -n "$child_wt" ] && [ -d "$child_wt" ]; then
@@ -3484,9 +3484,11 @@ cleanup_firstmate_home_children() {
           "$child_wt/.fm-grok-turnend" "$child_wt/.fm-kimi-turnend"
         remove_turnend_worktree_pointers "$child_wt"
         if [ "$child_backend" = t3code ]; then
-          "$SCRIPT_DIR/fm-t3code-codex-env.sh" cleanup "$child_wt" || return 1
-          git -C "$child_wt" ls-files --error-unmatch CLAUDE.local.md >/dev/null 2>&1 \
-            || rm -f "$child_wt/CLAUDE.local.md"
+          "$SCRIPT_DIR/fm-t3code-env-cleanup.sh" "$child_wt" "$sub_state" "$child_id" || return 1
+          if [ "$(meta_value "$child_meta" harness)" = claude ]; then
+            git -C "$child_wt" ls-files --error-unmatch CLAUDE.local.md >/dev/null 2>&1 \
+              || rm -f "$child_wt/CLAUDE.local.md"
+          fi
         fi
         if [ -n "$child_proj" ] && [ -d "$child_proj" ] && command -v treehouse >/dev/null 2>&1; then
           teardown_scrub_scratch_copy "$child_wt" || return 1
@@ -3848,8 +3850,10 @@ elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
   remove_turnend_worktree_pointers "$WT"
   remove_harness_worktree_wiring "$WT"
   if [ "$BACKEND" = t3code ]; then
-    "$SCRIPT_DIR/fm-t3code-codex-env.sh" cleanup "$WT" || exit 1
-    git -C "$WT" ls-files --error-unmatch CLAUDE.local.md >/dev/null 2>&1 || rm -f "$WT/CLAUDE.local.md"
+    "$SCRIPT_DIR/fm-t3code-env-cleanup.sh" "$WT" "$STATE" "$ID" || exit 1
+    if [ "$(meta_value "$META" harness)" = claude ]; then
+      git -C "$WT" ls-files --error-unmatch CLAUDE.local.md >/dev/null 2>&1 || rm -f "$WT/CLAUDE.local.md"
+    fi
   fi
   # Kills remaining processes in the worktree (including the agent), resets, returns
   # to pool. treehouse resolves the pool from the working directory, so run it from
@@ -3990,7 +3994,7 @@ if [ "$KIND" = secondmate ]; then
     || { echo "error: receiver wake cleanup could not be staged; preserving the secondmate home and route" >&2; exit 1; }
   pending_replies_recovery_validate recheck \
     || { echo "error: local pending-reply recovery paths changed; preserving the secondmate home and route" >&2; exit 1; }
-  if remove_firstmate_home "$HOME_PATH" "secondmate home" "$ID" "$BACKEND"; then
+  if remove_firstmate_home "$HOME_PATH" "secondmate home" "$ID" "$BACKEND" "$STATE"; then
     :
   else
     rc=$?
