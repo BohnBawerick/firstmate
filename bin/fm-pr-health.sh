@@ -117,7 +117,7 @@ gh_read() { # deadline args... : one bounded forge read
   shift
   [ "$left" -gt 0 ] || return 124
   [ "$left" -le 5 ] || left=5
-  fm_run_timed "$left" env GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 gh "$@"
+  fm_run_timed "$left" env GH_HOST="$FM_PR_HOST" GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 gh "$@"
 }
 
 PR_QUERY='query($owner:String!,$repo:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){
@@ -193,7 +193,7 @@ lookup_branch_pr() { # worktree branch deadline -> url
   left=$((deadline - $(date +%s)))
   [ "$left" -gt 0 ] || return 1
   [ "$left" -le 5 ] || left=5
-  number=$(fm_run_timed "$left" bash -c '. "$1/fm-pr-lib.sh"; fm_pr_number_from_branch "$2" "$3" open' \
+  number=$(fm_run_timed "$left" env GH_HOST="$FM_PR_HOST" bash -c '. "$1/fm-pr-lib.sh"; fm_pr_number_from_branch "$2" "$3" open' \
     _ "$SCRIPT_DIR" "$wt" "$branch") || return 1
   url=$(cd "$wt" && gh_read "$deadline" pr view "$number" --json url -q .url 2>/dev/null) || return 1
   printf '%s\n' "$url" | grep -Ex "$PR_URL_RE"

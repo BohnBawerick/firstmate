@@ -420,8 +420,10 @@ fm_backend_paseo_parse_target() { # <target>
 # (one jq object) whose id equals <terminal_id>, or empty. The structural
 # existence check every readiness path routes through; never a content read.
 fm_backend_paseo_terminal_entry() { # <terminal_id>
-  fm_backend_paseo_cli terminal ls --all --json 2>/dev/null |
-    jq -c --arg id "$1" '[.[]? | select(.id == $id)] | .[0] // empty' 2>/dev/null
+  local list
+  list=$(fm_backend_paseo_cli terminal ls --all --json 2>/dev/null) || return 1
+  printf '%s' "$list" | jq -e 'type == "array"' >/dev/null 2>&1 || return 1
+  printf '%s' "$list" | jq -c --arg id "$1" '[.[] | select(.id == $id)] | .[0] // empty' 2>/dev/null
 }
 
 # fm_backend_paseo_target_ready: parse the target and verify the recorded
@@ -434,7 +436,7 @@ fm_backend_paseo_terminal_entry() { # <terminal_id>
 fm_backend_paseo_target_ready() { # <target> [expected-label]
   local expected_label=${2:-} expected_name entry wsid tid
   fm_backend_paseo_parse_target "$1" || return 1
-  entry=$(fm_backend_paseo_terminal_entry "$FM_BACKEND_PASEO_TERMINAL")
+  entry=$(fm_backend_paseo_terminal_entry "$FM_BACKEND_PASEO_TERMINAL") || return 1
   if [ -n "$entry" ]; then
     if [ -n "$expected_label" ]; then
       expected_name=$(fm_backend_paseo_scoped_name "$expected_label")
@@ -444,12 +446,12 @@ fm_backend_paseo_target_ready() { # <target> [expected-label]
     [ -n "$wsid" ] && FM_BACKEND_PASEO_WORKSPACE=$wsid
     return 0
   fi
-  [ -n "$expected_label" ] || return 1
+  [ -n "$expected_label" ] || return 2
   expected_name=$(fm_backend_paseo_scoped_name "$expected_label")
-  tid=$(fm_backend_paseo_terminal_id_for_name "$expected_name")
-  [ -n "$tid" ] || return 1
-  entry=$(fm_backend_paseo_terminal_entry "$tid")
-  [ -n "$entry" ] || return 1
+  tid=$(fm_backend_paseo_terminal_id_for_name "$expected_name") || return 1
+  [ -n "$tid" ] || return 2
+  entry=$(fm_backend_paseo_terminal_entry "$tid") || return 1
+  [ -n "$entry" ] || return 2
   wsid=$(printf '%s' "$entry" | jq -r '.workspaceId // empty' 2>/dev/null)
   [ -n "$wsid" ] || return 1
   FM_BACKEND_PASEO_TERMINAL=$tid
@@ -587,22 +589,23 @@ fm_backend_paseo_send_text_submit() { # <target> <text> <retries> <enter-sleep> 
     "$target" "$retries" "$sleep_s" "$expected_label"
 }
 
-# fm_backend_paseo_kill: close the task's terminal TAB, best-effort (mirrors
-# every other backend's `kill` `|| true` contract), then retire the shared
+# fm_backend_paseo_kill: close the task's terminal TAB, then retire the shared
 # per-project workspace if that was its last tab. An already-gone tab stays
 # quiet but still retires its recorded workspace; retire holds back while
 # any tab, agent, other title, or Firstmate itself uses it.
 fm_backend_paseo_kill() { # <target> [unused] [expected-label]
-  local expected_label=${3:-}
+  local expected_label=${3:-} ready_rc=0
   if [ -n "$expected_label" ]; then
-    if ! fm_backend_paseo_target_ready "$1" "$expected_label"; then
+    fm_backend_paseo_target_ready "$1" "$expected_label" || ready_rc=$?
+    if [ "$ready_rc" -ne 0 ]; then
+      [ "$ready_rc" -eq 2 ] || return 1
       fm_backend_paseo_parse_target "$1" && fm_backend_paseo_retire_workspace "$FM_BACKEND_PASEO_WORKSPACE"
       return 0
     fi
   else
-    fm_backend_paseo_parse_target "$1" || return 0
+    fm_backend_paseo_parse_target "$1" || return 1
   fi
-  fm_backend_paseo_cli terminal kill "$FM_BACKEND_PASEO_TERMINAL" >/dev/null 2>&1 || true
+  fm_backend_paseo_cli terminal kill "$FM_BACKEND_PASEO_TERMINAL" >/dev/null 2>&1 || return 1
   fm_backend_paseo_retire_workspace "$FM_BACKEND_PASEO_WORKSPACE"
 }
 

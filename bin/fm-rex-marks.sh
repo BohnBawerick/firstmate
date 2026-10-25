@@ -172,8 +172,8 @@ load_status_libs() {
   [ "$LIBS_LOADED" = 1 ] && return 0
   # shellcheck source=bin/fm-wake-lib.sh
   . "$SCRIPT_DIR/fm-wake-lib.sh" || return 1
-  # shellcheck source=bin/fm-classify-lib.sh
-  . "$SCRIPT_DIR/fm-classify-lib.sh" || return 1
+  # shellcheck source=bin/fm-dod-lib.sh
+  . "$SCRIPT_DIR/fm-dod-lib.sh" || return 1
   LIBS_LOADED=1
 }
 
@@ -205,7 +205,6 @@ plan_mark() {
   verb=$(status_line_verb "$line" 2>/dev/null) || verb=
   note=$(status_line_note "$line" 2>/dev/null) || note=
   note=$(printf '%s' "$note" | tr '\t\r\n' '   ')
-  note=${note:0:$FM_REX_MARKS_NOTE_MAX}
   held=${FM_CLASSIFY_CAPTAIN_HELD_VERB:-$FM_CLASSIFY_CAPTAIN_HELD_VERB_DEFAULT}
   case "$verb" in
     needs-decision | "$held")
@@ -225,10 +224,12 @@ plan_mark() {
       ;;
     done)
       P_STATE="done"
-      case "$note" in
-        *https://*) P_MSG="PR ready: $note" ;;
-        *) P_MSG="Done: $note" ;;
-      esac
+      if ! fm_dod_note_reports_uploaded_review "$note" &&
+        { fm_dod_note_has_pr_reference "$note" || fm_dod_note_reports_published_change "$note"; }; then
+        P_MSG="PR ready: $note"
+      else
+        P_MSG="Done: $note"
+      fi
       ;;
   esac
   P_MSG=${P_MSG:0:$FM_REX_MARKS_NOTE_MAX}

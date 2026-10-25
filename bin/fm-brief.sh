@@ -894,7 +894,7 @@ land in the generation or the report.
 Write your dream receipt to \`$DATA/$ID/report.md\`: what you read since the cursor, which drop claims you promoted
 or rejected and why, the generation number you produced, the citations you used, and the mechanical verification result.
 Do NOT publish \`data/memory/HEAD\` yourself; firstmate runs the grader and performs the atomic pointer swap.
-Before reporting done, read and follow \`$FM_ROOT/.agents/skills/decision-hold-lifecycle/SKILL.md\` and pass its
+Before reporting done, read and follow \`$FM_ROOT/.agents/skills/captain-hold-lifecycle/SKILL.md\` and pass its
 shared completion gate for the report and any visual review.
 When the generation is written, verified, and the report is complete, append \`done: {generation number} proposed\`
 to the status file and stop.

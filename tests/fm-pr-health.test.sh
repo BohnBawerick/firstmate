@@ -29,6 +29,10 @@ new_home() { # name -> home with the monitor flag on
 #!/usr/bin/env bash
 set -eu
 printf '%s\n' "$*" >> "$FORGE/calls.log"
+if [ -f "$FORGE/expected-host" ]; then
+  printf '%s %s\n' "${GH_HOST:-github.com}" "$2" >> "$FORGE/hosts.log"
+  [ "${GH_HOST:-github.com}" = "$(cat "$FORGE/expected-host")" ] || exit 1
+fi
 model() {
   local n=$1 attempt
   if [ -f "$FORGE/barrier-count" ]; then
@@ -62,7 +66,7 @@ case "$1 $2" in
   'pr view')
     case "$*" in
       *headRefOid,reviewDecision*) model "${3##*/}" | jq '{headRefOid:.head,reviewDecision:""}' ;;
-      *) printf 'https://github.com/o/r/pull/%s\n' "$3" ;;
+      *) printf 'https://%s/o/r/pull/%s\n' "${GH_HOST:-github.com}" "$3" ;;
     esac ;;
   'api repos/o/r') printf '{"permissions":{"push":false}}\n' ;;
   'api repos/o/r/pulls/'*)
@@ -84,6 +88,10 @@ SH
   cat > "$home/fakebin/gh-axi" <<'SH'
 #!/usr/bin/env bash
 printf 'gh-axi %s\n' "$*" >> "$FORGE/calls.log"
+if [ -f "$FORGE/expected-host" ]; then
+  printf '%s pr-list\n' "${GH_HOST:-github.com}" >> "$FORGE/hosts.log"
+  [ "${GH_HOST:-github.com}" = "$(cat "$FORGE/expected-host")" ] || exit 1
+fi
 branch=
 while [ "$#" -gt 0 ]; do [ "$1" = --head ] && branch=$2; shift; done
 if [ -f "$FORGE/branch-barrier-count" ]; then
@@ -602,6 +610,34 @@ test_all_owned_pr_reads_start_in_one_wave() {
   pass 'all owned PR reads start in one wave without rotating a backlog'
 }
 
+test_recorded_host_overrides_ambient_host() {
+  local home record wt
+  for record in explicit branch; do
+    home=$(new_home "host-$record")
+    if [ "$record" = explicit ]; then
+      task "$home" ship1 pr=https://github.com/o/r/pull/8
+    else
+      wt="$home/copy"
+      git init -q -b feature-8 "$wt"
+      git -C "$wt" remote add origin https://github.com/o/r.git
+      task "$home" ship1 "worktree=$wt"
+      printf '8\n' > "$home/forge/branch-feature-8"
+    fi
+    pr "$home" 8 "$HEAD_A" "$BASE_1" false false
+    printf 'github.com\n' > "$home/forge/expected-host"
+    arm "$home"
+    GH_HOST=github.corp.example expect_one "$home" '^pr-health: https://github.com/o/r/pull/8 conflicts' \
+      'ambient GH_HOST redirected the recorded PR'
+    grep -qxF 'github.com repos/o/r/pulls/8' "$home/forge/hosts.log" || fail 'REST used the wrong host'
+    grep -qxF 'github.com graphql' "$home/forge/hosts.log" || fail 'GraphQL used the wrong host'
+    if [ "$record" = branch ]; then
+      grep -qxF 'github.com pr-list' "$home/forge/hosts.log" || fail 'branch discovery used the wrong host'
+      grep -qxF 'github.com view' "$home/forge/hosts.log" || fail 'PR resolution used the wrong host'
+    fi
+  done
+  pass 'PR health discovery, REST and GraphQL reads use the recorded host'
+}
+
 test_failed_check_cannot_pass_output_assertions() {
   if (
     pass_once() { return 1; }
@@ -632,7 +668,8 @@ for test_name in test_unknown_then_dirty_wakes_once test_dirty_again_at_same_com
   test_nothing_prints_while_nothing_changed test_merged_pr_is_not_read_again test_absent_flag_changes_nothing \
   test_watcher_surfaces_one_wake test_failure_once_per_latest_commit_after_cleanup \
   test_all_owned_pr_reads_start_in_one_wave test_checks_on_later_pages \
-  test_unsupported_provider_has_no_github_reads test_failed_check_cannot_pass_output_assertions; do
+  test_unsupported_provider_has_no_github_reads test_failed_check_cannot_pass_output_assertions \
+  test_recorded_host_overrides_ambient_host; do
   ( "$test_name" ) || failures=$((failures + 1))
 done
 [ "$failures" -eq 0 ] || fail "$failures PR health regressions"

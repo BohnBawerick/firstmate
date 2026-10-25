@@ -1935,6 +1935,15 @@ case "$FM_WEDGE_FIXTURE_MODE" in
     printf 'stale: probe\n'
     exit 0
     ;;
+  delayed-wake)
+    sleep 0.2
+    touch "$beat"
+    sleep 0.3
+    touch "$beat"
+    sleep 0.6
+    printf 'stale: threshold reached\n'
+    exit 0
+    ;;
   early-exit) exit 0 ;;
   error) exit 7 ;;
   no-beat) ;;
@@ -1953,12 +1962,12 @@ SH
   . "$original_root/tests/fm-watch-wedge-cap-live-fixture.sh"
   say() { printf '%s\n' "$1" >> "$TRANSCRIPT"; }
 
-  FM_WEDGE_FIXTURE_MODE=wake watcher_cycle first || exit 1
+  FM_WEDGE_FIXTURE_MODE=wake watcher_cycle first wake || exit 1
   [ "$CYCLE_WOKE" = 1 ] && [ "$CYCLE_REASON" = 'stale: probe' ] || fail 'the cycle lost its wake'
   [ ! -s "$STATE/.wake-queue" ] || fail 'presented wakes remained queued after the cycle'
   first=$(recovery_marker_generation "$STATE/.watcher-down")
   [ -n "$first" ] || fail 'the first cycle had no recovery generation'
-  FM_WEDGE_FIXTURE_MODE=wake watcher_cycle second || exit 1
+  FM_WEDGE_FIXTURE_MODE=wake watcher_cycle second wake || exit 1
   [ ! -s "$STATE/.wake-queue" ] || fail 'the second sequence was not acknowledged'
   generation=$(recovery_marker_generation "$STATE/.watcher-down")
   [ "$generation" != "$first" ] || fail 'the second cycle did not exercise a fresh recovery generation'
@@ -1969,11 +1978,17 @@ SH
   [ ! -s "$STATE/.wake-queue" ] || fail 'reset carried queued recovery into the next arm'
   case "$(cat "$STATE/.watcher-down")" in acked:*) ;; *) fail 'reset did not acknowledge recovery' ;; esac
 
-  FM_WEDGE_FIXTURE_MODE=completed watcher_cycle silent || exit 1
+  FM_WEDGE_FIXTURE_MODE=delayed-wake watcher_cycle threshold wake || exit 1
+  [ "$CYCLE_WOKE" = 1 ] && [ "$CYCLE_REASON" = 'stale: threshold reached' ] \
+    || fail 'an expected wake was cut off at its first completed poll'
+  if (FM_WEDGE_FIXTURE_MODE=completed watcher_cycle missing-wake wake) > "$TMP_ROOT/failure.out" 2>&1; then
+    fail 'completed polls without an expected wake passed'
+  fi
+  FM_WEDGE_FIXTURE_MODE=completed watcher_cycle silent silence || exit 1
   [ "$CYCLE_WOKE" = 0 ] || fail 'a completed silent poll was reported as a wake'
   for mode in no-beat one-beat early-exit error; do
     touch "$STATE/.last-watcher-beat"
-    if (FM_WEDGE_FIXTURE_MODE=$mode watcher_cycle "$mode") > "$TMP_ROOT/failure.out" 2>&1; then
+    if (FM_WEDGE_FIXTURE_MODE=$mode watcher_cycle "$mode" silence) > "$TMP_ROOT/failure.out" 2>&1; then
       fail "$mode was accepted as a silent completed poll"
     fi
     case "$mode" in

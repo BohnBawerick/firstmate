@@ -1290,7 +1290,7 @@ test_ship_and_scout_teach_validation_round_pause() {
 }
 
 test_scout_and_secondmate_load_decision_hold_policy() {
-  local home scout charter
+  local home scout charter dreamer
   home="$TMP_ROOT/decision-policy-home"
   mkdir -p "$home/data"
   FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
@@ -1305,6 +1305,14 @@ test_scout_and_secondmate_load_decision_hold_policy() {
   charter="$home/data/sample-mate/brief.md"
   assert_grep "load \`captain-hold-lifecycle\`" "$charter" \
     "secondmate charter did not load the shared captain-call policy for detailed investigations"
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+    "$ROOT/bin/fm-brief.sh" sample-dream sample --dreamer >/dev/null 2>&1 \
+    || fail 'could not generate the dreamer brief'
+  dreamer="$home/data/sample-dream/brief.md"
+  assert_grep "$ROOT/.agents/skills/captain-hold-lifecycle/SKILL.md" "$dreamer" \
+    'the emitted dreamer brief did not reference the current completion skill'
+  [ -f "$ROOT/.agents/skills/captain-hold-lifecycle/SKILL.md" ] || fail 'the referenced completion skill is absent'
+  assert_no_grep 'decision-hold-lifecycle/SKILL.md' "$dreamer" 'the emitted brief references the removed skill'
   pass "fm-brief.sh: investigation and visual-review completions load the shared decision policy"
 }
 

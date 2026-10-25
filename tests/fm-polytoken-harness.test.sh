@@ -438,6 +438,26 @@ test_polytoken_write_facet_carries_the_role_contract_without_a_model_pin() {
   pass "fm-polytoken-lib: the worker facet carries the role contract and no model pin"
 }
 
+test_polytoken_facet_writer_refuses_project_content() {
+  local case_dir facet out
+  case_dir=$(make_wiring_case project-facet)
+  facet=$(fm_polytoken_facet_file "$case_dir/wt")
+  mkdir -p "$(dirname "$facet")"
+  printf 'project facet\n' > "$facet"
+  if out=$(fm_polytoken_write_facet "$case_dir/wt" "$case_dir/state/task.inbox" 2>&1); then
+    fail 'the facet writer overwrote project content'
+  fi
+  assert_contains "$out" "not firstmate's to clobber" 'the writer must report the ownership refusal'
+  assert_equals 'project facet' "$(cat "$facet")" 'the refused writer changed the facet'
+  rm "$facet"
+  ln -s "$case_dir/missing-facet" "$facet"
+  if fm_polytoken_write_facet "$case_dir/wt" "$case_dir/state/task.inbox" >/dev/null 2>&1; then
+    fail 'the facet writer followed a project symlink'
+  fi
+  [ -L "$facet" ] && [ ! -e "$case_dir/missing-facet" ] || fail 'the writer changed the project symlink'
+  pass 'fm-polytoken-lib: the facet writer preserves project files and symlinks'
+}
+
 test_polytoken_busy_writer_dispatches_without_argv_and_never_fails() {
   local rec case_dir script state_real id gen turnend out
   rec=$(make_wiring_case busywriter)
@@ -1122,6 +1142,29 @@ test_polytoken_existing_project_hook_layer_refuses() {
   pass "fm-spawn: a project's own polytoken hook layer is refused, not clobbered"
 }
 
+test_polytoken_existing_project_facet_refuses() {
+  local id rec out rc=0
+  id="pt-ownfacet-$$"
+  rec=$(make_polytoken_spawn_case ownfacet "$id")
+  read_polytoken_spawn_record "$rec"
+  mkdir -p "$PROJ_DIR/.polytoken/facets"
+  printf 'project facet\n' > "$PROJ_DIR/.polytoken/facets/firstmate-worker.md"
+  git -C "$PROJ_DIR" add .polytoken/facets/firstmate-worker.md
+  git -C "$PROJ_DIR" -c user.email=fixture@firstmate.test -c user.name=fixture \
+    commit -q -m 'fixture: project facet'
+  git -C "$PROJ_DIR" push -q origin main
+  out=$(run_polytoken_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail 'a spawn overwrote a project facet without hooks'
+  assert_contains "$out" "not firstmate's to clobber" 'the spawn must refuse the project facet'
+  assert_equals 'project facet' "$(cat "$WT_DIR/.polytoken/facets/firstmate-worker.md")" 'the spawn changed the facet'
+  [ -z "$(git -C "$WT_DIR" status --porcelain)" ] || fail 'the refused spawn dirtied the worktree'
+  assert_absent "$WT_DIR/.polytoken/hooks.json" 'a refused spawn generated hooks'
+  assert_absent "$HOME_DIR/state/$id.meta" 'a refused spawn left a task record'
+  assert_absent "$HOME_DIR/state/$id.polytoken-config" 'a refused spawn mirrored a config'
+  assert_absent "$HOME_DIR/state/$id.polytoken-busy.sh" 'a refused spawn generated a busy writer'
+  pass 'fm-spawn: a project facet without hooks is preserved'
+}
+
 test_polytoken_whitespace_state_dir_refuses() {
   local id rec out rc spaced
   id="pt-wsstate-z8-$$"
@@ -1225,6 +1268,8 @@ test_polytoken_spawn_arms_the_busy_contract() {
 
 # ---------------------------------------------------------------------------
 
+test_polytoken_facet_writer_refuses_project_content
+test_polytoken_existing_project_facet_refuses
 test_polytoken_relaunch_preserves_pr_identity
 test_polytoken_ancestry_detects_the_native_command_name
 test_polytoken_ancestry_rejects_unrelated_mentions

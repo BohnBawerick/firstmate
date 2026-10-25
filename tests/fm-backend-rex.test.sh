@@ -1033,6 +1033,24 @@ test_marks_producer_converges_and_notifies_once() {
   assert_equals auth "$(marks_run plan t1 | cut -f3)" "a credential blocker must be kind auth"
   mark_task_status "done [at=1700000300]: PR https://github.com/o/r/pull/9 checks green"
   assert_contains "$(marks_run plan t1)" $'done\t\tPR ready: PR https://' "a done line with a URL plans a PR-ready done mark"
+  local note
+  for note in 'PR #9' 'PR https://gitlab.example/o/r/-/merge_requests/9' \
+    'PR https://forge.example/o/r/pulls/9' 'PR https://review.example/c/o/r/+/9 published for review'; do
+    mark_task_status "done: $note"
+    assert_contains "$(marks_run plan t1)" $'done\t\tPR ready:' 'a supported PR completion lost its label'
+  done
+  for note in 'review https://review.example/42 uploaded for review' \
+    'review https://review.example/pull/9 uploaded for review' 'report https://example.com/report'; do
+    mark_task_status "done: $note"
+    out=$(marks_run plan t1)
+    assert_contains "$out" $'done\t\tDone:' 'a non-PR URL was called PR ready'
+    mark_status '[]'
+    : > "$MARK_TTY"
+    marks_run sync || fail 'could not write the completion mark'
+    grep -qF "$(printf 'Done: %s' "$note" | base64)" "$MARK_TTY" || fail 'the live mark used a different label'
+    grep -qF '777;notify;fm-t1;Done:' "$MARK_TTY" || fail 'the notification mislabeled the completion'
+    assert_contains "$(cat "$MARK_DIR/home/state/.rex-mark-t1")" 'Done:' 'the cache mislabeled the completion'
+  done
   mark_task_status "failed [at=1700000400]: build broke"
   assert_contains "$(marks_run plan t1)" $'error\t\tFailed: build broke' "failed plans an error mark"
   mark_task_status "needs-decision [at=1700000500] [key=k2]: second call"

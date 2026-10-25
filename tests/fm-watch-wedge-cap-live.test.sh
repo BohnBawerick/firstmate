@@ -211,7 +211,7 @@ printf 'v1 gen=g1 seq=1 state=busy source=fm-spawn event=turn_start ts=%s\n' "$(
 touch -d '5 seconds ago' "$STATE/$TASK.meta" 2>/dev/null \
   || perl -e 'utime(time()-5, time()-5, $ARGV[0])' "$STATE/$TASK.meta"
 
-# watcher_cycle <label>: one real watcher cycle against the lab home, run with
+# watcher_cycle <label> <wake|silence>: one real watcher cycle against the lab home, run with
 # the cap bound in $MAX and the tmux socket pointed at the lab. Records its exit
 # status and the reason line it printed, then drains and acknowledges what it
 # queued. Set MAX=0 for the unceiled baseline arm, which is the shipped default.
@@ -249,7 +249,7 @@ unceiled=0
 i=0
 while [ "$i" -lt 5 ]; do
   i=$((i + 1))
-  watcher_cycle "unceiled escalation $i"
+  watcher_cycle "unceiled escalation $i" wake
   [ "$CYCLE_WOKE" -eq 1 ] || fail "the unceiled baseline went quiet at escalation $i - that is not the baseline this guard measures"
   unceiled=$((unceiled + 1))
   if [ "$i" -eq 1 ]; then assert_derived_key_matches_watcher; fi
@@ -263,10 +263,11 @@ say "part 1: the SAME workload with FM_WEDGE_MAX_ESCALATIONS=$CEILING (ceiled)"
 reset_lab_state
 MAX=$CEILING
 cycle=0
-watcher_cycle "ceiled cycle 1 (first sight: absorbed)"
-watcher_cycle "ceiled cycle 2 (escalation 1)"
-watcher_cycle "ceiled cycle 3 (escalation 2)"
-watcher_cycle "ceiled cycle 4 (escalation $MAX: cap threshold)"
+i=0
+while [ "$i" -lt "$MAX" ]; do
+  i=$((i + 1))
+  watcher_cycle "ceiled cycle $i (escalation $i)" wake
+done
 
 terminal_fired=0
 for f in "$TMP_ROOT"/cycle-*.out; do
@@ -291,7 +292,7 @@ silenced=0
 i=0
 while [ "$i" -lt 2 ]; do
   i=$((i + 1))
-  watcher_cycle "silence probe $i"
+  watcher_cycle "silence probe $i" silence
   [ "$CYCLE_WOKE" -eq 0 ] || fail "a poll re-escalated the still-wedged pane while the cap markers stood (probe $i)"
   silenced=$((silenced + 1))
 done
@@ -318,11 +319,11 @@ sleep "$remaining"
 # later. Assert the lane is audible, NOT that the very next cycle carries the
 # terminal marker: requiring the terminal wake on the first cycle would assert a
 # re-fire that the reset counter makes false.
-watcher_cycle "post-horizon cycle 1"
+watcher_cycle "post-horizon cycle 1" wake
 [ "$CYCLE_WOKE" -eq 1 ] \
   || fail "after the cap horizon elapsed the pane stayed silent; the cap never released itself"
 first_post="$CYCLE_REASON"
-watcher_cycle "post-horizon cycle 2"
+watcher_cycle "post-horizon cycle 2" wake
 released="$CYCLE_WOKE"
 
 say "post-horizon the pane is audible again with no operator action: cycle 1 woke ($first_post), cycle 2 woke=$released"

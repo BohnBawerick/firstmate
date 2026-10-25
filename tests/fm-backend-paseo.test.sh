@@ -814,7 +814,39 @@ test_send_text_submit_send_failed_when_target_absent() {
   pass "fm_backend_paseo_send_text_submit: reports 'send-failed' when the target terminal is absent"
 }
 
-# --- kill: best-effort whole-endpoint reclaim ---------------------------------
+# --- kill: whole-endpoint reclaim ---------------------------------
+
+test_kill_propagates_close_and_readiness_failures() {
+  local dir fb mode rc
+  for mode in kill-error first-read-error name-read-error malformed empty-output wrong-shape reused-id; do
+    dir="$TMP_ROOT/kill-$mode"
+    mkdir -p "$dir/responses" "$dir/home"
+    case "$mode" in
+      kill-error) printf '7\n' > "$dir/responses/1.exit" ;;
+      first-read-error) printf '7\n' > "$dir/responses/1.exit" ;;
+      name-read-error)
+        printf '[]' > "$dir/responses/1.out"
+        printf '7\n' > "$dir/responses/2.exit"
+        ;;
+      malformed) printf 'invalid json' > "$dir/responses/1.out" ;;
+      empty-output) : > "$dir/responses/1.out" ;;
+      wrong-shape) printf '{}' > "$dir/responses/1.out" ;;
+      reused-id) paseo_terminal_ls_response "$dir" 1 terminal workspace other-task ;;
+    esac
+    fb=$(make_paseo_fakebin "$dir")
+    rc=0
+    PATH="$fb:$PATH" FM_HOME="$dir/home" FM_PASEO_LOG="$dir/log" FM_PASEO_RESPONSES="$dir/responses" \
+      bash -c '. "$0/bin/backends/paseo.sh"; label=fm-task; [ "$1" != kill-error ] || label=; fm_backend_paseo_kill terminal:workspace "" "$label"' \
+      "$ROOT" "$mode" || rc=$?
+    [ "$rc" -ne 0 ] || fail "$mode reported successful closure"
+    [ "$(cat "$dir/responses/.count")" = "$([ "$mode" = name-read-error ] && printf 2 || printf 1)" ] \
+      || fail "$mode continued after the close failed"
+    if [ "$mode" != kill-error ]; then
+      assert_not_contains "$(cat "$dir/log")" $'\x1fterminal\x1fkill' "$mode attempted an unverified close"
+    fi
+  done
+  pass 'fm_backend_paseo_kill: failures and unreadable inventories refuse closure'
+}
 
 test_kill_keeps_workspace_when_inventory_unreadable() {
   local dir fb
@@ -944,19 +976,6 @@ test_workspace_lock_serializes_spawn_and_retire() {
   *$'\x1f''create'*) fail "create_task must not create anything without the workspace lock" ;;
   esac
   pass "fm_backend_paseo: spawn and workspace retirement share one lock; neither acts while another process holds it"
-}
-
-test_kill_is_best_effort_when_terminal_kill_fails() {
-  local dir fb status
-  dir="$TMP_ROOT/kill-fail"
-  mkdir -p "$dir/responses"
-  printf '1\n' >"$dir/responses/1.exit"
-  fb=$(make_paseo_fakebin "$dir")
-  PATH="$fb:$PATH" FM_PASEO_LOG="$dir/log" FM_PASEO_RESPONSES="$dir/responses" \
-    bash -c '. "$0/bin/backends/paseo.sh"; fm_backend_paseo_kill "aaaaaaaa-0000-0000-0000-000000000000:wks_bbbbbbbbbbbbbbbb"' "$ROOT"
-  status=$?
-  expect_code 0 "$status" "kill must stay best-effort (never fail) even when terminal kill fails"
-  pass "fm_backend_paseo_kill: never fails even when terminal kill fails"
 }
 
 # --- list_live: name-based orphan discovery -----------------------------------
@@ -1089,12 +1108,12 @@ test_composer_state_real_text_is_pending
 test_composer_state_unknown_on_capture_failure
 test_send_text_submit_detects_landed_send
 test_send_text_submit_send_failed_when_target_absent
+test_kill_propagates_close_and_readiness_failures
 test_kill_keeps_workspace_when_inventory_unreadable
 test_kill_retires_empty_firstmate_workspace_and_project
 test_kill_retires_workspace_when_tab_already_gone
 test_kill_retire_holds_back
 test_workspace_lock_serializes_spawn_and_retire
-test_kill_is_best_effort_when_terminal_kill_fails
 test_list_live_filters_by_name_prefix
 test_secondmate_spawn_refuses_explicit_paseo_only
 test_branch_dispatch_claims_paseo_stale_wake

@@ -1069,14 +1069,16 @@ resolve_relaunch_profile() {
   # incarnation's own generated hook layer, so only one it did not generate
   # refuses here.
   if [ "$TARGET_HARNESS" = polytoken ]; then
-    local polytoken_bin polytoken_state
+    local polytoken_bin polytoken_state polytoken_path polytoken_retiring
     polytoken_bin=$(fm_polytoken_binary) || return 1
     fm_polytoken_launch_ref "$polytoken_bin" "$TARGET_MODEL" "$TARGET_EFFORT" >/dev/null || return 1
     polytoken_state=$(cd "$STATE" && pwd -P) || return 1
     fm_polytoken_require_handler_path "$(fm_polytoken_busy_script "$polytoken_state" "$ID")" || return 1
-    fm_control_harness_wiring_paths "$PRIOR_HARNESS" "$WT" "$STATE" "$ID" "$KIND" \
-        | grep -qxF "$(fm_polytoken_hooks_file "$WT")" \
-      || fm_polytoken_require_hooks_free "$WT" || return 1
+    polytoken_retiring=$(fm_control_harness_wiring_paths "$PRIOR_HARNESS" "$WT" "$STATE" "$ID" "$KIND") || return 1
+    for polytoken_path in "$(fm_polytoken_hooks_file "$WT")" "$(fm_polytoken_facet_file "$WT")"; do
+      printf '%s\n' "$polytoken_retiring" | grep -qxF "$polytoken_path" \
+        || fm_polytoken_require_paths_free "$polytoken_path" || return 1
+    done
   fi
   # Likewise config/crew-exclude-tools: a malformed file, or a replacement
   # runtime that cannot hide the listed tools, refuses here, before the old

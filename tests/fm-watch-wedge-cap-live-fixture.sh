@@ -10,7 +10,7 @@ drain_lab_wakes() {
 }
 
 watcher_cycle() {
-  local label=$1 out rc pid beat checkpoint i=0 completed=0 reason
+  local label=$1 expected=$2 out rc pid beat checkpoint i=0 completed=0 reason
   cycle=$((cycle + 1))
   out="$TMP_ROOT/cycle-$cycle.out"
   beat="$STATE/.last-watcher-beat"
@@ -31,7 +31,7 @@ watcher_cycle() {
     if [ -e "$checkpoint" ]; then
       if [ "$beat" -nt "$checkpoint" ]; then
         completed=1
-        break
+        [ "$expected" != silence ] || break
       fi
     elif [ -e "$beat" ]; then
       touch "$checkpoint"
@@ -50,11 +50,11 @@ watcher_cycle() {
   fi
   rm -f "$beat" "$checkpoint"
   reason=$(head -1 "$out" 2>/dev/null)
-  if [ "$rc" = alive ] && [ "$completed" -eq 1 ]; then
+  if [ "$rc" = alive ] && [ "$completed" -eq 1 ] && [ "$expected" = silence ]; then
     [ -z "$reason" ] || fail "$label: watcher printed output without completing a wake: $reason"
   else
     [ "$rc" = 0 ] && [ -n "$reason" ] \
-      || fail "$label: watcher did not complete a poll within ${CYCLE_BOUND}s"
+      || fail "$label: watcher did not complete a poll with the expected outcome within ${CYCLE_BOUND}s"
     CYCLE_WOKE=1
   fi
   CYCLE_REASON="$reason"
