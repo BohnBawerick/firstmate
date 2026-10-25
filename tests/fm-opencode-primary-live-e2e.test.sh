@@ -22,7 +22,7 @@ opencode_major() {  # <executable>
   printf '%s\n' "${version%%.*}"
 }
 
-if [ "${FM_OPENCODE_LIVE_E2E:-0}" != 1 ]; then
+if [ "${FM_OPENCODE_LIVE_E2E:-${FM_LIVE:-0}}" != 1 ]; then
   fm_live_gate default-on FM_OPENCODE_V2_OFFLINE_LIVE opencode python3 git
   fixture="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/opencode-v2-live-fixture.py"
   checked=0

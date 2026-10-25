@@ -115,7 +115,7 @@ fake_opencode_plugin() {
   printf '%s\n' "${FM_FAKE_PANE_PATH:-}/.opencode/plugins/fm-busy-state.js"
 }
 fake_opencode_turn_starts() {
-  local plugin bin state id gen
+  local plugin bin state id gen turn_state=${1:-busy} event=${2:-session-execution-started}
   plugin=$(fake_opencode_plugin)
   [ -f "$plugin" ] || return 0
   bin=$(sed -n 's/.*execFile("\([^"]*fm-busy-event\.sh\)".*/\1/p' "$plugin" | head -1)
@@ -123,8 +123,11 @@ fake_opencode_turn_starts() {
   id=$(sed -n 's/.*"apply", "\([^"]*\)", "\([^"]*\)", state,.*/\2/p' "$plugin" | head -1)
   gen=$(sed -n 's/.*"--gen", "\([^"]*\)".*/\1/p' "$plugin" | head -1)
   [ -n "$bin" ] && [ -n "$gen" ] || return 0
-  "$bin" apply "$state" "$id" busy --gen "$gen" --source opencode-plugin \
-    --event session-execution-started >/dev/null 2>&1 || true
+  "$bin" apply "$state" "$id" "$turn_state" --gen "$gen" --source opencode-plugin \
+    --event "$event" >/dev/null 2>&1 || true
+  if [ -n "${FM_FAKE_OPENCODE_RECORD_LOG:-}" ]; then
+    cat "$state/$id.busy-state" >> "$FM_FAKE_OPENCODE_RECORD_LOG"
+  fi
 }
 # FM_FAKE_OPENCODE_TURN picks what a launched OpenCode 2 worker does with its
 # brief: auto (default) starts the turn on launch, enter waits for one Enter,
@@ -136,6 +139,11 @@ fake_opencode_turn_starts() {
 fake_opencode_launched() {
   case "${FM_FAKE_OPENCODE_TURN:-auto}" in
     auto) fake_opencode_turn_starts ;;
+    unknown) fake_opencode_turn_starts unknown sse-error ;;
+    completed)
+      fake_opencode_turn_starts
+      fake_opencode_turn_starts idle session-execution-finished
+      ;;
     enter)
       : > "$(fake_opencode_plugin).fake-pending"
       : > "$(fake_opencode_plugin).fake-launching"

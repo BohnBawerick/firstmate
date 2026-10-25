@@ -28,10 +28,8 @@
 # An unreadable or malformed guard file refuses every push.
 #
 # ACCEPTED RESIDUAL. `git push --no-verify` skips every hook, a tool that
-# writes refs without running git never reaches one, and an alias URL spelled
-# differently from origin (an ssh form against an https form of the same
-# server) does not compare equal. Each bypasses this layer; the brief's first
-# rule still forbids all three, and no gate or cleanup step requires a push on
+# writes refs without running git never reaches one. Each bypasses this layer;
+# the brief's first rule still forbids both, and no gate or cleanup step requires a push on
 # this forge, which removes the pressure that would make a worker try one.
 set -u
 
@@ -94,10 +92,10 @@ guard_push() {  # <guard-file> <remote-name> <remote-url>
     case "$key" in
       task_branch) task_branch=$value; has_branch=1 ;;
       task_prefix) task_prefix=$value ;;
-      shared_url) shared+=("$value") ;;
+      shared_url) shared+=("$(fm_external_review_url_normalize "$value" stored)") ;;
       backup_remote) backup=$value ;;
       backup_prefix) backup_prefix=$value ;;
-      backup_url) backup_urls+=("$value") ;;
+      backup_url) backup_urls+=("$(fm_external_review_url_normalize "$value" stored)") ;;
     esac
   done < <(sed '1d' "$file")
   [ "$has_branch" = 1 ] && [ -n "$task_branch" ] || refuse "the push guard file $file names no task branch"

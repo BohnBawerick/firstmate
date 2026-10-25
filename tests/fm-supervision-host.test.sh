@@ -46,12 +46,12 @@ assert_lost_handoff_keeps_watching() {  # <boundary|pass-through>
   assert_grep 'supervision-handoff' "$home/main-drain.out" "main must receive the hand-back again"
   [ -n "$MAIN_ACK" ] || fail "$mode: no main acknowledgement"
   [ -f "$home/state/.supervision-handoff-pending" ] || fail "$mode: presentation incorrectly confirmed ownership"
-  FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" "$@"' "$ROOT/bin/fm-wake-drain.sh" \
+  FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh" \
     --ack-through 0 --recovery-generation "${MAIN_ACK##* }" > "$home/stale-ack.out" 2>&1 \
     || fail "$mode: the stale acknowledgement could not be checked"
   [ -f "$home/state/.supervision-handoff-pending" ] || fail "$mode: a stale acknowledgement confirmed unseen work"
   # shellcheck disable=SC2086 # The drain's printed arguments.
-  FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" "$@"' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
+  FM_HOME="$home" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
     || fail "$mode: main could not acknowledge"
   wait_until 150 bash -c '[ ! -e "$1/state/.supervision-handoff-pending" ]' _ "$home" \
     || fail "$mode: acknowledgement did not confirm ownership"

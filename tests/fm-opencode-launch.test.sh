@@ -59,3 +59,27 @@ if FM_OC_BAD_CATALOG=1 bash "$LAUNCH" --model opencode/deepseek-v4.1-flash-free 
 if FM_OC_FAIL_CREATE=1 bash "$LAUNCH" --model default --effort default --prompt nope > "$TMP_ROOT/create-failure.log" 2>&1; then fail 'failed creation must refuse'; fi
 [ ! -e "$TMP_ROOT/attach.json" ] || fail 'failed creation attached the TUI'
 pass 'OpenCode v2 reports unsupported effort and refuses broken API responses before attachment'
+
+test_live_mode_selection() {
+  local generic specific out want
+  (
+    fm_live_gate() { printf '%s %s\n' "$1" "$2"; exit 0; }
+    export -f fm_live_gate
+    for pair in unset:unset 1:unset 1:0 0:1 0:unset; do
+      generic=${pair%:*}
+      specific=${pair#*:}
+      unset FM_LIVE FM_OPENCODE_LIVE_E2E
+      [ "$generic" = unset ] || export FM_LIVE=$generic
+      [ "$specific" = unset ] || export FM_OPENCODE_LIVE_E2E=$specific
+      case "$pair" in
+        1:unset|0:1) want='opt-in FM_OPENCODE_LIVE_E2E' ;;
+        *) want='default-on FM_OPENCODE_V2_OFFLINE_LIVE' ;;
+      esac
+      out=$(FM_TEST_LIB_SOURCED=1 bash "$ROOT/tests/fm-opencode-primary-live-e2e.test.sh") \
+        || fail "live mode selection failed for $pair"
+      [ "$out" = "$want" ] || fail "$pair selected $out instead of $want"
+    done
+  ) || return 1
+  pass 'OpenCode live mode honors the shared opt-in and per-guard overrides'
+}
+test_live_mode_selection

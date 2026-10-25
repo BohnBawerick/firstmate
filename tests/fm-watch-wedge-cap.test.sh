@@ -1901,6 +1901,85 @@ test_positive_work_policies_remain_separate() {
   pass "default positive-work suppression and opt-in validation cadence have separate outcomes"
 }
 
+test_live_cycle_helpers() (
+  local original_root=$ROOT
+  local TMP_ROOT="$TMP_ROOT/live-cycle-helpers" ROOT STATE LAB_HOME LAB_TMUX_DIR
+  local TRANSCRIPT TASK=probe KEY=probe PANE_TEXT=probe MAX=3 HORIZON_SECS=300 STALE_SECS=2 CYCLE_BOUND=2
+  local cycle=0 CYCLE_WOKE=0 CYCLE_REASON='' mode generation first
+  ROOT="$TMP_ROOT/code"
+  LAB_HOME="$TMP_ROOT/home"
+  STATE="$LAB_HOME/state"
+  LAB_TMUX_DIR="$TMP_ROOT/tmux"
+  TRANSCRIPT="$TMP_ROOT/transcript"
+  mkdir -p "$ROOT/bin" "$STATE"
+  : > "$TRANSCRIPT"
+  : > "$STATE/$TASK.meta"
+  export FM_WEDGE_FIXTURE_ROOT=$original_root
+  cat > "$ROOT/bin/fm-wake-drain.sh" <<'SH'
+#!/usr/bin/env bash
+exec bash "$FM_WEDGE_FIXTURE_ROOT/bin/fm-wake-drain.sh" "$@"
+SH
+  cat > "$ROOT/bin/fm-watch.sh" <<'SH'
+#!/usr/bin/env bash
+set -u
+beat="$FM_HOME/state/.last-watcher-beat"
+case "$FM_WEDGE_FIXTURE_MODE" in
+  wake)
+    . "$FM_WEDGE_FIXTURE_ROOT/bin/fm-wake-lib.sh"
+    fm_wake_append stale probe 'stale: probe' || exit 1
+    printf 'stale: probe\n'
+    exit 0
+    ;;
+  early-exit) exit 0 ;;
+  error) exit 7 ;;
+  no-beat) ;;
+  one-beat) touch "$beat" ;;
+  completed)
+    sleep 0.3
+    touch "$beat"
+    sleep 0.3
+    touch "$beat"
+    ;;
+esac
+while :; do sleep 0.1; done
+SH
+  chmod +x "$ROOT/bin/fm-watch.sh" "$ROOT/bin/fm-wake-drain.sh"
+  # shellcheck source=tests/fm-watch-wedge-cap-live-fixture.sh
+  . "$original_root/tests/fm-watch-wedge-cap-live-fixture.sh"
+  say() { printf '%s\n' "$1" >> "$TRANSCRIPT"; }
+
+  FM_WEDGE_FIXTURE_MODE=wake watcher_cycle first || exit 1
+  [ "$CYCLE_WOKE" = 1 ] && [ "$CYCLE_REASON" = 'stale: probe' ] || fail 'the cycle lost its wake'
+  [ ! -s "$STATE/.wake-queue" ] || fail 'presented wakes remained queued after the cycle'
+  first=$(recovery_marker_generation "$STATE/.watcher-down")
+  [ -n "$first" ] || fail 'the first cycle had no recovery generation'
+  FM_WEDGE_FIXTURE_MODE=wake watcher_cycle second || exit 1
+  [ ! -s "$STATE/.wake-queue" ] || fail 'the second sequence was not acknowledged'
+  generation=$(recovery_marker_generation "$STATE/.watcher-down")
+  [ "$generation" != "$first" ] || fail 'the second cycle did not exercise a fresh recovery generation'
+
+  FM_HOME="$LAB_HOME" bash -c '. "$1"; fm_wake_append check leftover "check: leftover"' \
+    _ "$original_root/bin/fm-wake-lib.sh" || fail 'could not seed the next arm'
+  reset_lab_state
+  [ ! -s "$STATE/.wake-queue" ] || fail 'reset carried queued recovery into the next arm'
+  case "$(cat "$STATE/.watcher-down")" in acked:*) ;; *) fail 'reset did not acknowledge recovery' ;; esac
+
+  FM_WEDGE_FIXTURE_MODE=completed watcher_cycle silent || exit 1
+  [ "$CYCLE_WOKE" = 0 ] || fail 'a completed silent poll was reported as a wake'
+  for mode in no-beat one-beat early-exit error; do
+    touch "$STATE/.last-watcher-beat"
+    if (FM_WEDGE_FIXTURE_MODE=$mode watcher_cycle "$mode") > "$TMP_ROOT/failure.out" 2>&1; then
+      fail "$mode was accepted as a silent completed poll"
+    fi
+    case "$mode" in
+      error) assert_grep 'watcher failed with exit 7' "$TMP_ROOT/failure.out" 'a failed watcher lost its exit status' ;;
+      *) assert_grep 'did not complete a poll' "$TMP_ROOT/failure.out" 'an unobserved poll did not report failure' ;;
+    esac
+  done
+  pass 'live cycle helpers acknowledge exact wakes and require completed polls before silence'
+)
+
+test_live_cycle_helpers
 test_positive_work_policies_remain_separate
 test_wedge_cap_disabled_by_default
 test_wedge_cap_fires_permanently_wedged_at_threshold

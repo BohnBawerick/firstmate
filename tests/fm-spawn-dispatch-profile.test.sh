@@ -1134,6 +1134,7 @@ opencode_gate_spawn() {  # <case> <id> <turn-mode> [unknown-reads] -> sets OUT S
   enter_log="$CASE_DIR/enter.log"
   : > "$enter_log"
   OUT=$(FM_TEST_OPENCODE_TURN=$3 FM_TEST_ENTER_LOG="$enter_log" \
+    FM_FAKE_OPENCODE_RECORD_LOG="$CASE_DIR/busy-events.log" \
     FM_FAKE_OPENCODE_COMPOSER_UNKNOWN_READS=${4:-} \
     FM_OPENCODE_DELIVERY_POLLS=30 FM_OPENCODE_SUBMIT_SETTLE_POLLS=5 FM_OPENCODE_SUBMIT_DEADLINE_POLLS=15 \
     run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$2" "$PROJ_DIR" \
@@ -1181,6 +1182,22 @@ test_opencode2_delivery_gate_fails_when_turn_never_starts() {
   assert_grep "opencode 2.0.21 did not start the brief turn" "$HOME_DIR/state/$id.status" \
     "a never-started opencode 2 turn must record a failed status"
   pass "opencode 2 delivery gate fails the spawn when the brief turn never starts"
+}
+
+test_opencode2_delivery_gate_rejects_unknown_and_accepts_completed_turns() {
+  local id=profile-opencode-gate-unknown-z8g
+  opencode_gate_spawn profile-opencode-gate-unknown "$id" unknown
+  [ "$STATUS" -ne 0 ] || fail 'an unknown plugin record confirmed delivery'
+  [ "$ENTERS" = 2 ] || fail 'an unknown plugin record prevented the one submit attempt'
+  assert_grep 'state=unknown source=opencode-plugin event=sse-error' "$CASE_DIR/busy-events.log" \
+    'the failed subscription did not reach the delivery gate'
+  assert_grep 'did not start the brief turn' "$HOME_DIR/state/$id.status" 'the failed delivery was not recorded'
+  opencode_gate_spawn profile-opencode-gate-completed profile-opencode-gate-completed-z8h completed
+  expect_code 0 "$STATUS" "a quickly completed turn did not confirm delivery: $OUT"
+  [ "$ENTERS" = 1 ] || fail 'a quickly completed turn received another submit'
+  assert_grep 'state=idle source=opencode-plugin event=session-execution-finished' \
+    "$HOME_DIR/state/profile-opencode-gate-completed-z8h.busy-state" 'the completed turn was not observed'
+  pass 'OpenCode delivery requires positive busy or completed-turn evidence'
 }
 
 test_opencode1_launch_has_no_delivery_gate() {
@@ -2813,6 +2830,7 @@ test_opencode2_delivery_gate_submits_prefilled_brief_once
 test_opencode2_delivery_gate_waits_out_unknown_composer_for_pending
 test_opencode2_delivery_gate_sends_enter_at_deadline_when_unknown
 test_opencode2_delivery_gate_fails_when_turn_never_starts
+test_opencode2_delivery_gate_rejects_unknown_and_accepts_completed_turns
 test_opencode1_launch_has_no_delivery_gate
 test_opencode_busy_plugin_provisioned_for_every_major
 test_native_effort_validator_keeps_axes_separate

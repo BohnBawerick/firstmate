@@ -5450,7 +5450,11 @@ opencode2_turn_started() {
   # shellcheck disable=SC2086 # the record is four space-separated tokens
   set -- $rec
   set +f
-  [ "${2:-}" = opencode-plugin ]
+  [ "${2:-}" = opencode-plugin ] || return 1
+  case "${1:-}" in
+    busy|idle) return 0 ;;
+  esac
+  return 1
 }
 
 opencode2_wait_for_delivery() {

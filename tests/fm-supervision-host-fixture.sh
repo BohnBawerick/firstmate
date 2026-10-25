@@ -15,6 +15,8 @@ set -u
 
 # shellcheck source=tests/wake-helpers.sh
 . "$(dirname "${BASH_SOURCE[0]}")/wake-helpers.sh"
+# shellcheck source=bin/fm-timeout-lib.sh
+. "$ROOT/bin/fm-timeout-lib.sh"
 
 HOST="$ROOT/bin/fm-supervision-host.sh"
 REPORT="$ROOT/bin/fm-branch-report.sh"
@@ -36,7 +38,7 @@ FAKE_CLAUDE="$FAKEBIN/claude"
 # session id beside its lock and every main-side drain declares that same
 # session, each naming its own Claude-shaped process as CLAUDE_PID.
 HOST_TEST_SESSION=fm-supervision-host-test
-MAIN_DRAIN='export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" 2>&1'
+MAIN_DRAIN='export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" "$@" 2>&1'
 
 # The stub engine. It records its environment and arguments, then acts like a
 # branch turn through the real scripts according to $FM_HOME/stub-mode:
@@ -952,7 +954,7 @@ test_host_stopped_right_after_a_handled_wake_exits_and_frees_the_queue() {
   kill -TERM "$pid" 2>/dev/null || true
   wait_until 100 bash -c '! kill -0 "$1" 2>/dev/null' _ "$pid" \
     || fail "handled then TERM: the host did not exit within 10s of TERM after a handled wake"
-  FM_HOME="$home" timeout 10 bash -c '. "$1"; fm_wake_append check probe "check: probe"' _ "$ROOT/bin/fm-wake-lib.sh" \
+  FM_HOME="$home" FM_TIMEOUT_MECHANISM_OVERRIDE=bash fm_run_timed 10 bash -c '. "$1"; fm_wake_append check probe "check: probe"' _ "$ROOT/bin/fm-wake-lib.sh" \
     || fail "handled then TERM: the stopped host left the wake queue lock held"
   stop_home_processes "$home"
   pass "host: a host stopped right after a handled wake exits and leaves the wake queue usable"

@@ -611,10 +611,10 @@ test_a_published_identity_is_accepted_by_the_gates_that_read_the_lock() {
 }
 
 test_windows_tagged_holder_is_a_live_foreign_owner() {
-  local dir fakebin table got
+  local dir fakebin table got out
   dir="$TMP_ROOT/win-foreign-owner"
   fakebin=$(cygwin_fakebin "$dir")
-  mkdir -p "$dir/state"
+  mkdir -p "$dir/state" "$dir/data" "$dir/config"
   printf 'win:7204\n' > "$dir/state/.lock"
   # A second live session, 7300, reads the home held by the live session 7204.
   table="$WIN_TABLE
@@ -623,6 +623,18 @@ test_windows_tagged_holder_is_a_live_foreign_owner() {
   got=$(FM_TEST_WIN_TABLE="$table" FM_TEST_SESSION_ID=S1 FM_TEST_CLAUDE_PID=7300 foreign_owner "$fakebin" "$dir/state") \
     || fail "a live tagged lock holder was not seen as a foreign owner by a second session"
   [ "$got" = 'win:7204' ] || fail "expected foreign owner win:7204, got '$got'"
+  got=$(FM_TEST_WIN_TABLE="$table" lib_eval "$fakebin" "fm_session_lock_pid '$dir/state'") \
+    || fail 'the mutation gate could not read the tagged holder'
+  [ "$got" = win:7204 ] || fail "the mutation gate changed the holder identity: $got"
+  if out=$(FM_TEST_WIN_TABLE="$table" FM_TEST_SESSION_ID=S1 FM_TEST_CLAUDE_PID=7300 \
+    lib_eval "$fakebin" "FM_HOME='$dir' bash '$ROOT/bin/fm-contributions.sh' enroll probe https://github.com/example/project/pull/1" 2>&1); then
+    fail 'a competing Windows session enrolled a contribution in the owning home'
+  fi
+  assert_contains "$out" 'does not hold the fleet lock' 'the Windows mutation refusal did not name ownership'
+  [ ! -e "$dir/data/probe/contributions.json" ] || fail 'the competing Windows session wrote contribution ownership'
+  FM_TEST_WIN_TABLE="$table" FM_TEST_SESSION_ID=S1 FM_TEST_CLAUDE_PID=7204 \
+    lib_eval "$fakebin" "fm_require_session_lock '$dir/state' mutate" \
+    || fail 'the Windows holder was refused its own mutation guard'
   if FM_TEST_WIN_TABLE="$table" FM_TEST_SESSION_ID=S1 FM_TEST_CLAUDE_PID=7204 foreign_owner "$fakebin" "$dir/state" >/dev/null; then
     fail "the tagged lock holder read its own lock as foreign"
   fi
@@ -640,6 +652,9 @@ test_windows_tagged_holder_is_a_live_foreign_owner() {
     if FM_TEST_WIN_TABLE="$table" FM_TEST_SESSION_ID=S1 FM_TEST_CLAUDE_PID=7300 foreign_owner "$fakebin" "$dir/state" >/dev/null; then
       fail "an unverifiable tagged holder win:$gone was reported as a live foreign owner"
     fi
+    FM_TEST_WIN_TABLE="$table" FM_TEST_SESSION_ID=S1 FM_TEST_CLAUDE_PID=7300 \
+      lib_eval "$fakebin" "fm_require_session_lock '$dir/state' mutate" \
+      || fail "an unverifiable Windows holder win:$gone blocked a mutation"
   done
   printf 'win:9999\n' > "$dir/state/.lock"
   got=$(FM_TEST_WIN_TABLE="$table" lib_eval "$fakebin" \

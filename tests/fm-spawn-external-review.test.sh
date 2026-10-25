@@ -90,6 +90,14 @@ test_spawn_refusals_before_launch() {
   out=$(run_spawn "$id" --mode direct-PR --yolo off); status=$?
   refused_before_launch "$id" "a backup remote aliasing origin" "points at the project's shared origin" "$out" "$status"
 
+  id=ext-transport-alias-r1
+  make_case transport-alias "$id"
+  printf 'backup\n' > "$HOME_DIR/config/external-review-backup"
+  git -C "$PROJECT_DIR" remote set-url origin git@review.example:team/repo.git
+  git -C "$PROJECT_DIR" remote add backup https://review.example/team/repo.git
+  out=$(run_spawn "$id" --mode direct-PR --yolo off); status=$?
+  refused_before_launch "$id" 'a cross-transport backup alias' "points at the project's shared origin" "$out" "$status"
+
   id=ext-prefix-r1
   make_case prefix "$id"
   printf 'backup\nprefix=fm/copies/\n' > "$HOME_DIR/config/external-review-backup"

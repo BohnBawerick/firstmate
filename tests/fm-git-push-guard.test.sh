@@ -149,10 +149,75 @@ test_unreadable_guard_refuses_everything() {
   pass "push guard: an unreadable guard file refuses every push"
 }
 
+test_repository_identity_across_transports() {
+  local repo="$TMP_ROOT/transports" guard="$TMP_ROOT/transport-guard" origin target out rc
+  git init -q "$repo"
+  git -C "$repo" remote add origin git@review.example:team/repo.git
+  git -C "$repo" remote add backup https://review.example/team/repo.git
+  for origin in git@review.example:team/repo.git ssh://git@review.example:22/team/repo.git \
+    https://review.example:443/team/repo.git http://review.example:80/team/repo.git \
+    git://review.example:9418/team/repo.git ftp://review.example:21/team/repo.git \
+    ftps://review.example:990/team/repo.git; do
+    git -C "$repo" remote set-url origin "$origin"
+    "$GUARD" write "$guard" "$repo" fm/t1 fm/ backup backup/ || fail 'could not write transport guard'
+    for target in git@review.example:team/repo https://REVIEW.EXAMPLE/team/repo.git/ \
+      ssh://other@review.example/team/repo.git git://review.example/team/repo.git; do
+      out=$(printf 'refs/heads/fm/t1 1 refs/heads/backup/t1 0\n' | "$GUARD" "$guard" backup "$target" 2>&1)
+      rc=$?
+      [ "$rc" -ne 0 ] || fail "$origin allowed a shared-origin push to $target"
+      assert_contains "$out" 'shared origin' 'the transport alias was not recognized as shared origin'
+    done
+    for target in https://review.example/team/other.git https://backup.example/team/repo.git; do
+      printf 'refs/heads/fm/t1 1 refs/heads/backup/t1 0\n' | "$GUARD" "$guard" backup "$target" \
+        || fail "a distinct backup repository was refused: $target"
+    done
+  done
+  for origin in ssh://git@review.example:2222/team/repo.git 'ssh://git@[2001:db8::1]:22/team/repo.git'; do
+    git -C "$repo" remote set-url origin "$origin"
+    "$GUARD" write "$guard" "$repo" fm/t1 fm/ backup backup/ || fail 'could not write port or IPv6 guard'
+    out=$(printf 'refs/heads/fm/t1 1 refs/heads/backup/t1 0\n' | "$GUARD" "$guard" other "$origin" 2>&1)
+    [ "$?" -ne 0 ] || fail "normalization was not stable when reading $origin back"
+    assert_contains "$out" 'shared origin' 'a port or IPv6 identity lost its protection'
+  done
+  for origin in git@review.example:team/repo.git.git "$TMP_ROOT/repo.git.git"; do
+    git -C "$repo" remote set-url origin "$origin"
+    "$GUARD" write "$guard" "$repo" fm/t1 fm/ backup backup/ || fail 'could not write repeated suffix guard'
+    case "$origin" in
+      git@*) target=https://review.example/team/repo.git.git ;;
+      *) target=file://$origin ;;
+    esac
+    out=$(printf 'refs/heads/fm/t1 1 refs/heads/backup/t1 0\n' | "$GUARD" "$guard" backup "$target" 2>&1)
+    [ "$?" -ne 0 ] || fail "a stored identity stripped a second .git suffix from $origin"
+    assert_contains "$out" 'shared origin' 'the repeated suffix changed repository identity'
+    printf 'refs/heads/fm/t1 1 refs/heads/backup/t1 0\n' | "$GUARD" "$guard" backup "${target%.git}" \
+      || fail 'a distinct repository with one fewer suffix was treated as shared origin'
+  done
+  git -C "$repo" remote set-url backup git@backup.example:team/copy.git.git
+  "$GUARD" write "$guard" "$repo" fm/t1 fm/ backup backup/ || fail 'could not write backup suffix guard'
+  out=$(printf 'refs/heads/fm/t1 1 refs/heads/other 0\n' | \
+    "$GUARD" "$guard" other https://backup.example/team/copy.git.git 2>&1)
+  [ "$?" -ne 0 ] || fail 'a backup URL with repeated suffixes escaped its namespace guard'
+  assert_contains "$out" 'outside refs/heads/backup/' 'the backup URL lost its repository identity'
+  printf '%s\n' fm-git-push-guard-v1 task_branch=fm/t1 task_prefix=fm/ \
+    shared_url=git@review.example:team/repo > "$TMP_ROOT/legacy-guard"
+  if printf 'refs/heads/fm/t1 1 refs/heads/backup/t1 0\n' | \
+    "$GUARD" "$TMP_ROOT/legacy-guard" other https://review.example/team/repo.git >/dev/null 2>&1; then
+    fail 'a persisted guard record lost its shared-origin protection'
+  fi
+  printf '%s\n' fm-git-push-guard-v1 task_branch=fm/t1 task_prefix=fm/ \
+    shared_url=git@review.example:team/repo.git > "$TMP_ROOT/legacy-suffix-guard"
+  if printf 'refs/heads/fm/t1 1 refs/heads/backup/t1 0\n' | \
+    "$GUARD" "$TMP_ROOT/legacy-suffix-guard" other https://review.example/team/repo.git.git >/dev/null 2>&1; then
+    fail 'a persisted guard record stripped a second suffix'
+  fi
+  pass 'push guard compares repository identity across transports and persisted records'
+}
+
 test_origin_pushes_are_refused
 test_backup_namespace_rules
 test_empty_prefix_still_refuses_the_task_branch
 test_repository_pre_push_still_chains
 test_unreadable_guard_refuses_everything
+test_repository_identity_across_transports
 
 echo "# all fm-git-push-guard tests passed"

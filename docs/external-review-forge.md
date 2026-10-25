@@ -39,8 +39,8 @@ Teardown is unchanged either way, so without a backup it refuses cleanup until t
 
 ## Accepted residual
 
-`git push --no-verify` skips every hook, a tool that writes refs without running git never reaches one, and an alias URL spelled differently from origin, such as an ssh form against an https form of the same server, does not compare equal.
-Each bypasses the guard, and the brief's first rule still forbids all three.
+`git push --no-verify` skips every hook, and a tool that writes refs without running git never reaches one.
+Each bypasses the guard, and the brief's first rule still forbids both.
 No gate or cleanup step requires a push on this forge, which removes the pressure that would make a worker try one.
 
 ## Deferred

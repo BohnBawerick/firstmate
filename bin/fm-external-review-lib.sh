@@ -178,13 +178,52 @@ fm_external_review_prefix_disjoint() {  # <backup-prefix> <task-prefix>
   return 0
 }
 
-# A remote URL in the one spelling the push guard compares: trailing slashes
-# and one trailing .git removed.
-fm_external_review_url_normalize() {  # <url>
-  local url=$1
-  while [ "${url%/}" != "$url" ]; do url=${url%/}; done
-  url=${url%.git}
-  while [ "${url%/}" != "$url" ]; do url=${url%/}; done
+fm_external_review_url_normalize() {  # <url> [stored]
+  local url=$1 scheme host path
+  case "$url" in
+    file://*)
+      url=${url#file://}
+      case "$url" in localhost/*) url=/${url#localhost/} ;; esac
+      ;;
+    *://*)
+      scheme=${url%%://*}
+      host=${url#*://}
+      path=${host#*/}
+      [ "$path" != "$host" ] || path=''
+      host=${host%%/*}
+      host=${host##*@}
+      host=$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')
+      case "$scheme" in
+        ssh|git+ssh|ssh+git) host=${host%:22} ;;
+        https) host=${host%:443} ;;
+        http) host=${host%:80} ;;
+        git) host=${host%:9418} ;;
+        ftp) host=${host%:21} ;;
+        ftps) host=${host%:990} ;;
+      esac
+      url=//$host/$path
+      ;;
+    [A-Za-z]:[/\\]*) ;;
+    *:*)
+      case "$url" in
+        *]:*) host=${url%%]:*}]; path=${url#*]:} ;;
+        *) host=${url%%:*}; path=${url#*:} ;;
+      esac
+      case "$host" in
+        */*) ;;
+        *)
+          host=${host##*@}
+          host=$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')
+          url=//$host/$path
+          ;;
+      esac
+      ;;
+  esac
+  if [ "${2:-}" != stored ]; then
+    while [ "${url%/}" != "$url" ]; do url=${url%/}; done
+    url=${url%.git}
+    while [ "${url%/}" != "$url" ]; do url=${url%/}; done
+  fi
   printf '%s\n' "$url"
 }
 

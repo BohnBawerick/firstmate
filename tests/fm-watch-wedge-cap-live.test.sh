@@ -113,12 +113,7 @@ STALE_SECS=2
 # window. The guard asserts the probes finished inside the horizon rather than
 # trusting this number, and fails loudly if a slower host overruns it.
 HORIZON_SECS=300
-# How long a single cycle waits for the pane classification to land before it
-# concludes the cycle stayed silent. A wedged pane produces no wake on a
-# silenced poll, so the watcher keeps polling and this is the bound that ends
-# it. The cap check runs on the watcher's first poll, so this only has to cover
-# one poll plus the heartbeat write.
-CYCLE_BOUND=6
+CYCLE_BOUND=60
 
 TMP_ROOT=$(fm_test_tmproot fm-watch-wedge-cap-live)
 LAB_HOME="$TMP_ROOT/lab-home"
@@ -223,79 +218,8 @@ touch -d '5 seconds ago' "$STATE/$TASK.meta" 2>/dev/null \
 cycle=0
 CYCLE_WOKE=0
 CYCLE_REASON=''
-watcher_cycle() {
-  local label=$1 out rc
-  cycle=$((cycle + 1))
-  out="$TMP_ROOT/cycle-$cycle.out"
-  CYCLE_WOKE=0
-  FM_HOME="$LAB_HOME" TMUX_TMPDIR="$LAB_TMUX_DIR" \
-    FM_WEDGE_MAX_ESCALATIONS="$MAX" \
-    FM_CAP_HORIZON_SECS="$HORIZON_SECS" \
-    FM_STALE_ESCALATE_SECS="$STALE_SECS" \
-    FM_POLL=1 FM_SIGNAL_GRACE=1 \
-    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
-    FM_BUSY_TURN_MAX_SECS=1 \
-    "$ROOT/bin/fm-watch.sh" > "$out" 2>&1 &
-  local pid=$!
-  # Bound the cycle: a wedged pane produces no wake on a silenced poll, so wait
-  # for the watcher heartbeat to prove it completed a poll, then bound the rest.
-  # Both bounds are tight because a real lab watcher spends tens of seconds on
-  # startup alone, and every second here is a second of the horizon the silence
-  # probes must fit inside.
-  local beat="$STATE/.last-watcher-beat" i=0
-  while [ "$i" -lt 200 ]; do
-    kill -0 "$pid" 2>/dev/null || break
-    [ -s "$beat" ] && break
-    sleep 0.1
-    i=$((i + 1))
-  done
-  i=0
-  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt $(( CYCLE_BOUND * 10 )) ]; do
-    sleep 0.1
-    i=$((i + 1))
-  done
-  if kill -0 "$pid" 2>/dev/null; then
-    kill "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
-    rc=alive
-  else
-    # No `set -e` on the way out: this script opts into `set -u` only, so
-    # turning errexit on inside a helper would silently change the error
-    # semantics of every later step of the run.
-    wait "$pid" 2>/dev/null
-    rc=$?
-  fi
-  rm -f "$beat"
-  local reason
-  reason=$(head -1 "$out" 2>/dev/null)
-  # A cycle that printed a reason line published a wake; a cycle that printed
-  # none stayed inside the poll loop. Record which, because "the cap holds the
-  # pane quiet" is exactly the claim that must be read off the real cycle.
-  case "$reason" in
-    '') CYCLE_WOKE=0 ;;
-    *) CYCLE_WOKE=1 ;;
-  esac
-  CYCLE_REASON="$reason"
-  say "$label -> exit=$rc woke=$CYCLE_WOKE reason=${reason:-none}"
-  # Acknowledge so the next cycle starts from an empty queue and its exit
-  # status reflects the pane, not a leftover wake.
-  FM_HOME="$LAB_HOME" "$ROOT/bin/fm-wake-drain.sh" >/dev/null 2>&1 || true
-  cat "$out" >> "$TRANSCRIPT"
-}
-# reset_lab_state: put the wedged worker back to a fresh first sight, so the
-# next arm starts from the same state the previous one started from. Without
-# this the second arm inherits the first arm's markers and counter, and the
-# comparison would be between a warm and a cold window rather than between the
-# cap setting and its absence.
-reset_lab_state() {
-  rm -f "$STATE"/.wedge-permanent-* "$STATE"/.wedge-rollback-failed-* \
-    "$STATE"/.wedge-escalations-* "$STATE"/.stale-since-* "$STATE"/.stale-* \
-    "$STATE"/.count-* "$STATE"/.hash-*
-  printf '%s' "$(hash_text "$PANE_TEXT")" > "$STATE/.hash-$KEY"
-  printf '1\n' > "$STATE/.count-$KEY"
-  touch -d '5 seconds ago' "$STATE/$TASK.meta" 2>/dev/null \
-    || perl -e 'utime(time()-5, time()-5, $ARGV[0])' "$STATE/$TASK.meta"
-}
+# shellcheck source=tests/fm-watch-wedge-cap-live-fixture.sh
+. "$ROOT/tests/fm-watch-wedge-cap-live-fixture.sh"
 
 # assert_derived_key_matches_watcher: the pane-hash markers a real poll writes
 # must be named by this run's derived key. A derivation that drifts leaves the

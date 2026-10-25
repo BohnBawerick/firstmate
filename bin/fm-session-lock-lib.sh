@@ -656,16 +656,14 @@ fm_session_lock_inspect() {  # <state>
   FM_LOCK_INSPECT_LIVE_HARNESS=false
 }
 
-# Print the numeric pid recorded in state dir $1's session lock, or return 1.
+# Print the pid recorded in state dir $1's session lock, or return 1.
 # Liveness is the only evidence another process has that the home is held at
 # all, so a dead recorded pid reads as a free home fleet-wide; bin/fm-lock.sh
 # reclaims it through its stale-owner path.
 fm_session_lock_pid() {  # <state-dir>
   local lock_pid
   lock_pid=$(cat "$1/.lock" 2>/dev/null || true)
-  case "$lock_pid" in
-    ''|*[!0-9]*) return 1 ;;
-  esac
+  fm_session_pid_valid "$lock_pid" || return 1
   printf '%s\n' "$lock_pid"
 }
 
