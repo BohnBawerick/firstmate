@@ -56,8 +56,13 @@ fm_omp_profile_read() {
 # agent.
 fm_omp_profile_select() {
   local harness=$1 config=$2 mate=${3:-} raw=${4:-} cfg name rc
-  [ "$harness" = omp ] && [ -n "$mate" ] || return 0
+  [ -n "$mate" ] || return 0
   cfg="$config/secondmate-accounts/$mate/omp-profile"
+  if [ -n "$raw" ] && { [ -e "$cfg" ] || [ -L "$cfg" ]; }; then
+    echo "error: $cfg pins secondmate $mate to an omp profile, so raw launch commands are unsupported; launch with --harness omp instead" >&2
+    return 1
+  fi
+  [ "$harness" = omp ] || return 0
   name=$(fm_omp_profile_read "$cfg")
   rc=$?
   case "$rc" in
@@ -73,9 +78,5 @@ fm_omp_profile_select() {
     return 1
     ;;
   esac
-  if [ -n "$raw" ]; then
-    echo "error: $cfg pins secondmate $mate to omp profile $name, and a raw omp launch command runs verbatim, so it cannot carry --profile; launch with --harness omp instead, or remove $cfg" >&2
-    return 1
-  fi
   printf '%s\n' "$name"
 }

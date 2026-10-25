@@ -339,7 +339,7 @@ SH
 drive_oc_v2_plugin() {
   local plugin=$1
   shift
-  FM_OPENCODE_SESSION=main PLUGIN_PATH="$plugin" node --input-type=module - "$@" 2>&1 <<'EOF'
+  FM_OPENCODE_SESSION="${OC_SELECTED_SESSION-main}" PLUGIN_PATH="$plugin" node --input-type=module - "$@" 2>&1 <<'EOF'
 import { pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 const mod = await import(pathToFileURL(process.env.PLUGIN_PATH).href);
@@ -347,7 +347,7 @@ const directory = resolve(dirname(process.env.PLUGIN_PATH), "../..");
 let drained;
 const done = new Promise((resolve) => { drained = resolve; });
 const cleanup = await mod.default.setup({
-  location: { directory },
+  location: { project: { directory } },
   session: { get: async ({sessionID}) => ({ data: {
     location: { directory: sessionID === "foreign" ? "/other-location" : directory },
     parentID: sessionID === "child" ? "main" : undefined,
@@ -368,10 +368,10 @@ oc_v2_execution() {
 }
 
 test_opencode_v2_plugin_semantic_lifecycle() {
-  local rec id=busy-oc-v2 out state plugin initial
+  local rec id=busy-oc-v2 out state plugin initial OC_SELECTED_SESSION=
   rec=$(make_spawn_case oc-v2 opencode "$id")
   read_case_record "$rec"
-  out=$(FM_FAKE_OPENCODE_VERSION='opencode v2.0.30' run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
+  out=$(FM_FAKE_OPENCODE_VERSION='opencode v2.0.21' run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
   expect_code 0 $? "v2 spawn should succeed: $out"
   state="$HOME_DIR/state"
   plugin="$WT_DIR/.opencode/plugins/fm-busy-state.js"
@@ -387,6 +387,20 @@ test_opencode_v2_plugin_semantic_lifecycle() {
     [ "$(classify opencode "$id" "$state")" = "idle opencode-plugin" ] || fail "v2 $ending must settle idle"
     [ -f "$state/$id.turn-ended" ] || fail "v2 $ending must notify turn end"
   done
+  out=$(OC_SELECTED_SESSION=main drive_oc_v2_plugin "$plugin" "$(oc_v2_execution foreign started)" "$(oc_v2_execution main started)" "$(oc_v2_execution child succeeded)" "$(oc_v2_execution main succeeded)") \
+    || fail "v2 explicitly selected session drive: $out"
+  [ "$(classify opencode "$id" "$state")" = 'idle opencode-plugin' ] || fail 'the explicit worker session did not settle'
+  rm -f "$state/$id.turn-ended"
+  out=$(drive_oc_v2_plugin "$plugin" "$(oc_status foreign busy)" "$(oc_status child busy)" "$(oc_idle child)") \
+    || fail "v2 foreign legacy events: $out"
+  [ "$(classify opencode "$id" "$state")" = 'idle opencode-plugin' ] || fail 'foreign legacy events bound a session'
+  assert_absent "$state/$id.turn-ended" 'foreign legacy idle notified the worker'
+  out=$(drive_oc_v2_plugin "$plugin" "$(oc_status main busy)" "$(oc_idle foreign)" "$(oc_idle child)") \
+    || fail "v2 legacy busy drive: $out"
+  [ "$(classify opencode "$id" "$state")" = 'busy opencode-plugin' ] || fail 'foreign legacy idle settled the worker'
+  assert_absent "$state/$id.turn-ended" 'foreign legacy idle notified a busy worker'
+  out=$(drive_oc_v2_plugin "$plugin" "$(oc_status main busy)" "$(oc_idle main)") || fail "v2 legacy settle: $out"
+  assert_present "$state/$id.turn-ended" 'the owned legacy idle did not notify the worker'
   "$ROOT/bin/fm-busy-event.sh" arm "$state" "$id" >/dev/null
   rm -f "$state/$id.turn-ended"
   out=$(drive_oc_v2_plugin "$plugin" "$(oc_v2_execution main started)" "$(oc_v2_execution main succeeded)") || fail "v2 stale drive: $out"

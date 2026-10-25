@@ -244,12 +244,18 @@ fm_worker_account_check() {
 # agent.
 fm_worker_account_select() {
   local harness=$1 config=$2 model=$3 executable=$4 raw=${5:-} mate=${6:-}
-  local selection declared root providers provider='' selected_config setting
+  local selection declared root providers provider='' selected_config setting account_file pin_config
   # Raw shell syntax cannot prove the effective runner or account overrides.
-  if [ -n "$raw" ] && { [ -e "$config/claude-account" ] || [ -L "$config/claude-account" ] ||
-    [ -e "$config/pi-account" ] || [ -L "$config/pi-account" ]; }; then
-    echo "error: this home pins worker accounts (config/claude-account or config/pi-account), so raw launch commands are unsupported; launch with --harness <name> instead" >&2
-    return 1
+  if [ -n "$raw" ]; then
+    for pin_config in "$config" "${mate:+$config/secondmate-accounts/$mate}"; do
+      [ -n "$pin_config" ] || continue
+      for account_file in claude-account pi-account; do
+        if [ -e "$pin_config/$account_file" ] || [ -L "$pin_config/$account_file" ]; then
+          echo "error: $pin_config/$account_file pins worker accounts, so raw launch commands are unsupported; launch with --harness <name> instead" >&2
+          return 1
+        fi
+      done
+    done
   fi
   selected_config=$(fm_worker_account_config "$harness" "$config" "$mate") || return 1
   setting="config/$(fm_worker_account_file "$harness")"
@@ -258,10 +264,6 @@ fm_worker_account_select() {
   if [ -z "$selection" ]; then
     [ "$selected_config" = "$config" ] && return 0
     echo "error: secondmate account pin disappeared during selection: $setting" >&2
-    return 1
-  fi
-  if [ -n "$raw" ]; then
-    echo "error: $setting pins worker accounts, so raw launch commands are unsupported; launch with --harness <name> instead" >&2
     return 1
   fi
   declared=${selection%%$'\t'*}

@@ -41,6 +41,13 @@ case "$1 ${2:-}" in
   "pane list") cat "$FAKE_DIR/panes.json" ;;
   "session list") printf '{"sessions":[{"name":"s1","running":true,"socket_path":"/tmp/fm-groups-s1.sock"}]}\n' ;;
   "pane report-metadata"|"workspace report-metadata") ;;
+  "config check")
+    python3 - "$HERDR_CONFIG_PATH" <<'PY'
+import sys, tomllib
+with open(sys.argv[1], "rb") as stream:
+    tomllib.load(stream)
+PY
+    exit "$?" ;;
   *) exit 1 ;;
 esac
 exit 0
@@ -337,8 +344,35 @@ test_sidebar_config_apply_backs_up_and_refuses_twice() {
   fi
   assert_contains "$out" "already defines Herdr sidebar rows" "refusal reason"
   assert_sidebar_rows "$cfg" spaces || fail "refused reapplication changed the sidebar configuration"
-  assert_equals "" "$(cat "$FAKE_HERDR_LOG")" "apply never reloads Herdr"
+  assert_equals $'herdr\x1fconfig\x1fcheck\nherdr\x1fconfig\x1fcheck' "$(cat "$FAKE_HERDR_LOG")" "apply only validates configuration and never reloads Herdr"
   pass "sidebar-config: prints rows; --apply backs up, appends once, never reloads Herdr"
+}
+
+test_sidebar_config_refuses_semantic_table_conflicts() {
+  local table definition cfg out n=0
+  for table in spaces agents; do
+    for definition in "[ui.sidebar.\"$table\"]" "[ ui.sidebar.$table ]" "[ui.sidebar.'$table']" \
+      "ui.sidebar.$table.rows = []" "ui.sidebar.$table = { rows = [] }" \
+      "ui.sidebar = { $table = { rows = [] } }" "ui = { sidebar = { $table = { rows = [] } } }" \
+      "[ui.sidebar]\n$table.rows = []"; do
+      n=$((n + 1))
+      new_home "sidebar-conflict-$n"
+      cfg="$FAKE_DIR/config.toml"
+      printf '%b\n' "$definition" > "$cfg"
+      cp "$cfg" "$FAKE_DIR/before.toml"
+      if out=$(groups sidebar-config --apply "$cfg" 2>&1); then
+        fail "sidebar-config accepted the existing $table definition: $definition"
+      fi
+      cmp -s "$cfg" "$FAKE_DIR/before.toml" || fail 'a refused append changed the configuration'
+      [ -z "$(find "$FAKE_DIR" -maxdepth 1 -name 'config.toml.bak-*')" ] || fail 'a refused append created a backup'
+    done
+  done
+  new_home sidebar-harmless-text
+  cfg="$FAKE_DIR/config.toml"
+  printf '# [ui.sidebar.spaces]\n[ui]\nagent_panel_sort = "spaces"\n[ui.sidebar]\n' > "$cfg"
+  out=$(groups sidebar-config --apply "$cfg" 2>&1) || fail "comments and an empty parent table must permit sidebar rows: $out"
+  assert_sidebar_rows "$cfg" spaces || fail 'a permitted append did not produce usable sidebar rows'
+  pass "both sidebar tables refuse quoted, spaced, dotted and inline definitions without changing the file"
 }
 
 test_agent_view_helper_sends_only_the_whitelisted_requests() {
@@ -415,5 +449,6 @@ test_sync_reports_only_differences_and_sets_the_view
 test_sync_skips_an_unverified_protocol_with_one_warning
 test_clear_removes_tokens_and_the_view_even_when_off
 test_sidebar_config_apply_backs_up_and_refuses_twice
+test_sidebar_config_refuses_semantic_table_conflicts
 test_agent_view_helper_sends_only_the_whitelisted_requests
 test_watcher_poll_tags_tasks

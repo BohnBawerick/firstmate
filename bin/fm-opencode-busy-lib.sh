@@ -59,7 +59,8 @@ const makeHandler = (ctx) => {
     if (workerSession) return id === workerSession;
     const result = await ctx.session.get({ sessionID: id });
     const session = result.data ?? result;
-    return !session.parentID && session.location?.directory === ctx.location.directory;
+    const directory = ctx.location?.project?.directory;
+    return typeof directory === "string" && directory.length > 0 && !session.parentID && session.location?.directory === directory;
   };
   let activeSession = null;
   return async (event) => {
@@ -82,7 +83,7 @@ const makeHandler = (ctx) => {
       const properties = eventProperties(event);
       const statusType = properties.status && properties.status.type;
       if (statusType === "busy" || statusType === "retry") {
-        if (activeSession === null) activeSession = id;
+        if (activeSession === null && id && await owns(id)) activeSession = id;
         if (id === activeSession) await busyEvent("busy", "session-" + statusType);
         return;
       }
@@ -95,9 +96,9 @@ const makeHandler = (ctx) => {
     if (type === "session.idle") {
       if (id === activeSession) {
         activeSession = null;
-        await busyEvent("idle", "session-idle");
+        await busyEvent("idle", "session-idle", !!ctx && notifyTurnEnd);
       }
-      if (notifyTurnEnd) await touchTurnEnded();
+      if (!ctx && notifyTurnEnd) await touchTurnEnded();
     }
   };
 };

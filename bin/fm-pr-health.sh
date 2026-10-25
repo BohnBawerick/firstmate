@@ -67,6 +67,7 @@ export FM_HOME FM_STATE_OVERRIDE="$STATE" FM_DATA_OVERRIDE="$DATA"
 . "$SCRIPT_DIR/fm-pr-lib.sh"
 # shellcheck source=bin/fm-timeout-lib.sh
 . "$SCRIPT_DIR/fm-timeout-lib.sh"
+. "$SCRIPT_DIR/fm-session-lock-lib.sh"
 
 fail() { printf 'fm-pr-health: %s\n' "$*" >&2; exit 1; }
 usage() { sed -n '2,/^set -eu$/s/^# \{0,1\}//p' "$0"; }
@@ -251,6 +252,7 @@ poll() {
   local deadline timeout url step pid index=0 read_dir
   local pids=()
   flag_on || exit 0
+  fm_require_session_lock "$STATE" "poll PR health" || exit 1
   [ -d "$STATE" ] && [ ! -L "$STATE" ] || fail 'state directory unavailable'
   timeout=${FM_CHECK_TIMEOUT:-30}
   case "$timeout" in ''|*[!0-9]*) timeout=30 ;; esac
@@ -320,6 +322,7 @@ poll() {
 
 arm() {
   local staged
+  fm_require_session_lock "$STATE" "arm PR health monitoring" || exit 1
   flag_on || fail 'config/pr-health-monitor is absent; the PR health monitor stays off'
   [ -d "$STATE" ] && [ ! -L "$STATE" ] || fail 'state directory unavailable'
   fm_pr_regular_destination_on_device_or_absent "$STATE/pr-health.check.sh" "$(fm_pr_file_device "$STATE")" \

@@ -137,7 +137,31 @@ done
 run_hook() { bash -c "$(jq -r --arg event "$1" '.hooks[$event][0].hooks[0].command' "$hooks")"; }
 run_hook UserPromptSubmit
 [ "$(fm_busy_classify tmux fake:w cortex worker "$state")" = 'busy cortex-hook' ] || fail 'submit did not open busy'
-run_hook Stop
+busy_lock="$(fm_busy_record_path "$state" worker).lock"
+mkdir "$busy_lock" || fail 'could not hold the busy writer lock'
+FM_BUSY_LOCK_STALE_SECS=3600 run_hook Stop
+assert_absent "$state/worker.turn-ended" 'Stop notified while its apply lock was held'
+[ "$(fm_busy_classify tmux fake:w cortex worker "$state")" = 'busy cortex-hook' ] || fail 'a lock-refused Stop changed busy state'
+[ -d "$busy_lock" ] || fail 'Stop broke a live held lock'
+rmdir "$busy_lock" || fail 'could not release the busy writer lock'
+lock_probe="$TMP_ROOT/lock-probe"
+mkdir "$lock_probe"
+cat > "$lock_probe/rmdir" <<'SH'
+#!/usr/bin/env bash
+if [ "$#" -eq 1 ] && [ "$1" = "$CORTEX_LOCK_PATH" ]; then
+  if [ -d "$1" ] && [ -f "$CORTEX_NOTIFICATION" ]; then
+    printf 'held and notified\n' > "$CORTEX_LOCK_OBSERVATION"
+  else
+    printf 'notification missing under lock\n' > "$CORTEX_LOCK_OBSERVATION"
+  fi
+fi
+exec "$CORTEX_REAL_RMDIR" "$@"
+SH
+chmod +x "$lock_probe/rmdir"
+real_rmdir=$(command -v rmdir)
+PATH="$lock_probe:$PATH" CORTEX_REAL_RMDIR="$real_rmdir" CORTEX_LOCK_PATH="$busy_lock" \
+  CORTEX_NOTIFICATION="$state/worker.turn-ended" CORTEX_LOCK_OBSERVATION="$state/lock-observation" run_hook Stop
+[ "$(cat "$state/lock-observation")" = 'held and notified' ] || fail 'Stop notification was not raised before releasing its apply lock'
 [ "$(fm_busy_classify tmux fake:w cortex worker "$state")" = 'idle cortex-hook' ] || fail 'Stop did not settle'
 assert_present "$state/worker.turn-ended" 'Stop notification absent'
 run_hook UserPromptSubmit
@@ -148,14 +172,6 @@ rm "$state/worker.turn-ended"
 run_hook Stop
 [ "$(fm_busy_classify tmux fake:w cortex worker "$state")" = 'busy fm-spawn' ] || fail 'stale Stop cleared replacement'
 assert_absent "$state/worker.turn-ended" 'stale Stop woke replacement'
-stop_command=$(jq -r '.hooks.Stop[0].hooks[0].command' "$hooks")
-case "$stop_command" in
-  *' --turn-ended '*) ;;
-  *) fail 'Stop hook does not raise the turn-end notification under the apply lock' ;;
-esac
-case "$stop_command" in
-  *touch*) fail 'Stop hook touches the turn-end marker outside the apply lock' ;;
-esac
 wiring=$(fm_control_harness_wiring_paths cortex /unused "$state" worker)
 case "$wiring" in *"$hooks"*"$plugin/.cortex-plugin/plugin.json"*) ;; *) fail "plugin retirement paths missing: $wiring" ;; esac
 ! "$ROOT/bin/fm-cortex-plugin.sh" "$state" 'bad id' "$gen" 2>/dev/null || fail 'invalid task id accepted'

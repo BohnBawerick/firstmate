@@ -85,10 +85,6 @@ wait_poll_cycle() {  # <state> <pid> [limit-ticks]
   return 1
 }
 
-seen_sig() {
-  if [ "$(uname)" = Darwin ]; then stat -f '%z:%Fm' "$1" 2>/dev/null; else stat -c '%s:%Y' "$1" 2>/dev/null; fi
-}
-
 # mark_status_seen <state> <status-file>: record the file's CURRENT complete
 # snapshot as both reported and classified, so a status this case writes itself
 # (a declared wait, then its lift) does not also raise a status-signal wake and
@@ -105,12 +101,14 @@ mark_status_seen() {
 # reaches the wedge path, drain the resulting wake, and return the state dir.
 prime_and_ack() {
   local dir=$1 max=$2
-  local state fakebin out capture_file window key sig pid
+  local state fakebin out capture_file window key pid status_file
   state="$dir/state"; fakebin="$dir/fakebin"
   out="$dir/watch.out"; capture_file="$dir/pane.txt"
   window="test:fm-wedge-cap-$(basename "$dir" | sed -e 's/^wedge-cap-//' )"
   key=$(printf '%s' "$window" | tr ':/.' '___')
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  for status_file in "$state"/*.status; do
+    [ ! -f "$status_file" ] || mark_status_seen "$state" "$status_file"
+  done
 
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
     FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
@@ -257,19 +255,20 @@ queued_wakes_carrying() {  # <state> <window> <needle>
 # and a wedged worker keeps receiving stale wakes without ever firing
 # PERMANENTLY-WEDGED.
 test_wedge_cap_disabled_by_default() {
-  local dir state out capture_file window key pane_hash sig pid
+  local dir state out capture_file window key pane_hash pid
   dir=$(make_case wedge-cap-disabled); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"
   window="test:fm-wedge-cap-disabled"
   printf 'wedged default-config pane' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-disabled.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-disabled.status"
-  sig=$(seen_sig "$state/wedge-cap-disabled.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-disabled_status"
+  mark_status_seen "$state" "$state/wedge-cap-disabled.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "wedged default-config pane")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   # Drive five wedge polls. Each must escape (escalation n, no PERMANENTLY-WEDGED),
   # and no cap marker may ever appear.
   local fakebin n
@@ -310,19 +309,20 @@ test_wedge_cap_disabled_by_default() {
 # 2. Cap fires at threshold with PERMANENTLY-WEDGED and writes the
 # window-scoped cap marker.
 test_wedge_cap_fires_permanently_wedged_at_threshold() {
-  local dir state out capture_file window key pane_hash sig
+  local dir state out capture_file window key pane_hash
   dir=$(make_case wedge-cap-fires); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"
   window="test:fm-wedge-cap-fires"
   printf 'idle wedged content' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-fires.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-fires.status"
-  sig=$(seen_sig "$state/wedge-cap-fires.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-fires_status"
+  mark_status_seen "$state" "$state/wedge-cap-fires.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   prime_and_ack "$dir" 4 || fail "prime-and-ack failed"
   local n max
   n=1; max=4
@@ -355,8 +355,9 @@ test_wedge_cap_silences_subsequent_polls_for_same_hash() {
   pane_hash=$(hash_text "idle wedged content")
   key=$(printf '%s' "$window" | tr ':/.' '___')
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   prime_and_ack "$dir" 3 || fail "prime-and-ack failed"
   local max n pid i
   max=3
@@ -402,18 +403,22 @@ test_wedge_cap_silences_subsequent_polls_for_same_hash() {
 # PERMANENTLY-WEDGED wake across all churn iterations, even when each poll
 # presents a brand new stale hash.
 test_wedge_cap_window_marker_silences_hash_churning_busy_pane() {
-  local dir state out capture_file window key pane_hash sig pid
+  local dir state out capture_file window key pane_hash pid
   dir=$(make_case wedge-cap-churning); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"
   window="test:fm-wedge-cap-churning"
   fakebin="$dir/fakebin"
   printf 'churning wedged pane initial content' > "$capture_file"
-  printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-churning.meta"
+  printf 'window=%s\nkind=ship\nharness=pi\n' "$window" > "$state/wedge-cap-churning.meta"
+  "$ROOT/bin/fm-busy-event.sh" arm "$state" wedge-cap-churning >/dev/null
+  "$ROOT/bin/fm-busy-event.sh" apply "$state" wedge-cap-churning busy --current-gen --source pi-ext --event agent-start >/dev/null
+  touch -t 200001010000 "$state/wedge-cap-churning.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-churning.status"
-  sig=$(seen_sig "$state/wedge-cap-churning.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-churning_status"
+  mark_status_seen "$state" "$state/wedge-cap-churning.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "churning wedged pane initial content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
   export FM_FAKE_CREW_STATE='state: working · source: pane · harness busy'
 
@@ -496,7 +501,7 @@ test_wedge_cap_window_marker_silences_hash_churning_busy_pane() {
 # the same window is ALSO silent because the window-scoped marker still
 # stands.
 test_wedge_cap_expires_after_horizon() {
-  local dir state out capture_file window key pane_hash sig
+  local dir state out capture_file window key pane_hash
   dir=$(make_case wedge-cap-horizon); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"
   fakebin="$dir/fakebin"
@@ -504,12 +509,13 @@ test_wedge_cap_expires_after_horizon() {
   printf 'idle wedged content' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-horizon.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-horizon.status"
-  sig=$(seen_sig "$state/wedge-cap-horizon.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-horizon_status"
+  mark_status_seen "$state" "$state/wedge-cap-horizon.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   prime_and_ack "$dir" 3 || fail "prime-and-ack failed"
   local max n pid
   max=3
@@ -606,7 +612,7 @@ test_wedge_cap_expires_after_horizon() {
 # 6. Operator can rm the cap marker for immediate re-engagement; a fresh
 # wedge then fires through a fresh counter.
 test_wedge_cap_operator_can_rm_marker() {
-  local dir state out capture_file window key pane_hash sig
+  local dir state out capture_file window key pane_hash
   dir=$(make_case wedge-cap-operator-rm); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"
   fakebin="$dir/fakebin"
@@ -614,12 +620,13 @@ test_wedge_cap_operator_can_rm_marker() {
   printf 'idle wedged content' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-operator-rm.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-operator-rm.status"
-  sig=$(seen_sig "$state/wedge-cap-operator-rm.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-operator-rm_status"
+  mark_status_seen "$state" "$state/wedge-cap-operator-rm.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   prime_and_ack "$dir" 3 || fail "prime-and-ack failed"
   local max n pid
   max=3
@@ -655,7 +662,7 @@ test_wedge_cap_operator_can_rm_marker() {
 # horizon or sentinel TTL falls back to the file-defined default rather than
 # degrading into a re-fire loop.
 test_wedge_cap_validates_invalid_overrides() {
-  local dir state out capture_file window key pane_hash sig
+  local dir state out capture_file window key pane_hash
   dir=$(make_case wedge-cap-validate); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"
   fakebin="$dir/fakebin"
@@ -663,12 +670,13 @@ test_wedge_cap_validates_invalid_overrides() {
   printf 'idle wedged content' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-validate.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-validate.status"
-  sig=$(seen_sig "$state/wedge-cap-validate.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-validate_status"
+  mark_status_seen "$state" "$state/wedge-cap-validate.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
 
   # Non-integer FM_WEDGE_MAX_ESCALATIONS falls back to 0 (cap disabled) and
   # the watcher must NOT fire PERMANENTLY-WEDGED across repeated wedges.
@@ -715,7 +723,7 @@ test_wedge_cap_validates_invalid_overrides() {
 # any ceiling, a count that no longer describes the ladder. A counter the
 # watcher cannot read as a count is a fresh count.
 test_wedge_cap_reads_an_unreadable_counter_as_a_fresh_one() {
-  local dir state out capture_file window key pane_hash sig
+  local dir state out capture_file window key pane_hash
   dir=$(make_case wedge-cap-counter-unreadable); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"
   fakebin="$dir/fakebin"
@@ -723,12 +731,13 @@ test_wedge_cap_reads_an_unreadable_counter_as_a_fresh_one() {
   printf 'idle wedged content' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-counter-unreadable.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-counter-unreadable.status"
-  sig=$(seen_sig "$state/wedge-cap-counter-unreadable.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-counter-unreadable_status"
+  mark_status_seen "$state" "$state/wedge-cap-counter-unreadable.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   prime_and_ack "$dir" 0 || fail "prime-and-ack failed"
 
   # A counter file holding a value beyond the shell's integer range. The next
@@ -748,7 +757,7 @@ test_wedge_cap_reads_an_unreadable_counter_as_a_fresh_one() {
 # itself writes a transient sentinel that silences the wedge for
 # FM_ROLLBACK_SENTINEL_TTL_SECS.
 test_wedge_cap_rollback_writes_sentinel_on_marker_failure() {
-  local dir state out capture_file window key pane_hash sig pid n max marker_window sentinel
+  local dir state out capture_file window key pane_hash pid n max marker_window sentinel
   dir=$(make_case wedge-cap-rollback); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"
   fakebin="$dir/fakebin"
@@ -756,13 +765,14 @@ test_wedge_cap_rollback_writes_sentinel_on_marker_failure() {
   printf 'idle wedged content' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-rollback.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-rollback.status"
-  sig=$(seen_sig "$state/wedge-cap-rollback.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-rollback_status"
+  mark_status_seen "$state" "$state/wedge-cap-rollback.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '2\n' > "$state/.count-$key"
   max=1
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   prime_and_ack "$dir" "$max" || fail "prime-and-ack failed"
   marker_window="$state/.wedge-permanent-$key"
   sentinel="$state/.wedge-rollback-failed-$key"
@@ -867,19 +877,20 @@ test_wedge_cap_rollback_writes_sentinel_on_marker_failure() {
 # cannot be written - while the default uncapped path, which has no ceiling to
 # enforce, keeps escalating exactly as it always has.
 test_wedge_cap_unwritable_escalation_count_fails_safe() {
-  local dir state out capture_file window key pane_hash sig fakebin max pid round_status sentinel
+  local dir state out capture_file window key pane_hash fakebin max pid round_status sentinel
   dir=$(make_case wedge-cap-counter-fail); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"; fakebin="$dir/fakebin"
   window="test:fm-wedge-cap-counter-fail"
   printf 'idle wedged content' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-counter-fail.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-counter-fail.status"
-  sig=$(seen_sig "$state/wedge-cap-counter-fail.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-counter-fail_status"
+  mark_status_seen "$state" "$state/wedge-cap-counter-fail.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   max=3
   prime_and_ack "$dir" "$max" || fail "prime-and-ack failed"
   sentinel="$state/.wedge-rollback-failed-$key"
@@ -940,19 +951,20 @@ test_wedge_cap_unwritable_escalation_count_fails_safe() {
 # publishing nothing at all. Count the inventory reads the probe starts with,
 # once below the threshold and once at it.
 test_wedge_cap_sentinel_probe_keeps_its_cadence() {
-  local dir state out capture_file window key pane_hash sig fakebin max sentinel inventory below at
+  local dir state out capture_file window key pane_hash fakebin max sentinel inventory below at
   dir=$(make_case wedge-cap-sentinel-cadence); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"; fakebin="$dir/fakebin"
   window="test:fm-wedge-cap-sentinel-cadence"
   printf 'idle wedged content' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-sentinel-cadence.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-sentinel-cadence.status"
-  sig=$(seen_sig "$state/wedge-cap-sentinel-cadence.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-sentinel-cadence_status"
+  mark_status_seen "$state" "$state/wedge-cap-sentinel-cadence.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   max=1
   prime_and_ack "$dir" "$max" || fail "prime-and-ack failed"
 
@@ -1011,19 +1023,20 @@ test_wedge_cap_unwritable_counter_reset_fails_safe() {
     pass "a refused escalation-counter reset fails safe instead of carrying a saturated counter (skipped as root)"
     return 0
   fi
-  local dir state out capture_file window key pane_hash sig fakebin max pid round_status sentinel real_rm queue_before
+  local dir state out capture_file window key pane_hash fakebin max pid round_status sentinel real_rm queue_before
   dir=$(make_case wedge-cap-reset-fail); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"; fakebin="$dir/fakebin"
   window="test:fm-wedge-cap-reset-fail"
   printf 'idle wedged content' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-reset-fail.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-reset-fail.status"
-  sig=$(seen_sig "$state/wedge-cap-reset-fail.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-reset-fail_status"
+  mark_status_seen "$state" "$state/wedge-cap-reset-fail.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '2\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   max=1
   prime_and_ack "$dir" "$max" || fail "prime-and-ack failed"
   sentinel="$state/.wedge-rollback-failed-$key"
@@ -1106,19 +1119,23 @@ SHIM
 # it, so the cap marker goes and a pane that wedges again escalates normally
 # instead of staying silent until the horizon elapses.
 test_wedge_cap_releases_after_genuine_recovery() {
-  local dir state out capture_file window key pane_hash sig pid fakebin max n
+  local dir state out capture_file window key pane_hash pid fakebin max n
   dir=$(make_case wedge-cap-recovery); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"; fakebin="$dir/fakebin"
   window="test:fm-wedge-cap-recovery"
   printf 'idle wedged content' > "$capture_file"
-  printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-recovery.meta"
+  printf 'window=%s\nkind=ship\nharness=pi\n' "$window" > "$state/wedge-cap-recovery.meta"
+  "$ROOT/bin/fm-busy-event.sh" arm "$state" wedge-cap-recovery >/dev/null
+  "$ROOT/bin/fm-busy-event.sh" apply "$state" wedge-cap-recovery busy --current-gen --source pi-ext --event agent-start >/dev/null
+  touch -t 200001010000 "$state/wedge-cap-recovery.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-recovery.status"
-  sig=$(seen_sig "$state/wedge-cap-recovery.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-recovery_status"
+  mark_status_seen "$state" "$state/wedge-cap-recovery.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   prime_and_ack "$dir" 3 || fail "prime-and-ack failed"
   max=3
   n=1
@@ -1134,7 +1151,7 @@ test_wedge_cap_releases_after_genuine_recovery() {
   # reset-the-escalation-bookkeeping branch.
   export FM_FAKE_CREW_STATE='state: working · source: pane · harness busy'
   printf 'crew resumed, work rendering again' > "$capture_file"
-  : > "$state/fm-wedge-cap-recovery.turn-ended"
+  : > "$state/wedge-cap-recovery.turn-ended"
   : > "$out"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
     FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
@@ -1152,8 +1169,8 @@ test_wedge_cap_releases_after_genuine_recovery() {
 
   # The crew wedges again: the escalation must reach the supervisor as an
   # ordinary wedge wake off a fresh counter, not as the cap's silence.
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
-  rm -f "$state/fm-wedge-cap-recovery.turn-ended"
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
+  rm -f "$state/wedge-cap-recovery.turn-ended"
   echo $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
   : > "$out"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
@@ -1177,19 +1194,20 @@ test_wedge_cap_releases_after_genuine_recovery() {
 # cycles must not each append their own PERMANENTLY-WEDGED row: one
 # unacknowledged terminal row per window is the bound.
 test_wedge_cap_publishes_one_terminal_wake_under_persistent_marker_failure() {
-  local dir state out capture_file window key pane_hash sig pid fakebin max marker_window cycle round_status terminal_rows
+  local dir state out capture_file window key pane_hash pid fakebin max marker_window cycle round_status terminal_rows
   dir=$(make_case wedge-cap-dup-terminal); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"; fakebin="$dir/fakebin"
   window="test:fm-wedge-cap-dup-terminal"
   printf 'idle wedged content' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-dup-terminal.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-dup-terminal.status"
-  sig=$(seen_sig "$state/wedge-cap-dup-terminal.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-dup-terminal_status"
+  mark_status_seen "$state" "$state/wedge-cap-dup-terminal.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   max=1
   prime_and_ack "$dir" "$max" || fail "prime-and-ack failed"
 
@@ -1235,7 +1253,7 @@ test_wedge_cap_publishes_one_terminal_wake_under_persistent_marker_failure() {
 # lifts it (reconciled on the next poll). A window left silent on either half
 # would keep a recovered pane dark for the rest of FM_CAP_HORIZON_SECS.
 test_wedge_cap_releases_after_declared_wait() {
-  local dir state out capture_file window key pane_hash sig pid fakebin max n statusf
+  local dir state out capture_file window key pane_hash pid fakebin max n statusf
   dir=$(make_case wedge-cap-declared-wait); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"; fakebin="$dir/fakebin"
   window="test:fm-wedge-cap-declared-wait"
@@ -1247,8 +1265,9 @@ test_wedge_cap_releases_after_declared_wait() {
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   prime_and_ack "$dir" 3 || fail "prime-and-ack failed"
   max=3
   n=1
@@ -1283,7 +1302,7 @@ test_wedge_cap_releases_after_declared_wait() {
 
   # The wait is lifted, so the pause reconciliation drops the rest of the
   # window's bookkeeping on its next poll.
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: working · source: run-step · running · run: resumed-run'
   printf 'working: the wait is over\n' > "$statusf"
   mark_status_seen "$state" "$statusf"
   : > "$out"
@@ -1301,6 +1320,7 @@ test_wedge_cap_releases_after_declared_wait() {
 
   # The crew wedges again: the escalation must reach the supervisor off a fresh
   # counter, not as the cap's silence.
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   echo $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
   : > "$out"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
@@ -1324,19 +1344,20 @@ test_wedge_cap_releases_after_declared_wait() {
 # gone endpoint is reported once while the cap holds, and every later capped poll
 # stays quiet instead of re-reporting it or re-firing the terminal wake.
 test_wedge_cap_reports_gone_endpoint_while_capped() {
-  local dir state out capture_file window key pane_hash sig pid fakebin max gone round
+  local dir state out capture_file window key pane_hash pid fakebin max gone round
   dir=$(make_case wedge-cap-gone-endpoint); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"; fakebin="$dir/fakebin"
   window="test:fm-wedge-cap-gone-endpoint"
   printf 'idle wedged content' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-gone-endpoint.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-gone-endpoint.status"
-  sig=$(seen_sig "$state/wedge-cap-gone-endpoint.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-gone-endpoint_status"
+  mark_status_seen "$state" "$state/wedge-cap-gone-endpoint.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   max=1
   prime_and_ack "$dir" "$max" || fail "prime-and-ack failed"
 
@@ -1385,19 +1406,23 @@ test_wedge_cap_reports_gone_endpoint_while_capped() {
 # must not silence the next episode's own wake - while a rollback that keeps
 # re-firing the cap inside one episode still publishes no second row (case 10).
 test_wedge_cap_new_episode_publishes_its_own_terminal_wake() {
-  local dir state out capture_file window key pane_hash sig pid fakebin max post_hash terminal_rows
+  local dir state out capture_file window key pane_hash pid fakebin max post_hash terminal_rows
   dir=$(make_case wedge-cap-new-episode); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"; fakebin="$dir/fakebin"
   window="test:fm-wedge-cap-new-episode"
   printf 'idle wedged content' > "$capture_file"
-  printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-new-episode.meta"
+  printf 'window=%s\nkind=ship\nharness=pi\n' "$window" > "$state/wedge-cap-new-episode.meta"
+  "$ROOT/bin/fm-busy-event.sh" arm "$state" wedge-cap-new-episode >/dev/null
+  "$ROOT/bin/fm-busy-event.sh" apply "$state" wedge-cap-new-episode busy --current-gen --source pi-ext --event agent-start >/dev/null
+  touch -t 200001010000 "$state/wedge-cap-new-episode.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-new-episode.status"
-  sig=$(seen_sig "$state/wedge-cap-new-episode.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-new-episode_status"
+  mark_status_seen "$state" "$state/wedge-cap-new-episode.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   max=1
   prime_and_ack "$dir" "$max" || fail "prime-and-ack failed"
 
@@ -1432,7 +1457,7 @@ test_wedge_cap_new_episode_publishes_its_own_terminal_wake() {
     || fail "the window-scoped cap marker survived the recovery that ended the first episode"
 
   # Episode 2: the crew wedges again on a fresh render, and the cap fires again.
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   rm -f "$state/wedge-cap-new-episode.turn-ended"
   post_hash=$(hash_text "idle wedged content second episode")
   printf 'idle wedged content second episode' > "$capture_file"
@@ -1454,19 +1479,20 @@ test_wedge_cap_new_episode_publishes_its_own_terminal_wake() {
 # horizon - and the canonical capped pane is one whose agent is provably still
 # there, which is exactly the verdict that leaves the timer alone.
 test_wedge_cap_probe_keeps_its_cadence_while_capped() {
-  local dir state out capture_file window key pane_hash sig fakebin max probes inventory
+  local dir state out capture_file window key pane_hash fakebin max probes inventory
   dir=$(make_case wedge-cap-probe-cadence); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"; fakebin="$dir/fakebin"
   window="test:fm-wedge-cap-probe-cadence"
   printf 'idle wedged content' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-probe-cadence.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-probe-cadence.status"
-  sig=$(seen_sig "$state/wedge-cap-probe-cadence.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-probe-cadence_status"
+  mark_status_seen "$state" "$state/wedge-cap-probe-cadence.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   max=1
   prime_and_ack "$dir" "$max" || fail "prime-and-ack failed"
 
@@ -1502,19 +1528,20 @@ test_wedge_cap_probe_keeps_its_cadence_while_capped() {
 # than switching it off, or every cap cycle appends its own terminal wake - the
 # queue flood this cap exists to bound.
 test_wedge_cap_unwritable_terminal_marker_does_not_flood() {
-  local dir state out capture_file window key pane_hash sig pid fakebin max marker_window marker_episode cycle round_status terminal_rows
+  local dir state out capture_file window key pane_hash pid fakebin max marker_window marker_episode cycle round_status terminal_rows
   dir=$(make_case wedge-cap-unwritable-marker); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"; fakebin="$dir/fakebin"
   window="test:fm-wedge-cap-unwritable-marker"
   printf 'idle wedged content' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-unwritable-marker.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-unwritable-marker.status"
-  sig=$(seen_sig "$state/wedge-cap-unwritable-marker.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-unwritable-marker_status"
+  mark_status_seen "$state" "$state/wedge-cap-unwritable-marker.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   max=1
   prime_and_ack "$dir" "$max" || fail "prime-and-ack failed"
 
@@ -1562,20 +1589,21 @@ test_wedge_cap_unwritable_terminal_marker_does_not_flood() {
 # off: both the window-scoped cap marker and the rollback-failure sentinel must
 # be left unread while FM_WEDGE_MAX_ESCALATIONS is not above 0.
 test_wedge_cap_off_ignores_leftover_markers() {
-  local dir state out capture_file window key pane_hash sig marker sentinel
+  local dir state out capture_file window key pane_hash marker sentinel
   dir=$(make_case wedge-cap-off-leftover); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"
   window="test:fm-wedge-cap-off-leftover"
   printf 'idle wedged content' > "$capture_file"
   printf 'window=%s\nkind=ship\n' "$window" > "$state/wedge-cap-off-leftover.meta"
   printf 'working: still wedged\n' > "$state/wedge-cap-off-leftover.status"
-  sig=$(seen_sig "$state/wedge-cap-off-leftover.status"); printf '%s' "$sig" > "$state/.seen-wedge-cap-off-leftover_status"
+  mark_status_seen "$state" "$state/wedge-cap-off-leftover.status"
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
   printf '%s' "$pane_hash" > "$state/.stale-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   marker="$state/.wedge-permanent-$key"
   sentinel="$state/.wedge-rollback-failed-$key"
 
@@ -1663,6 +1691,10 @@ drive_first_sight_release() {  # <route>
 
   # Fire this window's cap against its live endpoint, so the marker under test
   # is one the watcher really wrote rather than one this case planted.
+  local FM_CONFIG_OVERRIDE="$dir/config"
+  export FM_CONFIG_OVERRIDE
+  mkdir -p "$FM_CONFIG_OVERRIDE"
+  : > "$FM_CONFIG_OVERRIDE/wedge-defer-validating"
   export FM_FAKE_CREW_STATE="$fire_verdict"
   poll_capped_wedge_round "$dir" 1 "" exit \
     || fail "the $route case never reached the wedge path: $(cat "$out")"
@@ -1679,6 +1711,7 @@ drive_first_sight_release() {  # <route>
   printf 'the render that ends the capped episode' > "$capture_file"
   printf '%s' "$fresh_hash" > "$state/.hash-$key"
   printf '1\n' > "$state/.count-$key"
+  rm "$FM_CONFIG_OVERRIDE/wedge-defer-validating"
   export FM_FAKE_CREW_STATE="$route_verdict"
   [ "$away_record" -eq 0 ] || date +%s > "$state/.afk"
   : > "$out"
@@ -1710,10 +1743,13 @@ drive_first_sight_release() {  # <route>
   # episode, and the wedge behind it has to reach the supervisor - exactly what a
   # cap left standing across the boundary would have swallowed.
   fresh_hash=$(hash_text 'the render the recovered crew goes quiet on')
+  printf 'working: quiet on the next episode\n' > "$statusf"
+  mark_status_seen "$state" "$statusf"
   printf 'the render the recovered crew goes quiet on' > "$capture_file"
   printf '%s' "$fresh_hash" > "$state/.hash-$key"
+  printf '%s' "$fresh_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   : > "$out"
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
     FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
@@ -1749,7 +1785,7 @@ test_wedge_cap_releases_on_every_first_sight_route() {
 # cap has to be released on most often. Drive that exact sequence and assert the
 # fresh wedge escalates immediately.
 test_wedge_cap_releases_after_nonterminal_stale_episode() {
-  local dir state out capture_file window key pane_hash sig pid fakebin max n statusf
+  local dir state out capture_file window key pane_hash pid fakebin max n statusf
   dir=$(make_case wedge-cap-nonterminal-reset); state="$dir/state"; capture_file="$dir/pane.txt"
   out="$dir/watch.out"; fakebin="$dir/fakebin"
   window="test:fm-wedge-cap-nonterminal-reset"
@@ -1761,8 +1797,9 @@ test_wedge_cap_releases_after_nonterminal_stale_episode() {
   key=$(printf '%s' "$window" | tr ':/.' '___')
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   prime_and_ack "$dir" 3 || fail "prime-and-ack failed"
   max=3
   n=1
@@ -1799,7 +1836,7 @@ test_wedge_cap_releases_after_nonterminal_stale_episode() {
     || fail "a non-terminal stale poll ended the wedge episode but left the cap marker standing; a genuine new wedge would stay silent for the whole horizon"
 
   # And the fresh wedge must escalate immediately rather than sit silenced.
-  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no active run'
   n=1
   while [ "$n" -le "$max" ]; do
     poll_wedge_round "$dir" "$max" ""
@@ -1811,6 +1848,60 @@ test_wedge_cap_releases_after_nonterminal_stale_episode() {
   pass "a non-terminal stale poll ends the episode, releases the cap, and lets the fresh wedge escalate immediately"
 }
 
+test_positive_work_policies_remain_separate() {
+  local policy dir state window key statusf out FM_CONFIG_OVERRIDE
+  for policy in default validating expired nonvalidating; do
+    dir=$(make_case "wedge-cap-policy-$policy")
+    state="$dir/state"
+    window="test:fm-wedge-cap-policy-$policy"
+    key=$(printf '%s' "$window" | tr ':/.' '___')
+    statusf="$state/policy.status"
+    printf 'window=%s\nkind=ship\n' "$window" > "$state/policy.meta"
+    printf 'working: unchanged worker frame\n' > "$statusf"
+    mark_status_seen "$state" "$statusf"
+    printf 'unchanged worker frame' > "$dir/pane.txt"
+    printf '%s' "$(hash_text 'unchanged worker frame')" > "$state/.hash-$key"
+    printf '%s' "$(hash_text 'unchanged worker frame')" > "$state/.stale-$key"
+    printf '1\n' > "$state/.count-$key"
+    FM_CONFIG_OVERRIDE="$dir/config"
+    export FM_CONFIG_OVERRIDE
+    mkdir -p "$FM_CONFIG_OVERRIDE"
+    export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running) · run: run-policy'
+    if [ "$policy" != default ]; then : > "$FM_CONFIG_OVERRIDE/wedge-defer-validating"; fi
+    if [ "$policy" = expired ]; then
+      printf 'run-policy' > "$state/.validating-since-$key"
+      touch -t 200001010000 "$state/.validating-since-$key"
+    fi
+    if [ "$policy" = nonvalidating ]; then
+      export FM_FAKE_CREW_STATE='state: working · source: run-step · running · run: run-policy'
+      poll_wedge_round "$dir" 1 ""
+      assert_present "$state/.wedge-permanent-$key" 'nonvalidating work must remain eligible for the configured ladder'
+    else
+      if [ "$policy" = expired ]; then
+        FM_PAUSE_RESURFACE_SECS=1 poll_capped_wedge_round "$dir" 1 "FM_FAKE_TMUX_CURRENT_COMMAND=grok" exit \
+          || fail "expired validation did not surface its recheck: $(cat "$dir/watch.out")"
+      else
+        FM_PAUSE_RESURFACE_SECS=999999 hold_capped_polls "$dir" 1 240 500 2 \
+          || fail "$policy work did not stay on its suppression path: $(cat "$dir/watch.out")"
+      fi
+      assert_absent "$state/.wedge-escalations-$key" "$policy work advanced the wedge ladder"
+      if [ "$policy" = default ]; then
+        assert_absent "$state/.validating-since-$key" 'default suppression started validation tracking'
+      elif [ "$policy" = expired ]; then
+        assert_present "$state/.validating-resurfaced-$key" 'expired validation cadence did not resurface the run'
+        [ "$(queued_wakes_carrying "$state" "$window" 'no-mistakes run run-policy validating')" -eq 1 ] \
+          || fail 'validation cadence must publish one recheck without a wedge escalation'
+      else
+        [ "$(cat "$state/.validating-since-$key")" = run-policy ] || fail 'opt-in validation did not track its run'
+        assert_absent "$state/.validating-resurfaced-$key" 'an unexpired validation run resurfaced early'
+      fi
+    fi
+  done
+  unset FM_FAKE_CREW_STATE
+  pass "default positive-work suppression and opt-in validation cadence have separate outcomes"
+}
+
+test_positive_work_policies_remain_separate
 test_wedge_cap_disabled_by_default
 test_wedge_cap_fires_permanently_wedged_at_threshold
 test_wedge_cap_silences_subsequent_polls_for_same_hash
@@ -1859,8 +1950,13 @@ test_wedge_cap_reports_gone_endpoint_on_terminal_override_route() {
   pane_hash=$(hash_text "idle wedged content")
   printf '%s' "$pane_hash" > "$state/.hash-$key"
   printf '%s' "$pane_hash" > "$state/.stale-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
   printf '1\n' > "$state/.count-$key"
   export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+  local FM_CONFIG_OVERRIDE="$dir/config"
+  export FM_CONFIG_OVERRIDE
+  mkdir -p "$FM_CONFIG_OVERRIDE"
+  : > "$FM_CONFIG_OVERRIDE/wedge-defer-validating"
   max=1
   prime_and_ack "$dir" "$max" || fail "prime-and-ack failed"
 

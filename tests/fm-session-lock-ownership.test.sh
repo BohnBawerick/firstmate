@@ -949,6 +949,50 @@ test_supervisor_answers_and_failover_refuse_a_non_owner() {
   pass "T3 answers and both managed approval modes refuse non-owners before mutation"
 }
 
+test_new_supervisor_mutations_refuse_a_non_owner() {
+  local dir action rc out script
+  dir="$TMP_ROOT/new-supervisor-mutations"
+  make_home "$dir"
+  start_lock_holder "$dir" >/dev/null
+  printf 'five_hour:80\n' > "$dir/config/usage-warner"
+  : > "$dir/config/pr-health-monitor"
+  printf 'preserve\n' > "$dir/state/usage-warner.check.sh"
+  printf 'preserve\n' > "$dir/state/usage-warner.check-trust"
+  printf 'preserve\n' > "$dir/state/.usage-warner"
+  for action in enroll review health-arm health-poll usage-check usage-arm usage-disarm contribution-arm contribution-poll verdict ack retire; do
+    case "$action" in
+      enroll) set -- fm-contributions.sh enroll demo https://github.com/example/project/pull/1 ;;
+      review) set -- fm-review-check.sh demo https://review.example.test/r/1 ;;
+      health-arm) set -- fm-pr-health.sh arm ;;
+      health-poll) set -- fm-pr-health.sh poll ;;
+      usage-check) set -- fm-usage-warner.sh check ;;
+      usage-arm) set -- fm-usage-warner.sh arm ;;
+      usage-disarm) set -- fm-usage-warner.sh disarm ;;
+      contribution-arm) set -- fm-contributions.sh arm ;;
+      contribution-poll) set -- fm-contributions.sh poll ;;
+      verdict) set -- fm-contributions.sh verdict demo https://github.com/example/project/pull/1 head source captain summary ;;
+      ack) set -- fm-contributions.sh ack demo https://github.com/example/project/pull/1 token ;;
+      retire) set -- fm-contributions.sh retire demo https://github.com/example/project/pull/1 captain reason ;;
+    esac
+    script=$1
+    shift
+    rc=$(detached_run env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+      FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
+      "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/$script" "$@")
+    out=$(run_output)
+    [ "$rc" != 0 ] || fail "$action accepted a non-owner"
+    assert_contains "$out" "does not hold the fleet lock" "$action must refuse before mutation"
+    [ ! -e "$dir/data/demo/contributions.json" ] || fail "$action changed durable contribution ownership"
+    [ ! -e "$dir/state/pr-health.check.sh" ] || fail "$action published a PR monitor"
+    [ ! -e "$dir/state/contributions.check.sh" ] || fail "$action published a contribution monitor"
+    [ "$(cat "$dir/state/usage-warner.check.sh")" = preserve ] || fail "$action changed the usage shim"
+    [ "$(cat "$dir/state/usage-warner.check-trust")" = preserve ] || fail "$action changed usage trust"
+    [ "$(cat "$dir/state/.usage-warner")" = preserve ] || fail "$action changed usage notification state"
+  done
+  pass "review, contribution, PR-health and usage mutations refuse non-owners"
+}
+
+test_new_supervisor_mutations_refuse_a_non_owner
 test_supervisor_answers_and_failover_refuse_a_non_owner
 test_every_mutating_entry_point_refuses_a_non_owning_session
 test_the_gate_answers_before_argument_validation

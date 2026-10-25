@@ -565,6 +565,23 @@ test_remote_secondmate_account_override_refuses_locally() {
   pass "a remote route refuses a primary-side account override instead of silently ignoring it"
 }
 
+test_wrapped_raw_secondmate_account_pins_refuse() {
+  local harness file raw out rc id=acct-sm-raw
+  for harness in claude pi pi-signed; do
+    new_case "secondmate-raw-$harness" "$harness"
+    case "$harness" in claude) file=claude-account ;; *) file=pi-account ;; esac
+    mkdir -p "$HOME_DIR/config/secondmate-accounts/$id"
+    printf 'ordinary\n' > "$HOME_DIR/config/secondmate-accounts/$id/$file"
+    for raw in "env $harness --resume" "bash -c '$harness --resume'" "command $harness --resume"; do
+      out=$(spawn_account_secondmate "$id" --harness "$raw"); rc=$?
+      expect_code 1 "$rc" "a wrapped $harness secondmate must honor its pin: $out"
+      assert_refused_before_launch "$id" "$out" 'raw launch commands are unsupported'
+    done
+  done
+  pass "per-secondmate Claude and Pi pins refuse wrapped raw launches before mutation"
+}
+
+test_wrapped_raw_secondmate_account_pins_refuse
 test_secondmate_account_override
 test_secondmate_account_refusals
 test_remote_secondmate_account_override_refuses_locally

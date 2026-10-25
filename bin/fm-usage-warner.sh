@@ -92,6 +92,7 @@ MAX_LINE=1000
 . "$SCRIPT_DIR/fm-check-lib.sh"
 # shellcheck source=bin/fm-quota-axi-lib.sh
 . "$SCRIPT_DIR/fm-quota-axi-lib.sh"
+. "$SCRIPT_DIR/fm-session-lock-lib.sh"
 
 usage() {
   cat <<'EOF'
@@ -305,6 +306,7 @@ action_check() {
   local thresholds
   thresholds=$(config_thresholds)
   [ -n "$thresholds" ] || return 0
+  fm_require_session_lock "$STATE" "update usage notifications" || return 1
   # shellcheck source=bin/fm-wake-lib.sh
   . "$SCRIPT_DIR/fm-wake-lib.sh"
   fm_lock_try_acquire "$CHECK_LOCK" || return 0
@@ -455,6 +457,7 @@ arm_interrupted() {
 }
 
 action_arm() {
+  fm_require_session_lock "$STATE" "arm usage notifications" || return 1
   if [ "$(uname)" != Darwin ]; then
     printf 'fm-usage-warner: Notification Center is only available on macOS; nothing to arm on %s\n' "$(uname)" >&2
     return 1
@@ -505,6 +508,7 @@ action_arm() {
 }
 
 action_disarm() {
+  fm_require_session_lock "$STATE" "disarm usage notifications" || return 1
   rm -f -- "$CHECK_SHIM" "$CHECK_TRUST" "$RECORD"
   printf 'disarmed: state/%s.check.sh\n' "$CHECK_ID"
   return 0

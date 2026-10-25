@@ -271,6 +271,8 @@ project() {
 }
 
 acquire() {
+  . "$SCRIPT_DIR/fm-session-lock-lib.sh"
+  fm_require_session_lock "$STATE" "update contribution supervision" || exit 1
   [ -d "$STATE" ] && [ ! -L "$STATE" ] || fail 'state directory unavailable'
   [ -d "$DATA" ] && [ ! -L "$DATA" ] || fail 'data directory unavailable'
   # Keep the wake library's source-time state initialization off read-only paths.

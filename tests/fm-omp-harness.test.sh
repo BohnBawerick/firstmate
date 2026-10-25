@@ -385,6 +385,22 @@ test_secondmate_omp_profile_malformed_refuses() {
   pass "fm-spawn: a malformed or reserved omp profile pin refuses before any record or launch"
 }
 
+test_wrapped_raw_omp_profile_refuses() {
+  local world raw out status n=0
+  for raw in 'env omp --resume' 'bash -c "omp --resume"' 'command omp --resume'; do
+    n=$((n + 1))
+    world=$(make_omp_secondmate_world "secondmate-omp-raw-$n")
+    mkdir -p "$world/home/config/secondmate-accounts/sm"
+    printf 'speak4\n' > "$world/home/config/secondmate-accounts/sm/omp-profile"
+    out=$(run_omp_secondmate_spawn "$world" --harness "$raw" --secondmate); status=$?
+    expect_code 1 "$status" "a wrapped omp launch must honor the mate's profile: $out"
+    assert_contains "$out" 'raw launch commands are unsupported' 'raw profile refusal reason'
+    assert_absent "$world/home/state/sm.meta" 'a refused raw launch must not publish metadata'
+    [ ! -s "$world/launch.log" ] || fail 'a refused raw launch reached the worker'
+  done
+  pass "per-secondmate omp profiles refuse wrapped raw launches before mutation"
+}
+
 # --- 3. Busy state -------------------------------------------------------------
 
 drive_omp_ext() {  # <ext-path> <mode>
@@ -969,6 +985,7 @@ test_spawn_launch_line_and_worker_wiring
 test_spawn_model_validation_scoped_to_listed_providers
 test_secondmate_launch_relies_on_discovery
 test_secondmate_config_pinned_model_is_validated
+test_wrapped_raw_omp_profile_refuses
 test_secondmate_omp_profile_pin
 test_secondmate_omp_profile_absent_or_foreign_adds_nothing
 test_secondmate_omp_profile_malformed_refuses

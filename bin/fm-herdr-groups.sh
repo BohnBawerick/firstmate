@@ -476,7 +476,7 @@ EOF
 }
 
 cmd_sidebar_config() {
-  local target backup
+  local target backup candidate
   if [ "$#" -eq 0 ]; then
     sidebar_rows
     return 0
@@ -487,10 +487,18 @@ cmd_sidebar_config() {
     echo "fm-herdr-groups: $target is not a regular file" >&2
     return 1
   }
-  if grep -Eq '^[[:space:]]*\[ui\.sidebar\.(spaces|agents)\]' "$target"; then
-    echo "fm-herdr-groups: $target already defines Herdr sidebar rows; merge the suggested rows by hand (fm-herdr-groups.sh sidebar-config prints them)" >&2
+  command -v herdr >/dev/null 2>&1 || {
+    echo 'fm-herdr-groups: herdr is required to validate the proposed configuration' >&2
+    return 1
+  }
+  candidate=$(mktemp "$target.XXXXXX") || return 1
+  if ! { cat "$target" && sidebar_rows; } > "$candidate" \
+    || ! HERDR_CONFIG_PATH="$candidate" herdr config check >/dev/null 2>&1; then
+    rm -f -- "$candidate"
+    echo "fm-herdr-groups: $target already defines Herdr sidebar rows or rejects the proposed configuration; merge the suggested rows by hand (fm-herdr-groups.sh sidebar-config prints them)" >&2
     return 1
   fi
+  rm -f -- "$candidate"
   backup="$target.bak-$(date +%s)"
   cp -p "$target" "$backup" || {
     echo "fm-herdr-groups: could not back up $target" >&2
