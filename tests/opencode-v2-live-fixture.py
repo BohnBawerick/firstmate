@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the real V2 server and Firstmate hooks with a local protocol fixture."""
 
+import argparse
 import base64
 import http.server
 import json
@@ -17,7 +18,7 @@ import urllib.parse
 import urllib.request
 
 
-def run(lab):
+def run(lab, executable):
     repo = Path(__file__).resolve().parent.parent
     project = lab / "project"
     home = lab / "home"
@@ -103,7 +104,7 @@ def run(lab):
         env[f"XDG_{kind}_HOME"] = str(path)
     logpath = lab / "server.log"
     log = logpath.open("w")
-    process = subprocess.Popen(["opencode", "serve", "--hostname", "127.0.0.1", "--port", str(port)], cwd=project, env=env, stdout=log, stderr=log)
+    process = subprocess.Popen([executable, "serve", "--hostname", "127.0.0.1", "--port", str(port)], cwd=project, env=env, stdout=log, stderr=log)
     headers = {}
 
     def api(path, body=None, method=None):
@@ -206,6 +207,9 @@ def run(lab):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("executable")
+    args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="fm-opencode-v2-live-") as directory:
-        run(Path(directory).resolve())
+        run(Path(directory).resolve(), os.path.abspath(args.executable))
     print("ok - private OpenCode server, provider, watcher, configuration and database cleaned")

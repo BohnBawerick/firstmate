@@ -10,7 +10,7 @@ drain_lab_wakes() {
 }
 
 watcher_cycle() {
-  local label=$1 expected=$2 out rc pid beat checkpoint i=0 completed=0 reason
+  local label=$1 expected=$2 out rc pid beat checkpoint i=0 threshold_beats=0 silence_after=0 reason
   cycle=$((cycle + 1))
   out="$TMP_ROOT/cycle-$cycle.out"
   beat="$STATE/.last-watcher-beat"
@@ -30,8 +30,15 @@ watcher_cycle() {
   while kill -0 "$pid" 2>/dev/null && [ "$i" -lt $(( CYCLE_BOUND * 10 )) ]; do
     if [ -e "$checkpoint" ]; then
       if [ "$beat" -nt "$checkpoint" ]; then
-        completed=1
-        [ "$expected" != silence ] || break
+        if [ "$expected" = silence ]; then
+          if [ "$silence_after" -eq 0 ]; then
+            silence_after=$(( $(date +%s) + STALE_SECS + 1 ))
+          elif [ "$(date +%s)" -ge "$silence_after" ]; then
+            threshold_beats=$((threshold_beats + 1))
+            [ "$threshold_beats" -lt 3 ] || break
+          fi
+          touch "$checkpoint"
+        fi
       fi
     elif [ -e "$beat" ]; then
       touch "$checkpoint"
@@ -50,7 +57,7 @@ watcher_cycle() {
   fi
   rm -f "$beat" "$checkpoint"
   reason=$(head -1 "$out" 2>/dev/null)
-  if [ "$rc" = alive ] && [ "$completed" -eq 1 ] && [ "$expected" = silence ]; then
+  if [ "$rc" = alive ] && [ "$threshold_beats" -ge 3 ] && [ "$expected" = silence ]; then
     [ -z "$reason" ] || fail "$label: watcher printed output without completing a wake: $reason"
   else
     [ "$rc" = 0 ] && [ -n "$reason" ] \

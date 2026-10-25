@@ -82,4 +82,83 @@ test_live_mode_selection() {
   ) || return 1
   pass 'OpenCode live mode honors the shared opt-in and per-guard overrides'
 }
-test_live_mode_selection
+test_live_mode_selection || exit 1
+
+test_offline_live_uses_selected_executable() (
+  local selected="$TMP_ROOT/selected/opencode-v2" out
+  mkdir -p "$(dirname "$selected")" "$TMP_ROOT/offline-bin"
+  printf '#!/bin/sh\nprintf "2.0.30\\n"\n' > "$selected"
+  cat > "$TMP_ROOT/offline-bin/python3" <<'STUB'
+#!/usr/bin/env bash
+[ "$2" = "$FM_TEST_SELECTED_OPENCODE" ] || exit 41
+printf '%s\n' "$2" > "$FM_TEST_SELECTED_LOG"
+STUB
+  chmod +x "$selected" "$TMP_ROOT/offline-bin/python3"
+  command() {
+    if [ "${1:-}" = -v ] && [ "${2:-}" = opencode ]; then return 1; fi
+    builtin command "$@"
+  }
+  export -f command
+  out=$(PATH="$TMP_ROOT/offline-bin:$PATH" FM_LIVE=0 FM_OPENCODE_LIVE_E2E=0 FM_OPENCODE_V2_OFFLINE_LIVE=1 \
+    FM_OPENCODE_LIVE_BINS="$selected" FM_TEST_SELECTED_OPENCODE="$selected" FM_TEST_SELECTED_LOG="$TMP_ROOT/selected.log" \
+    bash "$ROOT/tests/fm-opencode-primary-live-e2e.test.sh" 2>&1) || fail "the selected executable was not exercised: $out"
+  assert_equals "$selected" "$(cat "$TMP_ROOT/selected.log")" 'the Python fixture received another executable'
+  pass 'the offline gate accepts an explicit executable without ambient opencode and forwards its exact path'
+)
+
+test_native_fixture_executes_selected_binary() {
+  python3 - "$ROOT" "$TMP_ROOT" <<'PY'
+import importlib.util
+from pathlib import Path
+import subprocess
+import sys
+from unittest import mock
+root, temporary = map(Path, sys.argv[1:])
+selected = temporary / "native-selected"
+marker = temporary / "native-started"
+selected.write_text('#!/bin/sh\nprintf "%s\\n" "$0" > ' + str(marker) + '\n')
+selected.chmod(0o700)
+lab = temporary / "native-lab"
+lab.mkdir()
+spec = importlib.util.spec_from_file_location("fixture", root / "tests/opencode-v2-live-fixture.py")
+fixture = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(fixture)
+original_popen = subprocess.Popen
+original_server = fixture.http.server.ThreadingHTTPServer
+servers = []
+class Started(Exception):
+    pass
+
+def server(*args, **kwargs):
+    result = original_server(*args, **kwargs)
+    servers.append(result)
+    return result
+
+def launch(args, **kwargs):
+    if len(args) > 1 and args[1] == "serve":
+        assert args[0] == str(selected), args
+        process = original_popen(args, **kwargs)
+        assert process.wait(timeout=5) == 0
+        raise Started()
+    return original_popen(args, **kwargs)
+
+try:
+    with mock.patch.object(fixture.http.server, "ThreadingHTTPServer", side_effect=server), mock.patch.object(fixture.subprocess, "Popen", side_effect=launch):
+        try:
+            fixture.run(lab, str(selected))
+        except Started:
+            pass
+        else:
+            raise AssertionError("the fixture did not launch the selected executable")
+    assert marker.read_text().strip() == str(selected)
+finally:
+    for item in servers:
+        item.shutdown()
+        item.server_close()
+PY
+  [ "$?" = 0 ] || fail 'the native fixture launched another executable'
+  pass 'the native fixture executes the selected binary rather than resolving opencode again'
+}
+
+test_offline_live_uses_selected_executable || exit 1
+test_native_fixture_executes_selected_binary || exit 1

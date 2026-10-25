@@ -697,6 +697,13 @@ set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+spawn_t3code_claude_settings_check() {
+  if git -C "$1" ls-files --error-unmatch .claude/settings.local.json >/dev/null 2>&1; then
+    echo "error: $1/.claude/settings.local.json is tracked by Git; untrack it with 'git rm --cached -- .claude/settings.local.json' before launching Claude with backend=t3code" >&2
+    return 1
+  fi
+}
+
 usage() {
   # The whole leading comment block, ending at the first line that is not a
   # comment. Derived rather than a fixed line range, which silently truncated
@@ -5002,6 +5009,9 @@ EOF
     # worker's leased worktree shares only tracked files with this checkout, so
     # an untracked config here is checked only for a secondmate, whose launch
     # directory this checkout is.
+    if [ "$HARNESS" = claude ]; then
+      spawn_t3code_claude_settings_check "$PROJ_ABS" || exit 1
+    fi
     if [ "$HARNESS" = codex ] && { [ "$KIND" = secondmate ] || git -C "$PROJ_ABS" ls-files --error-unmatch .codex/config.toml >/dev/null 2>&1; }; then
       "$SCRIPT_DIR/fm-t3code-codex-env.sh" check "$PROJ_ABS" || exit 1
     fi
@@ -5870,8 +5880,8 @@ exclude_path() {
 # .claude/settings.local.json `env` block (merged into the file so the busy
 # hooks written above and a secondmate home's own env entries survive;
 # FM_T3CODE_ENV_KEYS names the keys Firstmate wrote, which a respawn replaces
-# so it never inherits a stale value; a symlinked file is refused) and Codex's
-# .codex/config.toml
+# so it never inherits a stale value; symlinked or Git-tracked files are
+# refused) and Codex's .codex/config.toml
 # `[shell_environment_policy] set` table (TOML basic strings). Both files are
 # git-excluded when untracked; tracked Codex overlays are owned by
 # fm-t3code-codex-env.sh, including their Git protection and exact restoration.
@@ -5911,6 +5921,7 @@ spawn_t3code_env_install() {
   shift
   case "$harness" in
     claude)
+      spawn_t3code_claude_settings_check "$WT" || return 1
       mkdir -p "$WT/.claude"
       [ "$KIND" = secondmate ] || settings="$STATE_REAL/$ID.claude-settings.json"
       # shellcheck disable=SC2016  # Single quotes are deliberate: ${...} belongs to the Node snippet.

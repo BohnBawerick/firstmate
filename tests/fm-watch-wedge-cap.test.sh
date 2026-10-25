@@ -1909,7 +1909,7 @@ test_positive_work_policies_remain_separate() {
 test_live_cycle_helpers() (
   local original_root=$ROOT
   local TMP_ROOT="$TMP_ROOT/live-cycle-helpers" ROOT STATE LAB_HOME LAB_TMUX_DIR
-  local TRANSCRIPT TASK=probe KEY=probe PANE_TEXT=probe MAX=3 HORIZON_SECS=300 STALE_SECS=2 CYCLE_BOUND=2
+  local TRANSCRIPT TASK=probe KEY=probe PANE_TEXT=probe MAX=3 HORIZON_SECS=300 STALE_SECS=2 CYCLE_BOUND=10
   local cycle=0 CYCLE_WOKE=0 CYCLE_REASON='' mode generation first
   ROOT="$TMP_ROOT/code"
   LAB_HOME="$TMP_ROOT/home"
@@ -1948,11 +1948,20 @@ case "$FM_WEDGE_FIXTURE_MODE" in
   error) exit 7 ;;
   no-beat) ;;
   one-beat) touch "$beat" ;;
-  completed)
-    sleep 0.3
-    touch "$beat"
-    sleep 0.3
-    touch "$beat"
+  completed|delayed-unexpected)
+    started=$(date +%s)
+    while :; do
+      touch "$beat"
+      if [ $(( $(date +%s) - started )) -ge "$FM_STALE_ESCALATE_SECS" ]; then
+        sleep 0.2
+        : > "$FM_HOME/state/.test-threshold-completed"
+        if [ "$FM_WEDGE_FIXTURE_MODE" = delayed-unexpected ]; then
+          printf 'stale: unexpected threshold wake\n'
+          exit 0
+        fi
+      fi
+      sleep 0.2
+    done
     ;;
 esac
 while :; do sleep 0.1; done
@@ -1981,14 +1990,20 @@ SH
   FM_WEDGE_FIXTURE_MODE=delayed-wake watcher_cycle threshold wake || exit 1
   [ "$CYCLE_WOKE" = 1 ] && [ "$CYCLE_REASON" = 'stale: threshold reached' ] \
     || fail 'an expected wake was cut off at its first completed poll'
-  if (FM_WEDGE_FIXTURE_MODE=completed watcher_cycle missing-wake wake) > "$TMP_ROOT/failure.out" 2>&1; then
+  if (FM_WEDGE_FIXTURE_MODE=completed CYCLE_BOUND=2 watcher_cycle missing-wake wake) > "$TMP_ROOT/failure.out" 2>&1; then
     fail 'completed polls without an expected wake passed'
   fi
+  rm -f "$STATE/.test-threshold-completed"
   FM_WEDGE_FIXTURE_MODE=completed watcher_cycle silent silence || exit 1
   [ "$CYCLE_WOKE" = 0 ] || fail 'a completed silent poll was reported as a wake'
+  assert_present "$STATE/.test-threshold-completed" 'silence was accepted before the threshold poll completed'
+  if (FM_WEDGE_FIXTURE_MODE=delayed-unexpected watcher_cycle delayed silence; [ "$CYCLE_WOKE" = 0 ] || fail "$CYCLE_REASON") > "$TMP_ROOT/failure.out" 2>&1; then
+    fail 'a delayed unexpected threshold wake was accepted as silence'
+  fi
+  assert_grep 'unexpected threshold wake' "$TMP_ROOT/failure.out" 'the negative probe failed before its threshold wake'
   for mode in no-beat one-beat early-exit error; do
     touch "$STATE/.last-watcher-beat"
-    if (FM_WEDGE_FIXTURE_MODE=$mode watcher_cycle "$mode" silence) > "$TMP_ROOT/failure.out" 2>&1; then
+    if (FM_WEDGE_FIXTURE_MODE=$mode CYCLE_BOUND=2 watcher_cycle "$mode" silence) > "$TMP_ROOT/failure.out" 2>&1; then
       fail "$mode was accepted as a silent completed poll"
     fi
     case "$mode" in
@@ -1999,7 +2014,56 @@ SH
   pass 'live cycle helpers acknowledge exact wakes and require completed polls before silence'
 )
 
-test_live_cycle_helpers
+test_live_cycle_cap_mutation() (
+  local original_root=$ROOT dir window fakebin
+  dir=$(make_case live-cap-mutation)
+  local ROOT="$dir/code" TMP_ROOT="$dir" LAB_HOME="$dir" STATE="$dir/state" LAB_TMUX_DIR="$dir/tmux"
+  local TRANSCRIPT="$dir/transcript" MAX=3 HORIZON_SECS=300 STALE_SECS=2 CYCLE_BOUND=45
+  local cycle=0 CYCLE_WOKE=0 CYCLE_REASON='' TASK=cap-mutation KEY PANE_TEXT='idle capped pane'
+  window=test:fm-cap-mutation
+  KEY=$(printf '%s' "$window" | tr ':/.' '___')
+  fakebin="$dir/fakebin"
+  mkdir -p "$ROOT" "$LAB_HOME/config" "$LAB_HOME/data"
+  cp -R "$original_root/bin" "$ROOT/bin"
+  printf '%s' "$PANE_TEXT" > "$dir/pane.txt"
+  printf 'window=%s\nkind=ship\n' "$window" > "$STATE/$TASK.meta"
+  printf 'working: still wedged\n' > "$STATE/$TASK.status"
+  mark_status_seen "$STATE" "$STATE/$TASK.status"
+  printf '%s' "$(hash_text "$PANE_TEXT")" > "$STATE/.hash-$KEY"
+  printf '%s' "$(hash_text "$PANE_TEXT")" > "$STATE/.stale-$KEY"
+  printf '1\n' > "$STATE/.count-$KEY"
+  date +%s > "$STATE/.wedge-permanent-$KEY"
+  : > "$TRANSCRIPT"
+  export PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$dir/pane.txt"
+  export FM_FAKE_TMUX_CURRENT_COMMAND=claude FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh"
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · fixture'
+  export FM_STATE_OVERRIDE="$STATE" FM_CONFIG_OVERRIDE="$LAB_HOME/config" FM_DATA_OVERRIDE="$LAB_HOME/data"
+  unset FM_ROOT_OVERRIDE
+  . "$original_root/tests/fm-watch-wedge-cap-live-fixture.sh"
+  say() { printf '%s\n' "$1" >> "$TRANSCRIPT"; }
+  watcher_cycle intact silence || exit 1
+  [ "$CYCLE_WOKE" = 0 ] || fail 'the intact cap emitted a wake'
+  assert_present "$STATE/.wedge-permanent-$KEY" 'the intact cap marker disappeared'
+  python3 - "$ROOT/bin/fm-watch.sh" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text()
+start = text.index('_wedge_cap_marker_stands() {\n')
+end = text.index('\n}\n', start) + 3
+path.write_text(text[:start] + '_wedge_cap_marker_stands() {\n  return 1\n}\n' + text[end:])
+PY
+  rm -f "$STATE/.stale-since-$KEY"
+  if (watcher_cycle broken silence; [ "$CYCLE_WOKE" = 0 ] || fail 'unexpected threshold wake') > "$dir/mutant.out" 2>&1; then
+    fail 'the silence probe accepted deliberately broken cap suppression'
+  fi
+  grep -F 'possible wedge' "$dir/cycle-2.out" >/dev/null \
+    || fail "the mutant failed without reaching a threshold wake: $(cat "$dir/mutant.out")"
+  pass 'live silence passes the intact cap and rejects a production cap-suppression mutant'
+)
+
+test_live_cycle_helpers || exit 1
+test_live_cycle_cap_mutation || exit 1
 test_positive_work_policies_remain_separate
 test_wedge_cap_disabled_by_default
 test_wedge_cap_fires_permanently_wedged_at_threshold

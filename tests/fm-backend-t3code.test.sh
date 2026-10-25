@@ -1393,6 +1393,47 @@ test_spawn_claude_refuses_tracked_claude_local_md() {
   pass "fm-spawn.sh --backend t3code claude: refuses to overwrite a project's tracked CLAUDE.local.md before any mutation"
 }
 
+test_spawn_claude_refuses_tracked_settings() {
+  local kind id proj out rc fb before
+  local -a launch_args=()
+  for kind in ship scout secondmate; do
+    id=$(t3_uid "tracked-settings-$kind")
+    t3_case "tracked-settings-$kind"
+    if [ "$kind" = secondmate ]; then
+      proj="$CASE_DIR/mate"
+      make_t3_secondmate_home "$proj" "$id"
+    else
+      t3_worker_setup "$id"
+      proj=$WORKER_PROJ
+    fi
+    mkdir -p "$proj/.claude"
+    printf '{"env":{"PROJECT":"keep"}}\n' > "$proj/.claude/settings.local.json"
+    git -C "$proj" add -f .claude/settings.local.json
+    git -C "$proj" -c user.name=t -c user.email=t@example.invalid commit -qm settings
+    before=$(git -C "$proj" rev-parse HEAD:.claude/settings.local.json)
+    if [ "$kind" = secondmate ]; then
+      out=$(spawn_t3_secondmate "$id" "$proj" claude claude-sonnet-5); rc=$?
+    else
+      fb=$(make_treehouse_fakebin "$CASE_DIR")
+      launch_args=(--mode no-mistakes --yolo off)
+      [ "$kind" != scout ] || launch_args=(--scout)
+      out=$(HOME="$SPAWN_HOME" CLAUDE_CONFIG_DIR='' PATH="$fb:$PATH" FM_T3_TREEHOUSE_LOG="$LOG" FM_T3_TREEHOUSE_WT="$WORKER_WT" \
+        FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$CASE_DIR/home" FM_STATE_OVERRIDE="$CASE_DIR/state" FM_DATA_OVERRIDE="$CASE_DIR/data" \
+        FM_CONFIG_OVERRIDE="$CONFIG" FM_PROJECTS_OVERRIDE="$CASE_DIR/unused-projects" FM_SPAWN_NO_GUARD=1 \
+        "$ROOT/bin/fm-spawn.sh" "$id" "$proj" claude "${launch_args[@]}" --model claude-sonnet-5 --backend t3code 2>&1); rc=$?
+    fi
+    expect_code 1 "$rc" "$kind must refuse tracked Claude settings: $out"
+    assert_contains "$out" '.claude/settings.local.json is tracked by Git' 'the refusal must name the settings file'
+    assert_contains "$out" 'git rm --cached' 'the refusal must tell the operator how to untrack it'
+    assert_equals "$before" "$(git -C "$proj" hash-object .claude/settings.local.json)" 'the refusal changed project settings'
+    [ -z "$(git -C "$proj" status --porcelain)" ] || fail 'the refusal dirtied project files'
+    [ -z "$(t3_dispatch_types)" ] || fail 'the refusal mutated the T3 server'
+    [ "$(t3_log_line_of 'r.tool === "treehouse"')" = 0 ] || fail 'the refusal leased a slot'
+    assert_absent "$CASE_DIR/state/$id.meta" 'the refusal published a task'
+  done
+  pass 'T3 Claude refuses tracked settings for ships, scouts and secondmates before mutation'
+}
+
 test_spawn_claude_refuses_worktree_symlink() {
   local proj wt data state id out rc fb target exclude
   id=$(t3_uid t3claudelink)
@@ -2788,6 +2829,7 @@ test_claude_pr_tool_clause_version_boundary
 test_spawn_codex_preserves_tracked_codex_config
 test_tracked_codex_overlay_recovery
 test_spawn_codex_refuses_tracked_codex_config
+test_spawn_claude_refuses_tracked_settings
 test_spawn_claude_refuses_tracked_claude_local_md
 test_spawn_claude_refuses_worktree_symlink
 test_untracked_codex_config_is_preserved

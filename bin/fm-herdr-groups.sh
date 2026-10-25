@@ -27,9 +27,8 @@
 # sync reads each recorded session's workspace and pane lists once, reports
 # only the tokens whose live value differs from the planned value through
 # `herdr pane|workspace report-metadata --source firstmate`, and sets the
-# agents view through bin/backends/herdr-agent-view.py whenever it reported a
-# pane token, so a Herdr restart that dropped every token and the view is
-# repaired by the next sync. Workspace tokens are reported only for a task's
+# agents view through bin/backends/herdr-agent-view.py for every session with
+# a live recorded pane. Workspace tokens are reported only for a task's
 # own projected workspace: an exact version 2 presentation journal binding the
 # task's recorded session, workspace, and pane, whose live workspace holds that
 # one pane. A pane missing from the live list is skipped.
@@ -361,7 +360,7 @@ agent_view() { # <session> set|clear
 }
 
 cmd_sync() {
-  local only=${1:-} record session workspaces panes live_pane live_ws pane_count changed pair diff rc=0
+  local only=${1:-} record session workspaces panes live_pane live_ws pane_count matched pair diff rc=0
   local -a args=()
   collect_tasks "$only"
   [ "${#TASKS[@]}" -gt 0 ] || return 0
@@ -374,7 +373,7 @@ cmd_sync() {
     panes=$(fm_backend_herdr_cli "$session" pane list 2>/dev/null) || {
       warn "could not list panes for session $session"; rc=1; continue
     }
-    changed=0
+    matched=0
     for record in "${TASKS[@]}"; do
       plan_task "$record"
       [ "$P_SESSION" = "$session" ] || continue
@@ -382,6 +381,7 @@ cmd_sync() {
         [.result.panes[]? | select(.pane_id == $p and .workspace_id == $w)]
         | if length == 1 then (.[0].tokens // {}) else empty end' 2>/dev/null) || live_pane=
       [ -n "$live_pane" ] || continue
+      matched=1
       diff=$(changed_tokens "$live_pane" \
         "fm_group=$P_GROUP" "fm_state=$P_STATE" "fm_task=$P_TASK" "fm_sort=$P_SORT")
       if [ -n "$diff" ]; then
@@ -389,10 +389,8 @@ cmd_sync() {
         while IFS= read -r pair; do args+=(--token "$pair"); done <<EOF
 $diff
 EOF
-        if fm_backend_herdr_cli "$session" pane report-metadata "$P_PANE" \
+        if ! fm_backend_herdr_cli "$session" pane report-metadata "$P_PANE" \
           --source "$FM_HERDR_GROUPS_SOURCE" "${args[@]}" >/dev/null 2>&1; then
-          changed=1
-        else
           warn "could not tag pane $P_PANE for task $P_TASK"; rc=1
         fi
       fi
@@ -415,7 +413,7 @@ EOF
         warn "could not tag workspace $P_WORKSPACE for task $P_TASK"; rc=1
       }
     done
-    if [ "$changed" = 1 ]; then
+    if [ "$matched" = 1 ]; then
       agent_view "$session" set || rc=1
     fi
   done
