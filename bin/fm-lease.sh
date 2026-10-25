@@ -145,7 +145,9 @@ case "$CMD" in
     esac
     if [ -z "$HOLDER_PID" ]; then
       HOLDER_PID=$LOCK_PID
-    elif [ "$HOLDER_PID" != "$LOCK_PID" ] && fm_pid_alive "$HOLDER_PID" && fm_pid_alive "$LOCK_PID"; then
+    elif [ "$HOLDER_PID" != "$LOCK_PID" ] \
+      && { fm_lease_tagged_holder_live "$HOLDER_PID" || fm_pid_alive "$HOLDER_PID"; } \
+      && { fm_lease_tagged_holder_live "$LOCK_PID" || fm_pid_alive "$LOCK_PID"; }; then
       HOLDER_PID=$LOCK_PID
     fi
     [ -n "$HOLDER_PID" ] || HOLDER_PID=$$

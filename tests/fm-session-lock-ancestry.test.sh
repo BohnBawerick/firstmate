@@ -472,12 +472,19 @@ cygwin_fakebin() {  # <dir>
   fakebin=$(fm_fakebin "$dir")
   cat > "$fakebin/uname" <<'SH'
 #!/usr/bin/env bash
+if [ "$#" -eq 0 ] && [ -n "${FM_TEST_WAKE_PLATFORM:-}" ]; then
+  printf '%s\n' "$FM_TEST_WAKE_PLATFORM"
+  exit 0
+fi
 printf '%s\n' 'MINGW64_NT-10.0-26200'
 SH
   cat > "$fakebin/ps" <<'SH'
 #!/usr/bin/env bash
 set -u
 for a in "$@"; do
+  if [ "$a" = -o ] && [ -n "${FM_TEST_LOCAL_PS:-}" ]; then
+    case "$*" in *lstart=*) exec "$FM_TEST_LOCAL_PS" "$@" ;; esac
+  fi
   # Cygwin's ps has no -o option at all; it fails the whole invocation.
   [ "$a" = "-o" ] && { echo "ps: unknown option -- o" >&2; exit 1; }
 done
@@ -784,8 +791,6 @@ test_windows_task_lease_follows_a_tagged_lock_holder() {
     FM_TEST_WIN_TABLE='' FM_HOME="$home" FM_SUPERVISION_ACTOR=main \
     "$ROOT/bin/fm-lease.sh" claim task-1 || fail "a lease whose tagged holder exited still blocked the other actor"
 
-  # A caller-supplied tagged holder naming a live harness is taken whole ahead
-  # of the lock holder, never as its digits; a dead one falls back to the lock.
   table="$WIN_TABLE
   4201600       0       0       7300  ?              0 22:24:48 C:\Users\u\.local\bin\claude.exe"
   rm -f "$home/state/.lease-task-1"
@@ -794,7 +799,19 @@ test_windows_task_lease_follows_a_tagged_lock_holder() {
     FM_LEASE_HOLDER_PID=win:7300 \
     "$ROOT/bin/fm-lease.sh" claim task-1 --actor branch || fail "branch lease claim failed with a tagged FM_LEASE_HOLDER_PID"
   out=$(cut -f2 "$home/state/.lease-task-1")
-  [ "$out" = 'win:7300' ] || fail "a caller-supplied tagged holder was recorded as '$out', not win:7300"
+  [ "$out" = 'win:7204' ] || fail "a cached tagged holder was recorded as '$out', not the current lock holder win:7204"
+  out=$(env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID PATH="$fakebin:$PATH" \
+    FM_TEST_WIN_TABLE="$table" FM_HOME="$home" "$ROOT/bin/fm-lease.sh" check task-1)
+  case "$out" in 'branch win:7204 '*live) ;; *) fail "the refreshed native lease is stale: $out" ;; esac
+  printf 'win:7300\n' > "$home/state/.lock"
+  env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID PATH="$fakebin:$PATH" \
+    FM_TEST_WIN_TABLE="$table" FM_HOME="$home" FM_SUPERVISION_ACTOR=branch \
+    FM_LEASE_HOLDER_PID=win:7204 "$ROOT/bin/fm-lease.sh" claim task-1 --actor branch \
+    || fail 'a native lease could not refresh after reanchoring'
+  out=$(env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID PATH="$fakebin:$PATH" \
+    FM_TEST_WIN_TABLE="$table" FM_HOME="$home" "$ROOT/bin/fm-lease.sh" check task-1)
+  case "$out" in 'branch win:7300 '*live) ;; *) fail "the reanchored native lease is stale: $out" ;; esac
+  printf 'win:7204\n' > "$home/state/.lock"
   rm -f "$home/state/.lease-task-1"
   env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID PATH="$fakebin:$PATH" \
     FM_TEST_WIN_TABLE="$WIN_TABLE" FM_HOME="$home" FM_SUPERVISION_ACTOR=branch \
@@ -803,6 +820,133 @@ test_windows_task_lease_follows_a_tagged_lock_holder() {
   out=$(cut -f2 "$home/state/.lease-task-1")
   [ "$out" = 'win:7204' ] || fail "a dead caller-supplied tagged holder was recorded as '$out', not the lock holder win:7204"
   pass "session-lock: a task lease follows a live tagged lock holder and goes stale when it exits"
+}
+
+test_windows_autoarm_preserves_active_claim_and_midturn_health() {
+  local dir fakebin table
+  dir="$TMP_ROOT/win-autoarm"
+  fakebin=$(cygwin_fakebin "$dir")
+  mkdir -p "$dir/state"
+  printf 'win:7204\n' > "$dir/state/.lock"
+  printf 'native-session\n' > "$dir/state/.lock-session"
+  table="$WIN_TABLE
+  4201600       0       0       7300  ?              0 22:24:48 C:\Users\u\.local\bin\claude.exe"
+  env PATH="$fakebin:$PATH" FM_TEST_WIN_TABLE="$table" FM_TEST_LOCAL_PS="$(command -v ps)" \
+    FM_TEST_WAKE_PLATFORM="$(uname)" FM_STATE_OVERRIDE="$dir/state" \
+    CLAUDE_PID=7204 CLAUDE_CODE_SESSION_ID=native-session \
+    bash -s -- "$ROOT" "$dir/state" <<'SH' || fail 'native autoarm ownership failed'
+root=$1 state=$2
+. "$root/bin/fm-wake-lib.sh"
+. "$root/bin/fm-session-lock-lib.sh"
+die() { printf '%s\n' "$1" >&2; exit 1; }
+touch "$state/.last-watcher-beat"
+fm_autoarm_claim_next "$state" || die 'the native session could not claim recovery'
+gen=$FM_AUTOARM_MY_GEN
+fm_autoarm_claim_open "$state" || die 'the native recovery claim is not open'
+fm_autoarm_ledger_read "$state" || die 'the native claim could not be read'
+[ "$FM_AUTOARM_OWNER" = "${BASHPID:-$$}" ] || die 'the helper owner lost its local identity'
+[ "$FM_AUTOARM_OWNER_SESSION_ID" = native-session ] || die 'the claim lost native session proof'
+[ "$FM_AUTOARM_OWNER_LOCK_IDENTITY" = win:7204 ] || die 'the claim lost its native holder'
+if fm_autoarm_claim_next "$state"; then die 'a second Stop replaced active native recovery'; else rc=$?; fi
+[ "$rc" = 2 ] || die 'an open native claim did not refuse a second generation'
+fm_autoarm_ledger_read "$state" || die 'the deferred claim could not be read'
+[ "$FM_AUTOARM_GEN" = "$gen" ] || die 'a second Stop advanced the active generation'
+cp "$state/.claude-autoarm-epoch" "$state/saved-claim"
+printf 'foreign-session\n' > "$state/.lock-session"
+fm_autoarm_claim_open "$state" && die 'a foreign session kept native recovery open'
+printf 'native-session\n' > "$state/.lock-session"
+printf 'win:7300\n' > "$state/.lock"
+fm_autoarm_claim_open "$state" && die 'a replacement native holder adopted the old claim'
+printf 'win:7204\n' > "$state/.lock"
+FM_TEST_WIN_TABLE='' fm_autoarm_claim_open "$state" && die 'a dead native holder kept its claim'
+sed '1s/owner_pid=[^ ]*/owner_pid=win:7204/' "$state/saved-claim" > "$state/.claude-autoarm-epoch"
+fm_autoarm_claim_open "$state" && die 'a native identity was accepted as a local helper owner'
+cp "$state/saved-claim" "$state/.claude-autoarm-epoch"
+sed '2s/.*/wrong-local-fingerprint/' "$state/saved-claim" > "$state/.claude-autoarm-epoch"
+fm_autoarm_claim_open "$state" && die 'a helper with the wrong local fingerprint kept its claim'
+cp "$state/saved-claim" "$state/.claude-autoarm-epoch"
+fm_recovery_marker_publish "$state/.watcher-down" downtime || die 'recovery publication failed'
+fm_recovery_marker_snapshot "$state/.watcher-down" || die 'recovery generation read failed'
+fm_autoarm_write_owned "$state" "$gen" rewake '' win:7204 "${FM_RECOVERY_MARKER_TOKEN##*:}" \
+  || die 'native rewake commit failed'
+fm_autoarm_midturn_healthy "$state" || die 'native midturn supervision was reported absent'
+FM_TEST_WIN_TABLE='' fm_autoarm_midturn_healthy "$state" && die 'a dead native session was healthy'
+printf 'win:7300\n' > "$state/.lock"
+fm_autoarm_midturn_healthy "$state" && die 'a different native session inherited midturn health'
+exit 0
+SH
+  pass 'native autoarm claims defer duplicate Stops and retain local helper identity checks'
+}
+
+test_windows_handoff_preserves_local_arm_until_ack_or_session_change() {
+  local dir fakebin ending home owner arm watcher i
+  dir="$TMP_ROOT/win-handoff"
+  fakebin=$(cygwin_fakebin "$dir")
+  mkdir -p "$dir/code"
+  cp -R "$ROOT/bin" "$dir/code/bin"
+  cat > "$dir/code/bin/fm-watch.sh" <<'SH'
+#!/usr/bin/env bash
+. "$(dirname "$0")/fm-wake-lib.sh"
+mkdir -p "$STATE/.watch.lock"
+printf '%s\n' "$$" > "$STATE/.watch.lock/pid"
+printf '%s\n' "$FM_HOME" > "$STATE/.watch.lock/fm-home"
+printf '%s\n' "$0" > "$STATE/.watch.lock/watcher-path"
+fm_pid_identity "$$" > "$STATE/.watch.lock/pid-identity"
+touch "$STATE/.last-watcher-beat"
+while :; do sleep 0.1; done
+SH
+  cat > "$dir/code/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+"$(dirname "$0")/fm-watch.sh" &
+watcher=$!
+trap 'kill "$watcher" 2>/dev/null; wait "$watcher" 2>/dev/null' EXIT
+trap 'exit 0' TERM INT
+printf 'watcher: started pid=%s\n' "$watcher"
+wait "$watcher"
+SH
+  for ending in ack session-change; do
+    home="$dir/$ending"
+    mkdir -p "$home/state" "$home/config"
+    printf 'win:7204\n' > "$home/state/.lock"
+    printf 'native-session\n' > "$home/state/.lock-session"
+    printf 'native-token\n' > "$home/state/.supervision-handoff-pending"
+    : > "$home/config/supervision-handoff-ack"
+    env PATH="$fakebin:$PATH" FM_TEST_WIN_TABLE="$WIN_TABLE" FM_TEST_LOCAL_PS="$(command -v ps)" \
+      FM_TEST_WAKE_PLATFORM="$(uname)" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+      FM_CONFIG_OVERRIDE="$home/config" CLAUDE_PID=7204 CLAUDE_CODE_SESSION_ID=native-session \
+      TMUX_PANE='' "$dir/code/bin/fm-supervision-handoff.sh" native-token "$$" > "$home/out" 2>&1 &
+    owner=$!
+    fm_test_track_pid "$owner"
+    i=0
+    while [ "$i" -lt 150 ]; do
+      [ -s "$home/state/.supervision-host-left" ] && grep -q '^watcher: started pid=' "$home/out" && break
+      kill -0 "$owner" 2>/dev/null || break
+      sleep 0.1
+      i=$((i + 1))
+    done
+    [ -s "$home/state/.supervision-host-left" ] || fail "native handoff did not retain an arm: $(cat "$home/out")"
+    arm=$(cut -f1 "$home/state/.supervision-host-left")
+    watcher=$(cat "$home/state/.watch.lock/pid")
+    fm_test_track_pid "$arm"
+    fm_test_track_pid "$watcher"
+    [ "$(cut -f1 "$home/state/.supervision-handoff-owner")" = "$owner" ] \
+      || fail 'the handoff helper did not retain its local PID'
+    case "$ending" in
+      ack) rm "$home/state/.supervision-handoff-pending" ;;
+      session-change) printf 'replacement-session\n' > "$home/state/.lock-session" ;;
+    esac
+    i=0
+    while kill -0 "$owner" 2>/dev/null && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+    kill -0 "$owner" 2>/dev/null && fail "native handoff did not stop after $ending"
+    wait "$owner" || fail "native handoff failed after $ending"
+    kill -0 "$arm" 2>/dev/null && kill -0 "$watcher" 2>/dev/null \
+      || fail 'native handoff killed the retained local arm'
+    [ "$ending" = ack ] || [ -f "$home/state/.supervision-handoff-pending" ] \
+      || fail 'a replaced session consumed the pending handoff'
+    fm_test_reap_pid "$arm"
+    fm_test_reap_pid "$watcher"
+  done
+  pass 'native handoffs keep local watcher ownership and stop on acknowledgement or session change'
 }
 
 test_cygwin_ps_without_o_still_resolves_a_local_harness() {
@@ -1767,6 +1911,8 @@ test_windows_published_pid_needs_its_claude_session_id
 test_windows_clear_rekeys_the_lock_under_the_same_pid
 test_tagged_lock_is_inert_off_windows
 test_windows_task_lease_follows_a_tagged_lock_holder
+test_windows_autoarm_preserves_active_claim_and_midturn_health
+test_windows_handoff_preserves_local_arm_until_ack_or_session_change
 test_cygwin_ps_without_o_still_resolves_a_local_harness
 test_e2e_version_named_session_claims_the_home
 test_e2e_daemon_parented_session_claims_the_home

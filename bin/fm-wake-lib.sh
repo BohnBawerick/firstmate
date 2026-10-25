@@ -1988,7 +1988,7 @@ fm_failure_episode_reset() {
 #     its owner pid is alive, its recorded identity successfully recomputes
 #     and matches that pid, its owner is still REACHABLE by its session -
 #     either it DESCENDS from the session-lock pid (state/.lock line 1, which
-#     must be numeric: a missing or malformed lock means no session can receive
+#     must be valid: a missing or malformed lock means no session can receive
 #     a rewake) or its recorded owner_session_id matches the trusted session id
 #     beside that lock (state/.lock-session) WHILE the recorded pid-identity of
 #     the lock holder it claimed under (entry line 3) still recomputes from the
@@ -2147,15 +2147,19 @@ fm_autoarm_claim_open() {  # <state-dir> [grace]
   [ -n "$current" ] || return 1
   [ "$current" = "$FM_AUTOARM_IDENTITY" ] || return 1
   lock_pid=$(sed -n '1p' "$state/.lock" 2>/dev/null || true)
-  case "$lock_pid" in
-    ''|*[!0-9]*) return 1 ;;
-  esac
-  if ! fm_pid_descends_from "$FM_AUTOARM_OWNER" "$lock_pid"; then
+  _fm_wake_require_session_lock
+  fm_session_pid_valid "$lock_pid" || return 1
+  if fm_win_untag_pid "$lock_pid" >/dev/null || ! fm_pid_descends_from "$FM_AUTOARM_OWNER" "$lock_pid"; then
     [ -n "$FM_AUTOARM_OWNER_SESSION_ID" ] || return 1
     [ -n "$FM_AUTOARM_OWNER_LOCK_IDENTITY" ] || return 1
-    lock_identity=$(fm_pid_identity "$lock_pid" 2>/dev/null) || return 1
+    case "$lock_pid" in
+      win:*)
+        fm_harness_pid_alive "$lock_pid" || return 1
+        lock_identity=$lock_pid
+        ;;
+      *) lock_identity=$(fm_pid_identity "$lock_pid" 2>/dev/null) || return 1 ;;
+    esac
     [ "$lock_identity" = "$FM_AUTOARM_OWNER_LOCK_IDENTITY" ] || return 1
-    _fm_wake_require_session_lock
     recorded=$(fm_session_lock_recorded_session_id "$state" 2>/dev/null || true)
     [ -n "$recorded" ] && [ "$recorded" = "$FM_AUTOARM_OWNER_SESSION_ID" ] || return 1
   fi
@@ -2191,7 +2195,13 @@ fm_autoarm_midturn_healthy() {  # <state-dir> [grace]
   [ "$FM_AUTOARM_OUTCOME" = rewake ] || return 1
   lock_pid=$(sed -n '1p' "$state/.lock" 2>/dev/null || true)
   [ -n "$FM_AUTOARM_SESSION" ] && [ "$FM_AUTOARM_SESSION" = "$lock_pid" ] || return 1
-  fm_pid_alive "$lock_pid" || return 1
+  case "$lock_pid" in
+    win:*)
+      _fm_wake_require_session_lock
+      fm_session_pid_valid "$lock_pid" && fm_harness_pid_alive "$lock_pid" || return 1
+      ;;
+    *) fm_pid_alive "$lock_pid" || return 1 ;;
+  esac
   fm_recovery_marker_read "$state/.watcher-down" || return 1
   recovery=${FM_RECOVERY_MARKER_TOKEN##*:}
   [ -n "$FM_AUTOARM_RECOVERY" ] && [ "$FM_AUTOARM_RECOVERY" = "$recovery" ] || return 1
@@ -2222,7 +2232,15 @@ fm_autoarm_claim_next() {  # <state-dir> [grace]
     *[![:alnum:]_.-]*) session_id= ;;
   esac
   lock_pid=$(sed -n '1p' "$state/.lock" 2>/dev/null || true)
-  lock_identity=$(fm_pid_identity "$lock_pid" 2>/dev/null || true)
+  lock_identity=
+  case "$lock_pid" in
+    win:*)
+      if fm_session_pid_valid "$lock_pid" && fm_harness_pid_alive "$lock_pid"; then
+        lock_identity=$lock_pid
+      fi
+      ;;
+    *) lock_identity=$(fm_pid_identity "$lock_pid" 2>/dev/null || true) ;;
+  esac
   [ -n "$lock_identity" ] || session_id=
   fm_lock_try_acquire "$lock" || return 1
   if fm_autoarm_claim_open "$state" "$grace"; then

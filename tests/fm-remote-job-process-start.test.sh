@@ -150,13 +150,24 @@ test_pre_update_legacy_lstart_still_verifies() {
   pass "pre-update bare lstart still verifies; drifted and dead cookies do not"
 }
 
+localized_utf8_locales() {
+  locale -a | awk '{ name=tolower($0); gsub(/-/, "", name); if (name ~ /^(de_de|fr_fr|ja_jp)\.utf8$/) print $0 }'
+}
+
+test_locale_selection_preserves_installed_names() (
+  locale() { printf '%s\n' C en_US.utf8 de_DE.utf8 fr_FR.UTF-8 ja_JP.utf8 de_DE.ISO-8859-1; }
+  local names
+  names=$(localized_utf8_locales) || fail 'locale selection failed'
+  [ "$names" = $'de_DE.utf8\nfr_FR.UTF-8\nja_JP.utf8' ] || fail "locale names were lost or changed: $names"
+  pass 'locale selection accepts UTF-8 spellings and preserves installed names'
+)
+
 test_c_locale_cookie_verifies_under_localized_ps() (
   local proc_root="$TMP_ROOT/proc-locale" canonical localized candidate
   write_fake_proc_stat "$proc_root" "$$" worker 987654
   export FM_PROC_ROOT_OVERRIDE="$proc_root"
   canonical=$(LC_ALL=C /bin/ps -p "$$" -o lstart=) || fail "C lstart read failed"
-  for candidate in de_DE.UTF-8 fr_FR.UTF-8 ja_JP.UTF-8; do
-    locale -a | tr '[:upper:]' '[:lower:]' | grep -Fix "$candidate" >/dev/null || continue
+  while IFS= read -r candidate; do
     export LC_ALL="$candidate"
     localized=$(/bin/ps -p "$$" -o lstart=) || fail "localized lstart read failed"
     [ "$localized" != "$canonical" ] || continue
@@ -166,7 +177,7 @@ test_c_locale_cookie_verifies_under_localized_ps() (
     fm_remote_job_start_matches proc-starttime=1 "$$" && fail "wrong proc token accepted"
     pass "C and ambient cookies verify with localized ps and proc identity"
     return
-  done
+  done < <(localized_utf8_locales)
   pass "localized cookie comparison skipped without a differing installed locale"
 )
 
@@ -251,6 +262,7 @@ test_token_changes_with_starttime
 test_malformed_proc_stat_and_pid_are_rejected
 test_lstart_fallback_without_proc
 test_pre_update_legacy_lstart_still_verifies
+test_locale_selection_preserves_installed_names
 test_c_locale_cookie_verifies_under_localized_ps
 test_dead_owner_with_stale_ready_gets_one_replacement
 test_pre_update_worker_lock_verifies_then_code_identity_replaces

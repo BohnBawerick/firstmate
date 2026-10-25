@@ -140,13 +140,13 @@ pass_once() { # home -> the registered check's output
 
 expect_silent() { # home why
   local out
-  out=$(pass_once "$1")
+  out=$(pass_once "$1") || fail 'the PR health check failed'
   [ -z "$out" ] || fail "$2: $out"
 }
 
 expect_one() { # home pattern why
   local out
-  out=$(pass_once "$1")
+  out=$(pass_once "$1") || fail 'the PR health check failed'
   if [ "$(printf '%s\n' "$out" | grep -c .)" != 1 ] || ! printf '%s\n' "$out" | grep -E "$2" >/dev/null; then
     fail "$3: $out"
   fi
@@ -295,7 +295,7 @@ test_other_homes_red_check_is_silent() {
   printf '20\n' > "$home/forge/branch-mate-branch"
   arm "$home"
   arm "$other"
-  out=$(pass_once "$other")
+  out=$(pass_once "$other") || fail 'the PR health check failed'
   printf '%s\n' "$out" | grep -F 'https://github.com/o/r/pull/20 has failing required checks' >/dev/null \
     || fail "the owning home must wake for its own red PR: $out"
   expect_silent "$home" "another home's red PR must wake nothing in this home"
@@ -596,10 +596,26 @@ test_all_owned_pr_reads_start_in_one_wave() {
   printf '4\n' > "$home/forge/branch-barrier-count"
   printf '8\n' > "$home/forge/barrier-count"
   arm "$home"
-  out=$(pass_once "$home")
+  out=$(pass_once "$home") || fail 'the PR health check failed'
   [ "$(printf '%s\n' "$out" | grep -c 'conflicts with its base')" = 8 ] \
     || fail "every owned PR must start before a slow read completes: $out"
   pass 'all owned PR reads start in one wave without rotating a backlog'
+}
+
+test_failed_check_cannot_pass_output_assertions() {
+  if (
+    pass_once() { return 1; }
+    expect_silent unused 'a failed check cannot prove silence'
+  ) > "$TMP_ROOT/failed-silent.out" 2>&1; then
+    fail 'an empty failed check passed the silence assertion'
+  fi
+  if (
+    pass_once() { printf 'expected wake\n'; return 1; }
+    expect_one unused '^expected wake$' 'a failed check cannot prove a wake'
+  ) > "$TMP_ROOT/failed-wake.out" 2>&1; then
+    fail 'a failed check passed the wake assertion'
+  fi
+  pass 'failed registered checks fail both output assertion paths'
 }
 
 failures=0
@@ -616,7 +632,7 @@ for test_name in test_unknown_then_dirty_wakes_once test_dirty_again_at_same_com
   test_nothing_prints_while_nothing_changed test_merged_pr_is_not_read_again test_absent_flag_changes_nothing \
   test_watcher_surfaces_one_wake test_failure_once_per_latest_commit_after_cleanup \
   test_all_owned_pr_reads_start_in_one_wave test_checks_on_later_pages \
-  test_unsupported_provider_has_no_github_reads; do
+  test_unsupported_provider_has_no_github_reads test_failed_check_cannot_pass_output_assertions; do
   ( "$test_name" ) || failures=$((failures + 1))
 done
 [ "$failures" -eq 0 ] || fail "$failures PR health regressions"
