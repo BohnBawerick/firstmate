@@ -9,7 +9,7 @@ mkdir -p "$BIN"
 cp "$ROOT/bin/fm-approval-failover.sh" "$BIN/fm-approval-failover.sh"
 # Use the actual metadata, identity and lease owners. Substitute only lifecycle
 # control, avoiding real workers while proving the command releases its guard.
-for lib in fm-backend.sh fm-pr-lib.sh fm-wake-lib.sh fm-lease-lib.sh fm-gate-refuse-lib.sh; do
+for lib in fm-backend.sh fm-pr-lib.sh fm-wake-lib.sh fm-lease-lib.sh fm-gate-refuse-lib.sh fm-session-lock-lib.sh; do
   printf '. %q\n' "$ROOT/bin/$lib" > "$BIN/$lib"
 done
 cat > "$BIN/fm-control.sh" <<'SH'

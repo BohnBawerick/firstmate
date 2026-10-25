@@ -73,7 +73,7 @@ pass "every mint is an unrelated fresh root - one trace per task, no parent adop
 # --- minted-root shape --------------------------------------------------------
 # A firstmate-MINTED root is exactly the fixed 55-char W3C form with random ids
 # and no free-form field where firstmate could originate a prompt, path, or
-# secret (that the lib reads no task prose is asserted separately below). With
+# secret. With
 # no inherited-context path, every carrier the lib yields is either such a mint
 # or the same task's previously recorded carrier reused verbatim.
 case "$ROOT_TP" in
@@ -213,32 +213,68 @@ ef_res=$(FM_TRACE_CONTEXT=on fm_trace_context_resolve "$CFG_ON" "$NOMETA"); ef_r
 [ -z "$ef_res" ] && [ "$ef_res_rc" -eq 0 ] || fail "resolve must omit and STILL return 0 on entropy failure (rc=$ef_res_rc out='$ef_res')"
 pass "entropy failure omits telemetry safely: mint reports failure, resolve returns success with no carrier"
 
-# --- fail-independent timing: no hang source, always returns 0 ---------------
+PROBE="$WORK/probe"
+mkdir -p "$PROBE/config" "$PROBE/state" "$PROBE/data/task"
+mkfifo "$PROBE/data/task/brief.md" "$PROBE/data/task/report.md" "$PROBE/state/task.status" "$PROBE/prompt"
+printf 'command: touch "%s/executed"\n' "$PROBE" > "$PROBE/config/trace-context"
+printf 'brief=%s/data/task/brief.md\nreport=%s/data/task/report.md\nstatus=%s/state/task.status\nprompt=%s/prompt\n' \
+  "$PROBE" "$PROBE" "$PROBE" "$PROBE" > "$PROBE/state/task.meta"
+python3 - "$ROOT" "$PROBE" "$VALID" <<'PY' || fail "resolver timing, prose isolation or command isolation failed"
+import os, signal, subprocess, sys
+process = subprocess.Popen(["bash", "-c", r'''
+set -eu
+. "$1/bin/fm-trace-context-lib.sh"
+export STATE="$2/state" DATA="$2/data" FM_TASK_ID=task
+probe=$2
+sleep() { touch "$probe/executed"; return 1; }
+timeout() { touch "$probe/executed"; return 1; }
+export FM_TRACE_CONTEXT=off
+carrier=$(fm_trace_context_resolve "$2/config" "$2/state/task.meta")
+[ -z "$carrier" ]
+export FM_TRACE_CONTEXT=on
+carrier=$(fm_trace_context_resolve "$2/config" "$2/state/task.meta")
+fm_trace_context_valid "$carrier"
+printf 'traceparent=%s\n' "$3" >> "$2/state/task.meta"
+carrier=$(fm_trace_context_resolve "$2/config" "$2/state/task.meta")
+[ "$carrier" = "$3" ]
+fm_trace_context_hex() { return 1; }
+carrier=$(fm_trace_context_resolve "$2/config" "$2/state/missing.meta")
+[ -z "$carrier" ]
+[ ! -e "$2/executed" ]
+''', "_", *sys.argv[1:]], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+try:
+    stdout, stderr = process.communicate(timeout=5)
+finally:
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    process.wait()
+assert process.returncode == 0, (process.returncode, stdout, stderr)
+PY
+pass "resolver completes off, mint, recovery and entropy failure without reading prose pipes or executing config commands"
 
-assert_no_grep 'sleep' "$ROOT/bin/fm-trace-context-lib.sh" "trace-context lib must not sleep on the spawn path"
-assert_no_grep 'timeout' "$ROOT/bin/fm-trace-context-lib.sh" "trace-context lib must not depend on an external timeout"
-assert_no_grep 'command:' "$ROOT/bin/fm-trace-context-lib.sh" "trace-context lib must not run an arbitrary command provider"
-fm_trace_context_resolve "$CFG_OFF" "$NOMETA" >/dev/null || fail "resolve must return 0 when off"
-pass "the resolver has no sleep/timeout/command hang source and always returns success"
-
-# --- harness/backend/kind independence (code only, comments stripped) ---------
-
-LIB_CODE=$(sed 's/#.*$//' "$ROOT/bin/fm-trace-context-lib.sh")
-for tok in harness backend tmux herdr zellij orca cmux paseo claude codex opencode grok kind ship scout secondmate ; do
-  case "$LIB_CODE" in
-    *"$tok"*) fail "trace-context lib code must be harness/backend/kind agnostic, but references '$tok'" ;;
-  esac
+fm_trace_context_hex() { printf '%0*d' "$(($1 * 2))" 1; }
+EXPECTED='00-00000000000000000000000000000001-0000000000000001-01'
+for HARNESS in claude codex opencode pi pi-signed grok kimi cursor omp muse gemini rovo agy devin commandcode polytoken cortex; do
+  for BACKEND in tmux herdr rex zellij orca cmux paseo t3code; do
+    for KIND in ship scout secondmate; do
+      printf 'harness=%s\nbackend=%s\nkind=%s\n' "$HARNESS" "$BACKEND" "$KIND" > "$WORK/matrix.meta"
+      out=$(FM_TRACE_CONTEXT=on FM_HARNESS="$HARNESS" FM_BACKEND="$BACKEND" FM_TASK_KIND="$KIND" \
+        fm_trace_context_resolve "$CFG_OFF" "$WORK/matrix.meta")
+      [ "$out" = "$EXPECTED" ] || fail "mint differs for $HARNESS/$BACKEND/$KIND: $out"
+      printf 'traceparent=%s\n' "$VALID" >> "$WORK/matrix.meta"
+      out=$(FM_TRACE_CONTEXT=on FM_HARNESS="$HARNESS" FM_BACKEND="$BACKEND" FM_TASK_KIND="$KIND" \
+        fm_trace_context_resolve "$CFG_OFF" "$WORK/matrix.meta")
+      [ "$out" = "$VALID" ] || fail "recovery differs for $HARNESS/$BACKEND/$KIND: $out"
+      out=$(FM_TRACE_CONTEXT=off FM_HARNESS="$HARNESS" FM_BACKEND="$BACKEND" FM_TASK_KIND="$KIND" \
+        fm_trace_context_resolve "$CFG_ON" "$WORK/matrix.meta")
+      [ -z "$out" ] || fail "disabled resolver differs for $HARNESS/$BACKEND/$KIND: $out"
+    done
+  done
 done
-pass "the carrier is minted identically for every harness, backend, and spawn kind (no such branching in the lib code)"
-
-# --- no prompt / task-prose reads (code only, comments stripped) --------------
-
-for tok in brief prompt report status ; do
-  case "$LIB_CODE" in
-    *"$tok"*) fail "trace-context lib code must never read task prose, but references '$tok'" ;;
-  esac
-done
-pass "the lib code never reads a brief, prompt, report, or status - it cannot leak content"
+. "$ROOT/bin/fm-trace-context-lib.sh"
+pass "mint, recovery and disabled resolution agree across harnesses, backends and task kinds"
 
 # --- secondmate inheritance wires the nested chain ---------------------------
 

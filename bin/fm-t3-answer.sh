@@ -43,8 +43,16 @@ if [ "$#" -eq 1 ]; then
   exit
 fi
 
+. "$SCRIPT_DIR/fm-gate-refuse-lib.sh"
+fm_refuse_if_gate_agent
+. "$SCRIPT_DIR/fm-session-lock-lib.sh"
+fm_require_session_lock "$STATE" "answer a worker question" || exit 1
+. "$SCRIPT_DIR/fm-lease-lib.sh"
+ANSWERS=
+trap 'rm -f "$ANSWERS"; fm_lease_guard_release' EXIT
+fm_lease_guard "$ID" "answer a worker question"
+
 ANSWERS=$(mktemp "${TMPDIR:-/tmp}/fm-t3-answer.XXXXXX")
-trap 'rm -f "$ANSWERS"' EXIT
 printf '%s' "$3" > "$ANSWERS"
 fm_backend_t3code_answer_request "$THREAD" "$2" "$ANSWERS"
 echo "answered $ID request $2 on T3 thread $THREAD"

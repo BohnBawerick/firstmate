@@ -124,6 +124,7 @@ make_home() {  # <dir>
   git -C "$dir" commit -q --allow-empty -m init
   : > "$dir/AGENTS.md"
   cp -R "$ROOT/bin" "$dir/bin"
+  fm_test_tasks_toml "$dir/.tasks.toml"
   # No real watcher may ever start from a fixture home.
   cat > "$dir/bin/fm-watch-arm.sh" <<'SH'
 #!/usr/bin/env bash
@@ -577,9 +578,20 @@ set -u
 case "$*" in
   *"#{pane_current_path}"*) printf '%s\n' "${FM_FAKE_PANE_PATH:-}"; exit 0 ;;
 esac
+window_file="$(dirname "$0")/.spawn-window"
 case "${1:-}" in
   display-message) printf 'firstmate\n'; exit 0 ;;
-  list-windows) exit 0 ;;
+  list-windows)
+    [ ! -s "$window_file" ] || cat "$window_file"
+    exit 0 ;;
+  new-window)
+    previous=
+    for arg in "$@"; do
+      [ "$previous" != -n ] || printf '%s\n' "$arg" > "$window_file"
+      previous=$arg
+    done
+    exit 0 ;;
+  kill-window) : > "$window_file"; exit 0 ;;
   send-keys)
     shift
     skip_next=
@@ -909,6 +921,35 @@ test_turnend_guard_reports_again_when_the_holder_changes() {
   pass "the decline is reported again when a different session takes the home"
 }
 
+test_supervisor_answers_and_failover_refuse_a_non_owner() {
+  local dir rc out harness setting
+  dir="$TMP_ROOT/supervisor-mutations"
+  make_home "$dir"
+  start_lock_holder "$dir" >/dev/null
+  for harness in codex claude; do
+    if [ "$harness" = codex ]; then setting=codex-approval-mode; else setting=claude-permission-mode; fi
+    printf 'harness=%s\napproval_mode=bypass\n' "$harness" > "$dir/state/demo.meta"
+    rc=$(detached_run env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+      FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
+      "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/fm-approval-failover.sh" apply demo)
+    out=$(run_output)
+    [ "$rc" != 0 ] || fail "$harness failover accepted a non-owner"
+    [ ! -e "$dir/config/$setting" ] || fail "$harness failover published configuration before refusing a non-owner"
+    assert_contains "$out" "does not hold the fleet lock" "$harness failover must name the ownership refusal"
+    [ ! -e "$dir/state/.fm-lease-command.lock" ] || fail 'ownership refusal reached the lease guard'
+  done
+  printf 'backend=t3code\nt3_thread_id=thread-live\nwindow=thread-live\n' > "$dir/state/demo.meta"
+  rc=$(detached_run env -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
+    FM_HOME="$dir" FM_ROOT_OVERRIDE="$dir" \
+    "$FAKE_CLAUDE" -c '"$@"; exit $?' _ "$dir/bin/fm-t3-answer.sh" demo req-q1 '{"q1":"yes"}')
+  out=$(run_output)
+  [ "$rc" != 0 ] || fail 'T3 answering accepted a non-owner'
+  assert_contains "$out" "does not hold the fleet lock" 'T3 answering must refuse ownership before transport'
+  [ ! -e "$dir/state/.fm-lease-command.lock" ] || fail 'T3 ownership refusal reached the lease guard'
+  pass "T3 answers and both managed approval modes refuse non-owners before mutation"
+}
+
+test_supervisor_answers_and_failover_refuse_a_non_owner
 test_every_mutating_entry_point_refuses_a_non_owning_session
 test_the_gate_answers_before_argument_validation
 test_the_lock_holder_itself_still_mutates

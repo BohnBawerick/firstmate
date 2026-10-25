@@ -188,10 +188,7 @@ t3_dispatch_types() {
 
 # t3_excluded <dir> <relative path>: the path is in <dir>'s git info/exclude.
 t3_excluded() {
-  local excl
-  excl=$(git -C "$1" rev-parse --git-path info/exclude)
-  case "$excl" in /*) ;; *) excl="$1/$excl" ;; esac
-  grep -qxF "$2" "$excl"
+  git -C "$1" check-ignore -q -- "$2"
 }
 
 t3_json_field() {  # <file> <js expression over the parsed document d>
@@ -1545,6 +1542,12 @@ test_spawn_leases_slot_creates_thread_and_starts_launch_turn() {
   local settings="$wt/.claude/settings.local.json"
   [ "$(t3_json_field "$settings" 'Object.keys(d.hooks).sort().join(" ")')" = "SessionEnd Stop StopFailure UserPromptSubmit" ] \
     || fail "the env merge must keep the busy hooks, got hooks '$(t3_json_field "$settings" 'Object.keys(d.hooks || {})')'"
+  bash -c "$(t3_json_field "$settings" 'd.hooks.UserPromptSubmit[0].hooks[0].command')" || fail "the T3 worker submit hook failed"
+  bash -c "$(t3_json_field "$settings" 'd.hooks.Stop[0].hooks[0].command')" || fail "the T3 worker stop hook failed"
+  assert_present "$state/$id.turn-ended" "the effective T3 worker stop hook must notify the watcher"
+  [ "$(t3_json_field "$settings" 'd.feedbackDrafts')" = off ] || fail "T3 must load the generated feedback setting"
+  [ "$(t3_json_field "$settings" 'JSON.stringify(d.attribution)')" = '{"commit":"","pr":"","sessionUrl":false}' ] \
+    || fail "T3 must load the generated attribution policy"
   [ "$(t3_json_field "$settings" 'd.env.GOTMPDIR')" = "/tmp/fm-$id/gotmp" ] || fail "settings env must carry GOTMPDIR, got '$(t3_json_field "$settings" 'd.env')'"
   [ "$(t3_json_field "$settings" 'd.env.FM_TASK_ID')" = "$id" ] || fail "a ship worker's settings env must carry FM_TASK_ID"
   [ "$(t3_json_field "$settings" 'd.env.FM_TASK_INBOX')" = "$state/$id.inbox" ] || fail "a ship worker's settings env must carry its steering inbox"
@@ -2408,10 +2411,25 @@ test_answer_script_reads_and_answers_questions() {
   expect_code 0 "$rc" "listing pending questions: $out"
   assert_contains "$out" '"requestId":"req-q1"' "the question id is listed"
   assert_contains "$out" "Ship it?" "the question's content is listed"
-  out=$(run_answer "$id" req-q1 '{"q1":"yes"}'); rc=$?
+  out=$(FM_GATE_REFUSE_BYPASS=0 NO_MISTAKES_GATE=1 run_answer "$id" req-q1 '{"q1":"yes"}'); rc=$?
+  expect_code 3 "$rc" "gate callers cannot answer: $out"
+  [ -z "$(t3_fake_calls t3_pending_request_respond)" ] || fail "a gate caller answered the question"
+  printf '%s\n' "$$" > "$CTRL_STATE/.lock"
+  printf 'branch\t%s\t%s\n' "$$" "$(date +%s)" > "$CTRL_STATE/.lease-$id"
+  for actor in '' main; do
+    out=$(FM_SUPERVISION_ACTOR="$actor" run_answer "$id" req-q1 '{"q1":"yes"}'); rc=$?
+    expect_code 6 "$rc" "another actor's lease prevents answering: $out"
+    [ -z "$(t3_fake_calls t3_pending_request_respond)" ] || fail "a foreign lease holder answered the question"
+  done
+  out=$(FM_SUPERVISION_ACTOR=main run_answer "$id"); rc=$?
+  expect_code 0 "$rc" "pending questions remain readable under a foreign lease: $out"
+  assert_contains "$out" '"requestId":"req-q1"' "refused answers must leave the question pending"
+  out=$(FM_SUPERVISION_ACTOR=branch run_answer "$id" req-q1 '{"q1":"yes"}'); rc=$?
   expect_code 0 "$rc" "answering: $out"
   [ "$(t3_fake_calls t3_pending_request_respond | tail -1)" = "{\"threadId\":\"$thread\",\"requestId\":\"req-q1\",\"answers\":{\"q1\":\"yes\"}}" ] \
     || fail "the answer must reach t3_pending_request_respond, got '$(t3_fake_calls t3_pending_request_respond)'"
+  [ ! -e "$CTRL_STATE/.fm-lease-command.lock" ] || fail "answering left the lease command lock held"
+  rm "$CTRL_STATE/.lease-$id" "$CTRL_STATE/.lock"
   fm_write_meta "$CTRL_STATE/tmuxtask.meta" "window=s:w" "kind=ship"
   out=$(run_answer tmuxtask); rc=$?
   expect_code 1 "$rc" "a non-T3 task has no pending requests to answer"

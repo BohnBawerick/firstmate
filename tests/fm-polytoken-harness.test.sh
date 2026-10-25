@@ -61,6 +61,9 @@ unset CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS GROK_AGENT CURSOR_AGENT CURSOR_IN
 . "$ROOT/bin/fm-polytoken-lib.sh"
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-agent-process-lib.sh"
+# shellcheck source=bin/fm-pr-lib.sh
+. "$ROOT/bin/fm-pr-lib.sh"
+. "$ROOT/bin/fm-backend.sh"
 
 HARNESS="$ROOT/bin/fm-harness.sh"
 SPAWN="$ROOT/bin/fm-spawn.sh"
@@ -349,27 +352,32 @@ make_wiring_case() {  # <name>
   printf '%s\n' "$case_dir"
 }
 
+polytoken_yaml_json() {
+  ruby -ryaml -rjson -e 'puts JSON.generate(YAML.load_file(ARGV.fetch(0)))' "$1"
+}
+
 test_polytoken_write_config_enforces_the_unattended_posture() {
   local rec case_dir home cfgdir mirrored out rc
   rec=$(make_wiring_case config)
   case_dir=$rec
   home="$case_dir/home"
   cfgdir="$case_dir/state/task.polytoken-config"
-  printf 'version: 4\nproviders:\n  zai:\n    auth:\n      type: static_key\n      key: k\nmodels:\n  zai/glm-5.3-flash:\n    enabled: true\ndefault_permission_matcher: standard\n' \
+  printf 'version: 4\nproviders:\n  zai:\n    auth:\n      type: static_key\n      key: k\nmodels:\n  zai/glm-5.3-flash:\n    enabled: true\n# default_permission_matcher: bypass\ndefault_permission_matcher: standard\n' \
     > "$home/.config/polytoken/config.yaml"
   XDG_CONFIG_HOME="$home/.config" HOME="$home" fm_polytoken_write_config "$cfgdir" \
     || fail "a mirrorable global config must be mirrored"
-  mirrored=$(cat "$cfgdir/config.yaml")
-  assert_contains "$mirrored" "default_permission_matcher: bypass" \
+  mirrored=$(polytoken_yaml_json "$cfgdir/config.yaml") || fail "the mirrored config is not valid YAML"
+  assert_equals bypass "$(printf '%s' "$mirrored" | jq -er '.default_permission_matcher')" \
     "a standard global posture must be enforced to bypass for the worker"
-  assert_contains "$mirrored" "type: static_key" "the mirrored providers must survive"
+  printf '%s' "$mirrored" | jq -e '.providers == {zai:{auth:{type:"static_key",key:"k"}}} and .models == {"zai/glm-5.3-flash":{enabled:true}}' >/dev/null \
+    || fail "the mirrored providers and models must survive"
   # bypass_plus is the one strictly-safer value that is preserved.
   printf 'version: 4\ndefault_permission_matcher: bypass_plus\n' > "$home/.config/polytoken/config.yaml"
   rm -rf "$cfgdir"
   XDG_CONFIG_HOME="$home/.config" HOME="$home" fm_polytoken_write_config "$cfgdir" \
     || fail "a bypass_plus global config must be mirrored"
-  mirrored=$(cat "$cfgdir/config.yaml")
-  assert_contains "$mirrored" "default_permission_matcher: bypass_plus" \
+  mirrored=$(polytoken_yaml_json "$cfgdir/config.yaml") || fail "the mirrored config is not valid YAML"
+  assert_equals bypass_plus "$(printf '%s' "$mirrored" | jq -er '.default_permission_matcher')" \
     "the bypass_plus posture must be preserved, not flattened to bypass"
   # Quoted and commented YAML spellings of bypass_plus are the same value.
   for spelling in '"bypass_plus"' "'bypass_plus'" 'bypass_plus # keep deny rules'; do
@@ -377,8 +385,8 @@ test_polytoken_write_config_enforces_the_unattended_posture() {
     rm -rf "$cfgdir"
     XDG_CONFIG_HOME="$home/.config" HOME="$home" fm_polytoken_write_config "$cfgdir" \
       || fail "a bypass_plus global config spelled $spelling must be mirrored"
-    mirrored=$(cat "$cfgdir/config.yaml")
-    assert_contains "$mirrored" "default_permission_matcher: $spelling" \
+    mirrored=$(polytoken_yaml_json "$cfgdir/config.yaml") || fail "the mirrored config is not valid YAML"
+    assert_equals bypass_plus "$(printf '%s' "$mirrored" | jq -er '.default_permission_matcher')" \
       "the bypass_plus posture spelled $spelling must be preserved, not flattened to bypass"
   done
   # An absent key is appended, not silently inherited: the project layer
@@ -387,8 +395,8 @@ test_polytoken_write_config_enforces_the_unattended_posture() {
   rm -rf "$cfgdir"
   XDG_CONFIG_HOME="$home/.config" HOME="$home" fm_polytoken_write_config "$cfgdir" \
     || fail "a global config without the matcher key must still be mirrored"
-  mirrored=$(cat "$cfgdir/config.yaml")
-  assert_contains "$mirrored" "default_permission_matcher: bypass" \
+  mirrored=$(polytoken_yaml_json "$cfgdir/config.yaml") || fail "the mirrored config is not valid YAML"
+  assert_equals bypass "$(printf '%s' "$mirrored" | jq -er '.default_permission_matcher')" \
     "an absent matcher key must be appended as bypass"
   # A missing global config refuses rather than launching a worker with no
   # providers or credentials.
@@ -401,7 +409,7 @@ test_polytoken_write_config_enforces_the_unattended_posture() {
 }
 
 test_polytoken_write_facet_carries_the_role_contract_without_a_model_pin() {
-  local rec case_dir facet body
+  local rec case_dir facet body header
   rec=$(make_wiring_case facet)
   case_dir=$rec
   fm_polytoken_write_facet "$case_dir/wt" "$case_dir/state/task.inbox" \
@@ -409,9 +417,9 @@ test_polytoken_write_facet_carries_the_role_contract_without_a_model_pin() {
   facet="$case_dir/wt/.polytoken/facets/firstmate-worker.md"
   [ -f "$facet" ] || fail "the facet must exist at the project facet layer path"
   body=$(cat "$facet")
-  assert_contains "$body" "name: firstmate-worker" "the facet must be the firstmate-worker facet"
-  assert_contains "$body" "tools_deny: [switch_facet, handoff_plan, subagent, message_subagent]" \
-    "the facet must deny facet switching and delegation at the tool-registry level"
+  header=$(polytoken_yaml_json "$facet") || fail "the facet frontmatter is not valid YAML"
+  printf '%s' "$header" | jq -e '.name == "firstmate-worker" and .polytoken.tools == ["tag!ALL", "tag!ALL_MCP"] and .polytoken.tools_deny == ["switch_facet", "handoff_plan", "subagent", "message_subagent"]' >/dev/null \
+    || fail "the facet must select the worker role and deny facet switching and delegation"
   assert_contains "$body" 'transclude("polytoken://system_prompts/facet.md")' \
     "the facet must transclude the shipped base prompt to keep the tool-use framing"
   assert_contains "$body" "You are a crewmate" "the facet must carry the crewmate identity"
@@ -425,9 +433,8 @@ test_polytoken_write_facet_carries_the_role_contract_without_a_model_pin() {
     "the facet must carry the task-channel trust statement's authority boundary"
   # A facet model pin outranks the launch --model, so the worker facet must
   # never carry one.
-  if printf '%s\n' "$body" | grep -qE '^  model:'; then
-    fail "the worker facet must not pin a model"
-  fi
+  printf '%s' "$header" | jq -e '(has("model") | not) and (.polytoken | has("model") | not)' >/dev/null \
+    || fail "the worker facet must not pin a model"
   pass "fm-polytoken-lib: the worker facet carries the role contract and no model pin"
 }
 
@@ -806,6 +813,8 @@ set -u
 printf '%s\n' "$*" >>"${PTFAKE_TMUX_LOG:?}"
 case "$*" in
   *"#{pane_current_path}"*) printf '%s\n' "${PTFAKE_PANE_PATH:?}"; exit 0 ;;
+  *"#{pane_current_command}"*) printf 'bash\n'; exit 0 ;;
+  *"#{pane_tty}"*) exit 0 ;;
   *"#{cursor_y}"*) printf '1\n'; exit 0 ;;
 esac
 # The window this spawn created, so exact tmux target membership checks see it
@@ -885,6 +894,11 @@ BASE_PATH=${FM_TEST_BASE_PATH:-$NODE_BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin}
 run_polytoken_spawn() {
   local case_dir=$1 home=$2 proj=$3 wt=$4 fakebin=$5 id=$6
   shift 6
+  if [ "${1:-}" = --relaunch ]; then
+    set -- "$id" "$@"
+  else
+    set -- "$id" "$proj" --mode no-mistakes --yolo off "$@"
+  fi
   HOME="$home" XDG_CONFIG_HOME="$home/.config" FM_ROOT_OVERRIDE='' FM_HOME="$home" \
     FM_STATE_OVERRIDE="${PTFAKE_STATE_DIR:-$home/state}" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
@@ -899,7 +913,7 @@ run_polytoken_spawn() {
     FM_POLYTOKEN_READY_POLLS="${FM_POLYTOKEN_READY_POLLS:-40}" \
     FM_POLYTOKEN_POLL_INTERVAL="${FM_POLYTOKEN_POLL_INTERVAL:-0.1}" \
     PATH="$fakebin:$BASE_PATH" \
-    "$SPAWN" "$id" "$proj" --harness polytoken --model zai/glm-5.3-flash --effort low --mode no-mistakes --yolo off "$@" 2>&1
+    "$SPAWN" --harness polytoken --model zai/glm-5.3-flash --effort low "$@" 2>&1
 }
 
 test_polytoken_launch_carries_the_hybrid_contract() {
@@ -974,10 +988,31 @@ test_polytoken_launch_carries_the_hybrid_contract() {
   [ -f "$WT_DIR/.polytoken/hooks.json" ] || fail "the worktree hook layer was not written"
   [ -f "$WT_DIR/.polytoken/facets/firstmate-worker.md" ] || fail "the worker facet was not written"
   [ -f "$HOME_DIR/state/$id.polytoken-busy.sh" ] || fail "the busy writer was not written"
-  cfg=$(cat "$HOME_DIR/state/$id.polytoken-config/config.yaml")
-  assert_contains "$cfg" "default_permission_matcher: bypass" \
+  cfg=$(polytoken_yaml_json "$HOME_DIR/state/$id.polytoken-config/config.yaml") || fail "the spawned config is not valid YAML"
+  assert_equals bypass "$(printf '%s' "$cfg" | jq -er '.default_permission_matcher')" \
     "the mirrored worker config must enforce the unattended posture"
   pass "fm-spawn: the polytoken launch carries the hybrid contract end to end"
+}
+
+test_polytoken_relaunch_preserves_pr_identity() {
+  local id rec out meta pr=https://github.com/BohnBawerick/firstmate/pull/42
+  id="pt-pr-z8-$$"
+  rec=$(make_polytoken_spawn_case pr-relaunch "$id")
+  read_polytoken_spawn_record "$rec"
+  out=$(run_polytoken_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") \
+    || fail "initial Polytoken spawn failed: $out"
+  meta="$HOME_DIR/state/$id.meta"
+  printf 'pr=%s\npr_head=%s\n' "$pr" "$(git -C "$WT_DIR" rev-parse HEAD)" >> "$meta"
+  fm_pr_metadata_identity_parse "$meta" || fail "initial PR identity is invalid"
+  out=$(run_polytoken_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" --relaunch) \
+    || fail "Polytoken relaunch failed: $out"
+  fm_pr_metadata_identity_parse "$meta" || fail "Polytoken session binding invalidated the PR identity"
+  [ "$FM_PR_META_URL" = "$pr" ] || fail "Polytoken relaunch changed the registered PR"
+  [ "$(fm_meta_get "$meta" polytoken_session)" = 0czfake-echo ] || fail "Polytoken relaunch lost its session"
+  [ "$(fm_meta_get "$meta" polytoken_port)" = 49999 ] || fail "Polytoken relaunch lost its port"
+  [ "$(fm_meta_get "$meta" polytoken_credential)" = "$HOME_DIR/state/$id.polytoken-sessions-v1/0czfake-echo/credential.json" ] \
+    || fail "Polytoken relaunch lost its credential path"
+  pass "Polytoken relaunch keeps its PR identity parseable after session binding"
 }
 
 test_polytoken_effort_maps_to_nearest_listed_level() {
@@ -1190,6 +1225,7 @@ test_polytoken_spawn_arms_the_busy_contract() {
 
 # ---------------------------------------------------------------------------
 
+test_polytoken_relaunch_preserves_pr_identity
 test_polytoken_ancestry_detects_the_native_command_name
 test_polytoken_ancestry_rejects_unrelated_mentions
 test_polytoken_claims_no_inherited_launcher_marker

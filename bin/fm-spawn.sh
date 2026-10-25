@@ -5600,12 +5600,10 @@ spawn_record_polytoken_session() {
   fi
   SPAWN_META_TMP="$STATE/.$ID.meta.polytoken.${BASHPID:-$$}"
   if [ ! -f "$meta" ] || [ ! -w "$meta" ] ||
-    ! awk -F= '$1 != "polytoken_session" && $1 != "polytoken_port" && $1 != "polytoken_credential"' "$meta" >"$SPAWN_META_TMP" ||
-    ! {
-      echo "polytoken_session=$POLYTOKEN_SESSION_ID"
-      echo "polytoken_port=$POLYTOKEN_SESSION_PORT"
-      echo "polytoken_credential=$POLYTOKEN_SESSION_CREDENTIAL"
-    } >>"$SPAWN_META_TMP" ||
+    ! fm_pr_metadata_identity_block_last "$meta" "polytoken_session polytoken_port polytoken_credential" \
+      "polytoken_session=$POLYTOKEN_SESSION_ID" \
+      "polytoken_port=$POLYTOKEN_SESSION_PORT" \
+      "polytoken_credential=$POLYTOKEN_SESSION_CREDENTIAL" >"$SPAWN_META_TMP" ||
     ! fm_backlog_atomic_transition publish "$SPAWN_META_TMP" "$meta" "task record" "$STATE"; then
     status=1
     rm -f "$SPAWN_META_TMP" 2>/dev/null || true
@@ -5905,20 +5903,27 @@ spawn_t3code_claude_channel_install() {
   exclude_path 'CLAUDE.local.md'
 }
 spawn_t3code_env_install() {
-  local harness=$1
+  local harness=$1 settings=
   shift
   case "$harness" in
     claude)
       mkdir -p "$WT/.claude"
+      [ "$KIND" = secondmate ] || settings="$STATE_REAL/$ID.claude-settings.json"
       # shellcheck disable=SC2016  # Single quotes are deliberate: ${...} belongs to the Node snippet.
       node -e '
 const fs = require("fs");
-const [file, ...pairs] = process.argv.slice(1);
+const [file, settings, ...pairs] = process.argv.slice(1);
 let data = {};
 try {
   if (fs.lstatSync(file).isSymbolicLink()) throw new Error(`${file} is a symlink; refusing to write the T3 environment through it`);
   data = JSON.parse(fs.readFileSync(file, "utf8"));
 } catch (err) { if (err.code !== "ENOENT") throw err; }
+if (settings) {
+  const generated = JSON.parse(fs.readFileSync(settings, "utf8"));
+  const hooks = { ...data.hooks };
+  for (const [event, entries] of Object.entries(generated.hooks)) hooks[event] = [...(hooks[event] ?? []), ...entries];
+  Object.assign(data, generated, { hooks });
+}
 const env = data.env && typeof data.env === "object" && !Array.isArray(data.env) ? data.env : {};
 for (const key of String(env.FM_T3CODE_ENV_KEYS ?? "").split(",")) delete env[key];
 const owned = [];
@@ -5926,7 +5931,7 @@ for (const pair of pairs) { const eq = pair.indexOf("="); env[pair.slice(0, eq)]
 env.FM_T3CODE_ENV_KEYS = owned.join(",");
 data.env = env;
 fs.writeFileSync(file, JSON.stringify(data) + "\n");
-' "$WT/.claude/settings.local.json" "$@" || return 1
+' "$WT/.claude/settings.local.json" "$settings" "$@" || return 1
       exclude_path '.claude/settings.local.json'
       ;;
     codex)
