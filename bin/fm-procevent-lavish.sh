@@ -37,6 +37,12 @@
 #            Captain-supplied body lines are visibly prefixed so they cannot
 #            forge structural labels. Empty message and annotation sections
 #            are reported explicitly.
+#            Both table-form and list-form captures are supported; nested
+#            targets and attachments are skipped while the item's own scalar
+#            fields are retained. The shared parser below owns the wire format.
+#            Malformed content or a declared/presented count mismatch yields
+#            complete: no; inspect that verdict, not just the command's exit
+#            status. A declared nonempty block parsed as empty is incomplete.
 # poll       The registered listener command `arm` publishes, not a command to
 #            run in a conversational turn. It runs the published blocking poll
 #            and prints its response verbatim, absorbing only the one exact
@@ -107,6 +113,10 @@
 #
 # Only rows tagged `choice` are read. A freeform captain message is prose that may
 # contain anything, and must never be able to forge a decision key.
+# `answers` and `reconciles` use the same parser as `read` for either emission
+# form. Malformed content or a declared/parsed count mismatch prints a diagnostic
+# to stderr and exits 3, even if valid choices were already printed to stdout;
+# callers must not treat that output as a complete extraction.
 #
 # `read` is the presentation command summarized above; keyed intake remains
 # the separate `answers` contract described here.
@@ -527,6 +537,221 @@ cmd_terminal() {
   return 1
 }
 
+# Print the shared result parser described in its own leading comment, for
+# prepending to a command's perl program.
+lavish_result_parser() {
+  cat <<'PERL'
+use strict; use warnings;
+# The one reader of a captured result's queued-content block, shared by `read`,
+# `answers`, and `reconciles` so the two emission forms are parsed in exactly one
+# place. lavish-axi encodes its response as TOON and picks the form itself:
+#
+#   table form, when every item carries the same scalar fields:
+#     prompts[N]{uid,prompt,selector,tag,text}:
+#       "1","a comment",div#a,div,"Element text"
+#   list form, when items differ, for example when some carry a nested
+#   `target` object or an `attachments` table:
+#     prompts[N]:
+#       - uid: "1"
+#         prompt: "a comment"
+#         target:
+#           type: table-cell
+#
+# Only a column-zero header opens a block, and the block is the indented lines
+# that follow it. Every captain-supplied value is a single encoded line, so an
+# item or field boundary is only ever an indentation the encoder wrote: in list
+# form an item starts at the first item's hyphen indent, its own fields sit one
+# indent deeper, and anything deeper still is skipped only beneath a field that
+# opened a nested object or array. Only an item's own scalar fields are
+# returned. A line or item the parser cannot fully account for is counted as
+# malformed rather than dropped, and a column-zero line that names the block
+# but is not a recognized header makes the whole result malformed, so a form
+# this reader does not know can never look like a complete, empty result.
+#
+# lavish_result(<path>, <block-name-regex>) returns
+# (form, declared, [item hashes], malformed), with form one of none, table,
+# list, or unrecognized.
+sub lavish_unescape {
+  my ($v) = @_;
+  $v =~ s/\\(.)/$1 eq "n" ? "\n" : $1 eq "t" ? "\t" : $1 eq "r" ? "\r" : $1/ge;
+  return $v;
+}
+sub lavish_table_rows {
+  my ($fields, $rows) = @_;
+  my (@items, $malformed);
+  $malformed = 0;
+  for my $row (@$rows) {
+    $row =~ s/^\s+//;
+    my @vals;
+    while (length $row) {
+      if ($row =~ s/^"((?:[^"\\]|\\.)*)"//) {
+        push @vals, $1;
+      } else {
+        $row =~ s/^([^,]*)//;
+        push @vals, $1;
+      }
+      last unless $row =~ s/^,//;
+    }
+    # An unquoted prompt or text value may carry commas; rejoin the surplus
+    # into that one field rather than shifting every later column.
+    if (@vals > @$fields) {
+      my ($preserve) = grep { $fields->[$_] eq "prompt" } 0 .. $#$fields;
+      ($preserve) = grep { $fields->[$_] eq "text" } 0 .. $#$fields unless defined $preserve;
+      if (defined $preserve) {
+        my $count = @vals - @$fields + 1;
+        my @parts = splice @vals, $preserve, $count;
+        splice @vals, $preserve, 0, join(",", @parts);
+      }
+    }
+    if (@vals != @$fields) {
+      $malformed++;
+      next;
+    }
+    my %f;
+    $f{$fields->[$_]} = lavish_unescape($vals[$_]) for 0 .. $#$fields;
+    push @items, \%f;
+  }
+  return (\@items, $malformed);
+}
+sub lavish_list_items {
+  my ($lines) = @_;
+  my (@items, $unit, $cur, $bad, $nested, %keys, $attachment_left, @attachment_fields, $target_indent);
+  my ($malformed, $stray) = (0, 0);
+  my $finish = sub {
+    return unless $cur;
+    my $missing = grep { !exists $cur->{$_} } qw(uid prompt selector tag text);
+    $malformed++ if $bad || $missing || ($attachment_left || 0);
+    push @items, $cur;
+    ($cur, $bad, $nested, $attachment_left) = (undef, 0, "", 0);
+  };
+  my $field = sub {
+    my ($s) = @_;
+    my $key;
+    if ($s =~ s/^"((?:[^"\\]|\\.)*)"//) {
+      $key = lavish_unescape($1);
+    } elsif ($s =~ s/^([A-Za-z_][A-Za-z0-9_.]*)//) {
+      $key = $1;
+    } else {
+      $bad = 1;
+      return;
+    }
+    $bad = 1 if $keys{$key}++;
+    $bad = 1 if $attachment_left;
+    $nested = "";
+    $attachment_left = 0;
+    if ($key eq "attachments" && $s =~ /^\[(\d+)\](?:\{([^}]+)\})?:\s*$/) {
+      $nested = "attachments";
+      $attachment_left = $1;
+      @attachment_fields = defined($2) ? split(/,/, $2) : ();
+      $cur->{attachments} = [];
+    } elsif ($s =~ /^(?::|\[\d+\](?:\{[^}]*\})?:)\s*$/) {
+      $nested = $key;
+      if ($key eq "target") { $cur->{target} = []; $target_indent = undef; }
+    } elsif ($s =~ /^\[\d+\]: /) {
+      # An inline primitive array is not an item field this adapter reads.
+    } elsif ($s =~ /^: (.*)$/) {
+      my $v = $1;
+      if ($v =~ /^"/) {
+        if ($v =~ /^"((?:[^"\\]|\\.)*)"\s*$/) {
+          $cur->{$key} = lavish_unescape($1);
+        } else {
+          $bad = 1;
+        }
+      } else {
+        $v =~ s/\s+$//;
+        $cur->{$key} = $v;
+      }
+    } else {
+      $bad = 1;
+    }
+  };
+  for my $line (@$lines) {
+    $line =~ /^( *)(.*)$/s;
+    my ($ind, $rest) = (length $1, $2);
+    $unit = $ind if !defined($unit) && $ind > 0 && $rest =~ /^-(?: |$)/;
+    if (defined($unit) && $ind == $unit && $rest =~ /^-(?: (.*))?$/s) {
+      my $first = $1;
+      $finish->();
+      ($cur, $bad, $nested) = ({}, 0, 0);
+      %keys = ();
+      if (defined $first) { $field->($first) } else { $bad = 1 }
+    } elsif ($cur && $ind == 2 * $unit) {
+      $field->($rest);
+    } elsif ($cur && $nested && $ind > 2 * $unit) {
+      if ($nested eq "target") {
+        $target_indent = $ind unless defined $target_indent;
+        $bad = 1 if $ind < $target_indent;
+        push @{$cur->{target}}, (" " x ($ind > $target_indent ? $ind - $target_indent : 0)) . $rest;
+      } elsif ($nested eq "attachments") {
+        if (@attachment_fields) {
+          my ($rows, $errors) = lavish_table_rows(\@attachment_fields, [$rest]);
+          $bad = 1 if $errors || !$attachment_left;
+          push @{$cur->{attachments}}, @$rows;
+          $attachment_left-- if $attachment_left;
+        } else {
+          if ($ind == 3 * $unit && $rest =~ s/^- //) {
+            $bad = 1 unless $attachment_left;
+            $attachment_left-- if $attachment_left;
+            push @{$cur->{attachments}}, {};
+          } elsif ($ind != 4 * $unit || !@{$cur->{attachments}}) {
+            $bad = 1;
+            next;
+          }
+          if ($rest =~ /^([A-Za-z_][A-Za-z0-9_.]*): (.*)$/) {
+            my ($key, $value) = ($1, $2);
+            if ($value =~ /^"/) {
+              if ($value =~ /^"((?:[^"\\]|\\.)*)"\s*$/) {
+                $value = lavish_unescape($1);
+              } else { $bad = 1; next; }
+            } else { $value =~ s/\s+$//; }
+            $bad = 1 if exists $cur->{attachments}[-1]{$key};
+            $cur->{attachments}[-1]{$key} = $value;
+          } else { $bad = 1; }
+        }
+      }
+      next;
+    } elsif ($cur) {
+      $bad = 1;
+    } else {
+      $stray = 1;
+    }
+  }
+  $finish->();
+  return (\@items, $malformed + $stray);
+}
+sub lavish_result {
+  my ($path, $names) = @_;
+  open my $fh, "<:encoding(UTF-8)", $path or return;
+  my ($form, $want, @fields, @body) = ("none", 0);
+  while (my $line = <$fh>) {
+    chomp $line;
+    if ($form eq "none") {
+      next unless $line =~ /^(?:$names)/;
+      if ($line =~ /^(?:$names)\[(\d+)\]\{([^}]*)\}:\s*$/) {
+        ($form, $want, @fields) = ("table", $1, split /,/, $2);
+      } elsif ($line =~ /^(?:$names)\[(\d+)\]:\s*$/) {
+        ($form, $want) = ("list", $1);
+      } else {
+        $form = "unrecognized";
+        $want = $1 if $line =~ /^(?:$names)\[(\d+)\]/;
+        last;
+      }
+      next;
+    }
+    last unless $line =~ /^\s/;
+    push @body, $line;
+  }
+  close $fh;
+  return ($form, $want, [], 1) if $form eq "unrecognized";
+  return ($form, $want, [], 0) if $form eq "none";
+  my ($items, $malformed) = $form eq "table"
+    ? lavish_table_rows(\@fields, \@body)
+    : lavish_list_items(\@body);
+  return ($form, $want, $items, $malformed);
+}
+PERL
+}
+
 # Whether a completed result carries any queued content block at all. The
 # published response frames content as a top-level `prompts[N]:` or
 # `feedback[N]:` list, or as the field-declared table variant
@@ -577,153 +802,13 @@ cmd_silent() {
   [ "$content_rc" -eq 1 ]
 }
 
-# Parse either Lavish prompt representation into one JSON document.
-# Uniform rows use a declared field list and CSV values.
-# Non-uniform rows use YAML-like list items and may contain nested attachment
-# rows, which are metadata on the current item rather than more prompt items.
-# Decode the capture as UTF-8 once here; output consumers encode text as UTF-8
-# once so comments, answer labels, and reconcile notes keep their bytes.
+# Normalize the shared parser's result for the rendering and decision readers.
 prompt_rows_json() {  # <result-file>
-  perl -MJSON::PP -e '
-    use strict; use warnings;
-    my ($path) = @ARGV;
-    open my $fh, "<:encoding(UTF-8)", $path or exit 1;
-    my ($declared, $header, $mode, $malformed) = (0, 0, "", 0);
-    my (@fields, @rows);
-    sub unquote {
-      my ($value) = @_;
-      $value =~ s/^\s+//; $value =~ s/\s+$//;
-      if ($value =~ /^"((?:[^"\\]|\\.)*)"$/s) {
-        $value = $1;
-      }
-      $value =~ s/\\(.)/$1 eq "n" ? "\n" : $1 eq "t" ? "\t" : $1 eq "r" ? "\r" : $1/ge;
-      return $value;
-    }
-    sub csv_values {
-      my ($row) = @_;
-      my @values;
-      while (length $row) {
-        if ($row =~ s/^"((?:[^"\\]|\\.)*)"//) {
-          push @values, unquote("\"$1\"");
-        } else {
-          $row =~ s/^([^,]*)//;
-          push @values, unquote($1);
-        }
-        last unless $row =~ s/^,//;
-      }
-      return @values;
-    }
-    my ($current, $line, $target_lines, $attachment_rows, $malformed_at_start);
-    my @attachment_fields;
-    my $finish_current = sub {
-      return unless defined $current;
-      my $missing = grep { !exists $current->{$_} } qw(uid prompt selector tag text);
-      $malformed++ if $missing && $malformed == $malformed_at_start;
-      push @rows, $current;
-      undef $current;
-    };
-    while (defined($line = <$fh>)) {
-      if (!$header) {
-        if ($line =~ /^(?:prompts|feedback)\[(\d+)\]\{([^}]*)\}:\s*$/) {
-          ($declared, $header, $mode, @fields) = ($1, 1, "table", split /,/, $2);
-          next;
-        }
-        if ($line =~ /^(?:prompts|feedback)\[(\d+)\]:\s*$/) {
-          ($declared, $header, $mode) = ($1, 1, "list");
-          next;
-        }
-        next;
-      }
-      if ($mode eq "table") {
-        last unless $line =~ /^\s/;
-        chomp $line; $line =~ s/^\s+//;
-        my @values = csv_values($line);
-        if (@values > @fields) {
-          my ($preserve) = grep { $fields[$_] eq "prompt" } 0 .. $#fields;
-          ($preserve) = grep { $fields[$_] eq "text" } 0 .. $#fields unless defined $preserve;
-          if (defined $preserve) {
-            my $count = @values - @fields;
-            my @parts = splice @values, $preserve, $count + 1;
-            splice @values, $preserve, 0, join(",", @parts);
-          }
-        }
-        if (@values != @fields) { $malformed++; next; }
-        my %row; $row{$fields[$_]} = $values[$_] for 0 .. $#fields;
-        push @rows, \%row;
-        next;
-      }
-      if (defined($attachment_rows) && $line !~ /^      /) {
-        $malformed++ if $attachment_rows;
-        undef $attachment_rows;
-        @attachment_fields = ();
-      }
-      if (defined($target_lines) && $line =~ /^      (.*)$/) {
-        my $target_line = $1;
-        chomp $target_line;
-        push @$target_lines, $target_line;
-        next;
-      }
-      if (defined($target_lines)) {
-        $malformed++ unless @$target_lines;
-        undef $target_lines;
-      }
-      if ($line =~ /^  -\s+(.+)$/) {
-        $finish_current->();
-        $current = {};
-        $malformed_at_start = $malformed;
-        if ($1 =~ /^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/) {
-          $current->{$1} = unquote($2);
-        } else { $malformed++; }
-        next;
-      }
-      if ($line =~ /^    target:\s*$/) {
-        if (defined $current) {
-          $current->{target} = [];
-          $target_lines = $current->{target};
-        } else { $malformed++; }
-        next;
-      }
-      if ($line =~ /^    attachments\[(\d+)\]\{([A-Za-z_][A-Za-z0-9_]*(?:,[A-Za-z_][A-Za-z0-9_]*)*)\}:\s*$/) {
-        if (defined $current) {
-          @attachment_fields = split /,/, $2;
-          $current->{attachments} = [];
-          $attachment_rows = $1;
-          undef $attachment_rows if !$attachment_rows;
-        } else { $malformed++; }
-        next;
-      }
-      if ($line =~ /^      (.*)$/ && defined($attachment_rows)) {
-        my @values = csv_values($1);
-        if (@values == @attachment_fields) {
-          my %attachment;
-          $attachment{$attachment_fields[$_]} = $values[$_] for 0 .. $#attachment_fields;
-          push @{$current->{attachments}}, \%attachment;
-        } else {
-          $malformed++;
-        }
-        $attachment_rows--;
-        if (!$attachment_rows) {
-          undef $attachment_rows;
-          @attachment_fields = ();
-        }
-        next;
-      }
-      if ($line =~ /^    ([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/) {
-        if (defined $current) {
-          $current->{$1} = unquote($2);
-        } else { $malformed++; }
-        next;
-      }
-      if ($line =~ /^\s*$/) { next; }
-      if ($line =~ /^\s/) { $malformed++; next; }
-      last if $line =~ /^\S/;
-    }
-    $malformed++ if defined($attachment_rows) && $attachment_rows;
-    $malformed++ if defined($target_lines) && !@$target_lines;
-    $finish_current->();
-    close $fh;
-    print encode_json({declared => $header ? 0 + $declared : 0,
-      rows => \@rows, malformed => 0 + $malformed, header => 0 + $header});
+  perl -MJSON::PP -e "$(lavish_result_parser)"'
+    my ($form, $declared, $rows, $malformed) = lavish_result($ARGV[0], "prompts|feedback");
+    defined $form or exit 1;
+    print encode_json({declared => 0 + $declared, rows => $rows,
+      malformed => 0 + $malformed, header => $form eq "none" ? 0 : 1});
   ' "$1"
 }
 
@@ -824,6 +909,11 @@ cmd_choice_rows() {
       print length $choice->{mode}
         ? "$choice->{key}\t$answer\t$label\t$choice->{mode}\n"
         : "$choice->{key}\t$answer\t$label\n";
+    }
+    if ($doc->{malformed} || @rows != $doc->{declared}) {
+      print STDERR "error: the result is not fully accounted for: declared ",
+        $doc->{declared}, ", parsed ", scalar(@rows), ", malformed ", $doc->{malformed}, "\n";
+      exit 3;
     }
   ' "$selection"
 }

@@ -9,10 +9,11 @@
 # Each v2 worker uses a private server so plugin generations and launch-time
 # environment stay local to that worker. No shared service is reloaded.
 set -eu
+OPENCODE_BIN=${FM_OPENCODE_BIN:-opencode}
 
 major_version() {
   local version
-  version=$(opencode --version) || { echo 'error: cannot read OpenCode version' >&2; return 1; }
+  version=$("$OPENCODE_BIN" --version) || { echo 'error: cannot read OpenCode version' >&2; return 1; }
   if [[ "$version" =~ ^(opencode[[:space:]]+)?v?([12])\.[0-9]+\.[0-9]+([[:space:]+-].*)?$ ]]; then
     printf '%s\n' "${BASH_REMATCH[2]}"
   else
@@ -38,7 +39,6 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 [ "$(major_version)" = 2 ] || { echo 'error: this launcher requires OpenCode v2; respawn to select the installed adapter' >&2; exit 1; }
-export FM_OPENCODE_V2_WORKER=1
 command -v jq >/dev/null 2>&1 || { echo 'error: OpenCode v2 launch requires jq' >&2; exit 1; }
 directory=$(pwd -P)
 selection=null
@@ -54,7 +54,7 @@ if [ -n "$model" ] && [ "$model" != default ]; then
     # The vendor CLI can truncate a large catalog when stdout is a pipe.
     catalog=$(mktemp "${TMPDIR:-/tmp}/fm-opencode-models.XXXXXX")
     trap 'rm -f "$catalog"' EXIT
-    opencode api --standalone GET "/api/model?location[directory]=$encoded_directory" >"$catalog" || exit 1
+    "$OPENCODE_BIN" api --standalone GET "/api/model?location[directory]=$encoded_directory" >"$catalog" || exit 1
     jq -e '.data | type == "array"' "$catalog" >/dev/null || {
       echo 'error: OpenCode v2 returned an invalid model catalog' >&2
       exit 1
@@ -73,10 +73,10 @@ if [ -n "$model" ] && [ "$model" != default ]; then
 fi
 body=$(jq -cn --arg directory "$directory" --argjson model "$selection" \
   '{location:{directory:$directory},agent:"build",model:$model}')
-created=$(opencode api --standalone session.create --data "$body") || exit 1
+created=$("$OPENCODE_BIN" api --standalone session.create --data "$body") || exit 1
 session=$(printf '%s' "$created" | jq -er '.data.id | select(type == "string" and startswith("ses_"))') || {
   echo 'error: OpenCode v2 session.create returned no session id; refusing an unselected launch' >&2
   exit 1
 }
 export FM_OPENCODE_SESSION="$session"
-exec opencode --standalone --auto --session "$session" --prompt "$prompt"
+exec "$OPENCODE_BIN" --standalone --auto --session "$session" --prompt "$prompt"

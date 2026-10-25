@@ -218,6 +218,40 @@ export FM_REMOTE_JOB_TIMEOUT=5
 # shellcheck source=bin/fm-remote-job-lib.sh
 . "$ROOT/bin/fm-remote-job-lib.sh"
 
+# ps lstart follows the caller's locale (de_DE renders "Fr. 16 Okt. ..."),
+# while lock and claim ownership records are written by one process and
+# verified by others, including SSH callers with no locale. A recorded live
+# owner must still verify under a checker whose locale renders lstart
+# differently, or the checker declares it dead and a second worker splits the
+# queue - the z590 remote job worker churn.
+IDENTITY_LOCALE=
+while IFS= read -r CANDIDATE; do
+  [ -n "$IDENTITY_LOCALE" ] && break
+  case "$CANDIDATE" in C|C.*|POSIX|en_US*) continue ;; esac
+  [ "$(LC_ALL="$CANDIDATE" ps -p "$$" -o lstart= 2>/dev/null)" = "$(LC_ALL=C ps -p "$$" -o lstart= 2>/dev/null)" ] && continue
+  IDENTITY_LOCALE=$CANDIDATE
+done <<EOF
+$(locale -a 2>/dev/null)
+EOF
+if [ -z "$IDENTITY_LOCALE" ]; then
+  printf 'note: no installed locale renders ps lstart differently from C; locale-invariance case is inert here\n'
+fi
+if [ -n "$IDENTITY_LOCALE" ]; then
+  RECORDED_START=$(LC_ALL="$IDENTITY_LOCALE" fm_remote_job_process_start "$$")
+  CHECKED_START=$(LC_ALL=C fm_remote_job_process_start "$$")
+  [ "$RECORDED_START" = "$CHECKED_START" ] \
+    || fail "the process start identity changed with the caller's locale"$'\n'"  recorded under $IDENTITY_LOCALE: $RECORDED_START"$'\n'"  checked under C:               $CHECKED_START"
+  IDENTITY_RECORD="$TMP_ROOT/identity-record"
+  mkdir -p "$IDENTITY_RECORD"
+  printf '%s\n' "$$" > "$IDENTITY_RECORD/pid"
+  printf '%s\n' "$RECORDED_START" > "$IDENTITY_RECORD/start"
+  LC_ALL="$IDENTITY_LOCALE" fm_remote_job_process_command "$$" > "$IDENTITY_RECORD/command"
+  LC_ALL=C fm_remote_job_recorded_owner_alive "$IDENTITY_RECORD" \
+    || fail "a live owner recorded under $IDENTITY_LOCALE looked dead to a C-locale checker"
+  rm -rf -- "$IDENTITY_RECORD"
+  pass "lock and claim owner identity stays locale-invariant ($IDENTITY_LOCALE)"
+fi
+
 LOCAL_BIN_PARENT="$ACCOUNT_HOME/.local"
 LOCAL_BIN_TARGET="$TMP_ROOT/local-bin-target"
 mkdir -p "$LOCAL_BIN_PARENT" "$LOCAL_BIN_TARGET"
@@ -704,6 +738,9 @@ ERROR_BYTES=$(LC_ALL=C wc -c < "$FM_REMOTE_JOB_STDERR" | tr -d ' ')
 fm_remote_job_reap "$ACCOUNT_HOME" "$JOB_ID" || fail "the bounded-output job could not be reaped"
 pass "the worker drains bounded output without changing command results"
 
+# This case tests field validation, not startup or queue expiry.
+FM_REMOTE_JOB_QUEUE_TIMEOUT=60
+FM_REMOTE_JOB_TIMEOUT=10
 SIDE_EFFECT="$TMP_ROOT/side-effect"
 WORKER_PID=$(cat "$STATE_ROOT/worker.pid")
 fm_remote_job_stop_worker_tree "$WORKER_PID" \
@@ -716,7 +753,7 @@ rm -f -- "$JOB_DIR/argv"
 ln -s "$TMP_ROOT/not-an-argv" "$JOB_DIR/argv"
 fm_remote_job_ensure_worker "$REMOTE_ROOT" "$ACCOUNT_HOME" || fail "$FM_REMOTE_JOB_ERROR"
 fm_remote_job_wait "$ACCOUNT_HOME" "$JOB_ID" || fail "$FM_REMOTE_JOB_ERROR"
-[ "$FM_REMOTE_JOB_EXIT" -eq 126 ] || fail "the worker accepted a symlinked argv record"
+[ "$FM_REMOTE_JOB_EXIT" -eq 126 ] || fail "symlinked argv returned $FM_REMOTE_JOB_EXIT, expected refusal 126: $(cat "$FM_REMOTE_JOB_STDERR")"
 assert_absent "$SIDE_EFFECT" "the worker executed a job after its argv changed to a symlink"
 pass "the worker refuses symlinked job fields before command execution"
 

@@ -39,7 +39,7 @@
 # side sharing no root) refuses rather than permits. The publication target is
 # compared only against a maintainer scope or task consent. A fork carrying
 # landing configuration uses origin after fm-landing-remote.sh verifies it;
-# an incomplete remap refuses. Otherwise the first remote named upstream,
+# an incomplete remap refuses. Otherwise a remote marked gh-resolved=base, or the first remote named upstream,
 # github, or origin is reduced to lowercase host/owner/repo; a local-path remote
 # is resolved one hop through that repository's own origin, and left as
 # path:<abs> when unreadable. An unknown target never permits.
@@ -226,11 +226,10 @@ fm_role_git_common_dir() {
 # configured fork, otherwise gh's ordinary upstream/github/origin precedence.
 # Empty when the target is absent or a declared landing remap cannot be verified.
 fm_role_publication_target() {
-  local dir=$1 remote url='' landing_helper
+  local dir=$1 remote remotes url='' landing_helper
   if git -C "$dir" remote get-url upstream >/dev/null 2>&1 && {
     [ "$(git -C "$dir" config --local --get checkout.defaultRemote 2>/dev/null)" = origin ] ||
-      [ "$(git -C "$dir" config --local --get remote.pushDefault 2>/dev/null)" = origin ] ||
-      [ "$(git -C "$dir" config --local --get remote.origin.gh-resolved 2>/dev/null)" = base ];
+      [ "$(git -C "$dir" config --local --get remote.pushDefault 2>/dev/null)" = origin ];
   }; then
     landing_helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fm-landing-remote.sh"
     bash "$landing_helper" verify --repo "$dir" >/dev/null 2>&1 || return 0
@@ -238,6 +237,15 @@ fm_role_publication_target() {
     fm_role_remote_identity "$url" "$dir"
     return
   fi
+  remotes=$(git -C "$dir" remote 2>/dev/null) || return 0
+  while IFS= read -r remote; do
+    [ -n "$remote" ] || continue
+    if [ "$(git -C "$dir" config --get "remote.$remote.gh-resolved" 2>/dev/null)" = base ]; then
+      url=$(git -C "$dir" remote get-url "$remote" 2>/dev/null) || return 0
+      fm_role_remote_identity "$url" "$dir"
+      return
+    fi
+  done <<< "$remotes"
   for remote in upstream github origin; do
     if url=$(git -C "$dir" remote get-url "$remote" 2>/dev/null) && [ -n "$url" ]; then
       break

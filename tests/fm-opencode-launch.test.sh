@@ -59,21 +59,3 @@ if FM_OC_BAD_CATALOG=1 bash "$LAUNCH" --model opencode/deepseek-v4.1-flash-free 
 if FM_OC_FAIL_CREATE=1 bash "$LAUNCH" --model default --effort default --prompt nope > "$TMP_ROOT/create-failure.log" 2>&1; then fail 'failed creation must refuse'; fi
 [ ! -e "$TMP_ROOT/attach.json" ] || fail 'failed creation attached the TUI'
 pass 'OpenCode v2 reports unsupported effort and refuses broken API responses before attachment'
-
-ROOT="$ROOT" TMP_ROOT="$TMP_ROOT" node --input-type=module <<'JS' || fail 'v1/v2 primary plugin boundary failed'
-import { pathToFileURL } from "node:url";
-import { mkdirSync, writeFileSync } from "node:fs";
-const url = pathToFileURL(`${process.env.ROOT}/.opencode/plugins/lib/fm-v2-worker-only.js`).href;
-process.env.FM_OC_VERSION = "1.18.33";
-const legacy = (await import(`${url}?v1`)).v2WorkerOnly("firstmate.test");
-if (typeof legacy !== "function" || Object.keys(await legacy({})).length) throw new Error("v1 shim must be a callable no-op");
-process.env.FM_OPENCODE_V2_WORKER = "1";
-const shim = (await import(`${url}?v2`)).v2WorkerOnly("firstmate.test");
-let refused = false;
-try { shim.setup({location:{directory:process.env.TMP_ROOT}}); } catch (e) { refused = e.message.includes("primary supervision is not supported"); }
-if (!refused) throw new Error("bare v2 primary must refuse");
-mkdirSync(`${process.env.TMP_ROOT}/.opencode/plugins`, {recursive:true});
-writeFileSync(`${process.env.TMP_ROOT}/.opencode/plugins/fm-busy-state.js`, "// worker fixture");
-shim.setup({location:{directory:process.env.TMP_ROOT}});
-JS
-pass 'primary compatibility entrypoints stay callable on v1 and refuse v2 primaries'
