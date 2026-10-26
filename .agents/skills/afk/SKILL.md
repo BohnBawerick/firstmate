@@ -164,7 +164,7 @@ For herdr, idle-baseline submits first seek native agent-state showing a real tu
 A bordered-empty or ghost-only composer is recognized as empty where that backend uses composer confirmation, rather than mistaken for a swallowed Enter.
 `fm-send.sh` uses the same primitive only on its typed plane and exits non-zero when that plane's Enter is positively swallowed; ordinary local text steers use the durable inbox and do not treat doorbell submission as delivery proof.
 
-**Busy-queued Enter exception (opencode).** OpenCode keeps queued text visible while it is mid-turn, so the supported supervisor adapters delegate the final delivery decision to `fm_composer_queued_enter_verdict` in `bin/fm-composer-lib.sh` rather than treating visible text alone as a swallowed Enter.
+**Busy-queued Enter exception.** The [OpenCode adapter reference](../harness-adapters/references/harness/opencode.md#busy-queued-enter) owns version-specific queued-composer behavior; `fm_composer_queued_enter_verdict` in `bin/fm-composer-lib.sh` owns its delivery verdict.
 The daemon still clears its buffer only on the backend's `empty` success verdict; [`docs/tmux-backend.md`](../../../docs/tmux-backend.md), [`docs/herdr-backend.md`](../../../docs/herdr-backend.md), [`docs/rex-backend.md`](../../../docs/rex-backend.md#current-operation-and-safety), and [`docs/t3code-backend.md`](../../../docs/t3code-backend.md#away-mode) own the backend-specific confirmation signals.
 
 ### Classification policy

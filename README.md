@@ -42,11 +42,11 @@ Launching a supported harness inside it for your primary session instantiates yo
 ## Features
 
 - **One liaison** - you talk only to the first mate; it dispatches, supervises, escalates only real decisions, and reports plain outcomes.
-- **A visible crew** - every crewmate works in its own tmux window or Herdr workspace, or in an experimental Zellij tab, experimental cmux workspace, experimental Orca terminal, or experimental T3 Code thread you can watch or interact with; the first mate reconciles.
+- **A visible crew** - every crewmate has its own task window, tab, or thread you can watch or interact with; the first mate reconciles.
 - **Disposable worktrees** - each task runs in a clean [treehouse](https://github.com/kunchenguid/treehouse) git worktree, or an Orca-managed worktree when `backend=orca`, so parallel work on one repo never collides.
 - **Two task shapes** - ship tasks deliver authorized changes; scout tasks leave standalone investigation reports when the intake contract warrants separate research.
 - **Explicit project modes** - each project ships via `no-mistakes`, `direct-PR`, `local-only`, or one of those plus `+hardened` for the highest-rigor quality gate, with an optional `+yolo` merge-autonomy flag and an optional `branch=<prefix>` override for the default `fm/` ship-branch prefix.
-  Optional [forge bindings](docs/configuration.md#forge-selection-dataprojectsmd-forge-token) select Gerrit changes or Forgejo/Gitea pull requests.
+  Optional [forge bindings](docs/configuration.md#forge-selection-dataprojectsmd-forge-token) select how the project publishes changes for review.
 - **Self-repo boundary** - a home runs as firstmate user/operator by default, so a firstmate bug is diagnosed and patched locally but never pushed, PRed, issued, commented, or forked upstream on its own; publishing to firstmate's own repository needs the `config/firstmate-role` maintainer opt-in or a per-task captain consent ([schema](docs/configuration.md#firstmate-role-configfirstmate-role)).
 - **Optional secondmates** - opt in to persistent second mates that run from isolated firstmate homes with their own `FM_HOME`, state, projects, and session lock, either locally or as a whole home on an SSH-reachable host, with guarded updates and recovery that never turns an unavailable remote route into a local replacement.
 - **Event-driven, zero-token supervision** - a bash watcher sleeps on the fleet and wakes the first mate only when something needs you; verified primary harnesses also get a turn-end backstop that blocks or follows up on a blind stop when work is under way and supervision is not live.

@@ -1125,7 +1125,7 @@ mate <secondmate-id>: <harness> [<model>] [<effort>]
 
 Override ids use letters, digits, dots, underscores, and hyphens, and matching is case-sensitive.
 A mate line replaces the default line for that exact secondmate id, so raising the default pin cannot migrate a mate the captain pinned separately.
-Precedence is the override for that mate's id, then the default line, then `config/crew-harness`, then the primary's own harness.
+Within this file, the override for that mate's id wins over the default line.
 An override whose harness token is `default` skips the file's default line and falls back to `config/crew-harness`, then the primary's own harness, contributing no model or effort.
 Blank lines and `#` comments stay legal anywhere, and a mate line is honored wherever it sits in the file.
 In a file that declares an override, a second default line, two overrides for one id, an override with no tokens or more than three, or a `mate` keyword naming an invalid secondmate id is an actionable error: resolution exits nonzero naming the file's line number and prints no token, so malformed pin config cannot resolve to a fallback in silence.
@@ -1135,7 +1135,7 @@ A bare `<harness>` preserves the previous behavior: harness only, with no model 
 When the harness token is absent or `default`, secondmate launch falls back through `config/crew-harness` and then the primary's own harness, and no model or effort is read from that file.
 
 `config/secondmate-harness.d/<id>` is an optional local, gitignored per-secondmate pin in the same one-line format, keyed by the secondmate's registry id.
-When its harness token names an adapter, that whole line governs the mate and that file supplies no model or effort for it, so model and effort are never merged across the two files.
+When its harness token names an adapter, that whole line supplies the mate's harness, model, and effort; no model or effort is inherited from `config/secondmate-harness`.
 When it is absent, blank, comment-only, or `default`, the mate resolves through `config/secondmate-harness` exactly as an unpinned mate does.
 Resolution for a secondmate is therefore an explicit per-spawn flag, then its own pin file, then the inline mate override, then the shared default, then `config/crew-harness`, then the primary's own harness.
 A per-mate pin uses the same validation as the shared pin on each launch path.

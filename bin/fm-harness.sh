@@ -4,21 +4,15 @@
 #        fm-harness.sh crew             print the effective CREWMATE harness
 #                                        (config/crew-harness; "default" resolves to own)
 #        fm-harness.sh secondmate [id]  print the harness the PRIMARY uses to launch
-#                                        SECONDMATE agents: config/secondmate-harness ->
-#                                        config/crew-harness -> own. "default" or absent
-#                                        defers to the crew resolution, so an unset
-#                                        secondmate-harness behaves exactly as the crew
-#                                        harness did before this knob existed. With a
-#                                        secondmate id, a "mate <id>:" override line wins
-#                                        over the default line.
+#                                        SECONDMATE agents, resolving the effective
+#                                        pin for id when supplied, or the shared
+#                                        default without an id.
 #        fm-harness.sh secondmate-model [id]
-#                                        print the optional MODEL token from
-#                                        config/secondmate-harness, or empty when absent.
-#                                        An id selects that mate's override line first.
+#                                        print the optional MODEL token from the
+#                                        effective pin, or empty when absent.
 #        fm-harness.sh secondmate-effort [id]
-#                                        print the optional EFFORT token from
-#                                        config/secondmate-harness, or empty when absent.
-#                                        An id selects that mate's override line first.
+#                                        print the optional EFFORT token from the
+#                                        effective pin, or empty when absent.
 #        fm-harness.sh secondmate-source [<id>]
 #                                        print the config-relative path of the pin file
 #                                        in effect (config/secondmate-harness.d/<id> or
@@ -608,12 +602,9 @@ secondmate_source() {
   printf 'config/secondmate-harness\n'
 }
 
-# Echo the line that governs a secondmate id: its "mate <id>:" override when the
-# file names one, otherwise the file's default line. Nothing is echoed when the
-# file is absent or holds neither. A malformed override file errors on every
-# read path, whether or not an id was passed, so the refusal never depends on
-# the caller asking about the right mate. A file that declares no override is
-# never malformed here: it keeps the legacy first-line parse.
+# Validate the shared file before selecting any pin, so a per-mate .d pin
+# cannot hide malformed inline overrides for another mate.
+# docs/configuration.md owns pin schemas and precedence.
 secondmate_line() {
   local id=${1:-} i line
   [ -z "$id" ] || validate_secondmate_id "$id" || return 2

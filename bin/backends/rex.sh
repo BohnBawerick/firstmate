@@ -880,6 +880,8 @@ fm_backend_rex_delivery_busy() {  # <target> [busy-harness]
 # verify-and-retry-Enter loop (fm_composer_submit_retry_core) against the
 # shared composer verdict, and convert a still-pending composer whose agent is
 # visibly busy into a queued delivery (fm_composer_queued_enter_verdict).
+# An unknown composer confirms delivery only when its proven-idle owner
+# becomes busy after typing, with no blocking dialog.
 # Echoes empty|pending|pending-unproven|unknown|send-failed.
 fm_backend_rex_send_text_submit() {  # <target> <text> <retries> <enter-sleep> <settle> [expected-label]
   local target=$1 text=$2 retries=$3 sleep_s=$4 settle=$5 expected_label=${6:-} verdict baseline identity busy_harness

@@ -66,7 +66,8 @@ Every CLI call passes the recorded session with `-s`, because the CLI otherwise 
 
 `send -- <text>` sends literal, unsubmitted input, and the caller sends Enter separately.
 Keys map to Rex names (`enter`, `escape`, `tab`, `ctrl+c`, `ctrl+u`); any other key is refused rather than guessed.
-Verified submit types the payload once, retries only Enter through the shared composer classifier, and converts still-pending text to success only when the shared queued-Enter policy accepts the trusted native busy state or rendered busy footer.
+Verified submit types the payload once and retries only Enter through the shared composer classifier.
+The [Rex submit primitive](../bin/backends/rex.sh) owns queued-delivery evidence and confirmation when the same composer owner changes from proven idle to busy.
 
 `capture --trim` returns the scrollback plus the screen as plain text, and the adapter trims the tail locally.
 Rex has no viewport-only capture, so the visible viewport is derived from one styled read through the `format` block method (`vt` with `extra_cursor`), which returns the scrollback plus the full screen grid, blank rows included, and then the cursor position as a trailing `ESC[<row>;<col>H`.

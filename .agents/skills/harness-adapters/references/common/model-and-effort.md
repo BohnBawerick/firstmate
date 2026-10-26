@@ -5,7 +5,7 @@ Add `references/common/dispatch.md` for configured profile precedence.
 
 ## Axes and precedence
 
-`../../../bin/fm-spawn.sh` accepts concrete `--harness`, `--model`, and `--effort` values selected at intake; scripts never parse natural-language dispatch rules.
+`../../../bin/fm-spawn.sh` accepts concrete `--harness`, `--model`, and `--effort` values selected at intake.
 The tool reference records verified flags, accepted values, omission behavior, and discovery for pane-backed launches.
 For T3 Code, resolve both axes through the [provider catalog contract](../../../../../docs/t3code-backend.md#provider-instances-and-models) before selecting a profile.
 

@@ -274,7 +274,7 @@ Ordinary child teardown uses its own home's configuration; retiring a whole home
 `bin/fm-busy-lib.sh` is the single owner of what "this worker is busy" means, and `bin/fm-busy-event.sh` is the only writer of the per-task records it reads.
 Every classification returns a verdict of busy, idle, unknown, or dead together with the source that produced it, so a consumer or a diagnostic can never confuse semantic state with a fallback.
 
-Each converted adapter reports its own turn lifecycle through a machine-readable contract the vendor already exposes, rather than through rendered footer text: Pi and pi-signed through the Firstmate-owned extension's `agent_start` and `agent_settled` confirmed by `ctx.isIdle()`, omp through its extension's `agent_start` and `agent_end` without `willContinue`, OpenCode through its plugin's semantic `session.execution.*`, Claude through owned `UserPromptSubmit`, `Stop`, `StopFailure`, and `SessionEnd` hooks, Muse through its session log, and Cursor through its conversation transcript.
+Each converted adapter reports its turn lifecycle through the harness's machine-readable [semantic sources](../bin/fm-busy-lib.sh), which own the per-harness event mapping and trust rules.
 Kimi behind Pi inherits Pi's lifecycle.
 Without native backend evidence, Codex and standalone Kimi classify unknown behind explicit probes until a semantic source is live-verified for them, and Grok, Rovo, and AGY each keep one clearly isolated rendered-tail busy fallback that can only ever classify their own task.
 The agy Stop hook remains a turn-end notification rather than a busy-state writer, because Escape need not fire Stop.
