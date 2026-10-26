@@ -163,11 +163,19 @@ case "$cmd:$sub" in
   send:)
     has_block "$sid" "$bid" || notfound "block"
     [ -n "$p0" ] || exit 2
+    [ ! -f "$D/send-fail" ] || exit 4
     printf '%s\n' "$p0" >>"$D/sent" ;;
   send-key:)
     has_block "$sid" "$bid" || notfound "block"
     case "$p0" in enter|escape|tab|ctrl+c|ctrl+u) ;; *) exit 2 ;; esac
-    printf '%s\n' "$p0" >>"$D/keys" ;;
+    printf '%s\n' "$p0" >>"$D/keys"
+    if [ "$p0" = enter ]; then
+      u=${bid#block:}
+      for format in vt txt; do
+        [ ! -f "$D/after-enter/$u.$format" ] || cp "$D/after-enter/$u.$format" "$D/capture/$u.$format"
+      done
+      [ ! -f "$D/after-enter/$u.json" ] || cp "$D/after-enter/$u.json" "$D/status/$u.json"
+    fi ;;
   do:)
     has_session "$sid" || notfound "session"
     [ ! -f "$D/do-fail" ] || exit 3
@@ -553,6 +561,54 @@ test_send_literal_and_keys() {
   assert_equals enter "$(cat "$dir/fake/keys")" "send_text_line must submit with Enter"
   assert_scoped_calls "$dir" "input"
   pass "rex input: literal text after --, no call for empty input, verified key names only, line submit"
+}
+
+test_submit_confirms_scoped_turn_and_queue_evidence() {
+  local dir out sid bid t u harness mode expected before after native_before native_after
+  local blank=$'transcript\n────────────────────────\n\n────────────────────────\n footer'
+  local pending=$'transcript\n────────────────────────\nsteer\n────────────────────────\n footer'
+  for harness in pi polytoken; do
+    for mode in transition queued busy-blank blocked idle-blank unknown-baseline swallowed dialog send-failed; do
+      dir=$(new_case "submit-$harness-$mode")
+      out=$(rex_env "$dir" 'fm_backend_rex_create_task fm-alpha /tmp'); read -r sid _ bid <<<"$out"
+      t="${sid#session:}:${bid#block:}"; u=${bid#block:}
+      write_process "$dir" "$bid" "{\"foreground\":{\"pid\":4242,\"name\":\"$harness\"},\"ancestors\":[],\"last_exit\":null}"
+      before="$blank"; after="$blank"; expected=unknown
+      [ "$harness" != polytoken ] || after="$after"$'\n Running for 1.25s'
+      case "$mode" in
+        transition) expected=empty ;;
+        queued) before="$after"; after="$pending${after#"$blank"}"; expected=empty ;;
+        busy-blank) before="$after" ;;
+        idle-blank) after="$blank"; expected=empty ;;
+        unknown-baseline) before='' ;;
+        swallowed) after="$pending"; expected=pending ;;
+        dialog) after="$after"$'\nBackground work is running\n❯ 1. Exit and stop tasks\nEnter to confirm · Esc to cancel' ;;
+        send-failed) touch "$dir/fake/send-fail"; expected=send-failed ;;
+      esac
+      mkdir -p "$dir/fake/after-enter"
+      if [ "$harness" = pi ] || [ "$mode" = blocked ]; then
+        native_before=idle; native_after=working
+        case "$mode" in queued|busy-blank) native_before=working ;; blocked) native_before=blocked ;; idle-blank|swallowed) native_after=idle ;; esac
+        if [ "$mode" != unknown-baseline ]; then
+          printf '{"records":[{"state":"%s","owner":{"pid":4242}}]}\n' "$native_before" > "$dir/fake/status/$u.json"
+        fi
+        printf '{"records":[{"state":"%s","owner":{"pid":4242}}]}\n' "$native_after" > "$dir/fake/after-enter/$u.json"
+      fi
+      printf '%s\n' "$before" > "$dir/fake/capture/$u.vt"
+      printf '%s\n' "$before" > "$dir/fake/capture/$u.txt"
+      printf '%s\n' "$after" > "$dir/fake/after-enter/$u.vt"
+      printf '%s\n' "$after" > "$dir/fake/after-enter/$u.txt"
+      out=$(rex_env "$dir" "fm_backend_send_text_submit rex '$t' steer 2 0 0")
+      assert_equals "$expected" "$out" "$harness $mode submit verdict"
+      if [ "$mode" = send-failed ]; then
+        assert_absent "$dir/fake/keys" 'a failed literal send must not press Enter'
+      else
+        assert_equals steer "$(cat "$dir/fake/sent")" 'submit must type the payload only once'
+        [ "$(wc -l < "$dir/fake/keys" | tr -d ' ')" -le 2 ] || fail 'submit exceeded its Enter budget'
+      fi
+    done
+  done
+  pass 'Rex submit confirms scoped idle-to-busy and queued input, preserving refusal cases'
 }
 
 # --- push events -------------------------------------------------------------
@@ -1114,6 +1170,7 @@ test_agent_state_from_process_view
 test_native_busy_trusts_live_owner_only
 test_current_path_follows_foreground
 test_send_literal_and_keys
+test_submit_confirms_scoped_turn_and_queue_evidence
 test_kill_closes_and_retires_per_home_session
 test_kill_never_retires_a_foreign_session
 test_kill_refuses_without_proof

@@ -1493,15 +1493,15 @@ meta_value() {
 # Remove only Polytoken's firstmate-generated worktree wiring, as named by
 # fm_control_harness_wiring_paths. Its tracked hook and facet layers belong to
 # the project. Other harnesses retain their existing worktree-return cleanup.
-remove_harness_worktree_wiring() {  # <worktree>
-  local wt=$1 path
-  [ "$(meta_value "$META" harness)" = polytoken ] || return 0
+remove_harness_worktree_wiring() {  # <worktree> <harness> <state> <task-id>
+  local wt=$1 harness=$2 state=$3 id=$4 path
+  [ "$harness" = polytoken ] || return 0
   while IFS= read -r path; do
     case "$path" in "$wt"/*) ;; *) continue ;; esac
     git -C "$wt" ls-files --error-unmatch -- "$path" >/dev/null 2>&1 && continue
-    rm -f "$path"
+    rm -f "$path" || return 1
   done <<EOF
-$(fm_control_harness_wiring_paths "$(meta_value "$META" harness)" "$wt" "$STATE" "$ID")
+$(fm_control_harness_wiring_paths "$harness" "$wt" "$state" "$id")
 EOF
 }
 
@@ -3462,6 +3462,7 @@ cleanup_firstmate_home_children() {
         validate_child_worktree_for_removal "$child_wt" "$child_proj" >/dev/null || return 1
         rm -f "$child_wt/.opencode/plugins/fm-turn-end.js"
         remove_turnend_worktree_pointers "$child_wt"
+        remove_harness_worktree_wiring "$child_wt" "$(meta_value "$child_meta" harness)" "$sub_state" "$child_id" || return 1
       fi
       fm_backend_remove_worktree "$child_backend" "$child_orca_worktree_id" || return 1
     elif [ -n "$child_wt" ] && [ -d "$child_wt" ]; then
@@ -3483,6 +3484,7 @@ cleanup_firstmate_home_children() {
           "$child_wt/.opencode/plugins/fm-busy-state.js" \
           "$child_wt/.fm-grok-turnend" "$child_wt/.fm-kimi-turnend"
         remove_turnend_worktree_pointers "$child_wt"
+        remove_harness_worktree_wiring "$child_wt" "$(meta_value "$child_meta" harness)" "$sub_state" "$child_id" || return 1
         if [ "$child_backend" = t3code ]; then
           "$SCRIPT_DIR/fm-t3code-env-cleanup.sh" "$child_wt" "$sub_state" "$child_id" || return 1
           if [ "$(meta_value "$child_meta" harness)" = claude ]; then
@@ -3827,7 +3829,7 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
     fi
     rm -f "$WT/.opencode/plugins/fm-turn-end.js" "$WT/.opencode/plugins/fm-busy-state.js"
     remove_turnend_worktree_pointers "$WT"
-    remove_harness_worktree_wiring "$WT"
+    remove_harness_worktree_wiring "$WT" "$(meta_value "$META" harness)" "$STATE" "$ID"
   fi
   if [ -n "$T_ORCA" ]; then
     fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" \
@@ -3848,7 +3850,7 @@ elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
   # its next holder.
   rm -f "$WT/.opencode/plugins/fm-turn-end.js"
   remove_turnend_worktree_pointers "$WT"
-  remove_harness_worktree_wiring "$WT"
+  remove_harness_worktree_wiring "$WT" "$(meta_value "$META" harness)" "$STATE" "$ID"
   if [ "$BACKEND" = t3code ]; then
     "$SCRIPT_DIR/fm-t3code-env-cleanup.sh" "$WT" "$STATE" "$ID" || exit 1
     if [ "$(meta_value "$META" harness)" = claude ]; then

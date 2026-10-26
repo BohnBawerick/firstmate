@@ -871,9 +871,9 @@ fm_backend_rex_composer_state() {  # <target> [expected-label] -> empty|pending|
 
 # fm_backend_rex_delivery_busy: busy|idle|unknown for the queued-Enter
 # conversion: a trusted native working state, else the rendered busy footer.
-fm_backend_rex_delivery_busy() {  # <target>
+fm_backend_rex_delivery_busy() {  # <target> [busy-harness]
   [ "$(fm_backend_rex_busy_state "$1")" != busy ] || { printf 'busy'; return 0; }
-  fm_backend_rex_rendered_busy_state "$1"
+  fm_backend_rex_rendered_busy_state "$1" "${2:-}"
 }
 
 # fm_backend_rex_send_text_submit: type <text> once, then drive the shared
@@ -882,8 +882,14 @@ fm_backend_rex_delivery_busy() {  # <target>
 # visibly busy into a queued delivery (fm_composer_queued_enter_verdict).
 # Echoes empty|pending|pending-unproven|unknown|send-failed.
 fm_backend_rex_send_text_submit() {  # <target> <text> <retries> <enter-sleep> <settle> [expected-label]
-  local target=$1 text=$2 retries=$3 sleep_s=$4 settle=$5 expected_label=${6:-} verdict
+  local target=$1 text=$2 retries=$3 sleep_s=$4 settle=$5 expected_label=${6:-} verdict baseline identity busy_harness
   fm_backend_rex_parse_target "$target" || { printf 'unknown'; return 0; }
+  identity=$(fm_backend_rex_composer_identity "$target" 2>/dev/null) || identity=
+  busy_harness=${identity%%$'\t'*}
+  case "${identity#*$'\t'}" in
+    idle|done) baseline=idle ;;
+    *) baseline=unknown ;;
+  esac
   fm_backend_rex_send_literal "$target" "$text" "$expected_label" || {
     printf 'send-failed'
     return 0
@@ -892,7 +898,11 @@ fm_backend_rex_send_text_submit() {  # <target> <text> <retries> <enter-sleep> <
   verdict=$(fm_composer_submit_retry_core fm_backend_rex_send_key fm_backend_rex_composer_state \
     "$target" "$retries" "$sleep_s" "$expected_label")
   if [ "$verdict" = pending ]; then
-    verdict=$(fm_composer_queued_enter_verdict "$verdict" "$(fm_backend_rex_delivery_busy "$target")")
+    verdict=$(fm_composer_queued_enter_verdict "$verdict" "$(fm_backend_rex_delivery_busy "$target" "$busy_harness")")
+  elif [ "$verdict" = unknown ] && [ "$baseline" = idle ] \
+    && ! fm_composer_blocking_dialog_noted >/dev/null \
+    && [ "$(fm_backend_rex_delivery_busy "$target" "$busy_harness")" = busy ]; then
+    verdict=empty
   fi
   printf '%s' "$verdict"
 }

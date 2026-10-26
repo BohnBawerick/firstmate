@@ -2971,13 +2971,50 @@ test_teardown_preserves_opencode_busy_plugin_on_pool_return() {
 }
 
 seed_polytoken_wiring() {
-  local case_dir=$1
+  local wt=${2:-$1/wt} state=${3:-$1/state} id=${4:-task-x1}
   (
     # shellcheck source=/dev/null
     . "$ROOT/bin/fm-polytoken-lib.sh"
-    fm_polytoken_write_facet "$case_dir/wt" "$case_dir/state/task-x1.inbox"
-    fm_polytoken_write_hooks "$case_dir/wt" "$(fm_polytoken_busy_script "$case_dir/state" task-x1)"
+    fm_polytoken_write_facet "$wt" "$state/$id.inbox"
+    fm_polytoken_write_hooks "$wt" "$(fm_polytoken_busy_script "$state" "$id")"
   ) || fail "seeding the generated polytoken wiring failed"
+}
+
+test_forced_secondmate_retires_child_polytoken_wiring() {
+  local case_dir home wt tracked rc path
+  for tracked in none hooks.json facets/firstmate-worker.md; do
+    case_dir=$(make_case "polytoken-child-${tracked##*/}")
+    write_meta "$case_dir" local-only secondmate
+    home="$case_dir/secondmate-home"
+    mkdir -p "$home/state" "$home/data" "$home/config" "$home/projects"
+    printf '%s\n' task-x1 > "$home/.fm-secondmate-home"
+    printf 'home=%s\n' "$home" >> "$case_dir/state/task-x1.meta"
+    wt="$case_dir/child-wt"
+    git -C "$case_dir/project" worktree add -q -b fm/child-poly "$wt" main
+    fm_write_meta "$home/state/child-poly.meta" window=firstmate:fm-child-poly \
+      endpoint_task_id=child-poly "worktree=$wt" "project=$case_dir/project" \
+      kind=scout mode=local-only harness=polytoken
+    seed_polytoken_wiring "$case_dir" "$wt" "$home/state" child-poly
+    printf '.polytoken/\n' >> "$(git -C "$wt" rev-parse --git-path info/exclude)"
+    if [ "$tracked" != none ]; then
+      git -C "$wt" add -f ".polytoken/$tracked"
+      git -C "$wt" -c user.email=t@t -c user.name=t commit -qm 'project layer'
+      cp "$wt/.polytoken/$tracked" "$case_dir/tracked-layer"
+    fi
+    add_treehouse_clean_fd "$case_dir"
+    rc=0
+    mkdir -p "$case_dir/primary-home"
+    FM_HOME="$case_dir/primary-home" run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+    expect_code 0 "$rc" "child Polytoken teardown failed: $(cat "$case_dir/stderr")"
+    for path in hooks.json facets/firstmate-worker.md; do
+      if [ "$path" = "$tracked" ]; then
+        cmp -s "$wt/.polytoken/$path" "$case_dir/tracked-layer" || fail "child cleanup changed tracked $path"
+      else
+        assert_absent "$wt/.polytoken/$path" "child cleanup left generated $path in its returned slot"
+      fi
+    done
+  done
+  pass 'forced secondmate cleanup retires child Polytoken wiring and preserves either tracked layer'
 }
 
 test_teardown_retires_polytoken_wiring_on_pool_return() {
@@ -5894,6 +5931,7 @@ test_secondmate_pr_ready_line_follows_green_report_with_trailing_text
 test_secondmate_home_teardown_delivers_final_line_or_refuses
 test_teardown_missing_busy_sidecar_completes
 test_teardown_retires_polytoken_wiring_on_pool_return
+test_forced_secondmate_retires_child_polytoken_wiring
 test_teardown_preserves_tracked_polytoken_layer
 test_teardown_preserves_ignored_project_polytoken_layer
 test_teardown_leaves_polytoken_layer_for_other_harnesses
