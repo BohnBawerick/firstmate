@@ -41,6 +41,13 @@ pass "disposable watcher refuses inherited state outside its marked lab"
 
 drain_and_ack() {  # <state>
   local state=$1 err sequence generation
+  # Reclaim a stopped watcher's retained lock through the recovery owner.
+  FM_STATE_OVERRIDE="$state" bash -c '
+    # shellcheck disable=SC1090,SC1091
+    . "$1"
+    fm_lock_try_acquire "$STATE/.watch.lock" || exit 1
+    fm_lock_release "$STATE/.watch.lock"
+  ' _ "$LIB" || return 1
   err="$state/.test-drain.err"
   FM_STATE_OVERRIDE="$state" "$DRAIN" >/dev/null 2> "$err" || return 1
   sequence=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through \([0-9][0-9]*\) --recovery-generation [A-Za-z0-9._-][A-Za-z0-9._-]*$/\1/p' "$err")
@@ -1314,7 +1321,7 @@ test_arm_fails_loud_when_no_fresh_watcher_confirmable() {
 }
 
 test_cycle_exit_ledger_links_successor_and_stays_bounded() {
-  local dir state fakebin armout check_file first_arm successor_arm successor_pid i size iteration
+  local dir state fakebin armout check_file first_arm successor_arm successor_pid holder i size iteration
   dir=$(make_case cycle-ledger)
   state="$dir/state"
   fakebin="$dir/fakebin"
@@ -1351,13 +1358,41 @@ SH
   grep -qF "watcher: started pid=$successor_pid" "$armout" || fail "successor ledger cycle did not start"
   grep -q "arm_pid=$first_arm.*successor=started:$successor_pid" "$state/.watch-cycle-exits.log" \
     || fail "predecessor ledger record was not linked to its verified successor"
+  if drain_and_ack "$state"; then
+    fail "ledger recovery accepted a live watcher"
+  fi
+  [ "$(cat "$state/.watch.lock/pid")" = "$successor_pid" ] \
+    || fail "ledger recovery removed the live watcher's lock"
+  # Force cleanup to retain stale evidence instead of relying on signal timing.
+  FM_STATE_OVERRIDE="$state" bash -c '
+    # shellcheck disable=SC1090,SC1091
+    . "$1"
+    fm_lock_acquire_wait "$STATE/.watcher-down.lock" || exit 1
+    : > "$2"
+    while [ ! -e "$3" ]; do sleep 0.05; done
+    fm_lock_release "$STATE/.watcher-down.lock"
+  ' _ "$LIB" "$dir/marker-held" "$dir/marker-release" &
+  holder=$!
+  fm_test_track_pid "$holder"
+  i=0
+  while [ "$i" -lt 100 ] && [ ! -e "$dir/marker-held" ]; do
+    sleep 0.05
+    i=$((i + 1))
+  done
+  [ -e "$dir/marker-held" ] || fail "ledger marker lock was not acquired"
   kill -HUP "$successor_arm" 2>/dev/null || true
-  wait "$successor_arm" 2>/dev/null || true
+  wait_for_exit "$successor_arm" "$ARM_FAIL_EXIT_POLLS"
+  [ "$?" -eq 129 ] || fail "interrupted ledger arm did not stop with HUP"
+  [ "$(cat "$state/.watch.lock/pid")" = "$successor_pid" ] \
+    || fail "interrupted ledger watcher lost its stale lock evidence"
+  : > "$dir/marker-release"
+  wait "$holder" || fail "ledger marker lock was not released"
   # The forced interruption is a watcher-down interval. Consume the prior
   # delivered wake before beginning independent ledger cycles, just as the
   # recovery handling turn does, so this fixture does not intentionally carry a
   # durable wake into the next arm.
   drain_and_ack "$state" || fail "recovery drain after forced arm interruption failed"
+  assert_absent "$state/.watch.lock" "ledger recovery left a stale watcher lock"
 
   # Produce enough short cycles to cross a deliberately small cap. The cap is
   # applied by the arm layer itself and keeps only complete ledger records.
