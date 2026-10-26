@@ -665,8 +665,8 @@ test_firstmate_repo_reads_pr_back_merged() {
     "pr-readback: the merged PR was not verified"
   assert_grep "number=7" "$case_dir/gh.log" \
     "pr-readback: the recorded PR was not the one read"
-  assert_grep '^host=github.com api graphql ' "$case_dir/gh.log" \
-    "pr-readback: the recorded host was not passed to the forge"
+  grep -q '^host=github.com api graphql ' "$case_dir/gh.log" \
+    || fail "pr-readback: the recorded host was not passed to the forge"
   pass "fm-merge-local reads a recorded PR back as merged after the push"
 }
 

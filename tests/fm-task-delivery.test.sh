@@ -286,8 +286,8 @@ test_promote_requires_and_records_the_delivery_contract() {
   status=$?
   [ "$status" -ne 0 ] || fail "promotion without writable instruction storage should exit non-zero"
   assert_grep 'kind=scout' "$meta" "failed instruction publication still promoted the task"
-  assert_no_grep '^mode=' "$meta" "failed instruction publication recorded a delivery mode"
-  assert_no_grep '^yolo=' "$meta" "failed instruction publication recorded a merge posture"
+  ! grep -q '^mode=' "$meta" || fail "failed instruction publication recorded a delivery mode"
+  ! grep -q '^yolo=' "$meta" || fail "failed instruction publication recorded a merge posture"
 
   instructions_path="$home/data/promote-d1/ship-instructions.md"
   mkdir -p "$instructions_path"
@@ -298,8 +298,8 @@ test_promote_requires_and_records_the_delivery_contract() {
   assert_contains "$out" "ship instructions path is a directory" \
     "promotion did not explain the invalid instruction destination"
   assert_grep 'kind=scout' "$meta" "invalid instruction destination still promoted the task"
-  assert_no_grep '^mode=' "$meta" "invalid instruction destination recorded a delivery mode"
-  assert_no_grep '^yolo=' "$meta" "invalid instruction destination recorded a merge posture"
+  ! grep -q '^mode=' "$meta" || fail "invalid instruction destination recorded a delivery mode"
+  ! grep -q '^yolo=' "$meta" || fail "invalid instruction destination recorded a merge posture"
   rmdir "$instructions_path"
 
   out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" promote-d1 --mode direct-PR --yolo on 2>&1)
@@ -946,7 +946,7 @@ EOF
   # ...and the only keys added are the two additive ones. The record also
   # carries the ship branch the spawn selected.
   keys=$(cut -d= -f1 "$meta" | grep -vx -e quality -e base_sha | sort | tr '\n' ' ')
-  [ "$keys" = "branch busy_gen effort endpoint_task_id harness kind mode model project spawn_gen tasktmp window worktree yolo " ] \
+  [ "$keys" = "approval_mode branch busy_gen effort endpoint_task_id harness kind mode model project spawn_gen tasktmp window worktree yolo " ] \
     || fail "the ship task record gained or lost a key beyond the additive quality= and base_sha=; this pin is deliberate, so change it only with the callers that read the record: '$keys'"
   # The success line three callers read is untouched too.
   assert_contains "$out" "spawned quality-meta-i1 harness=claude kind=ship mode=no-mistakes yolo=off window=" \
