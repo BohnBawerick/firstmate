@@ -43,10 +43,13 @@ if [ "$#" -eq 1 ]; then
   exit
 fi
 
+# shellcheck source=bin/fm-gate-refuse-lib.sh
 . "$SCRIPT_DIR/fm-gate-refuse-lib.sh"
 fm_refuse_if_gate_agent
+# shellcheck source=bin/fm-session-lock-lib.sh
 . "$SCRIPT_DIR/fm-session-lock-lib.sh"
 fm_require_session_lock "$STATE" "answer a worker question" || exit 1
+# shellcheck source=bin/fm-lease-lib.sh
 . "$SCRIPT_DIR/fm-lease-lib.sh"
 ANSWERS=
 trap 'rm -f "$ANSWERS"; fm_lease_guard_release' EXIT

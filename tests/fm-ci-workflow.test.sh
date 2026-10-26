@@ -335,6 +335,7 @@ Behavior portable serial 6
 Behavior portable serial 7
 Behavior portable serial 8
 Behavior portable serial 9
+Behavior portable serial 10
 Behavior tests (Herdr)
 Behavior timing aggregate
 Stock macOS Bash snapshot compatibility

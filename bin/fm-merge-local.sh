@@ -275,7 +275,7 @@ readback_attempt=1
 while :; do
   FM_PR_RECORD_STATE=
   FM_PR_RECORD_MERGED=
-  fm_pr_github_read_record "$FM_PR_OWNER" "$FM_PR_REPO" "$FM_PR_NUMBER" || true
+  fm_pr_github_read_record "$FM_PR_HOST" "$FM_PR_OWNER" "$FM_PR_REPO" "$FM_PR_NUMBER" || true
   [ "$FM_PR_RECORD_MERGED" != true ] || break
   if [ "$readback_attempt" -ge 5 ]; then
     echo "error: $FORK_REMOTE/$DEFAULT now holds local $DEFAULT, but $PR_URL does not read back as merged (state=${FM_PR_RECORD_STATE:-unreadable})" >&2

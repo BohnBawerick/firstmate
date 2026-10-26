@@ -35,6 +35,7 @@ ID=$2
 fm_refuse_if_gate_agent
 STATE=${FM_STATE_OVERRIDE:-$FM_HOME/state}
 CONFIG=${FM_CONFIG_OVERRIDE:-$FM_HOME/config}
+# shellcheck source=bin/fm-session-lock-lib.sh
 . "$SCRIPT_DIR/fm-session-lock-lib.sh"
 fm_require_session_lock "$STATE" "apply managed approval failover" || exit 1
 # shellcheck source=bin/fm-backend.sh

@@ -64,6 +64,7 @@ watcher_cycle() {
       || fail "$label: watcher did not complete a poll with the expected outcome within ${CYCLE_BOUND}s"
     CYCLE_WOKE=1
   fi
+  # shellcheck disable=SC2034 # Read by the live guard and isolated fixture tests.
   CYCLE_REASON="$reason"
   say "$label -> exit=$rc woke=$CYCLE_WOKE reason=${reason:-none}"
   cat "$out" >> "$TRANSCRIPT"

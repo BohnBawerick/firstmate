@@ -532,7 +532,7 @@ make_fake_gh() {
   fakebin=$(fm_fakebin "$1")
   cat > "$fakebin/gh" <<'SH'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$FAKE_GH_LOG"
+printf 'host=%s %s\n' "$GH_HOST" "$*" >> "$FAKE_GH_LOG"
 case "${FAKE_GH_STATE:-MERGED}" in
   MERGED) printf 'state=MERGED\nmerged=true\n' ;;
   *) printf 'state=%s\nmerged=false\n' "$FAKE_GH_STATE" ;;
@@ -665,6 +665,8 @@ test_firstmate_repo_reads_pr_back_merged() {
     "pr-readback: the merged PR was not verified"
   assert_grep "number=7" "$case_dir/gh.log" \
     "pr-readback: the recorded PR was not the one read"
+  assert_grep '^host=github.com api graphql ' "$case_dir/gh.log" \
+    "pr-readback: the recorded host was not passed to the forge"
   pass "fm-merge-local reads a recorded PR back as merged after the push"
 }
 

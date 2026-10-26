@@ -271,6 +271,7 @@ project() {
 }
 
 acquire() {
+  # shellcheck source=bin/fm-session-lock-lib.sh
   . "$SCRIPT_DIR/fm-session-lock-lib.sh"
   fm_require_session_lock "$STATE" "update contribution supervision" || exit 1
   [ -d "$STATE" ] && [ ! -L "$STATE" ] || fail 'state directory unavailable'

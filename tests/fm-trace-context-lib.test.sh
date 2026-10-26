@@ -203,14 +203,14 @@ pass "resolve yields exactly one carrier per logical task, so the recorded and i
 
 # --- entropy failure omits telemetry safely (never aborts) -------------------
 
-fm_trace_context_hex() { return 1; }
-ef_mint=$(fm_trace_context_mint); ef_mint_rc=$?
-ef_res=$(FM_TRACE_CONTEXT=on fm_trace_context_resolve "$CFG_ON" "$NOMETA"); ef_res_rc=$?
-# Restore the real entropy source for any later use.
-# shellcheck source=/dev/null
-. "$ROOT/bin/fm-trace-context-lib.sh"
-[ -z "$ef_mint" ] && [ "$ef_mint_rc" -ne 0 ] || fail "mint must omit and report failure on entropy failure (rc=$ef_mint_rc out='$ef_mint')"
-[ -z "$ef_res" ] && [ "$ef_res_rc" -eq 0 ] || fail "resolve must omit and STILL return 0 on entropy failure (rc=$ef_res_rc out='$ef_res')"
+(
+  # shellcheck disable=SC2329 # Called by the imported mint and resolve functions.
+  fm_trace_context_hex() { return 1; }
+  ef_mint=$(fm_trace_context_mint); ef_mint_rc=$?
+  ef_res=$(FM_TRACE_CONTEXT=on fm_trace_context_resolve "$CFG_ON" "$NOMETA"); ef_res_rc=$?
+  [ -z "$ef_mint" ] && [ "$ef_mint_rc" -ne 0 ] || fail "mint must omit and report failure on entropy failure (rc=$ef_mint_rc out='$ef_mint')"
+  [ -z "$ef_res" ] && [ "$ef_res_rc" -eq 0 ] || fail "resolve must omit and STILL return 0 on entropy failure (rc=$ef_res_rc out='$ef_res')"
+) || exit 1
 pass "entropy failure omits telemetry safely: mint reports failure, resolve returns success with no carrier"
 
 PROBE="$WORK/probe"
@@ -254,26 +254,28 @@ assert process.returncode == 0, (process.returncode, stdout, stderr)
 PY
 pass "resolver completes off, mint, recovery and entropy failure without reading prose pipes or executing config commands"
 
-fm_trace_context_hex() { printf '%0*d' "$(($1 * 2))" 1; }
-EXPECTED='00-00000000000000000000000000000001-0000000000000001-01'
-for HARNESS in claude codex opencode pi pi-signed grok kimi cursor omp muse gemini rovo agy devin commandcode polytoken cortex; do
-  for BACKEND in tmux herdr rex zellij orca cmux paseo t3code; do
-    for KIND in ship scout secondmate; do
-      printf 'harness=%s\nbackend=%s\nkind=%s\n' "$HARNESS" "$BACKEND" "$KIND" > "$WORK/matrix.meta"
-      out=$(FM_TRACE_CONTEXT=on FM_HARNESS="$HARNESS" FM_BACKEND="$BACKEND" FM_TASK_KIND="$KIND" \
-        fm_trace_context_resolve "$CFG_OFF" "$WORK/matrix.meta")
-      [ "$out" = "$EXPECTED" ] || fail "mint differs for $HARNESS/$BACKEND/$KIND: $out"
-      printf 'traceparent=%s\n' "$VALID" >> "$WORK/matrix.meta"
-      out=$(FM_TRACE_CONTEXT=on FM_HARNESS="$HARNESS" FM_BACKEND="$BACKEND" FM_TASK_KIND="$KIND" \
-        fm_trace_context_resolve "$CFG_OFF" "$WORK/matrix.meta")
-      [ "$out" = "$VALID" ] || fail "recovery differs for $HARNESS/$BACKEND/$KIND: $out"
-      out=$(FM_TRACE_CONTEXT=off FM_HARNESS="$HARNESS" FM_BACKEND="$BACKEND" FM_TASK_KIND="$KIND" \
-        fm_trace_context_resolve "$CFG_ON" "$WORK/matrix.meta")
-      [ -z "$out" ] || fail "disabled resolver differs for $HARNESS/$BACKEND/$KIND: $out"
+(
+  # shellcheck disable=SC2329 # Called by the imported resolve function.
+  fm_trace_context_hex() { printf '%0*d' "$(($1 * 2))" 1; }
+  EXPECTED='00-00000000000000000000000000000001-0000000000000001-01'
+  for HARNESS in claude codex opencode pi pi-signed grok kimi cursor omp muse gemini rovo agy devin commandcode polytoken cortex; do
+    for BACKEND in tmux herdr rex zellij orca cmux paseo t3code; do
+      for KIND in ship scout secondmate; do
+        printf 'harness=%s\nbackend=%s\nkind=%s\n' "$HARNESS" "$BACKEND" "$KIND" > "$WORK/matrix.meta"
+        out=$(FM_TRACE_CONTEXT=on FM_HARNESS="$HARNESS" FM_BACKEND="$BACKEND" FM_TASK_KIND="$KIND" \
+          fm_trace_context_resolve "$CFG_OFF" "$WORK/matrix.meta")
+        [ "$out" = "$EXPECTED" ] || fail "mint differs for $HARNESS/$BACKEND/$KIND: $out"
+        printf 'traceparent=%s\n' "$VALID" >> "$WORK/matrix.meta"
+        out=$(FM_TRACE_CONTEXT=on FM_HARNESS="$HARNESS" FM_BACKEND="$BACKEND" FM_TASK_KIND="$KIND" \
+          fm_trace_context_resolve "$CFG_OFF" "$WORK/matrix.meta")
+        [ "$out" = "$VALID" ] || fail "recovery differs for $HARNESS/$BACKEND/$KIND: $out"
+        out=$(FM_TRACE_CONTEXT=off FM_HARNESS="$HARNESS" FM_BACKEND="$BACKEND" FM_TASK_KIND="$KIND" \
+          fm_trace_context_resolve "$CFG_ON" "$WORK/matrix.meta")
+        [ -z "$out" ] || fail "disabled resolver differs for $HARNESS/$BACKEND/$KIND: $out"
+      done
     done
   done
-done
-. "$ROOT/bin/fm-trace-context-lib.sh"
+) || exit 1
 pass "mint, recovery and disabled resolution agree across harnesses, backends and task kinds"
 
 # --- secondmate inheritance wires the nested chain ---------------------------

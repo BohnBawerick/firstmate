@@ -2603,10 +2603,7 @@ test_max_defer_pending_composer_alarms_without_typing() {
 }
 
 test_composer_deferral_names_pending_text_or_unrecognized_shape() {
-  # A deferral must say WHICH refusal it was: real unsubmitted text is a
-  # human's draft, while an unproven composer points at the classifier, the
-  # pane, a dead shell, or a busy harness - the case a titled claude rule once
-  # hid for hours.
+  # A deferral reports the classifier's state without claiming why it refused.
   local dir state fakebin sent log
   dir=$(make_bordered_case composer-deferral-reason)
   state="$dir/state"; fakebin="$dir/fakebin"; log="$dir/daemon.log"
@@ -2617,18 +2614,18 @@ test_composer_deferral_names_pending_text_or_unrecognized_shape() {
     inject_msg "needs-decision: pick B" "$state"; then
     fail "inject_msg typed into a pending composer"
   fi
-  grep -F 'inject deferred: supervisor composer not confirmed-empty (state=pending: unsubmitted text in the composer)' "$log" >/dev/null \
-    || fail "a pending composer deferral does not name the unsubmitted text: $(cat "$log")"
+  grep -F 'inject deferred: supervisor composer not confirmed-empty (state=pending: pending input, dead-shell prompt, or unreadable pane)' "$log" >/dev/null \
+    || fail "a pending composer deferral does not report its state: $(cat "$log")"
   : > "$log"
   printf 'build output\nplain transcript line\n' > "$dir/composer"
   if LOG="$log" PATH="$fakebin:$PATH" FM_FAKE_COMPOSER="$dir/composer" FM_FAKE_SENT="$sent" \
     inject_msg "needs-decision: pick B" "$state"; then
     fail "inject_msg typed into a screen with no recognized composer"
   fi
-  grep -F 'inject deferred: supervisor composer not confirmed-empty (state=unknown: composer not proven empty or pending (unrecognized screen, or harness not idle))' "$log" >/dev/null \
-    || fail "an unrecognized screen deferral does not say the composer was not proven empty or pending: $(cat "$log")"
+  grep -F 'inject deferred: supervisor composer not confirmed-empty (state=unknown: pending input, dead-shell prompt, or unreadable pane)' "$log" >/dev/null \
+    || fail "an unrecognized screen deferral does not report its state: $(cat "$log")"
   [ ! -s "$sent" ] || fail "a deferred inject typed text"
-  pass "a composer deferral names pending text apart from an unproven composer"
+  pass "a composer deferral reports pending or unknown state without typing"
 }
 
 test_normal_flush_clears_stale_wedge_marker() {
