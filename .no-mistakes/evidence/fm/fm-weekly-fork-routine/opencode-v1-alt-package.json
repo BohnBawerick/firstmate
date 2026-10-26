@@ -1,0 +1,15 @@
+npm error code E404
+npm error 404 No match found for version 1.19.3
+npm error 404
+npm error 404  The requested resource '@opencode/cli@1.19.3' could not be found or you do not have permission to access it.
+npm error 404
+npm error 404 Note that you can also install from a
+npm error 404 tarball, folder, http url, or git url.
+{
+  "error": {
+    "code": "E404",
+    "summary": "No match found for version 1.19.3",
+    "detail": "The requested resource '@opencode/cli@1.19.3' could not be found or you do not have permission to access it.\n\nNote that you can also install from a\ntarball, folder, http url, or git url."
+  }
+}
+npm error A complete log of this run can be found in: /home/bohn/.npm/_logs/2026-10-26T02_47_27_365Z-debug-0.log

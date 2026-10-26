@@ -1,0 +1,11 @@
+# kimi 2.3.2: plain prompt options read 'Trust and continue' / 'Exit'
+ok - kimi 2.3.2: a plain directory's folder prompt is the complete dialog, and Enter clears it into a ready pane
+# kimi 2.3.2: root-mcp-json prompt announces: Start 1 MCP server automatically;Config: .mcp.json;
+ok - kimi 2.3.2: a root-mcp-json declaration is announced on the folder prompt, which receives no answer, and its command never ran
+# kimi 2.3.2: kimi-code-mcp-json prompt announces: Start 1 MCP server automatically;Config: .kimi-code/mcp.json;
+ok - kimi 2.3.2: a kimi-code-mcp-json declaration is announced on the folder prompt, which receives no answer, and its command never ran
+# kimi 2.3.2: 100x7 pane shows: Trust this folder?;Enlarge terminal to review sources. Esc exit.;
+# kimi 2.3.2: 100x12 pane: the announcement is on a hidden page, so only the page marker refuses this prompt
+ok - kimi 2.3.2: a short pane collapses the prompt below the complete dialog, and a slightly taller one pages it with the page marker on screen
+ok - kimi 2.3.2: folder-prompt predicates agree with the installed Kimi on every recorded wording
+rm: cannot remove '/home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/tmp/fm-kimi-trust.XwywfH/home-plain/.kimi-code': Directory not empty

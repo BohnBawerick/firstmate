@@ -1,0 +1,125 @@
+{
+  "completed_checks": [
+    {
+      "check": "fm-secondmate-harness-rerun",
+      "result": "pass",
+      "log": "fm-secondmate-harness-rerun.log"
+    },
+    {
+      "check": "fm-worker-account",
+      "result": "pass",
+      "log": "fm-worker-account.log"
+    },
+    {
+      "check": "fm-control-relaunch",
+      "result": "pass",
+      "log": "fm-control-relaunch.log"
+    },
+    {
+      "check": "fm-opencode-launch",
+      "result": "pass",
+      "log": "fm-opencode-launch.log"
+    },
+    {
+      "check": "fm-session-lock-ancestry",
+      "result": "pass",
+      "log": "fm-session-lock-ancestry.log"
+    },
+    {
+      "check": "fm-contributions",
+      "result": "pass",
+      "log": "fm-contributions.log"
+    },
+    {
+      "check": "fm-procevent",
+      "result": "pass",
+      "log": "fm-procevent.log"
+    },
+    {
+      "check": "fm-secondmate-sync",
+      "result": "pass",
+      "log": "fm-secondmate-sync.log"
+    },
+    {
+      "check": "fm-secondmate-restart",
+      "result": "pass",
+      "log": "fm-secondmate-restart.log"
+    },
+    {
+      "check": "fm-backend-t3code-verified",
+      "result": "pass",
+      "log": "fm-backend-t3code-verified.log"
+    },
+    {
+      "check": "fm-teardown-verified",
+      "result": "pass",
+      "log": "fm-teardown-verified.log"
+    },
+    {
+      "check": "fm-backend-rex-verified",
+      "result": "pass",
+      "log": "fm-backend-rex-verified.log"
+    },
+    {
+      "check": "fm-test-run",
+      "result": "pass",
+      "log": "fm-test-run.log"
+    },
+    {
+      "check": "supervision-tagged-repaired",
+      "result": "pass",
+      "log": "supervision-tagged-repaired.log"
+    },
+    {
+      "check": "watcher-acceptance",
+      "result": "pass",
+      "log": "watcher-acceptance.log"
+    },
+    {
+      "check": "fm-opencode-primary-live-e2e",
+      "result": "pass",
+      "log": "fm-opencode-primary-live-e2e.log"
+    },
+    {
+      "check": "opencode-api-evidence",
+      "result": "pass",
+      "log": "opencode-api-evidence.log"
+    },
+    {
+      "check": "fm-kimi-trust-prompt-live-e2e",
+      "result": "pass",
+      "log": "fm-kimi-trust-prompt-live-e2e.log"
+    },
+    {
+      "check": "kimi-visual-capture",
+      "result": "pass",
+      "log": "kimi-visual-capture.log"
+    }
+  ],
+  "initial_attempts": [
+    {
+      "check": "fm-secondmate-harness",
+      "result": "setup failure",
+      "resolution": "Use an evidence-directory TMPDIR because a secondmate home inside the source repository is refused."
+    },
+    {
+      "check": "fm-backend-t3code",
+      "result": "setup failure",
+      "resolution": "Stopped the stalled ambient Codex version probe; reran with workspace-local Codex 0.164.0 and an evidence-directory TMPDIR."
+    },
+    {
+      "check": "fm-supervision-host-lifecycle",
+      "result": "fixture failure",
+      "resolution": "Model the severed MSYS POSIX parent link; reran the tagged-holder and both foreign-owner refusal cases successfully."
+    },
+    {
+      "check": "fm-watch-triage",
+      "result": "intentionally stopped",
+      "resolution": "Replaced the broad watcher walk with the four acceptance functions in watcher-selected-functions.txt."
+    }
+  ],
+  "live_limits": {
+    "rex": "CLI absent from PATH; vendor package endpoint returned HTTP 401 and requires a beta token.",
+    "polytoken": "Workspace-local 0.9.2 installed, but isolated model discovery reports no config. No task-local approved license acceptance or model credentials were supplied."
+  }
+}

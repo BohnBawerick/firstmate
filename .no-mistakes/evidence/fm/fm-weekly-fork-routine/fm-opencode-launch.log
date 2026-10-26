@@ -1,0 +1,6 @@
+ok - OpenCode probes support plain and prefixed versions and refuse unknown majors
+ok - OpenCode v2 selects the model and advertised effort before interactive prompt submission
+ok - OpenCode v2 reports unsupported effort and refuses broken API responses before attachment
+ok - OpenCode live mode honors the shared opt-in and per-guard overrides
+ok - the offline gate accepts an explicit executable without ambient opencode and forwards its exact path
+ok - the native fixture executes the selected binary rather than resolving opencode again

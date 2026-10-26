@@ -1,0 +1,4 @@
+ok - provably-working non-terminal stale is absorbed and suppressed while working, then wedge-escalated when not working
+ok - a running or fixing validation run is deferred on the long recheck cadence rather than wedge-escalated
+ok - parked, terminal, ci-monitoring, coarse, runless, absent and unreadable runs keep the unchanged wedge ladder
+ok - an unarmed home keeps positive-work suppression without starting an opt-in validation chain

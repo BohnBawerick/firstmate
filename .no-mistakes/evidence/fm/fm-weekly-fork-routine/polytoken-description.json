@@ -1,0 +1,7 @@
+{
+  "description": "Efficient database indexing for geospatial queries",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zipscene/polytoken.git"
+  }
+}

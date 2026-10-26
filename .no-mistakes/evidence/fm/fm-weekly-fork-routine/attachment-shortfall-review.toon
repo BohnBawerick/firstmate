@@ -1,0 +1,27 @@
+session:
+  status: feedback
+prompts[3]:
+  - uid: "el-a"
+    prompt: "Comment café"
+    selector: "#a"
+    tag: "note"
+    text: "Element café"
+    target:
+      type: table-cell
+      rowLabel: Row one
+      text: nested target 東京
+    attachments[1]{id,name}:
+      att-1,sketch.png
+  - uid: "el-b"
+    prompt: "Context data: {\"schema\": \"fm-bearings-answer.v1\", \"question\": \"answer-proof\", \"selection\": \"yes\", \"note\": \"東京\"}"
+    selector: "#b"
+    tag: "choice"
+    text: "Answer 東京"
+    attachments[2]:
+      - id: att-2
+        name: listed.png
+  - uid: "el-c"
+    prompt: "Context data: {\"schema\": \"fm-bearings-answer.v1\", \"question\": \"reconcile-proof\", \"selection\": \"reconcile\", \"note\": \"réexaminer café\"}"
+    selector: "#c"
+    tag: "choice"
+    text: "Reconcile"

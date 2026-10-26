@@ -1,0 +1,40 @@
+ok - detailed confirmations restart; other replies preserve the conversation
+ok - plain correlated replies release the persist gate only after affirmative acknowledgment
+ok - documented helper acknowledgments permit restart at both reply boundaries
+ok - unsaved or incomplete replies retain the conversation at both restart decisions
+ok - T1 persist is a gate, and asks for open records and task status only
+ok - T2 the mate persists before anything is stopped
+ok - T2b an arrived persist answer is resolved before timeout
+ok - T2c a reply between the preliminary scan and timeout decision wins
+ok - Pi settle wait accepts zero containment and rejects invalid or short values
+ok - The derived minimum permits two stable local Herdr samples
+ok - Local tmux Pi fails closed immediately without semantic idle proof
+ok - Local tmux Pi settles on its semantic busy record, not the Calm-hidden screen
+ok - Pi settle samples and sleeps stay inside the configured deadline
+ok - T3 a runtime that cannot prove a restart falls back to the re-read message
+ok - T4 every named mate is accounted for, including one this home does not know
+ok - T5 a refused restart leaves the mate running and reports an unknown outcome
+ok - T8 a local restart re-resolves this home's pin and reports the runtime that came up
+ok - Codex max downgrade warnings survive local and remote restart capture
+ok - native Ultra survives local restart and the remote restart transport
+ok - T6 a remote mate restarts through the host-local control plane over the fm-on hop
+ok - T6b a remote mate restarts on its own per-mate pin ahead of the shared pin
+ok - Zero settle wait contains only host-verified remote Pi harnesses
+ok - The derived minimum covers real remote route, probe, and poll timing
+ok - Remote Pi and Pi-signed mates settle from native idle or busy before profile changes
+ok - Remote Pi settle probes obey one deadline
+ok - T6a a remote mate with a per-mate override restarts onto that override, not the default pin
+ok - T6b a remote mate with no override line still restarts onto the default pin
+ok - T6d a legacy pin file still restarts the mate onto its first line
+ok - T6c an unreadable per-mate pin falls back to the re-read path with its agent left running
+ok - T7 an unreachable host is reported honestly instead of claimed as reloaded
+ok - T9 the persist gate retains its explicitly allocated correlation
+ok - T10 pending persist answers are polled as one fleet
+ok - T11 post-stop restart failure is never misreported as a nudge
+ok - T12 relaunch waits do not block fleet persistence polling
+ok - T13 a dead restart worker cannot hang the parent
+ok - T14 a result published during reaping is honored
+ok - T15 an already-current live mate is named by the update pass and genuinely restarted
+ok - T16 an already-current mate with an unprovable runtime keeps the honest nudge path
+ok - T17 a T3 mate is routed to the re-read message by both passes, never restarted
+# all fm-secondmate-restart tests passed

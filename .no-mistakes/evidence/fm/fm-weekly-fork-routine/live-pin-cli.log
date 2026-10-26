@@ -1,0 +1,53 @@
+$ fm-lab-home.sh create /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/tmp/pin-cli-lab
+/home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/tmp/pin-cli-lab
+exit: 0
+$ fm-harness.sh secondmate mac
+codex
+exit: 0
+$ fm-harness.sh secondmate-model mac
+gpt-6.1-sol
+exit: 0
+$ fm-harness.sh secondmate-effort mac
+xhigh
+exit: 0
+$ fm-harness.sh secondmate mac
+opencode
+exit: 0
+$ fm-harness.sh secondmate-model mac
+model
+exit: 0
+$ fm-harness.sh secondmate-effort mac
+low
+exit: 0
+$ fm-harness.sh secondmate mac
+claude
+exit: 0
+$ fm-harness.sh secondmate-model mac
+sonnet
+exit: 0
+$ fm-harness.sh secondmate-effort mac
+high
+exit: 0
+$ fm-harness.sh secondmate mac
+pi
+exit: 0
+$ fm-harness.sh secondmate-model mac
+exit: 0
+$ fm-harness.sh secondmate-effort mac
+exit: 0
+$ fm-harness.sh secondmate mac
+error: config/secondmate-harness line 3: 'bad syntax extra tokens here' is neither the default line (already set on line 1) nor a 'mate <secondmate-id>: ...' override
+exit: 1
+$ fm-harness.sh secondmate-model mac
+error: config/secondmate-harness line 3: 'bad syntax extra tokens here' is neither the default line (already set on line 1) nor a 'mate <secondmate-id>: ...' override
+exit: 1
+$ fm-harness.sh secondmate-effort mac
+error: config/secondmate-harness line 3: 'bad syntax extra tokens here' is neither the default line (already set on line 1) nor a 'mate <secondmate-id>: ...' override
+exit: 1
+$ fm-harness.sh secondmate ../bad
+error: invalid secondmate id '../bad'; refusing to resolve its harness pin
+exit: 2
+$ fm-spawn.sh pin-refusal <isolated-project> --harness "claude --print raw" --scout
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/tmp/pin-cli-lab
+error: /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/tmp/pin-cli-lab/config/claude-account pins worker accounts, so raw launch commands are unsupported; launch with --harness <name> instead
+exit: 1

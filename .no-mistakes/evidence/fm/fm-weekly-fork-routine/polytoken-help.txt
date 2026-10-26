@@ -1,0 +1,40 @@
+Polytoken CLI
+
+Usage: polytoken [OPTIONS] [COMMAND]
+
+Commands:
+  config          Validate and manage Polytoken configuration
+  auth            Manage provider authentication state
+  print           Print machine-readable Polytoken metadata
+  daemon          Run the daemon in the foreground (not forked)
+  exec            Run a single non-interactive prompt, print the final result, and write stable `exec: ...` progress lines to stderr during provider retry waits
+  models          List configured models and selectable reasoning variants
+  new             Spawn a new daemon session and attach the TUI
+  attach          Attach the TUI to a session that is already running. Fails when the session's daemon is not running; use `polytoken continue` to resume a stopped session or reattach a running one
+  sessions        List live sessions (stale-cleans any dead entries as a side effect). Pass --all to list every session stored on disk, including historical and legacy sessions
+  reap            Kill unattached local session daemons
+  continue        Resume a previous session from history
+  export-session  Export a retained local session as standalone HTML without loading configuration or contacting a daemon
+  doctor          Run startup-readiness checks and report a checklist
+  vfs             Inspect shipped `polytoken://` resources (`ls` and `cat`)
+  validate        Validate a skill, facet, or subagent definition file
+  theme           Inspect discovered themes and the design token catalog
+  lsp             Inspect language-server support
+  completions     Generate shell completion scripts for bash, zsh, fish, powershell, or elvish
+  update          Check for and apply Polytoken self-updates
+  help            Print this message or the help of the given subcommand(s)
+
+Options:
+      --config-dir <CONFIG>
+          Config directory for this invocation.
+          
+          Runtime commands use this as the project config directory. Config management commands use it as the user/global config directory.
+
+      --working-dir <WORKING_DIR>
+          Working directory for this invocation
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version

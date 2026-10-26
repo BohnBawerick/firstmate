@@ -1,0 +1,8 @@
+ok - OpenCode 2.1.4 loaded all five V2 Firstmate plugins
+ok - V2 parses the build-agent model variant and applies it when selected
+ok - native shell execute.before rejects persistent-cd before execution
+ok - native shell execute.before rejects watcher-redirection before execution
+ok - native terminal event admits a turn-end guard follow-up
+ok - native watcher prompt delivery preserves a live successor
+ok - native interrupted turn retains watcher supervision
+ok - native failed turn retains supervision and startup remains exactly once

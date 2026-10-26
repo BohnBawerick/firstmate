@@ -1,0 +1,33 @@
+{
+  "method": "POST",
+  "url": "http://127.0.0.1:43915/api/session",
+  "response": {
+    "data": {
+      "id": "ses_e89e16cbbffe4nKwfgiZq9f90h",
+      "projectID": "global",
+      "agent": "build",
+      "model": {
+        "id": "native",
+        "providerID": "fixture",
+        "variant": "proof"
+      },
+      "cost": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "time": {
+        "created": 1792983077725,
+        "updated": 1792983077725
+      },
+      "location": {
+        "directory": "/home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/tmp/native-api-ffgv8efs/project"
+      }
+    }
+  }
+}

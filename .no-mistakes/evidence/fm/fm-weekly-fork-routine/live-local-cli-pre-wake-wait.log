@@ -1,0 +1,301 @@
+$ fm-lab-home.sh create /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/tmp/local-cli-lab
+/home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/tmp/local-cli-lab
+exit: 0
+$ fm-procevent-lavish.sh read /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/table-review.toon
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 3
+presented_items: 3
+malformed_items: 0
+truncated: no
+complete: yes
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 3
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 3
+element_uid: el-a
+element_selector: #a
+tag: note
+text:
+| Element café
+prompt:
+| Comment café
+ANNOTATION 2 of 3
+element_uid: el-b
+element_selector: #b
+tag: choice
+text:
+| Answer 東京
+ANNOTATION 3 of 3
+element_uid: el-c
+element_selector: #c
+tag: choice
+text:
+| Reconcile
+END ANNOTATIONS
+END LAVISH RESULT (3 of 3)
+exit: 0
+$ fm-procevent-lavish.sh answers /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/table-review.toon
+answer-proof	yes - 東京	Answer 東京
+exit: 0
+$ fm-procevent-lavish.sh reconciles /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/table-review.toon
+reconcile-proof	réexaminer café
+exit: 0
+$ fm-procevent-lavish.sh read /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/list-review.toon
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 3
+presented_items: 3
+malformed_items: 0
+truncated: no
+complete: yes
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 3
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 3
+element_uid: el-a
+element_selector: #a
+tag: note
+text:
+| Element café
+prompt:
+| Comment café
+target:
+| type: table-cell
+| rowLabel: Row one
+| text: nested target 東京
+attachment_count: 1
+ATTACHMENT 1 of 1
+attachment_id:
+| att-1
+attachment_name:
+| sketch.png
+ANNOTATION 2 of 3
+element_uid: el-b
+element_selector: #b
+tag: choice
+text:
+| Answer 東京
+attachment_count: 1
+ATTACHMENT 1 of 1
+attachment_id:
+| att-2
+attachment_name:
+| listed.png
+ANNOTATION 3 of 3
+element_uid: el-c
+element_selector: #c
+tag: choice
+text:
+| Reconcile
+END ANNOTATIONS
+END LAVISH RESULT (3 of 3)
+exit: 0
+$ fm-procevent-lavish.sh answers /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/list-review.toon
+answer-proof	yes - 東京	Answer 東京
+exit: 0
+$ fm-procevent-lavish.sh reconciles /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/list-review.toon
+reconcile-proof	réexaminer café
+exit: 0
+$ fm-procevent-lavish.sh read /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/count-mismatch-review.toon
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 2
+presented_items: 3
+malformed_items: 0
+truncated: no
+complete: no
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 3
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 3
+element_uid: el-a
+element_selector: #a
+tag: note
+text:
+| Element café
+prompt:
+| Comment café
+ANNOTATION 2 of 3
+element_uid: el-b
+element_selector: #b
+tag: choice
+text:
+| Answer 東京
+ANNOTATION 3 of 3
+element_uid: el-c
+element_selector: #c
+tag: choice
+text:
+| Reconcile
+END ANNOTATIONS
+END LAVISH RESULT (3 of 2)
+exit: 1
+$ fm-procevent-lavish.sh answers /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/count-mismatch-review.toon
+answer-proof	yes - 東京	Answer 東京
+error: the result is not fully accounted for: declared 2, parsed 3, malformed 0
+exit: 3
+$ fm-procevent-lavish.sh reconciles /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/count-mismatch-review.toon
+reconcile-proof	réexaminer café
+error: the result is not fully accounted for: declared 2, parsed 3, malformed 0
+exit: 3
+$ fm-procevent-lavish.sh read /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/malformed-review.toon
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 3
+presented_items: 4
+malformed_items: 1
+truncated: no
+complete: no
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 4
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 4
+element_uid: el-a
+element_selector: #a
+tag: note
+text:
+| Element café
+prompt:
+| Comment café
+target:
+| type: table-cell
+| rowLabel: Row one
+| text: nested target 東京
+attachment_count: 1
+ATTACHMENT 1 of 1
+attachment_id:
+| att-1
+attachment_name:
+| sketch.png
+ANNOTATION 2 of 4
+element_uid: el-b
+element_selector: #b
+tag: choice
+text:
+| Answer 東京
+attachment_count: 1
+ATTACHMENT 1 of 1
+attachment_id:
+| att-2
+attachment_name:
+| listed.png
+ANNOTATION 3 of 4
+element_uid: el-c
+element_selector: #c
+tag: choice
+text:
+| Reconcile
+ANNOTATION 4 of 4
+element_uid: broken
+element_selector: 
+tag: 
+text:
+END ANNOTATIONS
+END LAVISH RESULT (4 of 3)
+exit: 1
+$ fm-procevent-lavish.sh answers /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/malformed-review.toon
+answer-proof	yes - 東京	Answer 東京
+error: the result is not fully accounted for: declared 3, parsed 4, malformed 1
+exit: 3
+$ fm-procevent-lavish.sh reconciles /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/malformed-review.toon
+reconcile-proof	réexaminer café
+error: the result is not fully accounted for: declared 3, parsed 4, malformed 1
+exit: 3
+$ fm-procevent-lavish.sh read /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/attachment-shortfall-review.toon
+SESSION-ENDING MESSAGE: (none)
+
+declared_items: 3
+presented_items: 3
+malformed_items: 1
+truncated: no
+complete: no
+lifecycle: feedback
+session_ended: (unset)
+annotation_count: 3
+captain_message_count: 0
+
+ANNOTATIONS
+ANNOTATION 1 of 3
+element_uid: el-a
+element_selector: #a
+tag: note
+text:
+| Element café
+prompt:
+| Comment café
+target:
+| type: table-cell
+| rowLabel: Row one
+| text: nested target 東京
+attachment_count: 1
+ATTACHMENT 1 of 1
+attachment_id:
+| att-1
+attachment_name:
+| sketch.png
+ANNOTATION 2 of 3
+element_uid: el-b
+element_selector: #b
+tag: choice
+text:
+| Answer 東京
+attachment_count: 1
+ATTACHMENT 1 of 1
+attachment_id:
+| att-2
+attachment_name:
+| listed.png
+ANNOTATION 3 of 3
+element_uid: el-c
+element_selector: #c
+tag: choice
+text:
+| Reconcile
+END ANNOTATIONS
+END LAVISH RESULT (3 of 3)
+exit: 1
+$ fm-procevent-lavish.sh answers /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/attachment-shortfall-review.toon
+answer-proof	yes - 東京	Answer 東京
+error: the result is not fully accounted for: declared 3, parsed 3, malformed 1
+exit: 3
+$ fm-procevent-lavish.sh reconciles /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/attachment-shortfall-review.toon
+reconcile-proof	réexaminer café
+error: the result is not fully accounted for: declared 3, parsed 3, malformed 1
+exit: 3
+$ fm-procevent-when.sh arm live-proof --interval 0.1 --stable 2 --deadline 15 --condition /usr/bin/test -f /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/tmp/local-cli-lab/trigger --action /usr/bin/touch /home/bohn/.no-mistakes/evidence/01M5SBZKF04BPTHKEM4XDQWAA6/tmp/local-cli-lab/action-output
+armed: when-live-proof
+starts on the watcher's next cycle; or run: bin/fm-procevent.sh reconcile
+reminder: deterministic, safe, reversible actions only; judgment and destructive actions stay on the wake-and-decide path
+exit: 0
+$ fm-procevent.sh reconcile
+reconciled: published=0 started=1 stopped=0 uncertain=0 failed=0
+exit: 0
+$ fm-procevent.sh list
+SOURCE                       ADAPTER      OWNER      PENDING
+when-live-proof              when         live       0
+exit: 0
+CAPTURED RESULT
+when: when-live-proof
+status: fired
+detail: the condition held and the action exited 0
+condition_polls: 5
+action_exit: 0
+output:
+
+$ fm-procevent.sh sweep-home
+retired: when-live-proof
+swept: attempted=1
+exit: 0

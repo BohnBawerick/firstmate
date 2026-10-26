@@ -1,0 +1,3 @@
+ok - host: a Windows-tagged session-lock holder reaches the engine's lease whole
+ok - host: a host outside the session-lock owner stands down without arming
+ok - host: a host under a superseded auto-arm generation stands down without touching the owner

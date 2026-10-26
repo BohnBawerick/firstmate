@@ -1,0 +1,1 @@
+bash tests/fm-procevent.test.sh completed successfully, raw wait status 0.

@@ -1,0 +1,6 @@
+session:
+  status: feedback
+prompts[2]{uid,prompt,selector,tag,text}:
+  "el-a","Comment café","#a","note","Element café"
+  "el-b","Context data: {\"schema\": \"fm-bearings-answer.v1\", \"question\": \"answer-proof\", \"selection\": \"yes\", \"note\": \"東京\"}","#b","choice","Answer 東京"
+  "el-c","Context data: {\"schema\": \"fm-bearings-answer.v1\", \"question\": \"reconcile-proof\", \"selection\": \"reconcile\", \"note\": \"réexaminer café\"}","#c","choice","Reconcile"

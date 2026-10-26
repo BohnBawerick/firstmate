@@ -1,0 +1,681 @@
+
+
+
+	
+
+		
+
+		
+
+		
+
+		
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Installing on Linux · Rex Docs
+
+		
+
+	
+
+	
+
+		
+ 
+ 
+ Search 
+⌘K
+ 
+ 
+ 
+esc
+ 
+ 
+ 
+Installation
+ 
+ 
+Customize
+ 
+Configuration File
+ 
+Keyboard Shortcuts
+ 
+Key Sequences
+ 
+Key Modes
+ 
+Custom Actions
+ 
+ 
+Automate
+ 
+The CLI
+ 
+Agents
+ 
+Lua Scripts
+ 
+Lua Events
+ 
+Shell Scripting
+ 
+Server API
+ 
+ 
+Build for Rex
+ 
+Program Status Protocol
+ 
+ 
+Block Plugins
+References
+ 
+Lua API
+ 
+Events
+ 
+Privacy & Telemetry
+ 
+ 
+Linux Server
+ 
+Installation
+ 
+System Requirements
+Install
+Channels
+Package Contents
+Alpine
+Nix and NixOS
+Server Modes
+ 
+Shared Server
+ 
+Login Server
+ 
+Remote Access
+ 
+Upgrading
+ 
+ 
+Resources and Limits
+Beta
+ 
+Community MCP
+ 
+ 
+ 
+Log in
+ 
+ 
+ 
+  
+ 
+Installation
+ 
+ 
+Customize
+ 
+Configuration File
+ 
+Keyboard Shortcuts
+ 
+Key Sequences
+ 
+Key Modes
+ 
+Custom Actions
+ 
+ 
+Automate
+ 
+The CLI
+ 
+Agents
+ 
+Lua Scripts
+ 
+Lua Events
+ 
+Shell Scripting
+ 
+Server API
+ 
+ 
+Build for Rex
+ 
+Program Status Protocol
+ 
+ 
+Block Plugins
+References
+ 
+Lua API
+ 
+Events
+ 
+Privacy & Telemetry
+ 
+ 
+Linux Server
+ 
+Installation
+ 
+System Requirements
+Install
+Channels
+Package Contents
+Alpine
+Nix and NixOS
+Server Modes
+ 
+Shared Server
+ 
+Login Server
+ 
+Remote Access
+ 
+Upgrading
+ 
+ 
+Resources and Limits
+Beta
+ 
+Community MCP
+ 
+ 
+ 
+Log in
+ 
+ 
+ 
+Installing on Linux
+ 
+Rex can run as a server on Linux so that clients can access it as a remote
+host.
+ 
+IMPORTANT:
+ Rex on Linux is in testing. Only members of a Linux testing
+wave can install it for now, and the install commands show below once
+you’ve logged in.
+ 
+System Requirements
+ 
+Requirement
+Supported
+Architecture
+x86-64, ARM64
+C library
+glibc 2.28 or later (Debian 10, RHEL 8, Ubuntu 20.04, or newer), or musl on Alpine 3.21 or later
+Init system
+systemd, or OpenRC on Alpine, for the shared server and the login server. The 
+rex
+ command runs without either.
+Packages
+.deb
+ (Debian, Ubuntu), 
+.rpm
+ (Fedora, RHEL and its rebuilds, openSUSE), 
+.apk
+ (Alpine), Nix
+ 
+The Alpine package holds the musl build of Rex. It’s dynamically linked,
+not static, because Rex loads PAM at run time. On other distributions,
+including other musl ones, install the binary alone with 
+--tarball
+, which
+picks the musl build on a musl system.
+ 
+Install
+ 
+Linux is open to testers only for now. 
+Log in with Discord
+ to see the install commands.
+ 
+The 
+install script (
+install.sh
+)
+ is a convenience that adds the Rex
+repository to apt, dnf, zypper, or apk and installs the 
+rex
+ package, so
+updates arrive with your normal system updates. Running it again upgrades
+Rex, as 
+Upgrading
+ covers. To see what it would do first, add 
+-s
+ 
+--
+ 
+--dry-run
+ after 
+sh
+. On Arch, NixOS, and other distributions
+without a Rex repository, it explains the options and exits.
+ 
+Option
+Effect
+--channel
+ NAME
+Install from 
+stable
+, 
+preview
+, or 
+snapshot
+.
+--tarball
+Install only the 
+rex
+ binary, into 
+/usr/local/bin
+, with no services. On a musl system, it installs the musl build. Run the script again to update.
+--token
+ TOKEN
+Use this token instead of 
+REX_PACKAGE_TOKEN
+.
+--dry-run
+Print every command without running it.
+ 
+Pass options after 
+sh -s --
+. For example, to install only the binary on
+a distribution without a Rex repository, such as Arch:
+ 
+curl
+ 
+-fsSL
+ 
+-u
+ 
+"rex:
+$REX_PACKAGE_TOKEN
+"
+ https://pkgs.superlogical.com/rex/install.sh 
+|
+ 
+sh
+ 
+-s
+ 
+--
+ 
+--tarball
+ 
+Channels
+ 
+Rex publishes to three channels:
+ 
+Channel
+What it gets
+stable
+Tagged releases (none right now)
+preview
+Tagged previews of the next release
+snapshot
+A frequent, likely unstable build
+ 
+The install script defaults to 
+stable
+ but until the first stable
+release exists, will fall back to 
+preview
+ and say so in the output.
+ 
+To switch channels later, change the channel name in the repository file: 
+Suites:
+ in 
+/etc/apt/sources.list.d/rex.sources
+, or the 
+name
+ and 
+baseurl
+ lines in 
+/etc/yum.repos.d/rex.repo
+ or zypper’s repository. On
+Alpine, change it in 
+/etc/apk/repositories.d/rex.list
+ if the install
+script set up the repository, or in the Rex line in 
+/etc/apk/repositories
+ if you added it yourself, then run 
+apk update
+.
+ 
+Moving from snapshot to preview or stable upgrades Rex. Moving back to
+snapshot is a downgrade, which you have to ask for. See 
+Switching Channels and Downgrading
+.
+ 
+Package Contents
+ 
+The 
+rex
+ package installs:
+ 
+Path
+What it is
+/usr/bin/rex
+The server and the CLI, in one binary
+rex.service
+One shared server, run as the 
+rex
+ account. Not enabled.
+rex-login-server.service
+One server per account, after a login. Not enabled.
+rex
+ account and group
+A locked system account, with its home at 
+/var/lib/rex
+/etc/rex/accounts.jsonc
+The login server’s accounts. It ships empty, which admits nobody.
+/etc/pam.d/rex-login-server
+The login server’s PAM policy, for your distribution
+xterm-rex
+ terminfo
+Rex’s terminal type
+/etc/ssh/ssh_config.d/50-rex.conf
+Falls back to 
+xterm-256color
+ when you SSH from Rex to a host that doesn’t know 
+xterm-rex
+ 
+On Alpine, OpenRC scripts at 
+/etc/init.d/rex
+ and 
+/etc/init.d/rex-login-server
+ take the place of the two services. The
+package never ships 
+/etc/conf.d/rex
+ or 
+/etc/conf.d/rex-login-server
+,
+so your changes to the services go there.
+ 
+Upgrades keep your changes to the accounts file and the PAM policy. See 
+Keeping Your Changes
+.
+ 
+Alpine
+ 
+Alpine has no 
+sudo
+ by default, so run the commands on these pages as
+root. Alpine uses OpenRC instead of systemd. Where a page gives a 
+systemctl
+ command, use the OpenRC form:
+ 
+On systemd
+On Alpine
+sudo
+ systemctl enable 
+--now
+ rex.service
+rc-update add rex
+, then 
+rc-service rex start
+sudo
+ systemctl enable 
+--now
+ rex-login-server.service
+rc-update add rex-login-server
+, then 
+rc-service rex-login-server start
+sudo
+ systemctl reload rex-login-server.service
+rc-service rex-login-server reload
+sudo
+ systemctl disable 
+--now
+ rex.service
+rc-service rex stop
+, then 
+rc-update del rex
+sudo
+ systemctl edit rex.service
+Set 
+command_args
+ in 
+/etc/conf.d/rex
+journalctl -u rex.service -f
+tail
+ 
+-f
+ /var/log/rex/server.log
+journalctl -u rex-login-server.service
+cat
+ /var/log/rex-login-server.log
+sudo
+ usermod 
+--append
+ 
+--groups
+ rex alice
+addgroup alice rex
+ 
+/etc/conf.d/rex
+ is a shell script that OpenRC reads before the service’s
+own script, so a 
+command_args
+ set there replaces the server’s command
+line. 
+Shared Server
+ and 
+Remote Access
+ show what to put in it.
+ 
+The services need OpenRC, which a full Alpine install has. Containers
+often don’t. To install it, run 
+apk add openrc
+.
+ 
+On musl, 
+who
+ and 
+last
+ don’t list Rex sessions, because musl keeps no
+utmp or wtmp. 
+lastlog
+ records logins as usual.
+ 
+Nix and NixOS
+ 
+Rex has a flake for each channel, at 
+https://pkgs.superlogical.com/rex/nix/<channel>.tar.gz
+. It packages the
+release binary rather than building Rex from source, for x86-64 and ARM64
+Linux. Until the first release, Nix needs the token in a netrc file. Where
+that file goes depends on which Nix you installed:
+ 
+Nix
+ from nixos.org, or NixOS, reads 
+/etc/nix/netrc
+, as the 
+Nix
+ tab shows.
+ 
+Determinate Nix
+ ignores 
+/etc/nix/netrc
+ and 
+~/.config/nix/netrc
+.
+Its daemon builds 
+/nix/var/determinate/netrc
+ from the files listed
+under 
+authentication.additionalNetrcSources
+ in 
+/etc/determinate/config.json
+, as the 
+Determinate
+ tab shows.
+Don’t edit 
+/nix/var/determinate/netrc
+ itself, because the daemon
+rewrites it.
+ 
+To tell which you have, run 
+nix --version
+. Determinate Nix prints 
+Determinate Nix
+.
+ 
+If 
+/etc/determinate/config.json
+ already exists, the 
+Determinate
+ tab’s second command stops with 
+File exists
+ instead of replacing it.
+Add 
+/etc/determinate/rex.netrc
+ to its 
+additionalNetrcSources
+ list
+yourself, then run the remaining commands. Determinate Nix makes the merged
+netrc file readable by every user on the machine, token included.
+ 
+To try Rex without installing it:
+ 
+nix
+ run https://pkgs.superlogical.com/rex/nix/snapshot.tar.gz 
+--
+ 
+--help
+ 
+The channel URL always serves the newest release on its channel, but 
+flake.lock
+ records the exact release, so a lock keeps working after newer
+releases come out. To move to the newest one, run 
+nix flake update rex
+.
+ 
+The NixOS Module
+ 
+On NixOS, add the flake as an input and import 
+rex.nixosModules.default
+.
+The module runs Rex as a systemd service in one of two modes, the same two
+the packages ship:
+ 
+services.rex.enable
+ runs one shared server as the 
+rex
+ account, on 
+/run/rex/server.sock
+. Members of the 
+rex
+ group can connect.
+ 
+services.rex.loginServer.enable
+ runs one root process that identifies
+each caller, maps them to an account, and runs a server per account as
+that account. It listens on 
+/run/rex/login-server.sock
+.
+ 
+They can’t both be on. Either mode also installs 
+rex
+ for every user, puts
+Rex’s terminal type where the service can find it, and adds the SSH
+fallback to 
+/etc/ssh/ssh_config
+.
+ 
+A shared server that one person can use:
+ 
+{
+  inputs.rex.url = "https://pkgs.superlogical.com/rex/nix/snapshot.tar.gz";
+
+  outputs = { nixpkgs, rex, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        rex.nixosModules.default
+        {
+          services.rex.enable = true;
+          users.users.alice = {
+            isNormalUser = true;
+            extraGroups = [ "rex" ];
+          };
+        }
+      ];
+    };
+  };
+}
+ 
+A login server that lets Alice use her own account over Tailscale Serve.
+The module writes the accounts to 
+/etc/rex/accounts.jsonc
+, but doesn’t
+create them:
+ 
+{
+  services.tailscale.enable = true;
+  users.users.alice.isNormalUser = true;
+
+  services.rex.loginServer = {
+    enable = true;
+    accounts.alice.principals = [ "tailscale:alice@example.com" ];
+    tailscaleServe.enable = true;
+  };
+}
+ 
+The host must be logged in to Tailscale, with HTTPS enabled for the
+tailnet. Changes to the accounts reload the login server without ending
+sessions. Connections whose account is no longer allowed are closed.
+ 
+
+			
+			
+
+				{
+					__sveltekit_cr2m70 = {
+						base: "/rex/docs",
+						assets: "/rex/docs"
+					};
+
+					const element = document.currentScript.parentElement;
+
+					Promise.all([
+						import("/rex/docs/_app/immutable/entry/start.D1-gJAst.js"),
+						import("/rex/docs/_app/immutable/entry/app.BnJU0DjT.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element, {
+							node_ids: [0, 5],
+							data: [{type:"data",data:{session:null},uses:{}},{type:"data",data:{linuxMethods:null},uses:{}}],
+							form: null,
+							error: null
+						});
+					});
+				}
+			
+
+		
+
+	
+
+
+
