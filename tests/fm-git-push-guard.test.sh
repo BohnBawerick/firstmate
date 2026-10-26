@@ -175,8 +175,9 @@ test_repository_identity_across_transports() {
   for origin in ssh://git@review.example:2222/team/repo.git 'ssh://git@[2001:db8::1]:22/team/repo.git'; do
     git -C "$repo" remote set-url origin "$origin"
     "$GUARD" write "$guard" "$repo" fm/t1 fm/ backup backup/ || fail 'could not write port or IPv6 guard'
-    out=$(printf 'refs/heads/fm/t1 1 refs/heads/backup/t1 0\n' | "$GUARD" "$guard" other "$origin" 2>&1)
-    [ "$?" -ne 0 ] || fail "normalization was not stable when reading $origin back"
+    if out=$(printf 'refs/heads/fm/t1 1 refs/heads/backup/t1 0\n' | "$GUARD" "$guard" other "$origin" 2>&1); then
+      fail "normalization was not stable when reading $origin back"
+    fi
     assert_contains "$out" 'shared origin' 'a port or IPv6 identity lost its protection'
   done
   for origin in git@review.example:team/repo.git.git "$TMP_ROOT/repo.git.git"; do
@@ -186,17 +187,19 @@ test_repository_identity_across_transports() {
       git@*) target=https://review.example/team/repo.git.git ;;
       *) target=file://$origin ;;
     esac
-    out=$(printf 'refs/heads/fm/t1 1 refs/heads/backup/t1 0\n' | "$GUARD" "$guard" backup "$target" 2>&1)
-    [ "$?" -ne 0 ] || fail "a stored identity stripped a second .git suffix from $origin"
+    if out=$(printf 'refs/heads/fm/t1 1 refs/heads/backup/t1 0\n' | "$GUARD" "$guard" backup "$target" 2>&1); then
+      fail "a stored identity stripped a second .git suffix from $origin"
+    fi
     assert_contains "$out" 'shared origin' 'the repeated suffix changed repository identity'
     printf 'refs/heads/fm/t1 1 refs/heads/backup/t1 0\n' | "$GUARD" "$guard" backup "${target%.git}" \
       || fail 'a distinct repository with one fewer suffix was treated as shared origin'
   done
   git -C "$repo" remote set-url backup git@backup.example:team/copy.git.git
   "$GUARD" write "$guard" "$repo" fm/t1 fm/ backup backup/ || fail 'could not write backup suffix guard'
-  out=$(printf 'refs/heads/fm/t1 1 refs/heads/other 0\n' | \
-    "$GUARD" "$guard" other https://backup.example/team/copy.git.git 2>&1)
-  [ "$?" -ne 0 ] || fail 'a backup URL with repeated suffixes escaped its namespace guard'
+  if out=$(printf 'refs/heads/fm/t1 1 refs/heads/other 0\n' | \
+    "$GUARD" "$guard" other https://backup.example/team/copy.git.git 2>&1); then
+    fail 'a backup URL with repeated suffixes escaped its namespace guard'
+  fi
   assert_contains "$out" 'outside refs/heads/backup/' 'the backup URL lost its repository identity'
   printf '%s\n' fm-git-push-guard-v1 task_branch=fm/t1 task_prefix=fm/ \
     shared_url=git@review.example:team/repo > "$TMP_ROOT/legacy-guard"

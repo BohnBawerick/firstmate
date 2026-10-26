@@ -939,8 +939,9 @@ SH
     while kill -0 "$owner" 2>/dev/null && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
     kill -0 "$owner" 2>/dev/null && fail "native handoff did not stop after $ending"
     wait "$owner" || fail "native handoff failed after $ending"
-    kill -0 "$arm" 2>/dev/null && kill -0 "$watcher" 2>/dev/null \
-      || fail 'native handoff killed the retained local arm'
+    if ! kill -0 "$arm" 2>/dev/null || ! kill -0 "$watcher" 2>/dev/null; then
+      fail 'native handoff killed the retained local arm'
+    fi
     [ "$ending" = ack ] || [ -f "$home/state/.supervision-handoff-pending" ] \
       || fail 'a replaced session consumed the pending handoff'
     fm_test_reap_pid "$arm"

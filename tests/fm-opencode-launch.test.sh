@@ -63,6 +63,7 @@ pass 'OpenCode v2 reports unsupported effort and refuses broken API responses be
 test_live_mode_selection() {
   local generic specific out want
   (
+    # shellcheck disable=SC2329 # Exported for the child fixture shell.
     fm_live_gate() { printf '%s %s\n' "$1" "$2"; exit 0; }
     export -f fm_live_gate
     for pair in unset:unset 1:unset 1:0 0:1 0:unset; do
@@ -94,6 +95,7 @@ test_offline_live_uses_selected_executable() (
 printf '%s\n' "$2" > "$FM_TEST_SELECTED_LOG"
 STUB
   chmod +x "$selected" "$TMP_ROOT/offline-bin/python3"
+  # shellcheck disable=SC2329 # Exported for the child fixture shell.
   command() {
     if [ "${1:-}" = -v ] && [ "${2:-}" = opencode ]; then return 1; fi
     builtin command "$@"
@@ -107,7 +109,7 @@ STUB
 )
 
 test_native_fixture_executes_selected_binary() {
-  python3 - "$ROOT" "$TMP_ROOT" <<'PY'
+  python3 - "$ROOT" "$TMP_ROOT" <<'PY' || fail 'the native fixture launched another executable'
 import importlib.util
 from pathlib import Path
 import subprocess
@@ -156,7 +158,6 @@ finally:
         item.shutdown()
         item.server_close()
 PY
-  [ "$?" = 0 ] || fail 'the native fixture launched another executable'
   pass 'the native fixture executes the selected binary rather than resolving opencode again'
 }
 

@@ -1906,7 +1906,7 @@ test_positive_work_policies_remain_separate() {
   pass "default positive-work suppression and opt-in validation cadence have separate outcomes"
 }
 
-test_live_cycle_helpers() (
+test_live_cycle_helpers() {
   local original_root=$ROOT
   local TMP_ROOT="$TMP_ROOT/live-cycle-helpers" ROOT STATE LAB_HOME LAB_TMUX_DIR
   local TRANSCRIPT TASK=probe KEY=probe PANE_TEXT=probe MAX=3 HORIZON_SECS=300 STALE_SECS=2 CYCLE_BOUND=10
@@ -2012,9 +2012,9 @@ SH
     esac
   done
   pass 'live cycle helpers acknowledge exact wakes and require completed polls before silence'
-)
+}
 
-test_live_cycle_cap_mutation() (
+test_live_cycle_cap_mutation() {
   local original_root=$ROOT dir window fakebin
   dir=$(make_case live-cap-mutation)
   local ROOT="$dir/code" TMP_ROOT="$dir" LAB_HOME="$dir" STATE="$dir/state" LAB_TMUX_DIR="$dir/tmux"
@@ -2060,10 +2060,10 @@ PY
   grep -F 'possible wedge' "$dir/cycle-2.out" >/dev/null \
     || fail "the mutant failed without reaching a threshold wake: $(cat "$dir/mutant.out")"
   pass 'live silence passes the intact cap and rejects a production cap-suppression mutant'
-)
+}
 
-test_live_cycle_helpers || exit 1
-test_live_cycle_cap_mutation || exit 1
+(test_live_cycle_helpers) || exit 1
+(test_live_cycle_cap_mutation) || exit 1
 test_positive_work_policies_remain_separate
 test_wedge_cap_disabled_by_default
 test_wedge_cap_fires_permanently_wedged_at_threshold
