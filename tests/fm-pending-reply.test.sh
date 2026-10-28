@@ -38,6 +38,8 @@
 #      the decision; a retry while that decision is still open appends nothing
 #  19. A request summary keeps accented letters, drops control characters, and
 #      caps at 120 characters without splitting one under any caller locale
+#  20. The resolve scan prefilters a large status file to the corr= token yet
+#      returns the same line as the full scan, so a tick stays fast as logs grow
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -1463,6 +1465,89 @@ test_tick_skips_terminal_and_reuses_target_observation() {
 # tick selects the records it has work for in one pass and leaves every settled
 # record alone: it must not block on a settled record's per-record lock that a
 # live foreign process holds, and it still does the work the selected records need.
+# The pre-prefilter scan, kept as the reference the prefiltered owner must equal.
+reference_find_resolve_line() {  # <status-file> <corr_id>
+  local status_file=$1 corr=$2 line
+  [ -f "$status_file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$line" ] || continue
+    if fm_pending_reply_line_resolves "$line" "$corr"; then
+      printf '%s' "$line"
+      return 0
+    fi
+  done < "$status_file"
+  return 0
+}
+
+test_resolve_scan_matches_reference() {
+  local dir corr other f case_name got want
+  dir="$TMP_ROOT/scan-ref-$RANDOM"
+  mkdir -p "$dir"
+  corr=0123456789abcdef
+  other=fedcba9876543210
+  # Matching: decoys that hold the token as a substring precede the real line.
+  printf '%s\n' \
+    "working: started corr=$other" \
+    '' \
+    "blocked [key=pending-reply-$corr]: pending-reply-missed: task=t pending-reply-id=$corr corr=$corr" \
+    "note xcorr=$corr" \
+    "note corr=${corr}ff" \
+    "done [corr=$corr]: first real reply" \
+    "done [corr=$corr]: second real reply" > "$dir/matching.status"
+  printf '%s\n' "working: nothing here" "done [corr=$other]: other request" \
+    "note xcorr=$corr" > "$dir/nonmatching.status"
+  printf '%s\n' \
+    "blocked [key=pending-reply-$corr]: pending-reply-missed: task=t pending-reply-id=$corr corr=$corr" \
+    > "$dir/missed-only.status"
+  printf 'working: start\n\ndone [corr=%s]: last line without newline' "$corr" > "$dir/no-newline.status"
+  for case_name in matching nonmatching missed-only no-newline missing; do
+    f="$dir/$case_name.status"
+    got=$(fm_pending_reply_find_resolve_line "$f" "$corr")
+    want=$(reference_find_resolve_line "$f" "$corr")
+    [ "$got" = "$want" ] || fail "$case_name scan differs from reference: got '$got', want '$want'"
+  done
+  [ "$(fm_pending_reply_find_resolve_line "$dir/matching.status" "$corr")" = "done [corr=$corr]: first real reply" ] \
+    || fail "matching scan must return the first resolving line"
+  [ -z "$(fm_pending_reply_find_resolve_line "$dir/missed-only.status" "$corr")" ] \
+    || fail "the parent's own pending-reply-missed line must not resolve"
+  [ "$(fm_pending_reply_find_resolve_line "$dir/no-newline.status" "$corr")" = "done [corr=$corr]: last line without newline" ] \
+    || fail "a last line without a newline must still resolve"
+  pass "the prefiltered resolve scan returns the same line as the full scan"
+}
+
+test_tick_scans_large_status_quickly() {
+  local home state status corr i start elapsed open=12
+  local -a corrs=()
+  home=$(setup_parent large-status)
+  state="$home/state"
+  # shellcheck disable=SC2031
+  export FM_PENDING_REPLY_NOW=7000
+  status="$state/big.status"
+  # A long-lived mate's log: thousands of correlated lines for other requests.
+  awk 'BEGIN { for (i = 1; i <= 4000; i++) printf "working [at=%d]: progress %d corr=%016x padding padding padding\n", i, i, i }' \
+    > "$status"
+  i=0
+  while [ "$i" -lt "$open" ]; do
+    corr=$(fm_pending_reply_create "$home" "$state" big "request $i")
+    fm_pending_reply_mark_delivered "$state" "$corr"
+    corrs+=("$corr")
+    i=$((i + 1))
+  done
+  printf 'done [corr=%s]: the one reply' "${corrs[0]}" >> "$status"
+  start=$(date +%s)
+  fm_pending_reply_tick "$state"
+  elapsed=$(( $(date +%s) - start ))
+  # The full bash scan forked once per line, over ten seconds per record on this
+  # file, so the old tick took minutes; the prefiltered one takes seconds, and
+  # what remains is per-record bookkeeping that does not grow with the file.
+  [ "$elapsed" -le 60 ] || fail "tick over $open open records on a 4000-line status took ${elapsed}s"
+  [ "$(phase_of "$state" "${corrs[0]}")" = resolved ] || fail "the correlated reply must resolve its record"
+  for corr in "${corrs[@]:1}"; do
+    [ "$(phase_of "$state" "$corr")" != resolved ] || fail "an uncorrelated record must stay open"
+  done
+  pass "a tick over many open records scans a large status file quickly"
+}
+
 test_tick_leaves_settled_records_alone() {
   local home state settled closed open_esc awaiting rec i copy holder tick_pid ticked=0 open lib
   local sums_before sums_after holder_lock_pid
@@ -2193,6 +2278,8 @@ test_busy_idle_observation_via_backend_abstraction
 test_unknown_backend_state_uses_capture_fallback
 test_kimi_capture_fallback_uses_recorded_harness
 test_tick_skips_terminal_and_reuses_target_observation
+test_resolve_scan_matches_reference
+test_tick_scans_large_status_quickly
 test_tick_leaves_settled_records_alone
 test_correlations_reuse_only_for_matching_open_task
 test_tick_end_to_end_missed_then_escalate

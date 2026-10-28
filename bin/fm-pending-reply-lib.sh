@@ -616,6 +616,20 @@ fm_pending_reply_line_resolves() {  # <line> <corr_id>
   fm_pending_reply_text_has_corr "$line" "$corr"
 }
 
+# Print, in file order, the lines of <file> that can satisfy
+# fm_pending_reply_line_resolves for <corr_id>, prefixed with grep's line number
+# when -n is given. A resolving line always holds the literal corr= token, so a
+# fixed-string grep keeps every candidate and the bash predicate then runs only
+# on those instead of on every line of a status log that grows without bound.
+# An id with a character outside [[:alnum:]_-] can match the predicate's regex
+# without the literal token, so such an id keeps every line.
+_fm_pending_reply_corr_candidate_lines() {  # <file> <corr_id> [-n]
+  local file=$1 corr=$2 number=${3-} pattern
+  pattern=$(fm_pending_reply_corr_token "$corr")
+  case "$corr" in *[![:alnum:]_-]*) pattern= ;; esac
+  LC_ALL=C grep -aF ${number:+"$number"} -e "$pattern" -- "$file" 2>/dev/null || true
+}
+
 # Scan a status file for a correlated resolve. Prints the matching line or empty.
 fm_pending_reply_find_resolve_line() {  # <status-file> <corr_id>
   local status_file=$1 corr=$2 line
@@ -626,7 +640,7 @@ fm_pending_reply_find_resolve_line() {  # <status-file> <corr_id>
       printf '%s' "$line"
       return 0
     fi
-  done < "$status_file"
+  done < <(_fm_pending_reply_corr_candidate_lines "$status_file" "$corr")
   return 0
 }
 
@@ -1409,9 +1423,9 @@ fm_pending_reply_detect_wrong_home() {  # <state-dir> <corr_id> <secondmate-home
     fi
     sighting_base=$(fm_pending_reply_sighting_encode "$status_file" 0) || continue
     sighting_base=${sighting_base%:0}
-    line_no=0
     while IFS= read -r line || [ -n "$line" ]; do
-      line_no=$((line_no + 1))
+      line_no=${line%%:*}
+      line=${line#*:}
       fm_pending_reply_line_resolves "$line" "$corr" || continue
       sighting_id="$sighting_base:$line_no"
       [ -n "$first" ] || first=$sighting_id
@@ -1425,7 +1439,7 @@ fm_pending_reply_detect_wrong_home() {  # <state-dir> <corr_id> <secondmate-home
       fi
       hits=$((hits + 1))
       changed=1
-    done < "$status_file"
+    done < <(_fm_pending_reply_corr_candidate_lines "$status_file" "$corr" -n)
   done
   if [ -n "$first" ] && [ -z "$(fm_pending_reply_get "$rec" wrong_home_first_sighting)" ]; then
     fm_pending_reply_set "$rec" wrong_home_first_sighting "$first" || return 1
