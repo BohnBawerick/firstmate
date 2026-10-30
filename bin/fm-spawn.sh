@@ -1333,7 +1333,7 @@ spawn_remote_secondmate() {
       echo "error: agy is a verified crewmate/scout adapter only and cannot run a remote secondmate; no primary supervision protocol has been verified for Antigravity CLI" >&2
       return 1
       ;;
-    claude|codex|opencode|pi|pi-signed|grok|kimi|cursor) ;;
+    claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|omp) ;;
     *)
       fm_lock_release "$registry_lock" || true
       fm_lock_release "$SPAWN_TASK_LOCK" || true
