@@ -236,7 +236,7 @@ Check a host that a registered remote record already names:
 bin/fm-on.sh <secondmate-id|ssh-alias> fm-remote-doctor.sh
 ```
 
-`fm-on.sh` reaches a host only through a registered remote record, and accepts an SSH alias only when exactly one record selects it.
+`fm-on.sh` reaches a host only through a registered remote record, resolves an exact secondmate id ahead of any alias, and otherwise accepts an SSH alias only when exactly one record selects it.
 Before a route exists, [provisioning the route](#provision-a-route) runs this doctor with `--fix` as its preflight and rolls the new record back if a gap remains.
 
 That run is read-only.

@@ -531,6 +531,36 @@ assert_contains "$out" "home=$REMOTE_HOME" "secondmate-id routing broke after al
 write_registry
 pass "ambiguous aliases refuse while exact secondmate ids remain routable"
 
+# A secondmate named after its own SSH alias keeps its route once a sibling
+# shares that alias, and the verdict cannot depend on registry order.
+SIBLING_HOME="$TMP_ROOT/sibling-remote-home"
+mkdir -p "$SIBLING_HOME"
+ALIAS_ID_RECORD="- remote-mac - Mac delivery (host: remote-mac; root: $REMOTE_ROOT; home: $REMOTE_HOME; scope: Mac work; projects: alpha; added 2026-08-02)"
+SIBLING_RECORD="- build - build delivery (host: remote-mac; root: $REMOTE_ROOT; home: $SIBLING_HOME; scope: build work; projects: beta; added 2026-08-02)"
+printf '%s\n' "$ALIAS_ID_RECORD" "$SIBLING_RECORD" > "$LOCAL_HOME/data/secondmates.md"
+out=$(fm_on remote-mac fm-probe-two.sh)
+assert_contains "$out" "home=$REMOTE_HOME" "an exact id did not win when its record came first"
+printf '%s\n' "$SIBLING_RECORD" "$ALIAS_ID_RECORD" > "$LOCAL_HOME/data/secondmates.md"
+out=$(fm_on remote-mac fm-probe-two.sh)
+assert_contains "$out" "home=$REMOTE_HOME" "an exact id did not win when its record came last"
+out=$(fm_on build fm-probe-two.sh)
+assert_contains "$out" "home=$SIBLING_HOME" "the sibling on the shared alias lost its id route"
+write_registry
+pass "an exact secondmate id wins over matches on the same SSH alias"
+
+# Duplicate ids are real ambiguity, so the id tier refuses them like an alias.
+ssh_before_duplicate_id=$(cat "$SSH_COUNT")
+printf '%s\n' "$ALIAS_ID_RECORD" "${ALIAS_ID_RECORD//$REMOTE_HOME/$SIBLING_HOME}" > "$LOCAL_HOME/data/secondmates.md"
+set +e
+out=$(fm_on remote-mac fm-probe-two.sh 2>&1)
+rc=$?
+set -e
+[ "$rc" -eq 1 ] || fail "a duplicated secondmate id was accepted (got exit $rc)"
+assert_contains "$out" "is ambiguous across 2 configured secondmates" "a duplicated secondmate id did not report ambiguity"
+[ "$(cat "$SSH_COUNT")" -eq "$ssh_before_duplicate_id" ] || fail "a duplicated secondmate id reached SSH"
+write_registry
+pass "a duplicated secondmate id still refuses as ambiguous"
+
 : > "$SSH_COUNT"
 set +e
 FM_FAKE_SSH_MODE=unreachable fm_on ios fm-mutate.sh "$REMOTE_HOME/mutations" >/dev/null 2>&1
