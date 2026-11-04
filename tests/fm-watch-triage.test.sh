@@ -12,45 +12,20 @@
 # backstop fail-safe, and afk coherence (no double-triage while the away-mode
 # daemon owns supervision).
 #
+# Declared-wait and pause rechecks live in fm-watch-triage-pause.test.sh;
+# wedge-threshold deferrals live in fm-watch-triage-wedge-defer.test.sh.
+# Shared fixtures live in tests/watch-triage-helpers.sh.
+#
 # Daemon-side classification/injection lives in fm-daemon.test.sh; watcher/lock
 # liveness in fm-watcher-lock.test.sh; the durable-queue safety matrix in
 # fm-wake-queue.test.sh.
+#
 set -u
 
-# shellcheck source=tests/wake-helpers.sh
-. "$(dirname "${BASH_SOURCE[0]}")/wake-helpers.sh"
-# shellcheck source=/dev/null
-. "$ROOT/bin/fm-classify-lib.sh"
-
-WATCH="$ROOT/bin/fm-watch.sh"
-DRAIN="$ROOT/bin/fm-wake-drain.sh"
+# shellcheck source=tests/watch-triage-helpers.sh
+. "$(dirname "${BASH_SOURCE[0]}")/watch-triage-helpers.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-watch-triage-tests)
-
-ack_stopped_cycle() {  # <state>
-  local state=$1 err sequence generation
-  err="$state/.test-cycle-drain.err"
-  FM_STATE_OVERRIDE="$state" "$DRAIN" >/dev/null 2> "$err" || return 1
-  sequence=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through \([0-9][0-9]*\) --recovery-generation [A-Za-z0-9._-][A-Za-z0-9._-]*$/\1/p' "$err")
-  generation=$(sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through [0-9][0-9]* --recovery-generation \([A-Za-z0-9._-][A-Za-z0-9._-]*\)$/\1/p' "$err")
-  rm -f "$err"
-  [ -n "$sequence" ] && [ -n "$generation" ] || return 1
-  FM_STATE_OVERRIDE="$state" "$DRAIN" --ack-through "$sequence" \
-    --recovery-generation "$generation"
-}
-
-# Common watcher knobs: tight poll/grace, no check or heartbeat cadence unless a
-# test overrides them, so a test only exercises the path it targets. FM_CREW_STATE_BIN
-# points at the case's hermetic fake fm-crew-state.sh (installed by make_case) so the
-# absorb-only-when-provably-working triage reads a canned verdict; a test fixes that
-# verdict via FM_FAKE_CREW_STATE in its environment before calling watch_bg.
-watch_bg() {  # <state> <fakebin> <out> [extra env assignments...]
-  local state=$1 fakebin=$2 out=$3
-  shift 3
-  PATH="$fakebin:$PATH" FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
-    FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
-    FM_SECONDMATE_LIVENESS_SECS=99999999 "$@" "$WATCH" > "$out" &
-}
 
 # Wait up to <limit> 0.1s ticks while <pid> stays alive; 0 if still alive, 1 if it died.
 wait_live() {
@@ -184,22 +159,6 @@ record_pi_busy() {  # <state-dir> <id>
   "$ROOT/bin/fm-busy-event.sh" apply "$state" "$id" busy --gen "$gen" \
     --source pi-ext --event agent-start
 }
-
-# Stop an owned watcher. TERM must end it through its EXIT cleanup, so one still
-# alive after the file's standard 100-tick budget fails the case here, with the
-# process evidence wait_for_exit prints, instead of an unbounded wait hanging
-# the whole suite until the CI job timeout.
-reap() {
-  local rc
-  kill "$1" 2>/dev/null || true
-  wait_for_exit "$1" 100
-  rc=$?
-  [ "$rc" -ne 124 ] || fail "watcher pid $1 did not exit within 10s of TERM"
-}
-
-# --- pure classifier predicates (fm-classify-lib.sh) ------------------------
-
-size_of() { LC_ALL=C wc -c < "$1" | tr -d '[:space:]'; }
 
 test_status_span_actionable_classifier() {
   local dir state offset
@@ -1083,7 +1042,7 @@ test_turn_ended_churn_resets_wedge_state_before_stale_poll() {
 # the cleanup expands an empty created_keys. Under `set -u`, bash 3.2 aborts the
 # whole watcher on an empty "${arr[@]}" where newer bash no-ops, so the absorb
 # must land without re-marking the window. The macos-stock-bash CI lane runs
-# this case under real /bin/bash 3.2 via FM_TEST_ONLY.
+# this case under real /bin/bash 3.2 via FM_TEST_STOCK_BASH.
 test_turn_ended_churn_existing_marker_absorbed() {
   local dir state fakebin out capture_file window key marker_since pid
   dir=$(make_case turn-ended-churn-marked); state="$dir/state"; fakebin="$dir/fakebin"
@@ -7047,12 +7006,18 @@ test_heartbeat_backstop_surfaces_a_masked_status() {
   printf 'working: setup\nneeds-decision: pick A or B\nworking: tidying the branch\n' \
     > "$state/miss.status"
   sig=$(seen_sig "$state/miss.status"); printf '%s' "$sig" > "$state/.seen-miss_status"
+  printf '3\n' > "$state/.heartbeat-streak"
+  touch "$state/.last-heartbeat"
+  set_mtime "$(( $(date +%s) - 30 ))" "$state/.last-heartbeat"
   PATH="$fakebin:$PATH" FM_STATE_OVERRIDE="$state" FM_POLL=1 FM_SIGNAL_GRACE=1 \
     FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=1 "$WATCH" > "$out" &
   pid=$!
   wait_for_exit "$pid" 100 \
     || fail "heartbeat backstop missed a decision hidden behind a later working: line"
-  grep -Fx "heartbeat" "$out" >/dev/null || fail "backstop did not exit with a heartbeat wake"
+  [ "$(cat "$state/.heartbeat-streak")" = 0 ] || fail "actionable backstop did not reset idle heartbeat backoff"
+  awk -F '\t' '$3 == "heartbeat" && $4 == "heartbeat" { found=1 } END { exit !found }' \
+    "$state/.wake-queue" || fail "actionable backstop did not preserve the heartbeat wake"
+  grep -Fx heartbeat "$out" >/dev/null || fail "backstop did not preserve its heartbeat wake reason"
   [ "$(status_presentation_marker_offset "$state/.hb-surfaced-miss" "$state/miss.status")" = \
     "$(size_of "$state/miss.status")" ] \
     || fail "backstop did not record the masked status as surfaced through its end"
@@ -7069,17 +7034,42 @@ test_heartbeat_backstop_surfaces_unsurfaced_status() {
   # fleet-scan backstop must catch it and wake firstmate.
   printf 'done: PR https://example.test/pr/5\n' > "$state/miss.status"
   sig=$(seen_sig "$state/miss.status"); printf '%s' "$sig" > "$state/.seen-miss_status"
+  printf '3\n' > "$state/.heartbeat-streak"
+  touch "$state/.last-heartbeat"
+  set_mtime "$(( $(date +%s) - 30 ))" "$state/.last-heartbeat"
   PATH="$fakebin:$PATH" FM_STATE_OVERRIDE="$state" FM_POLL=1 FM_SIGNAL_GRACE=1 \
     FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=1 "$WATCH" > "$out" &
   pid=$!
   wait_for_exit "$pid" 100 || fail "heartbeat backstop did not surface an unsurfaced captain-relevant status"
-  grep -Fx "heartbeat" "$out" >/dev/null || fail "backstop did not exit with a heartbeat wake"
+  [ "$(cat "$state/.heartbeat-streak")" = 0 ] || fail "actionable backstop did not reset idle heartbeat backoff"
+  awk -F '\t' '$3 == "heartbeat" && $4 == "heartbeat" { found=1 } END { exit !found }' \
+    "$state/.wake-queue" || fail "actionable backstop did not preserve the heartbeat wake"
+  grep -Fx heartbeat "$out" >/dev/null || fail "backstop did not preserve its heartbeat wake reason"
   [ "$(status_presentation_marker_offset "$state/.hb-surfaced-miss" "$state/miss.status")" = \
     "$(size_of "$state/miss.status")" ] \
     || fail "backstop did not record the status as surfaced through its end (would re-fire next heartbeat)"
   FM_STATE_OVERRIDE="$state" "$DRAIN" > "$drain_out" 2>/dev/null || fail "drain after the backstop heartbeat failed"
-  grep "$(printf '\theartbeat\t')" "$drain_out" >/dev/null || fail "backstop heartbeat was not queued"
+  grep "$(printf '\theartbeat\theartbeat\t')" "$drain_out" >/dev/null || fail "backstop heartbeat was not drained"
   pass "heartbeat backstop fail-safe surfaces a captain-relevant status the per-wake path missed"
+}
+
+test_afk_heartbeat_preserves_idle_accounting() {
+  local dir state fakebin out pid
+  dir=$(make_case afk-heartbeat); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"
+  date '+%s' > "$state/.afk"
+  printf '3\n' > "$state/.heartbeat-streak"
+  touch "$state/.last-heartbeat"
+  set_mtime "$(( $(date +%s) - 30 ))" "$state/.last-heartbeat"
+  PATH="$fakebin:$PATH" FM_STATE_OVERRIDE="$state" FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=1 "$WATCH" > "$out" &
+  pid=$!
+  wait_for_exit "$pid" 100 || fail "away-mode heartbeat did not hand off to daemon triage"
+  [ "$(cat "$state/.heartbeat-streak")" = 4 ] || fail "away-mode heartbeat did not preserve idle backoff accounting"
+  awk -F '\t' '$3 == "heartbeat" && $4 == "heartbeat" { found=1 } END { exit !found }' \
+    "$state/.wake-queue" || fail "away-mode heartbeat did not enqueue a heartbeat wake"
+  grep -Fx heartbeat "$out" >/dev/null || fail "away-mode heartbeat lost its transport wake reason"
+  pass "away-mode heartbeat keeps daemon triage and idle backoff accounting"
 }
 
 # --- beacon stays fresh while absorbing -------------------------------------
@@ -7191,529 +7181,396 @@ test_afk_paused_changed_pane_hands_off_plain_stale() {
   pass "AFK changed paused panes hand off plain stale identities for daemon-owned pause triage"
 }
 
-# --- the away-posture record: captain-held items are never rechecked ----------
-# While state/.afk-contract exists (bin/fm-afk-contract.sh) nobody is there to
-# answer a captain-held item and the return brief lists it, so every stale path
-# absorbs such a pane silently: the declared-wait cadence, the live-agent first
-# sight, the backlog-hold bound, and the daemon-owned one-shot handoff. Archiving
-# the record restores the ordinary bounded recheck, so the rule is the record's,
-# not a lost alarm.
-
-# A UTC ISO 8601 stamp for an epoch, on either date flavor.
-iso_utc_at() {  # <epoch>
-  date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ
-}
-
-write_away_record() {  # <state>
-  if ! FM_HOME="$(dirname "$1")" FM_STATE_OVERRIDE="$1" "$ROOT/bin/fm-afk-contract.sh" enter >/dev/null 2>&1; then
-    fail "could not write the away-posture record in $1"
-  fi
-}
-
-archive_away_record() {  # <state>
-  FM_HOME="$(dirname "$1")" FM_STATE_OVERRIDE="$1" "$ROOT/bin/fm-afk-contract.sh" archive >/dev/null 2>&1 \
-    || fail "could not archive the away-posture record in $1"
-}
-
-test_captain_held_never_rechecked_while_away_record_exists() {
-  local dir state fakebin out capture_file statusf window key pane_hash sig pid back
-  dir=$(make_case away-record-held-secondmate); state="$dir/state"; fakebin="$dir/fakebin"
-  out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/secondmate-hold.status"
-  window="test:fm-secondmate-hold"
-  printf 'idle awaiting the captain\n' > "$capture_file"
-  printf 'window=%s\nkind=secondmate\n' "$window" > "$state/secondmate-hold.meta"
-  printf 'captain-held [key=route]: tracked by task-decision-route\n' > "$statusf"
-  back=$(( $(date +%s) - 500 ))
-  if [ "$(uname)" = Darwin ]; then touch -mt "$(date -r "$back" '+%Y%m%d%H%M.%S')" "$statusf"
-  else touch -m -d "@$back" "$statusf"; fi
-  sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-secondmate-hold_status"
-  key=$(printf '%s' "$window" | tr '.:/' '___')
-  pane_hash=$(hash_text "idle awaiting the captain")
-  printf '%s' "$pane_hash" > "$state/.hash-$key"
-  printf '1\n' > "$state/.count-$key"
-  write_away_record "$state"
-  export FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available'
-  # Phase A: the record exists, the hold is well past the cadence, and the
-  # watcher still absorbs it across whole poll cycles: no wake, no throttle.
-  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_PAUSE_RESURFACE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 \
-    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
-  pid=$!
-  if ! wait_poll_cycle "$state" "$pid" || ! wait_poll_cycle "$state" "$pid"; then
-    reap "$pid"; fail "watcher rechecked a captain-held item while the away-posture record exists: $(cat "$out")"
-  fi
-  [ ! -s "$out" ] || fail "a captain-held recheck was printed while the away-posture record exists"
-  [ ! -s "$state/.wake-queue" ] || fail "a captain-held recheck was queued while the away-posture record exists"
-  [ ! -e "$state/.paused-resurfaced-$key" ] || fail "the recheck throttle was armed for an item that must never be rechecked"
-  grep -F 'never rechecked while the away-posture record exists' "$state/.watch-triage.log" >/dev/null \
-    || fail "the silent absorb did not name the away-posture rule in the triage log"
-  reap "$pid"
-  ack_stopped_cycle "$state" || fail "could not acknowledge the intentional phase-A stop"
-  # Phase B: archiving the record (the return) restores the bounded recheck.
-  archive_away_record "$state"
-  : > "$out"
-  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_PAUSE_RESURFACE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 \
-    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
-  pid=$!
-  wait_for_exit "$pid" 100 || { reap "$pid"; fail "archiving the away-posture record did not restore the captain-held recheck"; }
-  grep -F "awaiting the captain" "$out" >/dev/null || fail "the restored recheck did not name the captain: $(cat "$out")"
-  unset FM_FAKE_CREW_STATE
-  pass "a captain-held item is never rechecked while the away-posture record exists, and the recheck returns once the record is archived"
-}
-
-# Quiet mode's record is a present captain (bin/fm-afk-contract.sh AWAY OR
-# QUIET), so it silences nothing: the same hold is rechecked with that record
-# live, both on the watcher's own cadence and through the one-shot handoff a
-# running quiet daemon owns.
-write_quiet_record() {  # <state>
-  if ! FM_HOME="$(dirname "$1")" FM_STATE_OVERRIDE="$1" FM_AFK_MODE=quiet "$ROOT/bin/fm-afk-contract.sh" enter --words 'keep routine wakes off my main' >/dev/null 2>&1; then
-    fail "could not write quiet mode's record in $1"
-  fi
-}
-
-test_captain_held_rechecked_under_a_quiet_record() {
-  local dir state fakebin out capture_file statusf window key back pid
-  dir=$(make_case quiet-record-held); state="$dir/state"; fakebin="$dir/fakebin"
-  out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/secondmate-hold.status"
-  window="test:fm-secondmate-hold"
-  printf 'idle awaiting the captain\n' > "$capture_file"
-  printf 'window=%s\nkind=secondmate\n' "$window" > "$state/secondmate-hold.meta"
-  printf 'captain-held [key=route]: tracked by task-decision-route\n' > "$statusf"
-  back=$(( $(date +%s) - 500 ))
-  if [ "$(uname)" = Darwin ]; then touch -mt "$(date -r "$back" '+%Y%m%d%H%M.%S')" "$statusf"
-  else touch -m -d "@$back" "$statusf"; fi
-  printf '%s' "$(seen_sig "$statusf")" > "$state/.seen-secondmate-hold_status"
-  key=$(printf '%s' "$window" | tr '.:/' '___')
-  printf '%s' "$(hash_text "idle awaiting the captain")" > "$state/.hash-$key"
-  printf '1\n' > "$state/.count-$key"
-  write_quiet_record "$state"
-  export FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available'
-  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_PAUSE_RESURFACE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 \
-    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
-  pid=$!
-  wait_for_exit "$pid" 100 || { reap "$pid"; fail "a captain-held item was not rechecked beside quiet mode's record"; }
-  unset FM_FAKE_CREW_STATE
-  grep -F "awaiting the captain" "$out" >/dev/null || fail "the recheck beside a quiet record did not name the captain: $(cat "$out")"
-  ! grep -F 'never rechecked while the away-posture record exists' "$state/.watch-triage.log" >/dev/null 2>&1 \
-    || fail "quiet mode's record silenced a captain-held item as if the captain were away: $(cat "$state/.watch-triage.log")"
-  [ -f "$state/.afk-contract" ] || fail "fixture: quiet mode's record is gone"
-  ack_stopped_cycle "$state" || fail "could not acknowledge the captain-held recheck"
-
-  dir=$(make_case quiet-daemon-held-oneshot); state="$dir/state"; fakebin="$dir/fakebin"
-  out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/held-afk.status"
-  window="test:fm-held-afk"
-  printf 'idle awaiting the captain\n' > "$capture_file"
-  printf 'window=%s\nkind=ship\nharness=grok\nbackend=tmux\n' "$window" > "$state/held-afk.meta"
-  printf 'captain-held [key=route]: tracked by task-decision-route\n' > "$statusf"
-  printf '%s' "$(seen_sig "$statusf")" > "$state/.seen-held-afk_status"
-  key=$(printf '%s' "$window" | tr '.:/' '___')
-  printf 'quiet\n' > "$state/.afk"
-  write_quiet_record "$state"
-  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-    FM_FAKE_TMUX_CURRENT_COMMAND=zsh \
-    FM_STATE_OVERRIDE="$state" FM_POLL=1 FM_SIGNAL_GRACE=1 \
-    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
-  pid=$!
-  wait_for_exit "$pid" 100 || { reap "$pid"; fail "the quiet daemon's one-shot never handed off a captain-held pane"; }
-  grep -F "stale: $window" "$state/.wake-queue" >/dev/null \
-    || fail "the quiet daemon's one-shot did not queue the captain-held pane for the daemon: $(cat "$state/.wake-queue" 2>/dev/null)"
-  pass "quiet mode's record silences no captain-held recheck, on the watcher's cadence or through a quiet daemon's one-shot"
-}
-
-test_live_captain_held_first_sight_silenced_by_away_record() {
-  local dir state fakebin out capture_file statusf window key sig pid
-  dir=$(make_case away-record-held-live); state="$dir/state"; fakebin="$dir/fakebin"
-  out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/held-live.status"
-  window="test:fm-held-live"
-  printf 'parked at the decision gate\n' > "$capture_file"
-  printf 'window=%s\nkind=ship\nharness=grok\nbackend=tmux\n' "$window" > "$state/held-live.meta"
-  printf 'captain-held [key=route]: tracked by task-decision-route\n' > "$statusf"
-  sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-held-live_status"
-  key=$(printf '%s' "$window" | tr '.:/' '___')
-  write_away_record "$state"
-  # A LIVE agent at the gate: without the record pause_state_class answers none
-  # and the first sight surfaces (test_exited_declared_pause_is_bounded_but_live_gate_surfaces).
-  export FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available'
-  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-    FM_FAKE_TMUX_CURRENT_COMMAND=grok \
-    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_PAUSE_RESURFACE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
-    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
-  pid=$!
-  if ! wait_poll_cycle "$state" "$pid" || ! wait_poll_cycle "$state" "$pid" || ! wait_poll_cycle "$state" "$pid"; then
-    reap "$pid"; fail "a live captain-held pane surfaced on first sight while the away-posture record exists: $(cat "$out")"
-  fi
-  [ ! -s "$state/.wake-queue" ] || fail "a live captain-held pane was queued while the away-posture record exists"
-  [ -e "$state/.stale-$key" ] || fail "the silenced first sight did not advance the stale suppressor"
-  reap "$pid"
-  unset FM_FAKE_CREW_STATE
-  pass "a live captain-held pane is absorbed on first sight while the away-posture record exists"
-}
-
-test_backlog_hold_never_rechecked_while_away_record_exists() {
-  local dir out capture wakes
-  command -v tasks-axi >/dev/null 2>&1 \
-    || { echo "skip: tasks-axi not found (away-record backlog hold)"; return 0; }
-  dir=$(make_hold_home away-record-backlog-hold 'done: PR https://example.test/pr/9 checks green' hold) \
-    || fail "could not build the backlog-hold fixture"
-  out="$dir/watch.out"; capture="$dir/pane.txt"
-  write_away_record "$dir/state"
-  # Without the record the FIRST sight of a held delivery alarms
-  # (test_stale_churn_without_a_captain_call_still_alarms and its siblings). With
-  # it, even the first sight and every later hash are absorbed.
-  hold_watch_churn "$dir" "$out" "$capture" 'held delivery, pane tick' 3 \
-    || fail "watcher exited while churning a backlog-held delivery under the away-posture record: $(cat "$out")"
-  wakes=$(hold_stale_wakes "$dir/state")
-  [ "$wakes" -eq 0 ] || fail "a backlog-held delivery was rechecked $wakes time(s) while the away-posture record exists"
-  pass "a delivery the captain already holds is never rechecked while the away-posture record exists"
-}
-
-test_afk_one_shot_never_hands_off_captain_held_under_away_record() {
-  local dir state fakebin out capture_file statusf window key sig pid
-  dir=$(make_case away-record-held-afk-oneshot); state="$dir/state"; fakebin="$dir/fakebin"
-  out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/held-afk.status"
-  window="test:fm-held-afk"
-  printf 'idle awaiting the captain\n' > "$capture_file"
-  printf 'window=%s\nkind=ship\nharness=grok\nbackend=tmux\n' "$window" > "$state/held-afk.meta"
-  printf 'captain-held [key=route]: tracked by task-decision-route\n' > "$statusf"
-  sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-held-afk_status"
-  key=$(printf '%s' "$window" | tr '.:/' '___')
-  date '+%s' > "$state/.afk"
-  write_away_record "$state"
-  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
-    FM_FAKE_TMUX_CURRENT_COMMAND=zsh \
-    FM_STATE_OVERRIDE="$state" FM_POLL=1 FM_SIGNAL_GRACE=1 \
-    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
-  pid=$!
-  if ! wait_poll_cycle "$state" "$pid" || ! wait_poll_cycle "$state" "$pid" || ! wait_poll_cycle "$state" "$pid"; then
-    reap "$pid"; fail "the daemon-owned one-shot handed off a captain-held pane while the away-posture record exists: $(cat "$out")"
-  fi
-  [ ! -s "$state/.wake-queue" ] || fail "the daemon-owned one-shot queued a captain-held pane while the away-posture record exists"
-  [ "$(cat "$state/.stale-$key" 2>/dev/null || true)" = "$(hash_text 'idle awaiting the captain')" ] \
-    || fail "the silenced one-shot did not advance the stale suppressor to the pane hash"
-  reap "$pid"
-  pass "the daemon-owned one-shot never hands off a captain-held pane while the away-posture record exists"
-}
-
-# --- declared waits are condition-aware: `until <UTC ISO 8601>` --------------
-# A paused: line naming when the wait clears is rechecked at that time when it
-# falls within the flat cadence, but a distant or mistyped time cannot extend
-# the cadence, and a time that has passed is rechecked at once.
-paused_until_fixture() {  # <name> <until-epoch> <status-age-secs>
-  local name=$1 until=$2 age=$3 dir state statusf window key back
-  dir=$(make_case "$name"); state="$dir/state"
-  window="test:fm-until"
-  statusf="$state/until.status"
-  printf 'idle, waiting for the reset\n' > "$dir/pane.txt"
-  printf 'window=%s\nkind=secondmate\n' "$window" > "$state/until.meta"
-  printf 'paused: rate limit resets, until %s, then resuming\n' "$(iso_utc_at "$until")" > "$statusf"
-  back=$(( $(date +%s) - age ))
-  if [ "$(uname)" = Darwin ]; then touch -mt "$(date -r "$back" '+%Y%m%d%H%M.%S')" "$statusf"
-  else touch -m -d "@$back" "$statusf"; fi
-  printf '%s' "$(seen_sig "$statusf")" > "$state/.seen-until_status"
-  key=$(printf '%s' "$window" | tr '.:/' '___')
-  printf '%s' "$(hash_text 'idle, waiting for the reset')" > "$state/.hash-$key"
-  printf '1\n' > "$state/.count-$key"
-  printf '%s\n' "$dir"
-}
-
-until_watch() {  # <dir> <cadence> -> pid in UNTIL_PID
-  local dir=$1
-  PATH="$dir/fakebin:$PATH" FM_FAKE_TMUX_WINDOW=test:fm-until FM_FAKE_TMUX_CAPTURE="$dir/pane.txt" \
-    FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' \
-    FM_STATE_OVERRIDE="$dir/state" FM_CREW_STATE_BIN="$dir/fakebin/fm-crew-state.sh" \
-    FM_PAUSE_RESURFACE_SECS="$2" FM_POLL=1 FM_SIGNAL_GRACE=1 \
-    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$dir/watch.out" 2>&1 &
-  UNTIL_PID=$!
-}
-
-test_paused_until_near_future_is_quiet_before_the_cadence() {
-  local dir state
-  dir=$(paused_until_fixture until-near-future "$(( $(date +%s) + 120 ))" 60); state="$dir/state"
-  until_watch "$dir" 240
-  if ! wait_poll_cycle "$state" "$UNTIL_PID" || ! wait_poll_cycle "$state" "$UNTIL_PID"; then
-    reap "$UNTIL_PID"; fail "a declared wait with a near-future until time was rechecked before that time: $(cat "$dir/watch.out")"
-  fi
-  [ ! -s "$state/.wake-queue" ] || fail "a declared wait with a near-future until time was queued for a recheck"
-  grep -F 'declared time not reached' "$state/.watch-triage.log" >/dev/null \
-    || fail "the absorb did not cite the declared time in the triage log"
-  reap "$UNTIL_PID"
-  pass "a declared wait naming a near-future until time stays quiet until that time"
-}
-
-test_paused_until_wrong_year_is_bounded_by_the_cadence() {
-  local dir state
-  dir=$(paused_until_fixture until-wrong-year "$(( $(date +%s) + 31536000 ))" 300); state="$dir/state"
-  until_watch "$dir" 240
-  wait_for_exit "$UNTIL_PID" 100 \
-    || { reap "$UNTIL_PID"; fail "a wrong-year declared time silenced the wait beyond the recheck cadence"; }
-  grep -F 'stale: test:fm-until' "$dir/watch.out" >/dev/null \
-    || fail "the bounded wrong-year recheck did not print a stale wake: $(cat "$dir/watch.out")"
-  grep -F 'declared time is beyond the recheck cadence' "$dir/watch.out" >/dev/null \
-    || fail "the bounded recheck gave the wrong reason: $(cat "$dir/watch.out")"
-  grep -F 'declared clearing time has passed' "$dir/watch.out" >/dev/null \
-    && fail "the bounded recheck falsely claimed the future declared time passed"
-  pass "a wrong-year declared time cannot silence the watcher beyond the recheck cadence"
-}
-
-test_paused_until_that_passed_is_rechecked_before_the_cadence() {
-  local dir state
-  dir=$(paused_until_fixture until-passed "$(( $(date +%s) - 30 ))" 60); state="$dir/state"
-  until_watch "$dir" 999
-  wait_for_exit "$UNTIL_PID" 100 || { reap "$UNTIL_PID"; fail "a declared wait whose until time passed was not rechecked ahead of the cadence"; }
-  grep -F 'stale: test:fm-until' "$dir/watch.out" >/dev/null || fail "the due recheck did not print a stale wake: $(cat "$dir/watch.out")"
-  grep -F 'declared clearing time has passed' "$dir/watch.out" >/dev/null \
-    || fail "the due recheck did not say the declared time passed: $(cat "$dir/watch.out")"
-  grep -F 'possible wedge' "$dir/watch.out" >/dev/null && fail "a due declared wait was mislabeled a possible wedge"
-  # The due recheck fires once per declaration: a second watcher on the same
-  # unchanged declaration absorbs it again.
-  ack_stopped_cycle "$state" || fail "could not acknowledge the due recheck"
-  : > "$dir/watch.out"
-  until_watch "$dir" 999
-  if ! wait_poll_cycle "$state" "$UNTIL_PID" || ! wait_poll_cycle "$state" "$UNTIL_PID"; then
-    reap "$UNTIL_PID"; fail "the due recheck repeated on every poll instead of once per declaration: $(cat "$dir/watch.out")"
-  fi
-  reap "$UNTIL_PID"
-  pass "a declared wait whose until time has passed is rechecked at once, then held to the cadence"
-}
-
-# --- a live worker paused on its own background job --------------------------
-# A worker declared `paused:` on its own background job and the job then ended
-# without a new status line, so only the passage of time can tell the watcher
-# the wait should be over. Without `until`, the first-sight alert spends the
-# declaration's re-surface throttle and every later sight - including the one
-# after the job ended - is held for PAUSE_RESURFACE_SECS. Naming the job's
-# start plus its timeout as `until` gives that same declaration one recheck once
-# the job can no longer be running.
-bg_job_paused_case() {  # <name> <status-line> -> dir
-  local dir state window key
-  dir=$(make_case "$1"); state="$dir/state"; window="test:fm-parked"
-  printf 'window=%s\nkind=scout\nharness=grok\nbackend=tmux\n' "$window" > "$state/parked.meta"
-  printf '%s\n' "$2" > "$state/parked.status"
-  printf '%s' "$(seen_sig "$state/parked.status")" > "$state/.seen-parked_status"
-  key=$(printf '%s' "$window" | tr ':/.' '___')
-  printf 'nightly build running' > "$dir/pane.txt"
-  printf '%s' "$(hash_text 'nightly build running')" > "$state/.hash-$key"
-  printf '1\n' > "$state/.count-$key"
-  printf '%s\n' "$dir"
-}
-
-bg_job_stale_wakes() {  # <state> -> count of stale wakes queued for the parked window
-  awk -F '\t' '$3 == "stale" && $4 == "test:fm-parked" { n++ } END { print n + 0 }' \
-    "$1/.wake-queue" 2>/dev/null || echo 0
-}
-
-test_paused_bg_job_without_until_stays_silent_after_the_job_ends() {
-  local dir state
-  dir=$(bg_job_paused_case bg-job-no-until \
-    "paused [key=nightly-build] [at=$(date +%s)]: nightly build; resume when the job finishes")
-  state="$dir/state"
-  parked_watch_round "$state" "$dir/fakebin" "$dir/watch.out" "$dir/pane.txt" test:fm-parked exit \
-    || fail "first sight of a worker paused on its background job did not surface"
-  ack_stopped_cycle "$state" || fail "could not acknowledge the first-sight alert"
-  printf '[bg failed] nightly build - Exited with code 1' > "$dir/pane.txt"
-  parked_watch_round "$state" "$dir/fakebin" "$dir/watch.out" "$dir/pane.txt" test:fm-parked absorb \
-    || fail "the ended job surfaced although the declaration names no time"
-  [ "$(bg_job_stale_wakes "$state")" -eq 0 ] \
-    || fail "the ended job surfaced inside the cadence although the declaration names no time"
-  pass "without until, a worker paused on its own ended background job is not rechecked inside the cadence"
-}
-
-test_paused_bg_job_until_timeout_rechecks_after_the_job_ends() {
-  local dir state started
-  started=$(date +%s)
-  dir=$(bg_job_paused_case bg-job-until-running \
-    "paused [key=nightly-build] [at=$started]: nightly build (background job, 600s timeout); resume when it ends, until $(iso_utc_at "$(( started + 600 ))")")
-  state="$dir/state"
-  parked_watch_round "$state" "$dir/fakebin" "$dir/watch.out" "$dir/pane.txt" test:fm-parked absorb \
-    || fail "a worker paused on its running background job woke before the job's timeout"
-  [ "$(bg_job_stale_wakes "$state")" -eq 0 ] || fail "the running job surfaced before its timeout"
-  started=$(( $(date +%s) - 180 ))
-  dir=$(bg_job_paused_case bg-job-until \
-    "paused [key=nightly-build] [at=$started]: nightly build (background job, 120s timeout); resume when it ends, until $(iso_utc_at "$(( started + 120 ))")")
-  state="$dir/state"
-  printf '[bg failed] nightly build - Exited with code 1' > "$dir/pane.txt"
-  parked_watch_round "$state" "$dir/fakebin" "$dir/watch.out" "$dir/pane.txt" test:fm-parked exit \
-    || fail "the job's timeout passed without a recheck of the worker paused on it"
-  [ "$(bg_job_stale_wakes "$state")" -eq 1 ] || fail "the passed timeout queued the wrong number of rechecks"
-  awk -F '\t' '$3 == "stale" && $5 == "stale: test:fm-parked" { found = 1 } END { exit !found }' \
-    "$state/.wake-queue" || fail "the recheck carried an unexpected reason: $(cat "$state/.wake-queue")"
-  case "$(cat "$state/.paused-resurfaced-test_fm-parked" 2>/dev/null)" in
-    *:due) ;;
-    *) fail "the recheck was not recorded as the passed declared time" ;;
-  esac
-  ack_stopped_cycle "$state" || fail "could not acknowledge the due recheck"
-  printf '[bg failed] nightly build - Exited with code 1 (idle)' > "$dir/pane.txt"
-  parked_watch_round "$state" "$dir/fakebin" "$dir/watch.out" "$dir/pane.txt" test:fm-parked absorb \
-    || fail "the due recheck repeated instead of returning to the cadence"
-  pass "until set to a background job's timeout rechecks the worker paused on it once the job must have ended"
-}
-
-# CI's stock macOS Bash lane sets FM_TEST_ONLY to run just the bash-3.2
-# churn-deferral regression. The rest of this file is not a 3.2 snapshot suite.
-if [ -n "${FM_TEST_ONLY:-}" ]; then
-  "$FM_TEST_ONLY"
-  exit 0
+test_pi_stream_silence_uses_inspection_timer() {
+  local dir state fakebin out capture_file window key gen snapshot pid mode enabled
+  for mode in enabled disabled negative invalid_option leading maximum overflow closed foreign fresh malformed stale resumed racing; do
+    dir=$(make_case "pi-stream-$mode"); state="$dir/state"; fakebin="$dir/fakebin"
+    out="$dir/watch.out"; capture_file="$dir/pane.txt"; window="test:fm-stream-$mode"
+    key=$(printf '%s' "$window" | tr ':/.' '___')
+    printf 'Working...' > "$capture_file"
+    printf 'window=%s\nkind=ship\nharness=pi\n' "$window" > "$state/stream.meta"
+    record_pi_busy "$state" stream
+    gen=$(cat "$state/stream.busy-gen")
+    "$ROOT/bin/fm-busy-event.sh" stream "$state" stream open --gen "$gen" --request 1
+    # Backdate the owned protocol fixture, not production source or a UI guess.
+    snapshot="v1 gen=$gen request=1 rev=1 ts=$(( $(date +%s) - 600 ))"
+    printf '%s\n' "$snapshot" > "$state/stream.model-stream"
+    printf 'working: setup complete\n' > "$state/stream.status"
+    seen_sig "$state/stream.status" > "$state/.seen-stream_status"
+    enabled=300
+    case "$mode" in
+      disabled) enabled=0 ;;
+      negative) enabled=-1 ;;
+      invalid_option) enabled=invalid ;;
+      leading) enabled=00300 ;;
+      maximum) enabled=999999999 ;;
+      overflow) enabled=1000000000 ;;
+      closed) "$ROOT/bin/fm-busy-event.sh" stream "$state" stream close --gen "$gen" --request 1 ;;
+      foreign) printf 'window=%s\nkind=ship\nharness=claude\n' "$window" > "$state/stream.meta"
+               "$ROOT/bin/fm-busy-event.sh" apply "$state" stream busy --gen "$gen" --source claude-hook --event start ;;
+      fresh) "$ROOT/bin/fm-busy-event.sh" stream "$state" stream progress --gen "$gen" --request 1 ;;
+      malformed) printf 'malformed\n' > "$state/stream.model-stream" ;;
+      stale) record_pi_busy "$state" stream
+             printf '%s\n' "$snapshot" > "$state/stream.model-stream" ;;
+    esac
+    PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+      FM_STATE_OVERRIDE="$state" FM_STREAM_SILENT_MAX_SECS="$enabled" FM_BUSY_TURN_MAX_SECS=99999 \
+      FM_STALE_ESCALATE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+      "$WATCH" > "$out" &
+    pid=$!
+    wait_poll_cycle "$state" "$pid" || { reap "$pid"; fail "stream case $mode surfaced before inspection delay: $(cat "$out")"; }
+    if [ "$mode" = enabled ] || [ "$mode" = leading ] || [ "$mode" = resumed ] || [ "$mode" = racing ]; then
+      [ -s "$state/.stale-since-$key" ] || { reap "$pid"; fail "expired stream did not enter inspection timer"; }
+    else
+      [ ! -e "$state/.stale-since-$key" ] || { reap "$pid"; fail "$mode stream started inspection timer"; }
+    fi
+    reap "$pid"
+    if [ "$mode" = enabled ] || [ "$mode" = resumed ] || [ "$mode" = racing ]; then
+      ack_stopped_cycle "$state" || fail "cannot acknowledge test stop"
+      echo $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
+      printf 'Working... next tick' > "$capture_file"
+      if [ "$mode" = resumed ]; then
+        "$ROOT/bin/fm-busy-event.sh" stream "$state" stream progress --gen "$gen" --request 1
+      elif [ "$mode" = racing ]; then
+        # The recovery-grade endpoint read runs inside the escalation path.
+        # Close the request there to exercise the final evidence revalidation.
+        mv "$fakebin/tmux" "$fakebin/tmux-base"
+        cat > "$fakebin/tmux" <<SH
+#!/usr/bin/env bash
+if [ "\${1:-}" = display-message ]; then
+  date +%s > "$state/.wedge-permanent-$key"
+  date +%s > "$state/.wedge-terminal-queued-$key"
+  "$ROOT/bin/fm-busy-event.sh" stream "$state" stream close --gen "$gen" --request 1
+  touch "$dir/race-fired"
+  exit 1
 fi
+exec "$fakebin/tmux-base" "\$@"
+SH
+        chmod +x "$fakebin/tmux"
+      fi
+      PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+        FM_STATE_OVERRIDE="$state" FM_STREAM_SILENT_MAX_SECS=300 FM_BUSY_TURN_MAX_SECS=99999 \
+        FM_WEDGE_MAX_ESCALATIONS=0 FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+        "$WATCH" > "$out" &
+      pid=$!
+      if [ "$mode" = enabled ]; then
+        wait_for_exit "$pid" 100 || { reap "$pid"; fail "expired stream never surfaced"; }
+        grep -F 'model stream silent for' "$out" >/dev/null || fail "stream reason missing: $(cat "$out")"
+        grep -F 'possible wedge' "$out" >/dev/null || fail "stream bypassed inspection reason"
+      else
+        wait_poll_cycle "$state" "$pid" || { reap "$pid"; fail "$mode request published obsolete stream inspection: $(cat "$out")"; }
+        [ ! -e "$state/.stale-since-$key" ] || { reap "$pid"; fail "$mode request retained obsolete timer"; }
+        [ ! -s "$out" ] || { reap "$pid"; fail "$mode request produced a wake"; }
+        if [ "$mode" = racing ]; then
+          [ -e "$dir/race-fired" ] && [ ! -e "$state/stream.model-stream" ] || { reap "$pid"; fail "notification-time close was not exercised"; }
+        fi
+        [ ! -e "$state/.wedge-permanent-$key" ] && [ ! -e "$state/.wedge-terminal-queued-$key" ] || { reap "$pid"; fail "$mode retained old cap markers"; }
+        reap "$pid"
+      fi
+    fi
+  done
+  pass "opted-in current stream silence uses inspection delay across changing panes; disabled, tool, and foreign phases do not"
+}
 
-test_status_span_actionable_classifier
-test_status_span_survives_a_later_routine_append
-test_status_span_respects_decision_closure
-test_status_span_closure_from_an_offset
-test_malformed_seen_signature_reads_the_whole_log
-test_stale_is_terminal_classifier
-test_classifier_primitives
-test_unrecognized_status_prefix_is_visible
-test_crew_is_provably_working_classifier
-test_status_is_paused_classifier
-test_crew_absorb_class_classifier
-test_crew_worktree_written_since_classifier
-test_empty_write_prune_widens_the_probe
-test_empty_write_prune_from_the_environment_widens_the_probe
-test_worktree_write_probe_is_wall_clock_bounded
-test_signal_crew_provably_working_classifier
-test_secondmate_status_routine_absorbed_routed_surfaced_classifier
-test_provably_working_signal_absorbed
-test_turn_ended_provably_working_absorbed
-test_turn_ended_not_working_surfaced
-test_turn_ended_churning_pane_absorbed
-test_turn_ended_churn_resets_prior_stale_classification
-test_turn_ended_churn_resets_wedge_state_before_stale_poll
-test_turn_ended_churn_existing_marker_absorbed
-test_turn_ended_still_pane_surfaced
-test_turn_ended_malformed_prior_hash_surfaced
-test_unknown_alive_stale_is_bounded_after_its_first_alarm
-test_unknown_alive_stale_without_progress_keeps_surfacing
-test_turn_ended_trailing_newline_prior_hash_surfaced
-test_secondmate_turn_ended_churning_pane_surfaced
-test_turn_ended_colliding_window_key_surfaced
-test_turn_ended_duplicate_endpoint_records_surfaced
-test_turn_ended_mixed_positive_evidence_batch_absorbed
-test_turn_ended_mixed_positive_evidence_batch_default_off
-test_status_and_turn_end_batch_never_uses_churn_evidence
-test_turn_ended_churn_absorb_off_by_default
-test_turn_ended_churn_absorb_bounded
-test_turn_ended_churn_timer_write_failure_surfaced
-test_turn_ended_invalid_churn_bound_surfaced
-test_turn_ended_oversized_churn_bound_surfaced
-test_turn_ended_invalid_churn_deadline_surfaced
-test_turn_ended_surfaced_batch_opens_no_partial_deadline
-test_working_note_not_working_surfaced
-test_secondmate_status_note_surfaced_despite_busy_agent
-test_secondmate_routine_progress_absorbed_then_note_surfaced
-test_secondmate_buried_block_wakes_despite_busy_agent
-test_self_announced_close_does_not_rewake_but_next_note_does
-test_self_announced_close_after_open_decisions_fold_does_not_rewake
-test_folded_worker_decision_without_home_append_still_wakes
-test_separate_self_announced_answers_after_fold_wake_once
-test_self_announced_close_after_fold_still_surfaces_folded_worker_failure
-test_self_announced_close_after_fold_still_surfaces_folded_secondmate_lines
-test_actionable_signal_surfaced
-test_needs_decision_signal_payload_marked_for_branch_exclusion
-test_needs_decision_reconciliation_required_still_marked
-test_captain_held_signal_payload_marked_for_branch_exclusion
-test_pending_reply_escalation_signal_payload_marked_for_branch_exclusion
-test_ordinary_blocked_signal_payload_remains_branch_eligible
-test_routine_signal_payload_not_marked_needs_decision
-test_actionable_signal_survives_a_later_routine_append
-test_keyed_decision_signal_reads_only_the_new_span
-test_release_completion_survives_a_later_routine_append
-test_routine_appends_after_a_classified_event_stay_absorbed
-test_unreadable_status_reports_once_per_file_state
-test_permission_recovery_surfaces_preserved_status
-test_terminal_stale_surfaced
-test_stale_terminal_status_overridden_by_active_run
-test_nonterminal_stale_provably_working_absorbed_then_suppressed
-test_stale_missing_busy_source_escalates
-test_wedge_escalation_marks_demand_deep_inspection_after_threshold
-test_wedge_escalation_resets_when_pane_becomes_active
-test_gone_endpoint_reports_once_instead_of_escalating_forever
-test_live_and_unproven_endpoints_still_wedge_escalate
-test_wedge_guards_absent_config_keeps_the_unchanged_ladder
-test_wedge_guard_critical_defers_one_window_at_a_time_up_to_the_cap
-test_wedge_guard_failures_fail_open
-test_wedge_guard_never_defers_a_gone_endpoint
-test_gone_report_rearms_when_the_endpoint_comes_back
-test_second_death_after_a_same_window_relaunch_reports_in_full
-test_identical_dead_display_of_a_successor_still_reports
-test_term_stops_a_watcher_blocked_inside_a_poll
-test_term_stops_a_watcher_whose_cleanup_marker_lock_is_held
-test_cleanup_marker_lock_bound_is_decimal_with_zero_default
-test_busy_pane_below_turn_age_bound_is_absorbed
-test_busy_pane_stable_hash_escalates_past_turn_age_bound
-test_busy_pane_changing_hash_escalates_past_turn_age_bound
-test_busy_pane_turn_end_touch_resets_age
-test_busy_pane_native_progress_resets_age
-test_busy_pane_repeated_escalation_reaches_demand_deep_inspection
-test_busy_pane_default_turn_age_bound_is_3600s
-test_busy_declared_pause_is_rechecked_not_wedge_escalated
-test_afk_busy_declared_pause_hands_off_plain_stale
-test_afk_busy_declared_pause_ticking_pane_hands_off_once
-test_nonterminal_stale_not_working_surfaced
-test_nonterminal_stale_paused_absorbed_then_resurfaced
-test_exited_declared_pause_is_bounded_but_live_gate_surfaces
-test_live_declared_pause_ticking_footer_keeps_the_bounded_cadence
-test_own_work_wait_keeps_first_alert_then_long_cadence
-test_absorbed_replacement_wait_does_not_inherit_the_old_throttle
-test_live_declared_wait_churn_honors_the_resurface_throttle
-test_live_paused_until_controls_recheck_time
-test_wedge_threshold_defers_to_a_declared_wait_under_a_working_verdict
-test_wedge_threshold_keeps_a_wait_past_a_default_key_answer
-test_wedge_threshold_recheck_names_the_captain_for_a_held_lane
-test_wedge_threshold_defers_to_a_backlog_captain_hold
-test_wedge_threshold_defers_to_a_parked_gate_awaiting_a_human
-test_wedge_threshold_parked_gate_needs_an_unanswered_decision
-test_wedge_threshold_parked_gate_is_off_until_armed
-test_wedge_threshold_defers_to_a_worker_blocker
-test_wedge_threshold_worker_wait_is_off_until_armed
-test_wedge_defer_refuses_a_half_filled_wait_record
-test_wedge_threshold_defers_to_an_executing_validation_run
-test_wedge_threshold_escalates_when_no_run_is_executing
-test_wedge_threshold_unarmed_keeps_proven_work_suppressed
-test_open_captain_call_bounds_stale_churn
-test_stale_churn_without_a_captain_call_still_alarms
-test_failed_wake_append_does_not_arm_the_captain_hold_throttle
-test_reheld_captain_call_starts_its_own_resurface_window
-test_secondmate_paused_resurfaces_in_normal_mode
-test_secondmate_captain_held_resurfaces_in_normal_mode
-test_secondmate_nonpaused_stale_remains_suppressed
-test_secondmate_unpause_clears_pause_tracking
-test_nonterminal_stale_pause_transitions_reclassify_unchanged_hash
-test_nonterminal_paused_rechecks_authoritative_state
-test_paused_authoritative_working_preserves_wedge_timer
-test_nonterminal_stale_repairs_missing_or_corrupt_timer
-test_wedge_escalation_deferred_while_worktree_is_written
-test_write_deferral_resurfaces_on_the_bounded_cadence
-test_secondmate_home_supervision_churn_is_not_write_evidence
-test_timer_repair_drops_a_finished_write_deferral_chain
-test_terminal_first_sight_drops_a_finished_write_deferral_chain
-test_triage_log_size_cap_accepts_spaced_wc_counts
-test_procevent_captured_result_surfaces_proactively
-test_procevent_unacknowledged_result_redrains_until_handled
-test_procevent_marker_keys_are_injective
-test_procevent_headlines_classify_queue_keys
-test_procevent_launch_failed_episodes_are_each_delivered
-test_procevent_surface_serializes_with_drain
-test_procevent_surface_crash_boundaries
-test_procevent_marker_failure_exits_and_replays
-test_heartbeat_no_change_absorbed
-test_heartbeat_backstop_surfaces_unsurfaced_status
-test_heartbeat_backstop_surfaces_a_masked_status
-test_beacon_stays_fresh_while_absorbing
-test_afk_signal_records_heartbeat_endpoint
-test_afk_present_reverts_watcher_to_one_shot
-test_afk_paused_changed_pane_hands_off_plain_stale
-test_captain_held_never_rechecked_while_away_record_exists
-test_live_captain_held_first_sight_silenced_by_away_record
-test_backlog_hold_never_rechecked_while_away_record_exists
-test_afk_one_shot_never_hands_off_captain_held_under_away_record
-test_captain_held_rechecked_under_a_quiet_record
-test_paused_until_near_future_is_quiet_before_the_cadence
-test_paused_until_wrong_year_is_bounded_by_the_cadence
-test_paused_until_that_passed_is_rechecked_before_the_cadence
-test_paused_bg_job_without_until_stays_silent_after_the_job_ends
-test_paused_bg_job_until_timeout_rechecks_after_the_job_ends
+test_pi_model_progress_and_legacy_fallback() {
+  local dir state fakebin out capture_file window key gen pid mode enabled
+  for mode in enabled disabled stale malformed closed replaced; do
+    dir=$(make_case "pi-anchor-$mode"); state="$dir/state"; fakebin="$dir/fakebin"
+    out="$dir/watch.out"; capture_file="$dir/pane.txt"; window="test:fm-anchor-$mode"
+    key=$(printf '%s' "$window" | tr ':/.' '___')
+    printf 'Working...' > "$capture_file"
+    printf 'window=%s\nkind=ship\nharness=pi\n' "$window" > "$state/stream.meta"
+    record_pi_busy "$state" stream
+    gen=$(cat "$state/stream.busy-gen")
+    "$ROOT/bin/fm-busy-event.sh" stream "$state" stream open --gen "$gen" --request 1
+    if [ "$mode" != closed ] && [ "$mode" != replaced ]; then
+      "$ROOT/bin/fm-busy-event.sh" stream "$state" stream progress --gen "$gen" --request 1
+      "$ROOT/bin/fm-busy-event.sh" stream "$state" stream close --gen "$gen" --request 1
+    else
+      printf 'v1 gen=%s request=1 rev=1 ts=%s\n' "$gen" "$(( $(date +%s) - 600 ))" > "$state/stream.model-stream"
+    fi
+    case "$mode" in
+      stale) printf 'v1 gen=obsolete request=1 rev=1 ts=%s\n' "$(date +%s)" > "$state/stream.model-progress" ;;
+      malformed) printf 'invalid\n' > "$state/stream.model-progress" ;;
+    esac
+    touch -t 200001010000 "$state/stream.meta"
+    printf 'working: setup complete\n' > "$state/stream.status"
+    seen_sig "$state/stream.status" > "$state/.seen-stream_status"
+    enabled=300
+    PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+      FM_STATE_OVERRIDE="$state" FM_STREAM_SILENT_MAX_SECS=300 FM_BUSY_TURN_MAX_SECS=60 \
+      FM_STALE_ESCALATE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+      "$WATCH" > "$out" &
+    pid=$!
+    wait_poll_cycle "$state" "$pid" || { reap "$pid"; fail "anchor $mode escalated early"; }
+    if [ "$mode" = enabled ] || [ "$mode" = disabled ]; then
+      [ ! -e "$state/.stale-since-$key" ] || { reap "$pid"; fail "recent model progress did not postpone legacy bound"; }
+    else
+      [ -s "$state/.stale-since-$key" ] || { reap "$pid"; fail "anchor $mode failed to start timer"; }
+    fi
+    reap "$pid"
+    ack_stopped_cycle "$state" || fail "anchor stop acknowledgement failed"
+    case "$mode" in
+      enabled) continue ;;
+      disabled) enabled=0 ;;
+      closed) "$ROOT/bin/fm-busy-event.sh" stream "$state" stream close --gen "$gen" --request 1 ;;
+      replaced) "$ROOT/bin/fm-busy-event.sh" stream "$state" stream open --gen "$gen" --request 2 ;;
+    esac
+    echo $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
+    echo 7 > "$state/.wedge-escalations-$key"
+    if [ "$mode" = closed ] || [ "$mode" = replaced ]; then
+      date +%s > "$state/.wedge-permanent-$key"
+      date +%s > "$state/.wedge-terminal-queued-$key"
+    fi
+    PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+      FM_STATE_OVERRIDE="$state" FM_STREAM_SILENT_MAX_SECS="$enabled" FM_BUSY_TURN_MAX_SECS=60 \
+      FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+      "$WATCH" > "$out" &
+    pid=$!
+    if [ "$mode" = closed ] || [ "$mode" = replaced ]; then
+      wait_poll_cycle "$state" "$pid" || { reap "$pid"; fail "$mode inherited obsolete stream timer: $(cat "$out")"; }
+      [ "$(cat "$state/.stale-since-$key")" -gt "$(( $(date +%s) - 100 ))" ] || { reap "$pid"; fail "$mode timer not reset"; }
+      [ ! -e "$state/.wedge-escalations-$key" ] || { reap "$pid"; fail "$mode inherited stream escalation count"; }
+      [ ! -e "$state/.wedge-permanent-$key" ] && [ ! -e "$state/.wedge-terminal-queued-$key" ] || { reap "$pid"; fail "$mode retained old stream cap markers"; }
+      reap "$pid"
+    else
+      wait_for_exit "$pid" 100 || { reap "$pid"; fail "$mode legacy bound did not inspect"; }
+      grep -F 'possible wedge' "$out" >/dev/null || fail "$mode missing legacy inspection"
+      if grep -F 'model stream silent' "$out" >/dev/null; then fail "$mode used obsolete stream reason"; fi
+    fi
+  done
+  pass "model progress extends only opted-in bounds and obsolete stream episodes reset before legacy fallback"
+}
+
+test_pi_stream_publication_lock_revalidation() {
+  local dir state fakebin out capture_file window key gen pid lock_kind action lock real_mkdir real_cat
+  local uninterrupted=${1:-0} terminal=${2:-0}
+  for lock_kind in queue recovery; do
+    for action in close progress replace; do
+      dir=$(make_case "pi-publication-$uninterrupted-terminal-$terminal-$lock_kind-$action"); state="$dir/state"; fakebin="$dir/fakebin"
+      out="$dir/watch.out"; capture_file="$dir/pane.txt"; window="test:fm-publication-$lock_kind-$action"
+      key=$(printf '%s' "$window" | tr ':/.' '___')
+      printf 'Working...' > "$capture_file"
+      printf 'window=%s\nkind=ship\nharness=pi\n' "$window" > "$state/stream.meta"
+      record_pi_busy "$state" stream
+      gen=$(cat "$state/stream.busy-gen")
+      "$ROOT/bin/fm-busy-event.sh" stream "$state" stream open --gen "$gen" --request 1
+      printf 'v1 gen=%s request=1 rev=1 ts=%s\n' "$gen" "$(( $(date +%s) - 600 ))" > "$state/stream.model-stream"
+      printf 'working: setup complete\n' > "$state/stream.status"
+      seen_sig "$state/stream.status" > "$state/.seen-stream_status"
+      PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+        FM_STATE_OVERRIDE="$state" FM_STREAM_SILENT_MAX_SECS=300 FM_BUSY_TURN_MAX_SECS=99999 \
+        FM_STALE_ESCALATE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+        "$WATCH" > "$out" &
+      pid=$!
+      wait_poll_cycle "$state" "$pid" || { reap "$pid"; fail "publication admission failed"; }
+      if [ "$uninterrupted" -eq 0 ]; then
+        reap "$pid"
+        ack_stopped_cycle "$state" || fail "publication stop acknowledgement failed"
+      else
+        [ ! -e "$state/.watcher-down" ] || { reap "$pid"; fail "fresh watcher unexpectedly has recovery marker"; }
+      fi
+      lock="$state/.wake-queue.lock"
+      [ "$lock_kind" != recovery ] || lock="$state/.watcher-down.lock"
+      real_mkdir=$(command -v mkdir)
+      real_cat=$(command -v cat)
+      cat > "$fakebin/cat" <<SH
+#!/usr/bin/env bash
+if [ "\${!#}" = "$lock/pid" ] && [ -d "$lock" ]; then printf '1\n' > "$dir/append-blocked"; fi
+exec "$real_cat" "\$@"
+SH
+      chmod +x "$fakebin/cat"
+      mv "$fakebin/tmux" "$fakebin/tmux-base"
+      cat > "$fakebin/tmux" <<SH
+#!/usr/bin/env bash
+if [ "\${1:-}" = display-message ]; then
+  if [ ! -e "$dir/lock-created" ]; then
+    cat "$state/.watcher-down" > "$dir/prior-recovery" 2>/dev/null || : > "$dir/prior-recovery"
+    "$real_mkdir" "$lock"
+    printf '%s\n' '$$' > "$lock/pid"
+    touch "$dir/lock-created"
+  fi
+  exit 1
+fi
+exec "$fakebin/tmux-base" "\$@"
+SH
+      chmod +x "$fakebin/tmux"
+      if [ "$terminal" -eq 1 ]; then
+        printf "1\n" > "$state/.wedge-escalations-$key"
+      fi
+      echo $(( $(date +%s) - 1500 )) > "$state/.stale-since-$key"
+      if [ "$uninterrupted" -eq 0 ]; then
+        PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+        FM_STATE_OVERRIDE="$state" FM_STREAM_SILENT_MAX_SECS=300 FM_BUSY_TURN_MAX_SECS=99999 \
+        FM_WEDGE_MAX_ESCALATIONS="$terminal" FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+        "$WATCH" > "$out" &
+        pid=$!
+      fi
+      wait_numeric_file "$dir/append-blocked" 100 || { reap "$pid"; fail "$lock_kind publication wait not exercised"; }
+      date +%s > "$state/.wedge-permanent-$key"
+      date +%s > "$state/.wedge-terminal-queued-$key"
+      case "$action" in
+        close) "$ROOT/bin/fm-busy-event.sh" stream "$state" stream close --gen "$gen" --request 1 ;;
+        progress) "$ROOT/bin/fm-busy-event.sh" stream "$state" stream progress --gen "$gen" --request 1 ;;
+        replace) "$ROOT/bin/fm-busy-event.sh" stream "$state" stream open --gen "$gen" --request 2 ;;
+      esac
+      rm -f "$lock/pid"
+      rmdir "$lock"
+      wait_poll_cycle "$state" "$pid" || { reap "$pid"; fail "$lock_kind/$action published obsolete inspection: $(cat "$out")"; }
+      [ ! -s "$out" ] && [ ! -s "$state/.wake-queue" ] || { reap "$pid"; fail "obsolete publication survived lock wait"; }
+      [ ! -e "$state/.stale-since-$key" ] && [ ! -e "$state/.wedge-escalations-$key" ] || { reap "$pid"; fail "rejected publication retained escalation"; }
+      [ "$(cat "$state/.watcher-down" 2>/dev/null || true)" = "$(cat "$dir/prior-recovery")" ] || { reap "$pid"; fail "$lock_kind/$action rejected append changed prior recovery marker"; }
+      [ ! -e "$state/.wedge-permanent-$key" ] && [ ! -e "$state/.wedge-terminal-queued-$key" ] || { reap "$pid"; fail "obsolete terminal append retained cap"; }
+      reap "$pid"
+    done
+  done
+  pass "stream close, progress, and replacement cancel publication after queue and recovery lock waits"
+}
+
+test_pi_stream_resume_restarts_capped_episode() {
+  local dir state fakebin out capture_file window key gen pid round snapshot
+  dir=$(make_case pi-stream-restall); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; capture_file="$dir/pane.txt"; window=test:fm-stream-restall
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  printf 'Working...' > "$capture_file"
+  printf 'window=%s\nkind=ship\nharness=pi\n' "$window" > "$state/stream.meta"
+  record_pi_busy "$state" stream
+  gen=$(cat "$state/stream.busy-gen")
+  "$ROOT/bin/fm-busy-event.sh" stream "$state" stream open --gen "$gen" --request 1
+  printf 'working: setup complete\n' > "$state/stream.status"
+  seen_sig "$state/stream.status" > "$state/.seen-stream_status"
+  for round in first resumed; do
+    if [ "$round" = resumed ]; then
+      "$ROOT/bin/fm-busy-event.sh" stream "$state" stream progress --gen "$gen" --request 1
+    fi
+    snapshot=$(cat "$state/stream.model-stream")
+    printf '%s ts=%s\n' "${snapshot% ts=*}" "$(( $(date +%s) - 600 ))" > "$state/stream.model-stream"
+    PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+      FM_STATE_OVERRIDE="$state" FM_STREAM_SILENT_MAX_SECS=300 FM_BUSY_TURN_MAX_SECS=99999 \
+      FM_WEDGE_MAX_ESCALATIONS=1 FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+      "$WATCH" > "$out" &
+    pid=$!
+    wait_poll_cycle "$state" "$pid" || { reap "$pid"; fail "$round stream did not start a new inspection timer"; }
+    [ -s "$state/.stale-since-$key" ] || { reap "$pid"; fail "$round stream missing inspection timer"; }
+    [ ! -e "$state/.wedge-permanent-$key" ] && [ ! -e "$state/.wedge-terminal-queued-$key" ] || { reap "$pid"; fail "$round stream inherited prior cap"; }
+    reap "$pid"
+    ack_stopped_cycle "$state" || fail "$round admission acknowledgement failed"
+    echo $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
+    PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+      FM_STATE_OVERRIDE="$state" FM_STREAM_SILENT_MAX_SECS=300 FM_BUSY_TURN_MAX_SECS=99999 \
+      FM_WEDGE_MAX_ESCALATIONS=1 FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+      "$WATCH" > "$out" &
+    pid=$!
+    wait_for_exit "$pid" 100 || { reap "$pid"; fail "$round stream did not reach cap"; }
+    grep -F PERMANENTLY-WEDGED "$out" >/dev/null || fail "$round stream missing terminal notification"
+    [ -s "$state/.wedge-permanent-$key" ] && [ -s "$state/.wedge-terminal-queued-$key" ] || fail "$round stream missing cap markers"
+    ack_stopped_cycle "$state" || fail "$round cap acknowledgement failed"
+  done
+  pass "a capped stream that resumes and stalls before rearming starts a fresh episode"
+}
+
+test_pi_stream_counter_write_failures() {
+  local mode dir state fakebin out capture_file window key gen pid cap status real_rm queue_before
+  for mode in uncapped post_append terminal truncation; do
+    dir=$(make_case "pi-counter-$mode"); state="$dir/state"; fakebin="$dir/fakebin"
+    out="$dir/watch.out"; capture_file="$dir/pane.txt"; window="test:fm-counter-$mode"
+    key=$(printf '%s' "$window" | tr ':/.' '___')
+    printf 'Working...' > "$capture_file"
+    printf 'window=%s\nkind=ship\nharness=pi\n' "$window" > "$state/stream.meta"
+    record_pi_busy "$state" stream
+    gen=$(cat "$state/stream.busy-gen")
+    "$ROOT/bin/fm-busy-event.sh" stream "$state" stream open --gen "$gen" --request 1
+    printf 'v1 gen=%s request=1 rev=1 ts=%s\n' "$gen" "$(( $(date +%s) - 600 ))" > "$state/stream.model-stream"
+    printf 'working: setup complete\n' > "$state/stream.status"
+    seen_sig "$state/stream.status" > "$state/.seen-stream_status"
+    cap=1
+    case "$mode" in uncapped) cap=0 ;; post_append) cap=2 ;; esac
+    PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+      FM_STATE_OVERRIDE="$state" FM_STREAM_SILENT_MAX_SECS=300 FM_BUSY_TURN_MAX_SECS=99999 \
+      FM_WEDGE_MAX_ESCALATIONS="$cap" FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+      "$WATCH" > "$out" &
+    pid=$!
+    wait_poll_cycle "$state" "$pid" || { reap "$pid"; fail "$mode admission failed"; }
+    reap "$pid"
+    ack_stopped_cycle "$state" || fail "$mode admission acknowledgement failed"
+    if [ "$mode" = truncation ]; then
+      real_rm=$(command -v rm)
+      cat > "$fakebin/rm" <<SH
+#!/usr/bin/env bash
+for arg in "\$@"; do
+  if [ "\$arg" = "$state/.stale-since-$key" ] && [ -e "$state/.wedge-permanent-$key" ]; then
+    "$real_rm" -f "$state/.wedge-escalations-$key"
+    mkdir -p "$state/.wedge-escalations-$key"
+    touch "$dir/fault-fired"
+  fi
+done
+exec "$real_rm" "\$@"
+SH
+      chmod +x "$fakebin/rm"
+    else
+      mkdir "$state/.wedge-escalations-$key"
+    fi
+    echo $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
+    PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+      FM_STATE_OVERRIDE="$state" FM_STREAM_SILENT_MAX_SECS=300 FM_BUSY_TURN_MAX_SECS=99999 \
+      FM_WEDGE_MAX_ESCALATIONS="$cap" FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+      "$WATCH" > "$out" &
+    pid=$!
+    status=0
+    wait_for_exit "$pid" 100 || status=$?
+    [ -d "$state/.wedge-escalations-$key" ] || fail "$mode counter write fault was not exercised"
+    [ "$(awk -F '\t' '$3 == "stale" { n++ } END { print n+0 }' "$state/.wake-queue")" -eq 1 ] || fail "$mode lost or duplicated its published notification"
+    grep -F 'model stream silent for' "$state/.wake-queue" >/dev/null || fail "$mode did not exercise the stream publication route"
+    case "$mode" in
+      terminal|truncation) grep -F PERMANENTLY-WEDGED "$state/.wake-queue" >/dev/null || fail "$mode did not publish the terminal row" ;;
+      *) grep -F 'possible wedge' "$state/.wake-queue" >/dev/null || fail "$mode did not publish the regular escalation" ;;
+    esac
+    if [ "$mode" = uncapped ]; then
+      [ "$status" -eq 0 ] || fail "uncapped write failure stopped delivery with status $status"
+      grep -F 'escalation 1' "$out" >/dev/null || fail "uncapped write failure suppressed escalation"
+      grep -F 'escalation counter write FAILED' "$state/.watch-triage.log" >/dev/null || fail "uncapped write failure was not reported"
+      [ ! -e "$state/.wedge-rollback-failed-$key" ] && [ ! -e "$state/.wedge-permanent-$key" ] || fail "uncapped write failure installed suppression"
+    else
+      [ "$status" -eq 1 ] || fail "$mode expected controlled exit 1, got $status"
+      [ -s "$state/.wedge-rollback-failed-$key" ] && [ -s "$state/.stale-since-$key" ] || fail "$mode did not roll back and publish its sentinel"
+      [ ! -s "$out" ] || fail "$mode delivered inline after its failed count write"
+      if [ "$mode" = truncation ]; then
+        [ -e "$dir/fault-fired" ] && [ -s "$state/.wedge-permanent-$key" ] || fail "cap-fire truncation was not reached"
+        grep -F 'reset FAILED AND rollback ALSO FAILED' "$state/.watch-triage.log" >/dev/null || fail "truncation failure missed rollback defense"
+      else
+        [ ! -e "$state/.wedge-permanent-$key" ] || fail "$mode committed a cap after its count write failed"
+        grep -F 'escalation counter write FAILED' "$state/.watch-triage.log" >/dev/null || fail "$mode failure missed count defense"
+      fi
+    fi
+    ack_stopped_cycle "$state" || fail "$mode fault acknowledgement failed"
+    queue_before=$(cat "$state/.wake-queue" 2>/dev/null || true)
+    if [ "$mode" = uncapped ]; then
+      "$ROOT/bin/fm-busy-event.sh" stream "$state" stream close --gen "$gen" --request 1
+    fi
+    echo $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
+    PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+      FM_STATE_OVERRIDE="$state" FM_STREAM_SILENT_MAX_SECS=300 FM_BUSY_TURN_MAX_SECS=99999 \
+      FM_WEDGE_MAX_ESCALATIONS="$cap" FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+      "$WATCH" > "$out" &
+    pid=$!
+    wait_poll_cycle "$state" "$pid" || { reap "$pid"; fail "$mode failed to continue safely after count failure"; }
+    [ ! -s "$out" ] && [ "$(cat "$state/.wake-queue" 2>/dev/null || true)" = "$queue_before" ] || { reap "$pid"; fail "$mode republished a failed or obsolete episode"; }
+    if [ "$mode" != uncapped ]; then
+      [ -s "$state/.wedge-rollback-failed-$key" ] || { reap "$pid"; fail "$mode retry consumed its sentinel"; }
+      grep -F 'rollback-failed sentinel active' "$state/.watch-triage.log" >/dev/null || { reap "$pid"; fail "$mode retry did not exercise sentinel suppression"; }
+    fi
+    reap "$pid"
+  done
+  pass "stream count writes and cap truncation defend failures while uncapped delivery continues"
+}
+
+test_pi_stream_terminal_publication() {
+  test_pi_stream_publication_lock_revalidation 0 1
+}
+
+test_pi_stream_uninterrupted_publication() {
+  test_pi_stream_publication_lock_revalidation 1
+}
 
 # The recorded Claude background-task exit picker. The footer is the last
 # non-blank row, which is what fm_composer_blocking_dialog requires.
@@ -7897,8 +7754,177 @@ test_closed_exit_picker_drops_saved_dialog_name() {
   pass "a closed picker drops the saved dialog name, and the stale stays ordinary"
 }
 
-test_exit_picker_stale_names_the_dialog
-test_exit_picker_wedge_keeps_climbing
-test_quoted_exit_picker_stays_ordinary_stale
-test_secondmate_exit_picker_stays_quiet
-test_closed_exit_picker_drops_saved_dialog_name
+# CI's stock macOS Bash lane sets FM_TEST_STOCK_BASH=1 to run just the bash-3.2
+# churn-deferral regression. The rest of this file is not a 3.2 snapshot suite.
+# Adding another stock-bash case means adding it to this list, not to ci.yml.
+if [ -n "${FM_TEST_STOCK_BASH:-}" ]; then
+  fm_test_run test_turn_ended_churn_existing_marker_absorbed
+  exit 0
+fi
+if [ -n "${FM_TEST_ONLY:-}" ]; then
+  "$FM_TEST_ONLY"
+  exit 0
+fi
+
+fm_test_run \
+  test_nonterminal_stale_provably_working_absorbed_then_suppressed \
+  test_stale_missing_busy_source_escalates \
+  test_nonterminal_stale_not_working_surfaced \
+  test_nonterminal_stale_paused_absorbed_then_resurfaced \
+  test_exited_declared_pause_is_bounded_but_live_gate_surfaces \
+  test_live_declared_pause_ticking_footer_keeps_the_bounded_cadence \
+  test_own_work_wait_keeps_first_alert_then_long_cadence \
+  test_absorbed_replacement_wait_does_not_inherit_the_old_throttle \
+  test_live_declared_wait_churn_honors_the_resurface_throttle \
+  test_live_paused_until_controls_recheck_time \
+  test_wedge_threshold_defers_to_a_declared_wait_under_a_working_verdict \
+  test_wedge_threshold_keeps_a_wait_past_a_default_key_answer \
+  test_wedge_threshold_recheck_names_the_captain_for_a_held_lane \
+  test_wedge_threshold_defers_to_a_backlog_captain_hold \
+  test_wedge_threshold_defers_to_a_parked_gate_awaiting_a_human \
+  test_wedge_threshold_parked_gate_needs_an_unanswered_decision \
+  test_wedge_threshold_parked_gate_is_off_until_armed \
+  test_wedge_threshold_defers_to_a_worker_blocker \
+  test_wedge_threshold_worker_wait_is_off_until_armed \
+  test_wedge_defer_refuses_a_half_filled_wait_record \
+  test_wedge_threshold_defers_to_an_executing_validation_run \
+  test_wedge_threshold_escalates_when_no_run_is_executing \
+  test_wedge_threshold_unarmed_keeps_proven_work_suppressed \
+  test_open_captain_call_bounds_stale_churn \
+  test_stale_churn_without_a_captain_call_still_alarms \
+  test_failed_wake_append_does_not_arm_the_captain_hold_throttle \
+  test_reheld_captain_call_starts_its_own_resurface_window \
+  test_secondmate_paused_resurfaces_in_normal_mode \
+  test_secondmate_captain_held_resurfaces_in_normal_mode \
+  test_secondmate_nonpaused_stale_remains_suppressed \
+  test_secondmate_unpause_clears_pause_tracking \
+  test_nonterminal_stale_pause_transitions_reclassify_unchanged_hash \
+  test_nonterminal_paused_rechecks_authoritative_state \
+  test_paused_authoritative_working_preserves_wedge_timer \
+  test_pi_stream_silence_uses_inspection_timer \
+  test_pi_model_progress_and_legacy_fallback \
+  test_pi_stream_publication_lock_revalidation \
+  test_pi_stream_uninterrupted_publication \
+  test_pi_stream_terminal_publication \
+  test_pi_stream_counter_write_failures \
+  test_pi_stream_resume_restarts_capped_episode \
+  test_status_span_actionable_classifier \
+  test_status_span_survives_a_later_routine_append \
+  test_status_span_respects_decision_closure \
+  test_status_span_closure_from_an_offset \
+  test_malformed_seen_signature_reads_the_whole_log \
+  test_stale_is_terminal_classifier \
+  test_classifier_primitives \
+  test_unrecognized_status_prefix_is_visible \
+  test_crew_is_provably_working_classifier \
+  test_status_is_paused_classifier \
+  test_crew_absorb_class_classifier \
+  test_crew_worktree_written_since_classifier \
+  test_empty_write_prune_widens_the_probe \
+  test_empty_write_prune_from_the_environment_widens_the_probe \
+  test_worktree_write_probe_is_wall_clock_bounded \
+  test_signal_crew_provably_working_classifier \
+  test_secondmate_status_routine_absorbed_routed_surfaced_classifier \
+  test_provably_working_signal_absorbed \
+  test_turn_ended_provably_working_absorbed \
+  test_turn_ended_not_working_surfaced \
+  test_turn_ended_churning_pane_absorbed \
+  test_turn_ended_churn_resets_prior_stale_classification \
+  test_turn_ended_churn_resets_wedge_state_before_stale_poll \
+  test_turn_ended_churn_existing_marker_absorbed \
+  test_turn_ended_still_pane_surfaced \
+  test_turn_ended_malformed_prior_hash_surfaced \
+  test_unknown_alive_stale_is_bounded_after_its_first_alarm \
+  test_unknown_alive_stale_without_progress_keeps_surfacing \
+  test_turn_ended_trailing_newline_prior_hash_surfaced \
+  test_secondmate_turn_ended_churning_pane_surfaced \
+  test_turn_ended_colliding_window_key_surfaced \
+  test_turn_ended_duplicate_endpoint_records_surfaced \
+  test_turn_ended_mixed_positive_evidence_batch_absorbed \
+  test_turn_ended_mixed_positive_evidence_batch_default_off \
+  test_status_and_turn_end_batch_never_uses_churn_evidence \
+  test_turn_ended_churn_absorb_off_by_default \
+  test_turn_ended_churn_absorb_bounded \
+  test_turn_ended_churn_timer_write_failure_surfaced \
+  test_turn_ended_invalid_churn_bound_surfaced \
+  test_turn_ended_oversized_churn_bound_surfaced \
+  test_turn_ended_invalid_churn_deadline_surfaced \
+  test_turn_ended_surfaced_batch_opens_no_partial_deadline \
+  test_working_note_not_working_surfaced \
+  test_secondmate_status_note_surfaced_despite_busy_agent \
+  test_secondmate_routine_progress_absorbed_then_note_surfaced \
+  test_secondmate_buried_block_wakes_despite_busy_agent \
+  test_self_announced_close_does_not_rewake_but_next_note_does \
+  test_self_announced_close_after_open_decisions_fold_does_not_rewake \
+  test_folded_worker_decision_without_home_append_still_wakes \
+  test_separate_self_announced_answers_after_fold_wake_once \
+  test_self_announced_close_after_fold_still_surfaces_folded_worker_failure \
+  test_self_announced_close_after_fold_still_surfaces_folded_secondmate_lines \
+  test_actionable_signal_surfaced \
+  test_needs_decision_signal_payload_marked_for_branch_exclusion \
+  test_needs_decision_reconciliation_required_still_marked \
+  test_captain_held_signal_payload_marked_for_branch_exclusion \
+  test_pending_reply_escalation_signal_payload_marked_for_branch_exclusion \
+  test_ordinary_blocked_signal_payload_remains_branch_eligible \
+  test_routine_signal_payload_not_marked_needs_decision \
+  test_actionable_signal_survives_a_later_routine_append \
+  test_keyed_decision_signal_reads_only_the_new_span \
+  test_release_completion_survives_a_later_routine_append \
+  test_routine_appends_after_a_classified_event_stay_absorbed \
+  test_unreadable_status_reports_once_per_file_state \
+  test_permission_recovery_surfaces_preserved_status \
+  test_terminal_stale_surfaced \
+  test_stale_terminal_status_overridden_by_active_run \
+  test_nonterminal_stale_provably_working_absorbed_then_escalated \
+  test_wedge_escalation_marks_demand_deep_inspection_after_threshold \
+  test_wedge_escalation_resets_when_pane_becomes_active \
+  test_gone_endpoint_reports_once_instead_of_escalating_forever \
+  test_live_and_unproven_endpoints_still_wedge_escalate \
+  test_wedge_guards_absent_config_keeps_the_unchanged_ladder \
+  test_wedge_guard_critical_defers_one_window_at_a_time_up_to_the_cap \
+  test_wedge_guard_failures_fail_open \
+  test_wedge_guard_never_defers_a_gone_endpoint \
+  test_gone_report_rearms_when_the_endpoint_comes_back \
+  test_second_death_after_a_same_window_relaunch_reports_in_full \
+  test_identical_dead_display_of_a_successor_still_reports \
+  test_term_stops_a_watcher_blocked_inside_a_poll \
+  test_term_stops_a_watcher_whose_cleanup_marker_lock_is_held \
+  test_cleanup_marker_lock_bound_is_decimal_with_zero_default \
+  test_busy_pane_below_turn_age_bound_is_absorbed \
+  test_busy_pane_stable_hash_escalates_past_turn_age_bound \
+  test_busy_pane_changing_hash_escalates_past_turn_age_bound \
+  test_busy_pane_turn_end_touch_resets_age \
+  test_busy_pane_native_progress_resets_age \
+  test_busy_pane_repeated_escalation_reaches_demand_deep_inspection \
+  test_busy_pane_default_turn_age_bound_is_3600s \
+  test_busy_declared_pause_is_rechecked_not_wedge_escalated \
+  test_afk_busy_declared_pause_hands_off_plain_stale \
+  test_afk_busy_declared_pause_ticking_pane_hands_off_once \
+  test_nonterminal_stale_repairs_missing_or_corrupt_timer \
+  test_wedge_escalation_deferred_while_worktree_is_written \
+  test_write_deferral_resurfaces_on_the_bounded_cadence \
+  test_secondmate_home_supervision_churn_is_not_write_evidence \
+  test_timer_repair_drops_a_finished_write_deferral_chain \
+  test_terminal_first_sight_drops_a_finished_write_deferral_chain \
+  test_triage_log_size_cap_accepts_spaced_wc_counts \
+  test_procevent_captured_result_surfaces_proactively \
+  test_procevent_unacknowledged_result_redrains_until_handled \
+  test_procevent_marker_keys_are_injective \
+  test_procevent_headlines_classify_queue_keys \
+  test_procevent_launch_failed_episodes_are_each_delivered \
+  test_procevent_surface_serializes_with_drain \
+  test_procevent_surface_crash_boundaries \
+  test_procevent_marker_failure_exits_and_replays \
+  test_heartbeat_no_change_absorbed \
+  test_heartbeat_backstop_surfaces_unsurfaced_status \
+  test_heartbeat_backstop_surfaces_a_masked_status \
+  test_afk_heartbeat_preserves_idle_accounting \
+  test_beacon_stays_fresh_while_absorbing \
+  test_afk_signal_records_heartbeat_endpoint \
+  test_afk_present_reverts_watcher_to_one_shot \
+  test_afk_paused_changed_pane_hands_off_plain_stale \
+  test_exit_picker_stale_names_the_dialog \
+  test_exit_picker_wedge_keeps_climbing \
+  test_quoted_exit_picker_stays_ordinary_stale \
+  test_secondmate_exit_picker_stays_quiet \
+  test_closed_exit_picker_drops_saved_dialog_name

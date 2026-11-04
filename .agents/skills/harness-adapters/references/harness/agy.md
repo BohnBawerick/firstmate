@@ -1,8 +1,9 @@
 # Antigravity CLI
 
-Antigravity's `agy` TUI, verified end to end on 2026-09-10 with agy 1.2.0 on Linux through the Herdr backend.
-Verified as a CREWMATE and SCOUT adapter only; `../../../../../bin/fm-spawn.sh` refuses a secondmate launch on it because `../../../../../docs/supervision-protocols/` carries no agy wake protocol.
-`../../../../../docs/verification/agy.md` records upstream live verification; fork model defaults and Stop-hook behavior are pinned by `../../../../../tests/fm-agy-harness.test.sh`.
+Antigravity's `agy` TUI, verified end to end with agy 1.2.0+ on Linux through the Herdr backend.
+Verified as a full Firstmate harness (Primary, Secondmate, and Crewmate/Scout).
+`../../../../../docs/verification/agy.md` owns how every fact below was established and what is still unproven.
+The fork retains its worker model defaults and authenticated Stop hook, covered by `../../../../../tests/fm-agy-harness.test.sh`.
 
 ## Operating facts
 
@@ -40,7 +41,8 @@ The unauthenticated failure mode was not observed, so treat any auth prompt or r
 
 Detected by ancestry alone: `../../../../../bin/fm-harness.sh` matches the anchored process name `agy`, never `*agy*`.
 No environment marker is promoted: `AGENT=1` observed on a live TUI is an inherited launcher value, not an agy identity, and agy does not clear an inherited `CLAUDECODE` - but a structural agy ancestor now outranks that retained marker, which `../../../../../bin/fm-harness.sh` decides without depending on the spawn's own launch-boundary marker clearing.
-The fork retains agy ancestry recognition in `../../../../../bin/fm-session-lock-lib.sh`; the worker role still forbids claiming the primary home lock.
+agy is included in the session-lock name vocabulary in `../../../../../bin/fm-session-lock-lib.sh`, allowing an agy session to hold a home session lock.
+The worker role still forbids claiming the primary home lock.
 
 ## Worker busy state and turn end
 
@@ -50,8 +52,13 @@ The fork also retains its authenticated Stop-hook registration through `../../..
 Spawn writes the per-task `.fm-agy-turnend` pointer and token; teardown retires both.
 This hook reports turn end and is not a semantic busy source, because an Escape interrupt need not fire Stop.
 
-## Primary integration
+## Primary and secondmate integration
 
-Unsupported and unverified.
-`../../../../../docs/supervision-protocols/` carries no agy protocol, no turn-end guard adapter exists for it, and this adapter verified only the crewmate-side launch, busy state, interrupt, and exit.
-`references/common/primary-hooks.md`'s unsupported-boundary rule applies: never invent a wake protocol from a similar TUI.
+Antigravity CLI loads `<workspace>/.agents/hooks.json` for hook lifecycle events, running each command from `.agents/` itself.
+agy 1.4.9 reads every top-level key as a named hook spec (firstmate ships one, `firstmate`), with flat `SessionStart` and `Stop` handler lists and `PreToolUse` grouped under `matcher` and `hooks`; any other top-level key, such as a `version` field, silently disables the whole file (verified live).
+A PreToolUse handler that prints nothing allows the call, while a printed object without a `decision` denies it, so the seatbelts print only on deny.
+SessionStart executes `bin/fm-sessionstart-agy.sh` to inject the session-start digest into model context.
+PreToolUse invokes `bin/fm-arm-pretool-check.sh --agy`, `bin/fm-cd-pretool-check.sh --agy`, and `bin/fm-subagent-pretool-check.sh --agy`.
+Stop executes `bin/fm-turnend-guard-agy.sh`, which parks on a home-scoped watcher cycle through `bin/fm-watch-arm.sh` (or `bin/fm-supervision-host.sh park` on a home that runs the host) under the registered 28800s hook timeout and delivers actionable wake output; only an optional `FM_AGY_PARK_TIMEOUT` bound re-arms via `{"decision":"continue","reason":"..."}` with `[supervision-park]`, and `FM_AGY_TURNEND_LOOP_CEILING` (default 180) bounds hook-driven turns.
+A bounded 3-block repair nag is enforced via `bin/fm-turnend-guard.sh --agy` before failing open with `{}`.
+See `../../../../../docs/supervision-protocols/agy.md` for the complete supervision protocol.
