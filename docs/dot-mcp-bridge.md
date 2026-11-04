@@ -81,9 +81,9 @@ bin/fm-dot-mailbox.sh status
 ```
 
 The script headers and `--help` own the command reference, including the local callback testing option.
-To enable scrooge, create a distinct random token file outside the repository with mode `0600`, then add `--scrooge-token-file <file> --scrooge-host <Blade Tailscale IPv4> --scrooge-port 8766` to the existing mailbox server invocation.
+To enable scrooge, create a distinct random token file outside the repository with mode `0600`, then add `--scrooge-token-file <file> --scrooge-host <Blade Tailscale IPv4> --scrooge-port 8768` to the existing mailbox server invocation.
 The server binds its dot port to loopback and its peer-only port to the Tailscale address in the same process.
-Set the scrooge profile's MCP server URL to `http://<Blade Tailscale IPv4>:8766/scrooge/mcp` with an `Authorization: Bearer <token>` header, and allow NAS-to-Blade traffic only on that port in the tailnet policy.
+Set the scrooge profile's MCP server URL to `http://<Blade Tailscale IPv4>:8768/scrooge/mcp` with an `Authorization: Bearer <token>` header, and allow NAS-to-Blade traffic only on that port in the tailnet policy.
 The scrooge MCP route exposes only `submit_message` and `get_message`; the dot's tools, queue and tunnel are unchanged.
 
 ## Prepare a Secure MCP Tunnel connection
