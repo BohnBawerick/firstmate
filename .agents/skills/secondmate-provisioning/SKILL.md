@@ -39,11 +39,12 @@ The home-seeded `data/charter.md` is the sole owner of boilerplate idle-by-defau
 The `scope:` field is used during intake.
 The `projects:` field is a non-exclusive clone list, not ownership.
 
-## Dot mailbox transport
+## Transport second mates
 
 An existing ChatGPT dot can use the mailbox transport described in [`docs/dot-mcp-bridge.md`](../../../docs/dot-mcp-bridge.md#register-an-existing-dot-as-a-second-mate).
-Use `bin/fm-dot-secondmate.sh` to register and inspect that route, not the process-home seed, spawn or restart commands below.
-The transport guide owns routing, reported child activity, liveness and lifecycle limits.
+An agent reachable over the A2A protocol, such as a Hermes profile, uses the transport in [`docs/a2a-secondmate.md`](../../../docs/a2a-secondmate.md#register-the-mate).
+Use `bin/fm-dot-secondmate.sh` or `bin/fm-a2a-secondmate.sh` to register and inspect those routes, not the process-home seed, spawn or restart commands below.
+Each transport guide owns routing, reported activity, liveness and lifecycle limits.
 
 ## Charter and seed
 

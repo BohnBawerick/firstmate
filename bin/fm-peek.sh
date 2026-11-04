@@ -17,6 +17,8 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 
 # shellcheck source=bin/fm-backend.sh
 . "$SCRIPT_DIR/fm-backend.sh"
+# shellcheck source=bin/fm-secondmate-registry-lib.sh
+. "$SCRIPT_DIR/fm-secondmate-registry-lib.sh"
 
 "$SCRIPT_DIR/fm-guard.sh" || true
 
@@ -24,9 +26,9 @@ RAW_TARGET=$1
 N=${2:-40}
 
 REMOTE_META=$(fm_backend_meta_for_selector "$RAW_TARGET" "$STATE" 2>/dev/null || true)
-if [ -n "$REMOTE_META" ] && [ "$(fm_meta_get "$REMOTE_META" transport)" = dot-mcp ]; then
-  DOT_ID=$(basename "$REMOTE_META" .meta)
-  exec "$SCRIPT_DIR/fm-dot-secondmate.sh" health "$DOT_ID"
+if [ -n "$REMOTE_META" ] &&
+  TRANSPORT_SCRIPT=$(secondmate_transport_script "$(fm_meta_get "$REMOTE_META" transport)"); then
+  exec "$SCRIPT_DIR/$TRANSPORT_SCRIPT" health "$(basename "$REMOTE_META" .meta)"
 fi
 if [ -n "$REMOTE_META" ] && [ -n "$(fm_meta_get "$REMOTE_META" remote_host)" ]; then
   REMOTE_ID=${REMOTE_META##*/}

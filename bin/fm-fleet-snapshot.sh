@@ -657,7 +657,7 @@ prefetch_task_observations() {  # <meta> <id>
     kind=$(meta_value "$meta" kind)
     backend=$(fm_backend_of_meta "$meta")
     target=$(fm_backend_target_of_meta "$meta")
-    if [ "$(meta_value "$meta" transport)" = dot-mcp ]; then
+    if secondmate_transport_script "$(meta_value "$meta" transport)" >/dev/null; then
       agent_alive=unknown
       target=
     fi
@@ -770,8 +770,8 @@ task_json_lines() {
     branch=$(meta_value "$meta" branch)
     remote_host=$(meta_value "$meta" remote_host)
     remote_root=$(meta_value "$meta" remote_root)
-    if [ "$(meta_value "$meta" transport)" = dot-mcp ]; then
-      backend=dot-mcp
+    if secondmate_transport_script "$(meta_value "$meta" transport)" >/dev/null; then
+      backend=$(meta_value "$meta" transport)
       target=
     elif [ -n "$remote_host" ]; then
       backend=$(meta_value "$meta" remote_backend)
@@ -1728,6 +1728,7 @@ secondmate_current_json() {  # <parent-tasks-json-file> <output-file>
   local row id home host remote registered registry_error task sampled_spawn_gen status_file status_observation_file event_raw event_note event_age observed_epoch observed_age
   local activity_scan activities decisions reconciliation provenance freshness reason summary_file summary_sampled summary_valid summary_invalidity state terminal terminal_contradiction contradiction
   local summary_source summary_age summary_observed summary_freshness cache_path collection_status collection_slot summary_index=0 dot_snapshot
+  local transport_mate transport_script
   local seen_homes=''
   registry_file="$JSON_TRANSPORT_DIR/secondmate-registry.json"
   union_file="$JSON_TRANSPORT_DIR/secondmate-union.json"
@@ -1916,12 +1917,14 @@ secondmate_current_json() {  # <parent-tasks-json-file> <output-file>
       fi
       dot_snapshot="$SNAPSHOT_COLLECT_DIR/dot-$summary_index.json"
       printf '{}\n' > "$dot_snapshot"
-      if [ "$(printf '%s' "$task" | jq -r '.backend')" = dot-mcp ]; then
-        if ! "$SCRIPT_DIR/fm-dot-secondmate.sh" snapshot "$id" > "$dot_snapshot" 2>/dev/null; then
+      transport_mate=false
+      if transport_script=$(secondmate_transport_script "$(printf '%s' "$task" | jq -r '.backend')"); then
+        transport_mate=true
+        if ! "$SCRIPT_DIR/$transport_script" snapshot "$id" > "$dot_snapshot" 2>/dev/null; then
           printf '{"unavailable":true}\n' > "$dot_snapshot"
         fi
       fi
-      jq -n --slurpfile dot "$dot_snapshot" \
+      jq -n --slurpfile dot "$dot_snapshot" --argjson transport_mate "$transport_mate" \
         --arg id "$id" --arg home "$home" --arg host "$host" --argjson remote "$remote" --arg reason "$reason" --arg observed "$SNAPSHOT_NOW" \
         --arg spawn_gen "$sampled_spawn_gen" \
         --arg provenance "$provenance" --arg freshness "$freshness" --arg event_raw "$event_raw" --arg event_note "$event_note" \
@@ -1931,23 +1934,23 @@ secondmate_current_json() {  # <parent-tasks-json-file> <output-file>
         |
         {id:$id,home:($home | if . == "" then null else . end),host:($host | if . == "" then null else . end),remote:$remote,registered:$registered,
          spawn_gen:($spawn_gen | if . == "" then null else . end),
-         current:(if $task.backend == "dot-mcp" then
+         current:(if $transport_mate then
            {state:(if $dot[0].unavailable or $dot[0].ready == false then "unknown"
                    elif any($decisions[]; .verb == "needs-decision" or .verb == "captain-hold") then "captain_decision"
                    elif any($decisions[]; .verb == "blocked") then "externally_held"
                    elif $task.current_state.state == "working" and any($dot[0].children[]?; .terminal == false) then "active_child_work"
                    else ($task.current_state.state // "unknown") end),
-            reason:(($task.current_state.detail // "mailbox health unknown") + (if $dot[0].unavailable then "; reported cloud inventory unavailable" else "; cloud activity is dot-reported, not directly observed" end))}
+            reason:(($task.current_state.detail // "mailbox health unknown") + (if $dot[0].unavailable then "; reported inventory unavailable" elif $task.backend == "dot-mcp" then "; cloud activity is dot-reported, not directly observed" else "; replies arrive through the parent channel; the agent is not directly observed" end))}
            else {state:"unknown",reason:(if $summary_sampled then "structured home state invalid: " + ($summary.reason // "unknown reason") else $reason end)} end),invalidity:null,
          reconcile_inventory:(if $summary_sampled then $summary.invalidity else null end),
-         provenance:{selected:(if $task.backend == "dot-mcp" then "mailbox-parent-channel" else $provenance end),structured_home:($home | if . == "" then null else . end),parent_event_role:(if $task.backend == "dot-mcp" then "reported-outcome" else "fallback-only-not-current" end)},
+         provenance:{selected:(if $transport_mate then "mailbox-parent-channel" else $provenance end),structured_home:($home | if . == "" then null else . end),parent_event_role:(if $transport_mate then "reported-outcome" else "fallback-only-not-current" end)},
          freshness:{status:$freshness,observed_at:$observed,age_seconds:$observed_age},
          active_children:[$dot[0].children[]? | select(.terminal == false)
-           | .activity_kind=.kind | .kind="reported-cloud" | .reported_state=.state | .state=.current_state
+           | .activity_kind=.kind | .kind=(if $task.backend == "dot-mcp" then "reported-cloud" else .kind end) | .reported_state=.state | .state=.current_state
            | .doing=(.summary + " (reported " + (.age_seconds | tostring) + "s ago; current " + .current_state + ")")],
          reported_children:($dot[0].children // []),
-         decisions_open:(if $task.backend == "dot-mcp" then $decisions else [] end),holds:[],queued:[],landed:[],endpoints:[],
-         counts:{active_children:([$dot[0].children[]? | select(.terminal == false)] | length),decisions_open:(if $task.backend == "dot-mcp" then $decisions | length else 0 end),holds:0,queued:0,landed:0,endpoints:0},
+         decisions_open:(if $transport_mate then $decisions else [] end),holds:[],queued:[],landed:[],endpoints:[],
+         counts:{active_children:([$dot[0].children[]? | select(.terminal == false)] | length),decisions_open:(if $transport_mate then $decisions | length else 0 end),holds:0,queued:0,landed:0,endpoints:0},
          omitted:(if $dot[0].children_truncated then [{surface:"reported_children",reason:"bounded current display inventory"}] else [] end),
          parent_event:{raw:$event_raw,note:$event_note,age_seconds:$event_age,open_activities:$activities,open_decisions:$decisions,activity_scan:$activity_scan},
          terminal_evidence:$terminal,contradiction:false}' >> "$records_file" || return 1

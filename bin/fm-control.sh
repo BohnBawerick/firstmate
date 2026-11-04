@@ -187,6 +187,8 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 
 # shellcheck source=bin/fm-backend.sh
 . "$SCRIPT_DIR/fm-backend.sh"
+# shellcheck source=bin/fm-secondmate-registry-lib.sh
+. "$SCRIPT_DIR/fm-secondmate-registry-lib.sh"
 # shellcheck source=bin/fm-busy-lib.sh
 . "$SCRIPT_DIR/fm-busy-lib.sh"
 # shellcheck source=bin/fm-control-lib.sh
@@ -368,6 +370,13 @@ if [ ! -f "$META" ]; then
   die "no task '$ID' in $STATE (fm-control resolves an exact task id only)"
 fi
 
+# A transport second mate (dot or A2A) has no endpoint here at all; say so
+# before endpoint validation reports it as malformed metadata.
+if secondmate_transport_script "$(fm_meta_get "$META" transport)" >/dev/null; then
+  echo "error: a $(fm_meta_get "$META" transport) second mate has no local process to interrupt, exit or relaunch; route instructions with fm-send" >&2
+  exit 1
+fi
+
 # A remotely placed secondmate records its endpoint on ANOTHER host, so every
 # postcondition this plane verifies - the agent-state classification, the busy
 # verdict, the endpoint's existence - would be read here for an endpoint that
@@ -386,10 +395,6 @@ BACKEND=$FM_BACKEND_VALIDATED_BACKEND
 T=$FM_BACKEND_VALIDATED_TARGET
 LABEL="fm-$ID"
 RECORDED_HARNESS=$(fm_meta_get "$META" harness)
-if [ "$(fm_meta_get "$META" transport)" = dot-mcp ]; then
-  echo 'error: a dot has no local process to interrupt, exit or relaunch; route instructions with fm-send' >&2
-  exit 1
-fi
 KIND=$(fm_meta_get "$META" kind)
 WT=$(fm_meta_get "$META" worktree)
 [ -n "$KIND" ] || KIND=ship

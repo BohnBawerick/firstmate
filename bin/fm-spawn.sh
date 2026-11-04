@@ -2298,9 +2298,9 @@ if [ "$RELAUNCH" -eq 0 ]; then
   spawn_require_relocated_queued_work
 fi
 if [ "$KIND" = secondmate ]; then
-  if [ "$(fm_meta_get "$STATE/$ID.meta" transport)" = dot-mcp ] ||
-    [ "$(secondmate_registry_field "$DATA/secondmates.md" "$ID" transport 2>/dev/null || true)" = dot-mcp ]; then
-    echo 'error: a registered dot has no local process to spawn; use fm-send and fm-dot-secondmate.sh health' >&2
+  if secondmate_transport_script "$(fm_meta_get "$STATE/$ID.meta" transport)" >/dev/null ||
+    secondmate_transport_script "$(secondmate_registry_field "$DATA/secondmates.md" "$ID" transport 2>/dev/null || true)" >/dev/null; then
+    echo 'error: a registered transport second mate (dot or A2A) has no local process to spawn; use fm-send and its health command' >&2
     exit 1
   fi
   if spawn_remote_secondmate "$ID"; then

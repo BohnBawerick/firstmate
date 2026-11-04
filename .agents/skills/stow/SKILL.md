@@ -294,7 +294,7 @@ In a primary home the receipt is written after the cascade below, not instead of
 ## Automatic cascade to secondmates
 
 In a primary home, every `/stow` cascades to every registered process-backed secondmate after this home's own required pass and knowledge sweep are complete.
-For dot mailbox routes, follow the [mailbox transport lifecycle](../../../docs/dot-mcp-bridge.md#register-an-existing-dot-as-a-second-mate).
+For dot mailbox and A2A routes, follow the [mailbox transport lifecycle](../../../docs/dot-mcp-bridge.md#register-an-existing-dot-as-a-second-mate) or the [A2A lifecycle](../../../docs/a2a-secondmate.md#health-and-lifecycle).
 In a secondmate home, `/stow` curates that home only and never cascades further.
 The cascade changes nothing until `/stow` is invoked: it adds no notification, no digest section, and no background work.
 

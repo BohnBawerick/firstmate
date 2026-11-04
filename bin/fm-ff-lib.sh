@@ -192,17 +192,16 @@ validate_secondmate_home() {
     VALIDATION_ERROR="marked for secondmate ${marker_id:-unknown}, expected $id"
     return 1
   fi
-  case "$(secondmate_home_transport "$abs_home")" in
-    dot-mcp)
-      [ -f "$abs_home/data/charter.md" ] && [ ! -L "$abs_home/data/charter.md" ] || {
-        VALIDATION_ERROR='dot charter is missing or unsafe'; return 1;
-      }
-      VALIDATED_HOME=$abs_home
-      return 0
-      ;;
-    process) ;;
-    *) VALIDATION_ERROR='invalid secondmate transport marker'; return 1 ;;
-  esac
+  local transport
+  transport=$(secondmate_home_transport "$abs_home")
+  if secondmate_transport_script "$transport" >/dev/null; then
+    [ -f "$abs_home/data/charter.md" ] && [ ! -L "$abs_home/data/charter.md" ] || {
+      VALIDATION_ERROR='transport mate charter is missing or unsafe'; return 1;
+    }
+    VALIDATED_HOME=$abs_home
+    return 0
+  fi
+  [ "$transport" = process ] || { VALIDATION_ERROR='invalid secondmate transport marker'; return 1; }
   if [ ! -f "$abs_home/AGENTS.md" ]; then
     VALIDATION_ERROR="not a firstmate home (missing AGENTS.md)"
     return 1
@@ -379,7 +378,7 @@ live_secondmate_meta_records() {
     [ -f "$meta" ] || continue
     grep -q '^kind=secondmate$' "$meta" 2>/dev/null || continue
     # Mailbox mates have no local instruction checkout or inheritable runtime.
-    grep -q '^transport=dot-mcp$' "$meta" 2>/dev/null && continue
+    secondmate_transport_script "$(sed -n 's/^transport=//p' "$meta" 2>/dev/null | tail -1)" >/dev/null && continue
     id=$(basename "$meta" .meta)
     home=$(grep '^home=' "$meta" 2>/dev/null | tail -1 | cut -d= -f2- || true)
     if [ -z "$home" ] && [ -n "$registry" ]; then

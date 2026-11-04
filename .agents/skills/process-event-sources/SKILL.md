@@ -54,6 +54,9 @@ A configured remote secondmate reply source is armed and handled through `bin/fm
 Its header owns exact commands, while the adapter owns cursor continuity, validated deduplicated status ingest, path-confined document fetch, acknowledgement, and re-arming after a good delta.
 A continuity break is escalated once and stays unarmed until an operator deliberately rebases it.
 
+Each message routed to an A2A second mate is one `a2a-reply` source registered by `bin/fm-a2a-secondmate.sh send`, and its adapter publishes the reply as the mate's own status line.
+A `procevent a2a-reply` wake arrives only when that publication failed; apply it with `bin/fm-procevent-a2a-reply.sh autohandle <source-id> <sequence> <result-file>`, which is idempotent, rather than the generic acknowledgement.
+
 For a recurring mid-task quota check, arm the quota adapter:
 
 ```sh

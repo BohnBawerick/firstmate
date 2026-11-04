@@ -316,6 +316,10 @@
       "audience": "public-product"
     },
     {
+      "path": "docs/a2a-secondmate.md",
+      "audience": "operator-current"
+    },
+    {
       "path": "docs/agent-control.md",
       "audience": "maintainer-architecture"
     },

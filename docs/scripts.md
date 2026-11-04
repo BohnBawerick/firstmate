@@ -102,6 +102,7 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-extension.sh`        | Expose extension binding commands through the tracked shell and remote-home command boundary |
 | `fm-procevent.sh`        | Register, supervise, capture, classify, acknowledge, and safely retire built-in or explicitly bound process-event sources |
 | `fm-procevent-remote-reply.sh` | Relay the remote-secondmate status stream through non-destructive process-event deltas |
+| `fm-procevent-a2a-reply.sh` | Send one routed message to an A2A second mate and publish its reply as a status line |
 | `fm-procevent-quota.sh`  | Wake Firstmate when tracked quota drops below a threshold, is exhausted, or cannot be polled |
 | `fm-procevent-when.sh`   | Fire a trust-bound deterministic action at most once when its registered condition holds, then wake with the outcome |
 | `fm-gate-refuse-lib.sh`  | Shared gate-context lifecycle boundary for real and lab homes                      |
@@ -193,6 +194,8 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-mail.py`             | The IMAP/SMTP engine behind `fm-mail.sh` |
 | [`fm-dot-mailbox.sh`](../bin/fm-dot-mailbox.sh) | Operate the private ChatGPT dot mailbox ([setup](dot-mcp-bridge.md)) |
 | `fm-dot-mailbox.py`      | The SQLite mailbox and HTTP MCP event server behind `fm-dot-mailbox.sh` |
+| [`fm-a2a-secondmate.sh`](../bin/fm-a2a-secondmate.sh) | Register and inspect an A2A second mate such as a Hermes profile ([setup](a2a-secondmate.md)) |
+| `fm-a2a-client.py`       | The A2A JSON-RPC client, conversation rotation and at-most-once delivery behind `fm-a2a-secondmate.sh` |
 | `fm-mail-check.sh`       | Arm, run, or disarm the standing received-mail poll; [configuration.md](configuration.md#mail-plane-env) owns its reporting policy |
 | `fm-voice-relay.py`      | Hold the spoken conversation on this host, answer from the records, and hand real work to `fm-inbox.sh` ([voice-relay.md](voice-relay.md)) |
 | `fm-voice-client.py`     | The laptop end of the spoken interface: capture, playback, and turn timing over SSH; audio devices unverified |

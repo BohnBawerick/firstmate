@@ -31,6 +31,7 @@ Every captain-facing outcome that leaves durable evidence in the mate home is pu
 | Child ended silently | terminal current state with a silent ledger | the existing inactive-outcome scan in `bin/fm-inactive-reconcile.sh` |
 | Answer to a marked request | a correlated line guarded by the pending-reply record | `bin/fm-secondmate-report.sh`, which resolves the parent channel from the mate home; the pending-reply guard repairs a line stranded in the local mate's same-basename status file before recovery or escalation |
 | Dot mailbox outcomes | [durable mailbox replies and activity](dot-mcp-bridge.md#reported-cloud-activity) | `bin/fm-dot-mailbox.py` through `bin/fm-dot-secondmate.sh` |
+| A2A replies | [one line per routed message](a2a-secondmate.md#how-a-message-travels) | `bin/fm-procevent-a2a-reply.sh` through `bin/fm-a2a-secondmate.sh` |
 | An outcome that exists only in the mate's reasoning | none | the charter and the `AGENTS.md` carve-outs only |
 
 The ledger delivery reads files, plus a local git reachability check on a ship `done:` with no delivery record yet (`bin/fm-dod-lib.sh`): it calls no harness, no forge, and no current-state reader, so it is identical for every harness and runtime backend.

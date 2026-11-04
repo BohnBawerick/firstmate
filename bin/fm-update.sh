@@ -189,8 +189,8 @@ if [ -f "$SECONDMATES_MD" ]; then
     fi
     id=$SECONDMATE_REGISTRY_ID
     home=$SECONDMATE_REGISTRY_HOME
-    if [ "$SECONDMATE_REGISTRY_REMOTE" -eq 0 ] && [ "$(secondmate_home_transport "$home")" = dot-mcp ]; then
-      echo "secondmate $id: external dot uses the mailbox server's code; no local runtime to update"
+    if [ "$SECONDMATE_REGISTRY_REMOTE" -eq 0 ] && secondmate_transport_script "$(secondmate_home_transport "$home")" >/dev/null; then
+      echo "secondmate $id: transport second mate has no local runtime to update"
       continue
     fi
     if [ "$SECONDMATE_REGISTRY_REMOTE" -eq 1 ]; then

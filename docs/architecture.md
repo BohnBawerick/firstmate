@@ -182,7 +182,7 @@ For the supervision host that runs the same branch contract beside a non-Pi prim
 ### Registered secondmate current state
 
 A registered process-backed secondmate's validated home is the authority for bearings current state because it owns the child metadata inventory, each child's current-state result, endpoint observations, backlog holds and dependencies, keyed unresolved decisions, and recent Done baseline.
-Dot secondmate observations follow the [mailbox transport guide](dot-mcp-bridge.md#register-an-existing-dot-as-a-second-mate) instead of a structured executable-home summary.
+Dot and A2A secondmate observations follow the [mailbox transport guide](dot-mcp-bridge.md#register-an-existing-dot-as-a-second-mate) or the [A2A guide](a2a-secondmate.md#health-and-lifecycle) instead of a structured executable-home summary.
 The original cross-home projection instead treated the secondmate agent as an ordinary parent task, so an idle secondmate's `fm-crew-state` fallback selected the latest append-only parent status event even when structured state in the registered home contradicted it.
 The parent-status contract also required explicit keyed resolution for decisions and blockers but not for a material `working` phase, so a start event could remain unsuperseded after the corresponding home backlog had moved the work to Done.
 Generated secondmate charters reject generic receipt or start acknowledgements, key only supervisor-actionable material phase reports, and close an opened phase with a same-key later state or `resolved` event, while the structured home remains authoritative even if that closure is missing.
@@ -374,7 +374,7 @@ Polytoken composes a concrete model and supported reasoning level through its [a
 ## Optional secondmates
 
 `data/secondmates.md` records persistent secondmates with natural-language scopes, project clone lists, and home paths.
-For dot secondmates, use the [mailbox transport guide](dot-mcp-bridge.md#register-an-existing-dot-as-a-second-mate) instead of the process-home provisioning and lifecycle below.
+For dot and A2A secondmates, use the [mailbox transport guide](dot-mcp-bridge.md#register-an-existing-dot-as-a-second-mate) or the [A2A guide](a2a-secondmate.md#register-the-mate) instead of the process-home provisioning and lifecycle below.
 A local route points directly at its home, while a remote route adds an SSH alias and remote Firstmate code root so the entire home and all of its child work stay on that host.
 Remote placement pins the remote second-mate agent to Herdr while leaving the remote home's worker backend selection independent, and every non-doctor primary-to-remote `fm-on` command runs through the remote account's Firstmate-owned job worker rather than its SSH process or a Herdr pane.
 [`remote-secondmates.md`](remote-secondmates.md) owns current setup, supplied-origin provisioning, transport, relay, failure, and retirement behavior.

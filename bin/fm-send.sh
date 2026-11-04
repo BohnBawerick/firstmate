@@ -268,6 +268,8 @@ fi
 # the single owner of that verdict and its refusal.
 # shellcheck source=bin/fm-session-lock-lib.sh
 . "$SCRIPT_DIR/fm-session-lock-lib.sh"
+# shellcheck source=bin/fm-secondmate-registry-lib.sh
+. "$SCRIPT_DIR/fm-secondmate-registry-lib.sh"
 fm_require_session_lock "$STATE" "steer a worker" || exit 1
 
 FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the requested message WILL still be sent.' "$SCRIPT_DIR/fm-guard.sh" || true
@@ -348,7 +350,7 @@ fm_send_count_colons() { # <string>
 }
 
 fm_send_resolve_target() { # <raw-target>
-  local raw=$1 meta pane_meta target backend assumed colons id session hint
+  local raw=$1 meta pane_meta target backend assumed colons id session hint transport
 
   RESOLVED_TARGET=""
   TARGET_BACKEND=""
@@ -362,13 +364,14 @@ fm_send_resolve_target() { # <raw-target>
 
   meta=$(fm_backend_meta_for_selector "$raw" "$STATE" 2>/dev/null || true)
   if [ -n "$meta" ]; then
-    if [ "$(fm_meta_get "$meta" transport)" = dot-mcp ]; then
+    transport=$(fm_meta_get "$meta" transport)
+    if secondmate_transport_script "$transport" >/dev/null; then
       id=$(fm_send_id_from_meta "$meta")
-      RESOLVED_TARGET="dot-mcp:$id"
-      TARGET_BACKEND=dot-mcp
+      RESOLVED_TARGET="$transport:$id"
+      TARGET_BACKEND=$transport
       TARGET_META=$meta
       TARGET_SELECTOR=1
-      RESOLUTION_TRIED="meta=$meta; transport=dot-mcp"
+      RESOLUTION_TRIED="meta=$meta; transport=$transport"
       return 0
     fi
     if [ -n "$(fm_meta_get "$meta" remote_host)" ]; then
@@ -538,8 +541,9 @@ while :; do
   esac
 done
 
-if [ "$TARGET_BACKEND" = dot-mcp ]; then
-  "$SCRIPT_DIR/fm-dot-secondmate.sh" validate "$(fm_send_id_from_meta "$TARGET_META")" || exit 1
+TRANSPORT_SCRIPT=$(secondmate_transport_script "$TARGET_BACKEND" || true)
+if [ -n "$TRANSPORT_SCRIPT" ]; then
+  "$SCRIPT_DIR/$TRANSPORT_SCRIPT" validate "$(fm_send_id_from_meta "$TARGET_META")" || exit 1
 elif [ "$TARGET_BACKEND" != remote ]; then
   fm_backend_validate "$TARGET_BACKEND" || exit 1
 fi
@@ -791,7 +795,7 @@ if [ "${1:-}" = "--key" ]; then
     exit 1
     ;;
   esac
-  [ "$TARGET_BACKEND" != dot-mcp ] || { echo 'error: a dot has no terminal keys; send a routed assignment instead' >&2; exit 1; }
+  [ -z "$TRANSPORT_SCRIPT" ] || { echo "error: a $TARGET_BACKEND second mate has no terminal keys; send a routed assignment instead" >&2; exit 1; }
   key=$2
   semantic_key=$(fm_send_normalize_key "$key")
   if [ "$TARGET_BACKEND" = remote ]; then
@@ -868,7 +872,7 @@ else
     fm_pending_reply_embed_corr "$MESSAGE" "$PENDING_REPLY_CORR" MESSAGE
     if [ "$PENDING_REPLY_CREATED" != 1 ] &&
       fm_pending_reply_delivery_attempt_unresolved "$STATE" "$PENDING_REPLY_CORR"; then
-      if [ "$TARGET_BACKEND" = remote ] || [ "$TARGET_BACKEND" = dot-mcp ]; then
+      if [ "$TARGET_BACKEND" = remote ] || [ -n "$TRANSPORT_SCRIPT" ]; then
         if ! fm_pending_reply_reset_known_undelivered "$STATE" "$PENDING_REPLY_CORR"; then
           echo "error: pending-reply delivery for $TARGET_TASK_ID could not be reset for an idempotent remote resend of correlation $PENDING_REPLY_CORR" >&2
           exit 1
@@ -885,19 +889,22 @@ else
       exit 1
     fi
   fi
-  if [ "$TARGET_BACKEND" = dot-mcp ]; then
-    dot_corr=${PENDING_REPLY_CORR:-$FIRE_AND_FORGET_ID}
-    if ! printf '%s' "$MESSAGE" | "$SCRIPT_DIR/fm-dot-secondmate.sh" send "$TARGET_TASK_ID" \
-      "$dot_corr" "dot:$TARGET_TASK_ID:$dot_corr" >/dev/null; then
+  if [ -n "$TRANSPORT_SCRIPT" ]; then
+    transport_corr=${PENDING_REPLY_CORR:-$FIRE_AND_FORGET_ID}
+    # The dot keeps its original "dot:" idempotency prefix so a resend still deduplicates.
+    idem_prefix=$TARGET_BACKEND
+    [ "$TARGET_BACKEND" != dot-mcp ] || idem_prefix='dot'
+    if ! printf '%s' "$MESSAGE" | "$SCRIPT_DIR/$TRANSPORT_SCRIPT" send "$TARGET_TASK_ID" \
+      "$transport_corr" "$idem_prefix:$TARGET_TASK_ID:$transport_corr" >/dev/null; then
       [ -z "$PENDING_REPLY_CORR" ] || fm_pending_reply_mark_delivery_unknown "$STATE" "$PENDING_REPLY_CORR" || true
-      echo 'error: dot delivery is unconfirmed; do not mint a new request. Retry with the same correlation or fire-and-forget delivery id.' >&2
+      echo "error: $TARGET_BACKEND delivery is unconfirmed; do not mint a new request. Retry with the same correlation or fire-and-forget delivery id." >&2
       if [ -n "$PENDING_REPLY_CORR" ]; then
         printf 'FM_PENDING_REPLY_EXISTING_CORR=%q FM_HOME=%q %q %q %q\n' "$PENDING_REPLY_CORR" "$FM_HOME" "$SCRIPT_DIR/fm-send.sh" "$TARGET_TASK_ID" "$RESOLVE_ANSWER_TEXT" >&2
       fi
       exit 1
     fi
     if [ -n "$PENDING_REPLY_CORR" ] && ! fm_pending_reply_confirm_delivery "$STATE" "$PENDING_REPLY_CORR"; then
-      echo "warning: dot assignment is stored; reply-tracking commit failed. Do not resend; inspect $STATE." >&2
+      echo "warning: $TARGET_BACKEND assignment is stored; reply-tracking commit failed. Do not resend; inspect $STATE." >&2
     fi
     if [ -n "$RESOLVE_KEYS" ]; then
       fm_send_close_resolved_keys "$RESOLVE_ANSWER_TEXT" || exit 1

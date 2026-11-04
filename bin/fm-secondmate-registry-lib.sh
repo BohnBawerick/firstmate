@@ -89,18 +89,31 @@ secondmate_registry_line_for_id() {
   secondmate_registry_parse_line "$SECONDMATE_REGISTRY_LINE"
 }
 
-# A mailbox mate keeps the ordinary home/scope registry shape. Its private
-# transport marker prevents process lifecycle and code-sync operations on that
-# non-executable home. An invalid marker is never treated as a process home.
+# A transport mate (a ChatGPT dot over MCP, or an A2A agent) keeps the ordinary
+# home/scope registry shape. Its private transport marker prevents process
+# lifecycle and code-sync operations on that non-executable home. An invalid
+# marker is never treated as a process home.
 secondmate_home_transport() { # <home>
   local marker="$1/.fm-secondmate-transport" value
   if [ ! -e "$marker" ] && [ ! -L "$marker" ]; then
     printf 'process\n'
-  elif [ -f "$marker" ] && [ ! -L "$marker" ] && value=$(cat "$marker") && [ "$value" = dot-mcp ]; then
-    printf 'dot-mcp\n'
+  elif [ -f "$marker" ] && [ ! -L "$marker" ] && value=$(cat "$marker") &&
+    secondmate_transport_script "$value" >/dev/null; then
+    printf '%s\n' "$value"
   else
     printf 'invalid\n'
   fi
+}
+
+# The one list of terminal-less transports: prints the script that owns a
+# transport's validate, health and snapshot commands, or fails for a process
+# (terminal) mate and for anything unknown.
+secondmate_transport_script() { # <transport>
+  case "${1-}" in
+    dot-mcp) printf 'fm-dot-secondmate.sh\n' ;;
+    a2a) printf 'fm-a2a-secondmate.sh\n' ;;
+    *) return 1 ;;
+  esac
 }
 
 secondmate_registry_field() {

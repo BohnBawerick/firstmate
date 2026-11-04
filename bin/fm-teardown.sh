@@ -535,8 +535,8 @@ fi
 fm_lease_guard "$ID" "teardown (fm-teardown)"
 
 META="$STATE/$ID.meta"
-if [ "$(fm_meta_get "$META" transport)" = dot-mcp ]; then
-  echo 'REFUSED: dot registration and mailbox work must be retired explicitly; no terminal or local copy was removed' >&2
+if secondmate_transport_script "$(fm_meta_get "$META" transport)" >/dev/null; then
+  echo 'REFUSED: a transport second mate (dot or A2A) and its routed work must be retired explicitly; no terminal or local copy was removed' >&2
   exit 1
 fi
 TREEHOUSE_PROJECT_LOCK=

@@ -28,8 +28,9 @@
 #
 # Logic, in order:
 #   1. Resolve worktree + backend target + kind from state/<id>.meta.
-#      A secondmate with transport=dot-mcp uses mailbox observations, not a process
-#      probe. An unready bridge yields unknown. With a ready bridge, folded
+#      A secondmate with a transport (dot-mcp or a2a) uses that transport's snapshot,
+#      not a process probe; an A2A mate reports its in-flight requests as children.
+#      An unready bridge yields unknown. With a ready bridge, folded
 #      unresolved blockers and decisions retain their waiting state; current
 #      nonterminal children take precedence over an older terminal parent event. Incomplete
 #      or stale child observations yield unknown. Without nonterminal children,
@@ -168,6 +169,8 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 . "$SCRIPT_DIR/fm-tmux-lib.sh"
 # shellcheck source=bin/fm-backend.sh
 . "$SCRIPT_DIR/fm-backend.sh"
+# shellcheck source=bin/fm-secondmate-registry-lib.sh
+. "$SCRIPT_DIR/fm-secondmate-registry-lib.sh"
 # shellcheck source=bin/fm-classify-lib.sh
 . "$SCRIPT_DIR/fm-classify-lib.sh"
 # shellcheck source=bin/fm-busy-lib.sh
@@ -275,6 +278,7 @@ KIND=$(meta_value kind)
 HARNESS=$(meta_value harness)
 REMOTE_HOST=$(meta_value remote_host)
 TRANSPORT=$(meta_value transport)
+TRANSPORT_SCRIPT=$(secondmate_transport_script "$TRANSPORT" || true)
 # Empty until the meta is read, which keeps emit()'s quality gate inert on the
 # only paths that emit before this point (and none of them emit `done`).
 QUALITY_POSTURE=$(meta_value quality)
@@ -283,7 +287,7 @@ QUALITY_POSTURE=$(meta_value quality)
 # A torn-down (or never-created) worktree has no current state to read. A
 # remote secondmate's recorded worktree is a path on ITS host, so the local
 # probe proves nothing for it - the remote arm below reads the true source.
-if [ "$TRANSPORT" != dot-mcp ] && [ -z "$REMOTE_HOST" ] && { [ -z "$WT" ] || [ ! -d "$WT" ]; }; then
+if [ -z "$TRANSPORT_SCRIPT" ] && [ -z "$REMOTE_HOST" ] && { [ -z "$WT" ] || [ ! -d "$WT" ]; }; then
   emit unknown none "worktree gone (torn down?)"
 fi
 
@@ -323,9 +327,9 @@ map_log_state() {  # <line>
 LOG_LINE=$(status_current_line "$LOG" "$KIND")
 LOG_VERB=$(status_line_verb "$LOG_LINE")
 
-if [ "$TRANSPORT" = dot-mcp ]; then
-  [ "$KIND" = secondmate ] || emit unknown mailbox 'dot transport is only valid for a secondmate'
-  if DOT_SNAPSHOT=$("$SCRIPT_DIR/fm-dot-secondmate.sh" snapshot "$ID" 2>/dev/null); then
+if [ -n "$TRANSPORT_SCRIPT" ]; then
+  [ "$KIND" = secondmate ] || emit unknown mailbox "$TRANSPORT transport is only valid for a secondmate"
+  if DOT_SNAPSHOT=$("$SCRIPT_DIR/$TRANSPORT_SCRIPT" snapshot "$ID" 2>/dev/null); then
     DOT_HEALTH=$(jq -r '.health' <<< "$DOT_SNAPSHOT")
     jq -e '.ready == true' <<< "$DOT_SNAPSHOT" >/dev/null || emit unknown mailbox "$DOT_HEALTH"
     DOT_LOG_STATE=$(map_log_state "$LOG_LINE")
@@ -347,7 +351,7 @@ if [ "$TRANSPORT" = dot-mcp ]; then
       fi
       emit "$DOT_LOG_STATE" status-log "$(status_line_note "$LOG_LINE")${SEP}$DOT_HEALTH"
     fi
-    emit unknown mailbox "$DOT_HEALTH (idle until routed work; dot process state is not observable)"
+    emit unknown mailbox "$DOT_HEALTH (idle until routed work; the remote agent's process state is not observable)"
   fi
   emit unknown mailbox 'mailbox observations unavailable'
 fi

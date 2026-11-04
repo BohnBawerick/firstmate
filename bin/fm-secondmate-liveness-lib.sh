@@ -58,6 +58,8 @@ FM_SM_LIVE_LIB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 
 # shellcheck source=bin/fm-backend.sh
 . "$FM_SM_LIVE_LIB_DIR/fm-backend.sh"
+# shellcheck source=bin/fm-secondmate-registry-lib.sh
+. "$FM_SM_LIVE_LIB_DIR/fm-secondmate-registry-lib.sh"
 # shellcheck source=bin/fm-remote-readiness-lib.sh
 . "$FM_SM_LIVE_LIB_DIR/fm-remote-readiness-lib.sh"
 # shellcheck source=bin/fm-timeout-lib.sh
@@ -141,15 +143,15 @@ fm_secondmate_liveness_probe() {  # <meta> <id> <full|poll>
   local meta=$1 id=$2 mode=$3
   FM_SM_LIVE_STATUS=skipped FM_SM_LIVE_STATE=unknown FM_SM_LIVE_KILL=0 FM_SM_LIVE_RESUME=0
   FM_SM_LIVE_CAUSE='' FM_SM_LIVE_WHERE='' FM_SM_LIVE_REASON='' FM_SM_LIVE_LINE=''
-  local window harness remote_host remote_rc out agent_state readiness_reason route_out remote_backend
-  if [ "$(fm_meta_get "$meta" transport)" = dot-mcp ]; then
+  local window harness remote_host remote_rc out agent_state readiness_reason route_out remote_backend transport_script
+  if transport_script=$(secondmate_transport_script "$(fm_meta_get "$meta" transport)"); then
     FM_SM_LIVE_STATE=unobservable
-    if out=$("$FM_SM_LIVE_LIB_DIR/fm-dot-secondmate.sh" health "$id" 2>&1); then
-      # Ready means its bridge accepts work, not that ChatGPT has a live process.
+    if out=$("$FM_SM_LIVE_LIB_DIR/$transport_script" health "$id" 2>&1); then
+      # Ready means its endpoint accepts work, not that the remote agent has a live process.
       FM_SM_LIVE_STATUS=alive
-      FM_SM_LIVE_LINE="dot bridge ready: $out"
+      FM_SM_LIVE_LINE="transport ready: $out"
     else
-      FM_SM_LIVE_REASON="dot bridge not ready: $out; no local relaunch is valid"
+      FM_SM_LIVE_REASON="transport not ready: $out; no local relaunch is valid"
     fi
     return 0
   fi
