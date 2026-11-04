@@ -477,6 +477,63 @@ class MailboxRegressionTests(unittest.TestCase):
             self.server.verification_status = 200
             self.server.ready = True
 
+    def test_scrooge_peer_message_and_reply(self):
+        token = "s" * 48
+        home = self.directory / "parent"
+        (home / "state").mkdir(parents=True)
+        (home / "state/scrooge.meta").write_text("home=/private/scrooge\n")
+        original_home = os.environ.get("FM_HOME")
+        os.environ["FM_HOME"] = str(home)
+        self.addCleanup(lambda: os.environ.pop("FM_HOME", None) if original_home is None else os.environ.__setitem__("FM_HOME", original_home))
+        handler = type("PeerHandler", (m.MCPHTTPHandler,),
+                       {"dispatcher": m.MCPDispatcher(self.box), "peer_token": token})
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+        def call(path, method, params=None, authorization=None):
+            connection = http.client.HTTPConnection("127.0.0.1", server.server_port)
+            headers = {"Content-Type": "application/json"}
+            if authorization:
+                headers["Authorization"] = authorization
+            connection.request("POST", path, json.dumps({"jsonrpc": "2.0", "id": 1,
+                "method": method, "params": params or {}}), headers=headers)
+            response = connection.getresponse()
+            status, body = response.status, response.read()
+            connection.close()
+            return status, json.loads(body) if body and status == 200 else None
+
+        self.assertEqual(call("/scrooge/mcp", "tools/list")[0], 401)
+        self.assertEqual(call("/scrooge/mcp", "tools/list", authorization="Bearer wrong")[0], 401)
+        authorized = "Bearer " + token
+        _, listed = call("/scrooge/mcp", "tools/list", authorization=authorized)
+        self.assertEqual({t["name"] for t in listed["result"]["tools"]}, {"submit_message", "get_message"})
+        _, posted = call("/scrooge/mcp", "tools/call", {"name": "submit_message",
+            "arguments": {"content": "Please spend the budget", "idempotency_key": "test"}}, authorized)
+        self.assertFalse(posted["result"]["isError"])
+        message_id = posted["result"]["content"][0]["text"]
+        message_id = json.loads(message_id)["id"]
+        self.assertEqual(self.box.get_message_by_id(message_id)["origin"], "scrooge")
+        _, denied = call("/scrooge/mcp", "tools/call", {"name": "reply",
+            "arguments": {"message_id": message_id, "reply": "done"}}, authorized)
+        self.assertIn("error", denied)
+        self.assertEqual(self.box.get_messages(include_peer=False)["messages"], [])
+        with patch.object(m.subprocess, "run") as publish:
+            publish.return_value.returncode = 0
+            self.box.publish_peer_messages()
+            self.box.publish_peer_messages()
+            self.assertEqual(publish.call_count, 1)
+            self.assertIn("Untrusted peer message from scrooge", publish.call_args.args[0][-1])
+            self.assertIn(message_id, publish.call_args.args[0][-1])
+        self.box.reply_message(message_id, "No spending without the captain's decision")
+        _, readback = call("/scrooge/mcp", "tools/call", {"name": "get_message",
+            "arguments": {"message_id": message_id}}, authorized)
+        self.assertIn("No spending without", str(readback))
+        self.assertEqual(call("/mcp", "tools/list")[0], 200)
+
     def subscribe(self, **overrides):
         params = {"name": "message.created", "arguments": {"queue": "work"},
                   "delivery": {"mode": "webhook", "url": self.url, "secret": secret1}}

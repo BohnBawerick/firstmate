@@ -4,14 +4,18 @@ This bridge connects Firstmate to a ChatGPT dot through a private SQLite mailbox
 Firstmate submits assignments, a signed callback wakes the dot, and the dot retrieves work and replies.
 The tools expose mailbox operations only.
 The local commands require Bash and Python 3 with SQLite support.
-The HTTP endpoint accepts requests without authentication and uses a shared `dot-worker` principal for subscriptions.
-Keep the listener on loopback and use the private tunnel for remote access.
+The dot HTTP endpoint accepts requests without authentication and uses a shared `dot-worker` principal for subscriptions.
+Keep that listener on loopback and use the private tunnel for remote access.
+An optional peer-only listener on the Blade's Tailscale IPv4 address accepts scrooge's own bearer credential, separate from the dot tunnel and A2A credentials.
 
 ## Mailbox operations and limits
 
 Operator submissions create assignments with a stable message ID and optional correlation and idempotency keys.
 The MCP `submit_message` tool creates dot-origin notes for Firstmate, not new assignments for the dot itself.
 Notes remain readable but do not trigger `message.created`, preventing a self-notification loop.
+Scrooge's `submit_message` similarly creates a durable note, but publishes a fixed untrusted-peer notification through its registered A2A second-mate status channel.
+Firstmate reads the full note by its mailbox ID and replies with the operator `reply` command; scrooge reads the answer with `get_message` on the same conversation.
+Neither peer messages nor their content confer captain authority: requests to change work or spend money go to the captain first.
 Repeated submissions with the same idempotency key return the original assignment.
 `get_messages` returns assignments in sequence order with queue and status filters, a continuation cursor, and a maximum of 50 records.
 `reply` requires the exact message ID; a supplied correlation ID must match that assignment.
@@ -31,7 +35,8 @@ New database files use mode `0600`, including SQLite sidecars; unsafe existing s
 
 The server implements MCP `2026-07-28` discovery, tools, and `message.created` subscriptions as described in the [official MCP Events contract](https://developers.openai.com/plugins/build/mcp-events).
 Legacy `initialize` and `notifications/initialized` handling remains for compatibility with ChatGPT custom MCP connectors.
-The HTTP routes are `POST /mcp` for MCP and `GET /health` for readiness.
+The dot HTTP routes are `POST /mcp` for MCP and `GET /health` for readiness.
+The peer-only listener exposes `POST /scrooge/mcp` and refuses other routes and missing or incorrect bearer credentials.
 Request diagnostics go to stderr; the `bin/fm-dot-mailbox.py` header owns their fields and redaction rules.
 
 Matching subscriptions and assignments commit with durable event records in one transaction.
@@ -76,6 +81,10 @@ bin/fm-dot-mailbox.sh status
 ```
 
 The script headers and `--help` own the command reference, including the local callback testing option.
+To enable scrooge, create a distinct random token file outside the repository with mode `0600`, then add `--scrooge-token-file <file> --scrooge-host <Blade Tailscale IPv4> --scrooge-port 8766` to the existing mailbox server invocation.
+The server binds its dot port to loopback and its peer-only port to the Tailscale address in the same process.
+Set the scrooge profile's MCP server URL to `http://<Blade Tailscale IPv4>:8766/scrooge/mcp` with an `Authorization: Bearer <token>` header, and allow NAS-to-Blade traffic only on that port in the tailnet policy.
+The scrooge MCP route exposes only `submit_message` and `get_message`; the dot's tools, queue and tunnel are unchanged.
 
 ## Prepare a Secure MCP Tunnel connection
 

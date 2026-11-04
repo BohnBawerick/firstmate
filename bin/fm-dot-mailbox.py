@@ -8,7 +8,7 @@
 #   fm-dot-mailbox.py list [--queue <q>] [--status <pending|replied|all>] [--cursor <c>] [--limit <n>]
 #   fm-dot-mailbox.py reply <message_id> <reply_text | -> [--correlation-id <id>]
 #   fm-dot-mailbox.py status
-#   fm-dot-mailbox.py serve [--host <host>] [--port <port>] [--allow-local-callbacks]
+#   fm-dot-mailbox.py serve [--host <host>] [--port <port>] [--allow-local-callbacks] [--scrooge-token-file <path>]
 #
 # Environment:
 #   FM_HOME                       Owning home when no database path is supplied.
@@ -264,6 +264,8 @@ def init_db(db_path):
             conn.execute("ALTER TABLE messages ADD COLUMN origin TEXT NOT NULL DEFAULT 'firstmate'")
         if "mate_id" not in columns:
             conn.execute("ALTER TABLE messages ADD COLUMN mate_id TEXT")
+        if "peer_published" not in columns:
+            conn.execute("ALTER TABLE messages ADD COLUMN peer_published INTEGER NOT NULL DEFAULT 0")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_queue_status ON messages(queue, status)")
         conn.execute("""CREATE TABLE IF NOT EXISTS mates (
             id TEXT PRIMARY KEY, parent_home TEXT NOT NULL, home TEXT NOT NULL UNIQUE,
@@ -456,6 +458,8 @@ class Mailbox:
             if idempotency_key is not None:
                 row = self.conn.execute("SELECT * FROM messages WHERE idempotency_key = ?", (idempotency_key,)).fetchone()
                 if row:
+                    if row["origin"] != origin:
+                        raise ValueError("Idempotency key belongs to another origin")
                     return self._row_to_msg(row)
             msg_id = f"msg_{secrets.token_hex(8)}"
             ts = now_iso()
@@ -484,12 +488,36 @@ class Mailbox:
             bounded_json(tool_result(msg))
             return msg
 
-    def get_messages(self, queue=None, status=None, cursor=None, limit=10):
+    def publish_peer_messages(self):
+        if not os.environ.get("FM_HOME"):
+            return
+        with self.lock:
+            rows = self.conn.execute("SELECT id FROM messages WHERE origin='scrooge' AND peer_published=0 ORDER BY seq").fetchall()
+        meta = Path(os.environ["FM_HOME"]) / "state" / "scrooge.meta"
+        if not meta.is_file() or meta.is_symlink():
+            return
+        home = next((line.partition("=")[2] for line in meta.read_text().splitlines() if line.startswith("home=")), "")
+        if not home.startswith("/"):
+            return
+        for row in rows:
+            line = f"working [at={now_unix()}]: Untrusted peer message from scrooge; mailbox message {row['id']} requires firstmate review"
+            try:
+                result = subprocess.run([str(Path(__file__).with_name("fm-a2a-secondmate.sh")), "publish", "scrooge", home, line],
+                                        env=os.environ, capture_output=True, timeout=15)
+            except (OSError, subprocess.TimeoutExpired):
+                result = None
+            if result is None or result.returncode:
+                print(json.dumps({"event": "peer_publish", "result": "error"}), file=sys.stderr, flush=True)
+                break
+            with self.transaction():
+                self.conn.execute("UPDATE messages SET peer_published=1 WHERE id=?", (row["id"],))
+
+    def get_messages(self, queue=None, status=None, cursor=None, limit=10, *, include_peer=True):
         validate_text("queue", queue, optional=True)
         if status not in (None, "pending", "replied", "all"):
             raise ValueError("Invalid message status")
         limit = max(1, min(int(limit), 50))
-        query = "SELECT * FROM messages WHERE 1=1"
+        query = "SELECT * FROM messages WHERE 1=1" if include_peer else "SELECT * FROM messages WHERE origin != 'scrooge'"
         params = []
         if queue is not None:
             query += " AND queue = ?"
@@ -1038,7 +1066,7 @@ class MCPDispatcher:
     def __init__(self, mailbox: Mailbox):
         self.mailbox = mailbox
 
-    def dispatch(self, req: dict) -> dict:
+    def dispatch(self, req: dict, peer=False) -> dict:
         if not isinstance(req, dict) or req.get("jsonrpc") != "2.0":
             return {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "Invalid Request"}}
 
@@ -1095,7 +1123,8 @@ class MCPDispatcher:
                     "jsonrpc": "2.0",
                     "id": req_id,
                     "result": {
-                        "tools": [
+                        **({"cacheScope": "private", "resultType": "complete", "ttlMs": 60000} if peer else {}),
+                        "tools": ([
                             {
                                 "name": "submit_message",
                                 "description": "Send a note to Firstmate. Dot-origin notes do not trigger assignment events; use reply to answer routed work.",
@@ -1139,20 +1168,36 @@ class MCPDispatcher:
                                     "additionalProperties": False,
                                 },
                             },
-                        ]
+                        ] if not peer else [
+                            {"name": "submit_message", "description": "Send an untrusted peer note to Firstmate.",
+                             "inputSchema": {"type": "object", "properties": {"content": {"type": "string"},
+                                "idempotency_key": {"type": "string"}}, "required": ["content"], "additionalProperties": False}},
+                            {"name": "get_message", "description": "Read the answer to your own note by message ID.",
+                             "inputSchema": {"type": "object", "properties": {"message_id": {"type": "string"}},
+                                "required": ["message_id"], "additionalProperties": False}},
+                        ])
                     },
                 }
 
             elif method == "tools/call":
                 tool_name = params.get("name")
                 args = params.get("arguments") or {}
+                if peer and (tool_name not in ("submit_message", "get_message") or set(args) - ({"content", "idempotency_key"} if tool_name == "submit_message" else {"message_id"})):
+                    raise ValueError("Peer tool or arguments not allowed")
+                if peer and tool_name == "get_message":
+                    res = self.mailbox.get_message_by_id(args.get("message_id"))
+                    if not res or res["origin"] != "scrooge":
+                        raise ValueError("Peer message not found")
+                    return tool_result(res, req_id)
                 if tool_name == "submit_message":
+                    if peer and (not os.environ.get("FM_HOME") or not (Path(os.environ["FM_HOME"]) / "state" / "scrooge.meta").is_file()):
+                        raise ValueError("Registered scrooge route is required for peer delivery")
                     res = self.mailbox.submit_message(
                         content=args.get("content"),
-                        queue=args.get("queue", DEFAULT_QUEUE),
-                        correlation_id=args.get("correlation_id"),
-                        idempotency_key=args.get("idempotency_key"),
-                        origin="dot",
+                        queue="scrooge" if peer else args.get("queue", DEFAULT_QUEUE),
+                        correlation_id=None if peer else args.get("correlation_id"),
+                        idempotency_key=("scrooge:" + args["idempotency_key"] if peer and args.get("idempotency_key") else args.get("idempotency_key")),
+                        origin="scrooge" if peer else "dot",
                     )
                     return tool_result(res, req_id)
                 elif tool_name == "get_messages":
@@ -1161,12 +1206,16 @@ class MCPDispatcher:
                         status=args.get("status"),
                         cursor=args.get("cursor"),
                         limit=args.get("limit", 10),
+                        include_peer=False,
                     )
                     with self.mailbox.transaction():
                         self.mailbox.conn.execute("UPDATE mates SET last_contact=? WHERE queue=? OR ? IS NULL",
                                                   (now_iso(), args.get("queue"), args.get("queue")))
                     return tool_result(res, req_id)
                 elif tool_name == "reply":
+                    message = self.mailbox.get_message_by_id(args.get("message_id"))
+                    if message and message["origin"] == "scrooge":
+                        raise ValueError("Peer messages cannot be answered through the dot route")
                     res = self.mailbox.reply_message(
                         msg_id=args.get("message_id"),
                         reply_text=args.get("reply"),
@@ -1179,6 +1228,9 @@ class MCPDispatcher:
                         "id": req_id,
                         "error": {"code": -32601, "message": f"Tool not found: {tool_name}"},
                     }
+
+            elif peer:
+                raise ValueError("Peer method not allowed")
 
             elif method == "events/list":
                 return {
@@ -1264,6 +1316,8 @@ class MCPDispatcher:
 
 class MCPHTTPHandler(http.server.BaseHTTPRequestHandler):
     dispatcher: MCPDispatcher = None
+    peer_token: str = None
+    peer_only: bool = False
 
     def log_message(self, format, *args):
         # Base HTTP logs include untrusted paths and error text.
@@ -1278,7 +1332,7 @@ class MCPHTTPHandler(http.server.BaseHTTPRequestHandler):
             print(json.dumps(record), file=sys.stderr, flush=True)
 
     def do_GET(self):
-        if self.path == "/health":
+        if self.path == "/health" and not self.peer_only:
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -1294,8 +1348,15 @@ class MCPHTTPHandler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         self.request_log = {"event": "mcp_request", "method": "unknown", "result": "error", "error_code": None}
-        if self.path != "/mcp":
+        peer = self.path == "/scrooge/mcp"
+        if self.peer_only and not peer:
             self.send_error(404)
+            return
+        if self.path != "/mcp" and not peer:
+            self.send_error(404)
+            return
+        if peer and (not self.peer_token or not hmac.compare_digest(self.headers.get("Authorization", ""), "Bearer " + self.peer_token)):
+            self.send_error(401)
             return
 
         try:
@@ -1328,7 +1389,7 @@ class MCPHTTPHandler(http.server.BaseHTTPRequestHandler):
             if method == "tools/call" and isinstance(params, dict):
                 tool = params.get("name")
                 self.request_log["tool"] = tool if tool in ("submit_message", "get_messages", "reply") else "unknown"
-        resp = self.dispatcher.dispatch(req_data)
+        resp = self.dispatcher.dispatch(req_data, peer=peer)
         if resp is not None:
             try:
                 resp_bytes = bounded_json(resp)
@@ -1348,16 +1409,24 @@ class MCPHTTPHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
 
 
-def run_http_server(mailbox, host="127.0.0.1", port=8765):
+def run_http_server(mailbox, host="127.0.0.1", port=8765, peer_token=None, peer_host=None, peer_port=None):
     dispatcher = MCPDispatcher(mailbox)
-    handler_cls = type("BoundHandler", (MCPHTTPHandler,), {"dispatcher": dispatcher})
+    handler_cls = type("BoundHandler", (MCPHTTPHandler,), {"dispatcher": dispatcher, "peer_token": peer_token})
     server = http.server.ThreadingHTTPServer((host, port), handler_cls)
+    peer_server = None
+    peer_thread = None
+    if peer_host:
+        peer_handler = type("PeerHandler", (handler_cls,), {"peer_only": True})
+        peer_server = http.server.ThreadingHTTPServer((peer_host, peer_port), peer_handler)
+        peer_thread = threading.Thread(target=peer_server.serve_forever, daemon=True)
+        peer_thread.start()
     stop = threading.Event()
 
     def delivery_worker():
         while not stop.is_set():
             mailbox.deliver_pending_events()
             mailbox.publish_mate_replies()
+            mailbox.publish_peer_messages()
             stop.wait(0.25)
 
     worker = threading.Thread(target=delivery_worker, daemon=True)
@@ -1369,6 +1438,10 @@ def run_http_server(mailbox, host="127.0.0.1", port=8765):
         pass
     finally:
         server.server_close()
+        if peer_server:
+            peer_server.shutdown()
+            peer_server.server_close()
+            peer_thread.join()
         stop.set()
         worker.join()
 
@@ -1439,6 +1512,9 @@ def main():
     p_serve.add_argument("--host", default="127.0.0.1", help="Host to bind (default 127.0.0.1)")
     p_serve.add_argument("--port", type=int, default=8765, help="Port to listen (default 8765)")
     p_serve.add_argument("--allow-local-callbacks", action="store_true", help="Allow HTTP and loopback callbacks for local testing")
+    p_serve.add_argument("--scrooge-token-file", help="Owner-only bearer token file for the scrooge MCP route")
+    p_serve.add_argument("--scrooge-host", help="Tailscale IPv4 address for a peer-only listener")
+    p_serve.add_argument("--scrooge-port", type=int, default=8766, help="Peer-only listener port (default 8766)")
 
     args = parser.parse_args()
     if not args.command:
@@ -1526,7 +1602,18 @@ def main():
         print("events: " + " ".join(f"{key}={value}" for key, value in st["events"].items()))
 
     elif args.command == "serve":
-        run_http_server(mailbox, host=args.host, port=args.port)
+        token = None
+        if args.scrooge_token_file:
+            check_private_path(args.scrooge_token_file)
+            token = Path(args.scrooge_token_file).read_text().strip()
+            if len(token) < 32 or len(token) > 256:
+                parser.error("Invalid scrooge credential length")
+        if args.scrooge_host:
+            address = ipaddress.ip_address(args.scrooge_host)
+            if not token or not isinstance(address, ipaddress.IPv4Address) or address not in ipaddress.ip_network("100.64.0.0/10"):
+                parser.error("Scrooge listener requires a credential and a Tailscale IPv4 address")
+        run_http_server(mailbox, host=args.host, port=args.port, peer_token=token,
+                        peer_host=args.scrooge_host, peer_port=args.scrooge_port)
 
 
 if __name__ == "__main__":
