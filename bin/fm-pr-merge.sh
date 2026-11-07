@@ -1034,8 +1034,10 @@ github_read_required_contexts() {
 
 github_required_checks_missing() {
   local json=$1 required=$2 producers=$3
-  printf '%s' "$json" | jq -r --argjson required "$required" --argjson producers "$producers" '
-    if (.statusCheckRollup | type) != "array" then error("no check rollup") else . end
+  # Stream all JSON inputs so check history cannot exceed the OS argument limit.
+  printf '%s\n' "$json" "$required" "$producers" | jq -sr '
+    .[0] as $json | .[1] as $required | .[2] as $producers | $json
+    | if (.statusCheckRollup | type) != "array" then error("no check rollup") else . end
     | .statusCheckRollup as $reported
     | $required
     | map(. as $requirement
@@ -1170,7 +1172,7 @@ EOF
       || ! producers=$(printf '%s' "$runs" | jq -sc --arg head "$live_head" '
         [ .[] | if (.check_runs | type) == "array" then .check_runs[] else error("invalid check runs") end
           | if (.name | type) == "string" and (.app.id | type) == "number" and .head_sha == $head
-            then . else error("invalid check producer") end ]' 2>/dev/null); then
+            then {name, app: {id: .app.id}, head_sha} else error("invalid check producer") end ]' 2>/dev/null); then
       producers='[]'
       refusals="$refusals  - required check producers at head $live_head could not be read
 "

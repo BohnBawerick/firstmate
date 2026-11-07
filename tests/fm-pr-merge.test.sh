@@ -4219,7 +4219,7 @@ test_required_producer_identity() {
   local case_dir head kind variant expected app
   head=a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1
   for kind in classic ruleset; do
-    for variant in wrong correct unreadable malformed stale waived; do
+    for variant in wrong correct unreadable malformed stale waived oversized oversized-missing; do
       case_dir=$(make_case "required-producer-$kind-$variant")
       add_gh_mocks "$case_dir" "$head"
       write_github_required "$case_dir" "$kind:ci"
@@ -4240,6 +4240,18 @@ test_required_producer_identity() {
         unreadable) rm "$case_dir/github-runs.json" ;;
         malformed) printf '{}' > "$case_dir/github-runs.json" ;;
         stale) printf '{"check_runs":[{"name":"ci","app":{"id":15368},"head_sha":"bbbb"}]}' > "$case_dir/github-runs.json" ;;
+        oversized|oversized-missing)
+          jq -nc --arg head "$head" --arg variant "$variant" '
+            {check_runs: [range(2000) | {
+              name: (if $variant == "oversized" then "ci" else "other" end),
+              app: {id: 15368}, head_sha: $head,
+              output: {text: ("x" * 100)}
+            }]}' > "$case_dir/github-runs.json"
+          jq -c '[.check_runs[] | {name, app: {id: .app.id}, head_sha}]' \
+            "$case_dir/github-runs.json" > "$case_dir/producers.json"
+          [ "$(wc -c < "$case_dir/producers.json")" -gt 131072 ] \
+            || fail "oversized producers fixture is below the argument limit"
+          ;;
       esac
       expected=1
       if [ "$variant" = waived ]; then
@@ -4247,7 +4259,7 @@ test_required_producer_identity() {
         expected=0
       else
         run_required_case "$case_dir" 110 --attended-override -- --admin
-        [ "$variant" != correct ] || expected=0
+        case "$variant" in correct|oversized) expected=0 ;; esac
       fi
       expect_code "$expected" "$RC" "producer-$kind-$variant: $(cat "$case_dir/stderr")"
       if [ "$expected" = 1 ]; then
