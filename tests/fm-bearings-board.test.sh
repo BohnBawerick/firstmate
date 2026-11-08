@@ -110,6 +110,7 @@ run_board() {  # <home> <args...>
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
     LAVISH_FAKE_STATE="$home/lavish-state" LAVISH_AXI_STATE_DIR="$home/lavish-state" \
+    FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS="${FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS:-30}" \
     "$BOARD" "$@"
 }
 
@@ -598,8 +599,19 @@ test_build_starts_a_listener_for_an_already_armed_board() {
   home=$(make_home relisten)
   data="$home/payload.json"
   board="$home/.lavish/bearings-board.html"
+  # Exercise listener recovery without depending on the default startup deadline.
+  printf '%s\n' '#!/usr/bin/env bash' "real_perl=$(printf '%q' "$(command -v perl)")" > "$home/fakebin/perl"
+  cat >> "$home/fakebin/perl" <<'SH'
+if [ "${5:-}" = _start ]; then
+  : > "$LAVISH_FAKE_STATE/runner-delayed"
+  sleep 5
+fi
+exec "$real_perl" "$@"
+SH
+  chmod +x "$home/fakebin/perl"
   write_valid_payload "$data"
   run_board "$home" build "$data" >/dev/null || fail "the first build failed"
+  assert_present "$home/lavish-state/runner-delayed" "the slow-start fixture never delayed the runner"
   sid=$(run_lavish_source_id "$home" "$board")
 
   # Registered is not listening: drop the listener the way a crashed generation
@@ -704,7 +716,8 @@ exit 1
 SH
   chmod +x "$home/fakebin/ps"
   set +e
-  out=$(FM_PROC_ROOT_OVERRIDE="$home/no-proc" run_board "$home" build "$data" 2>&1)
+  out=$(FM_PROC_ROOT_OVERRIDE="$home/no-proc" FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=3 \
+    run_board "$home" build "$data" 2>&1)
   rc=$?
   set -e
   rm -f "$home/fakebin/ps"
