@@ -1627,6 +1627,40 @@ test_watcher_exits_when_its_state_directory_is_removed() {
   pass "watch-arm: a watcher exits when its state directory is removed"
 }
 
+# Remove the state pathname during recovery-lock publication, not between polls.
+test_watcher_exits_when_state_is_removed_during_recovery() {
+  local dir home state fakebin armout
+  dir=$(make_case recovery-state-removal)
+  home="$dir/home"; state="$dir/state"; fakebin="$dir/fakebin"; armout="$dir/arm.out"
+  mkdir -p "$home/data"
+  printf '%s\n' '#!/usr/bin/env bash' "real_mktemp=$(printf '%q' "$(command -v mktemp)")" > "$fakebin/mktemp"
+  cat >> "$fakebin/mktemp" <<'SH'
+result=$("$real_mktemp" "$@") || exit
+state=${FM_STATE_OVERRIDE:-}
+parent=${state%/*}
+watcher=$(cat "$state/.watch.lock/pid" 2>/dev/null || true)
+case "$result" in
+  "$state"/.watcher-down.lock.owner.*)
+    if [ -n "$watcher" ] && grep -q '^watcher: started pid=' "$parent/arm.out" 2>/dev/null; then
+      mv "$state" "$parent/removed-state" || exit 1
+      touch "$parent/removed-at-recovery"
+    fi
+    ;;
+esac
+printf '%s\n' "$result"
+SH
+  chmod +x "$fakebin/mktemp"
+  start_owned_watcher "$home" "$state" "$fakebin" "$armout"
+  wait_for_pid_gone "$WATCH_PID" 400 \
+    || { kill -TERM "$WATCH_PID" 2>/dev/null; fail "watcher outlived recovery-state removal"; }
+  wait_for_exit "$ARM_PID" 100 >/dev/null 2>&1 || true
+  [ -e "$dir/removed-at-recovery" ] || fail "the recovery removal seam was not reached"
+  grep -qF 'watcher: exiting - state directory' "$armout" || fail "watcher did not log the state-gone exit reason: $(cat "$armout")"
+  ! grep -q '^signal:\|^check:\|^stale:\|^heartbeat' "$armout" || fail "state removal became an actionable wake"
+  rm -rf "$dir/removed-state"
+  pass "state removal during recovery owner publication exits with the state-gone reason"
+}
+
 # The same for a deleted home whose state directory still exists elsewhere: the
 # lock is released through the ordinary cleanup so nothing stale is left behind.
 test_watcher_exits_when_its_home_is_removed() {
@@ -1970,6 +2004,7 @@ test_attached_arm_reports_the_delivered_wake_after_drain
 test_arm_refuses_an_unusable_launch_confirm_window
 test_arm_refuses_a_disposable_validation_checkout
 test_watcher_exits_when_its_state_directory_is_removed
+test_watcher_exits_when_state_is_removed_during_recovery
 test_watcher_exits_when_its_home_is_removed
 test_attached_arm_exits_when_its_root_is_removed
 test_reaper_stops_a_tracked_watcher
