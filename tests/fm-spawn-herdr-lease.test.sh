@@ -47,32 +47,53 @@ set -u
 D=$FM_FAKE_DIR
 printf '%s\n' "$*" >> "$D/treehouse-log"
 case "$*" in
-  'get --lease '*) [ ! -f "$D/lease-fails" ] || { echo 'lease failed' >&2; exit 1; }
+  'get --lease '*) : > "$D/lease-attempted"
+    [ ! -f "$D/lease-fails" ] || { echo 'lease failed' >&2; exit 1; }
     printf '%s\n' "$FM_FAKE_SLOT" ;;
   'get') printf '%s' "$FM_FAKE_SLOT" > "$D/fg" ;;
   'return --force '*) : > "$D/returned" ;;
 esac
 exit 0
 SH
+  printf '{"workspaces":[],"tabs":[]}\n' > "$d/topology.json"
   cat > "$fb/herdr" <<'SH'
 #!/usr/bin/env bash
 set -u
 D=$FM_FAKE_DIR
 printf '%s\n' "$*" >> "$D/herdr-log"
+jq_state() { jq "$@" "$D/topology.json"; }
+save_state() { cat > "$D/topology.tmp.$$" && mv "$D/topology.tmp.$$" "$D/topology.json"; }
+workspace= label= cwd=
+args=("$@")
+for ((i=0; i<${#args[@]}; i++)); do
+  case "${args[$i]}" in
+    --workspace) workspace=${args[$((i+1))]:-} ;;
+    --label) label=${args[$((i+1))]:-} ;;
+    --cwd) cwd=${args[$((i+1))]:-} ;;
+  esac
+done
 if [ "${1:-}" = status ] && [ "${2:-}" = --json ]; then
-  printf '{"client":{"version":"0.9.0","protocol":22},"server":{"running":true}}\n'
+  printf '{"client":{"version":"0.9.0","protocol":22},"server":{"running":true,"version":"0.9.0","protocol":22}}\n'
   exit 0
 fi
 [ "${1:-}" != server ] || exit 0
 case "${1:-} ${2:-}" in
   'session list')
-    [ ! -f "$D/session-lockable" ] || printf '{"sessions":[{"name":"default","running":true,"socket_path":"%s/herdr.sock"}]}\n' "$D"
+    printf '{"sessions":[{"name":"default","running":true,"socket_path":"%s/herdr.sock"}]}\n' "$D"
     exit 0 ;;
-  'pane close') : > "$D/pane-gone"; exit 0 ;;
+  'terminal title') printf '{"result":{"reason":"no_foreground_client"}}\n'; exit 0 ;;
+  'pane close')
+    if [ -f "$D/lease-attempted" ] && [ ! -f "$D/close-allowed" ]; then exit 1; fi
+    jq_state --arg p "${3:-}" '.tabs |= [.[] | select(.pane_id != $p)]' | save_state
+    [ "${3:-}" != w2:p2 ] || : > "$D/task-pane-closed"
+    exit 0 ;;
   'pane get')
-    [ ! -f "$D/pane-gone" ] || { printf '{"error":{"code":"pane_not_found"}}\n'; exit 0; }
-    printf '{"result":{"pane":{"pane_id":"%s","cwd":"%s","foreground_cwd":"%s"}}}\n' \
-      "${3:-}" "$(cat "$D/cwd")" "$(cat "$D/fg")"
+    if ! jq_state -e --arg p "${3:-}" '[.tabs[] | select(.pane_id == $p)] | length == 1' >/dev/null; then
+      printf '{"error":{"code":"pane_not_found"}}\n'
+    else
+      jq_state --arg p "${3:-}" --arg cwd "$(cat "$D/cwd")" --arg fg "$(cat "$D/fg")" \
+        '{result:{pane:(.tabs[] | select(.pane_id == $p) | . + {cwd:$cwd,foreground_cwd:$fg})}}'
+    fi
     exit 0 ;;
   'pane run' | 'pane send-text')
     payload=${4:-}
@@ -95,13 +116,30 @@ case "${1:-} ${2:-}" in
       printf '{"error":{"code":"agent_not_found"}}\n'
     fi
     exit 0 ;;
-  'workspace list') printf '{"result":{"workspaces":[]}}\n'; exit 0 ;;
+  'workspace list') jq_state '{result:{workspaces:.workspaces}}'; exit 0 ;;
   'workspace create')
-    printf '{"result":{"workspace":{"workspace_id":"wsnew"},"tab":{"tab_id":"seedtab"},"root_pane":{"pane_id":"%%1"}}}\n'
+    n=$(jq_state '.workspaces | length + 1')
+    ws="w$n"; tab="$ws:t1"; pane="$ws:p1"
+    jq_state --arg w "$ws" --arg t "$tab" --arg p "$pane" --arg label "$label" --arg cwd "$cwd" \
+      '.workspaces += [{workspace_id:$w,label:$label,focused:(.workspaces|length == 0),active_tab_id:$t}]
+       | .tabs += [{workspace_id:$w,tab_id:$t,pane_id:$p,label:"1",cwd:$cwd,focused:($w == "w1")}]' | save_state
+    jq -n --arg w "$ws" --arg t "$tab" --arg p "$pane" \
+      '{result:{workspace:{workspace_id:$w},tab:{tab_id:$t},root_pane:{pane_id:$p}}}'
     exit 0 ;;
-  'tab list') printf '{"result":{"tabs":[]}}\n'; exit 0 ;;
+  'tab list') jq_state --arg w "$workspace" '{result:{tabs:[.tabs[] | select(.workspace_id == $w)]}}'; exit 0 ;;
+  'pane list')
+    jq_state --arg w "$workspace" '{result:{panes:[.tabs[] | select(.workspace_id == $w) | {pane_id,tab_id,workspace_id}]}}'
+    exit 0 ;;
+  'tab get') jq_state --arg t "${3:-}" '{result:{tab:(.tabs[] | select(.tab_id == $t))}}'; exit 0 ;;
+  'tab close')
+    jq_state --arg t "${3:-}" '.tabs |= [.[] | select(.tab_id != $t)]
+      | .tabs as $tabs | .workspaces |= map(. as $w | .active_tab_id = ([$tabs[] | select(.workspace_id == $w.workspace_id)][0].tab_id))' | save_state
+    exit 0 ;;
   'tab create')
-    printf '{"result":{"tab":{"tab_id":"tabnew"},"root_pane":{"pane_id":"%%9"}}}\n'
+    tab="$workspace:t2"; pane="$workspace:p2"
+    jq_state --arg w "$workspace" --arg t "$tab" --arg p "$pane" --arg label "$label" --arg cwd "$cwd" \
+      '.tabs += [{workspace_id:$w,tab_id:$t,pane_id:$p,label:$label,cwd:$cwd,focused:false}]' | save_state
+    jq -n --arg t "$tab" --arg p "$pane" '{result:{tab:{tab_id:$t},root_pane:{pane_id:$p}}}'
     exit 0 ;;
 esac
 exit 0
@@ -186,12 +224,9 @@ test_rolled_back_spawn_after_launch_names_the_lease_it_keeps() {
   pass "a spawn rolled back after its launch keeps the lease and names the command that releases it"
 }
 
-# abort_polytoken_spawn <id> <dirty|launch-fails> [session-lockable]: a
-# polytoken spawn aborts, either before its launch into a dirty copy or after a
-# launch that was not delivered into a clean copy, and asks Herdr to close its
-# own pane. Herdr closes it only when the session's presentation lock can be
-# taken, which needs the session's socket; without it the kill refuses and the
-# pane stays.
+# abort_polytoken_spawn <id> <dirty|launch-fails> [close-allowed]: an abort
+# tries to close its pane under the lock already held for initial placement.
+# The fake can refuse that close, leaving the pane and its lease intact.
 abort_polytoken_spawn() {
   local id=$1 dir
   dir=$(make_lease_case "$id" polytoken)
@@ -199,7 +234,7 @@ abort_polytoken_spawn() {
     dirty) echo dirty >> "$dir/slot/README.md" ;;
     launch-fails) : > "$dir/fake/launch-send-fails" ;;
   esac
-  [ -z "${3:-}" ] || : > "$dir/fake/session-lockable"
+  [ -z "${3:-}" ] || : > "$dir/fake/close-allowed"
   LEASE_OUT=$(run_lease_spawn "$dir" "$id" --model zai/glm-5.3-flash --effort low)
   LEASE_STATUS=$?
   LEASE_DIR=$dir
@@ -207,7 +242,7 @@ abort_polytoken_spawn() {
 
 test_abort_returns_a_clean_lease_once_the_pane_is_gone() {
   local id=lease-pane-gone
-  abort_polytoken_spawn "$id" launch-fails session-lockable
+  abort_polytoken_spawn "$id" launch-fails close-allowed
   [ "$LEASE_STATUS" -ne 0 ] || fail "spawn succeeded although its launch was not delivered"$'\n'"$LEASE_OUT"
   [ ! -e "$LEASE_DIR/home/state/$id.meta" ] || fail "the failed spawn kept its task record"
   assert_grep 'pane close' "$LEASE_DIR/fake/herdr-log" "the abort did not close its pane"$'\n'"$LEASE_OUT"
@@ -217,7 +252,7 @@ test_abort_returns_a_clean_lease_once_the_pane_is_gone() {
 
 test_abort_keeps_a_dirty_lease_once_the_pane_is_gone() {
   local id=lease-pane-gone-dirty
-  abort_polytoken_spawn "$id" dirty session-lockable
+  abort_polytoken_spawn "$id" dirty close-allowed
   [ "$LEASE_STATUS" -ne 0 ] || fail "spawn launched into a dirty leased copy"$'\n'"$LEASE_OUT"
   assert_grep 'pane close' "$LEASE_DIR/fake/herdr-log" "the abort did not close its pane"$'\n'"$LEASE_OUT"
   [ ! -e "$LEASE_DIR/fake/returned" ] || fail "the abort returned a copy holding uncommitted work"
@@ -230,7 +265,8 @@ test_abort_keeps_the_lease_while_the_pane_is_present() {
   local id=lease-close-refused
   abort_polytoken_spawn "$id" dirty
   [ "$LEASE_STATUS" -ne 0 ] || fail "spawn launched into a dirty leased copy"$'\n'"$LEASE_OUT"
-  ! grep -q 'pane close' "$LEASE_DIR/fake/herdr-log" || fail "the kill closed the pane without its presentation lock"
+  assert_grep 'pane close' "$LEASE_DIR/fake/herdr-log" "the abort did not attempt its locked pane close"
+  [ ! -e "$LEASE_DIR/fake/task-pane-closed" ] || fail "the refused close removed its task pane"
   [ ! -e "$LEASE_DIR/fake/returned" ] || fail "the abort returned the lease while its pane is still present"
   assert_contains "$LEASE_OUT" "stays leased to $id" "an abort with its pane still present did not name the lease it keeps"
   pass "an abort whose pane is still present keeps the lease and names it"

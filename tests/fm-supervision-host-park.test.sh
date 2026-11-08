@@ -598,10 +598,11 @@ test_tagged_lock_holder_reaches_the_engine_whole() {
   home=$(make_home tagged-holder away)
   echo hold-lease > "$home/stub-mode"
   # A Windows/Git Bash home: uname reports MINGW and ps -W lists the session
-  # harness the lock names as win:7204; every other ps question is the real one.
+  # harness the lock names as win:7204; POSIX ancestry stops at the MSYS boundary.
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" MINGW64_NT-10.0-26200\n' > "$home/fakebin/uname"
   cat > "$home/fakebin/ps" <<'SH'
 #!/usr/bin/env bash
+case "$*" in '-o ppid= -p '*) printf '0\n'; exit 0 ;; esac
 [ "$*" = -W ] || exec /bin/ps "$@"
 printf '%s\n' '      PID    PPID    PGID     WINPID   TTY         UID    STIME COMMAND'
 printf '%s\n' '  4201508       0       0       7204  ?              0 22:24:48 C:\Users\u\.local\bin\claude.exe'
@@ -632,6 +633,8 @@ test_superseded_host_leaves_the_owner_untouched() {
   FM_HOME="$home" FM_CREW_STATE_BIN="$home/fakebin/fm-crew-state.sh" PATH="$home/fakebin:$PATH" \
     "$FAKE_CLAUDE" -c '
       printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+      printf "%s\n" fm-supervision-host-test > "$FM_HOME/state/.lock-session"
+      export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID=fm-supervision-host-test
       printf "%s\n" "$$" >> "$FM_HOME/claude-pids"
       "$0" park > "$FM_HOME/host.out" 2>&1 &
       while [ ! -e "$FM_HOME/go-second" ]; do sleep 0.1; done

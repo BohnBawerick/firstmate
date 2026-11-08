@@ -25,6 +25,7 @@ wedge_reported_wait_secs() {  # <watch-out>
 test_wedge_threshold_defers_to_a_declared_wait_under_a_working_verdict() {
   local dir state fakebin out capture window key n past reported
   local working='state: working · source: run-step · ci running'
+  local inconclusive='state: unknown · source: pane · no verified activity'
 
   dir=$(wedge_threshold_fixture declared-wait-working \
     'paused: final validation at step 6/6 - clean whole-assembly baseline (~20 min)' 0)
@@ -70,34 +71,39 @@ test_wedge_threshold_defers_to_a_declared_wait_under_a_working_verdict() {
     && fail "the declared-wait recheck was worded as a possible wedge"
   ack_stopped_cycle "$state" || fail "could not acknowledge the declared-wait recheck"
 
-  # A wait the worker said would already be over stops explaining the silence,
-  # so the exemption ends exactly where the declaration does - as long as nothing
-  # ELSE accounts for the quiet.
+  # Verified activity still explains silence after a declared wait expires.
+  # Without it, the paused lane rechecks the expired wait before wedge escalation.
   past=$(iso_utc_at "$(( $(date +%s) - 7200 ))")
   dir=$(wedge_threshold_fixture declared-wait-elapsed "paused: waiting on the build queue until $past" 0)
   state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"; capture="$dir/pane.txt"
-  wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$working" exit \
-    || fail "a declared wait whose own clearing time had passed stayed silent"
-  grep -F "possible wedge, escalation 1" "$out" >/dev/null \
-    || fail "an elapsed declared wait did not keep the unchanged wedge wording: $(cat "$out")"
-  ack_stopped_cycle "$state" || fail "could not acknowledge the elapsed-declaration escalation"
+  wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$working" absorb \
+    || fail "an expired declaration overrode verified activity"
+  wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$inconclusive" exit \
+    || fail "an expired declaration was not rechecked without verified activity"
+  grep -F "the declared clearing time has passed" "$out" >/dev/null \
+    || fail "an elapsed declared wait lost its expired-wait recheck: $(cat "$out")"
+  grep -F "possible wedge" "$out" >/dev/null \
+    && fail "an expired wait escalated before its paused-lane recheck"
+  ack_stopped_cycle "$state" || fail "could not acknowledge the expired-wait recheck"
 
-  # The other direction: the same working verdict with no declaration at all
-  # keeps the unchanged ladder.
+  # Verified activity also suppresses escalation without a wait declaration.
+  # When that evidence ends, an inconclusive lane keeps the escalation ladder.
   dir=$(wedge_threshold_fixture declared-wait-control 'working: validation under way' 0)
   state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"; capture="$dir/pane.txt"
+  wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$working" absorb \
+    || fail "a lane with verified activity escalated without a wait declaration"
   n=1
   while [ "$n" -le 3 ]; do
-    wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$working" exit \
-      || fail "an undeclared working lane stopped escalating at threshold $n"
+    wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$inconclusive" exit \
+      || fail "an inconclusive lane stopped escalating at threshold $n"
     ack_stopped_cycle "$state" || fail "could not acknowledge undeclared escalation $n"
     grep -F "possible wedge, escalation $n" "$out" >/dev/null \
-      || fail "an undeclared working lane did not reach escalation $n: $(cat "$out")"
+      || fail "an inconclusive lane did not reach escalation $n: $(cat "$out")"
     n=$((n + 1))
   done
   grep -F 'demand-deep-inspection: same pane has wedge-escalated 3 times in a row' "$out" >/dev/null \
-    || fail "an undeclared working lane lost the demand-deep-inspection wording: $(cat "$out")"
-  pass "a declared wait is not wedge-escalated by a working verdict, while an elapsed declaration and an undeclared lane both keep the unchanged ladder"
+    || fail "an inconclusive lane lost the demand-deep-inspection wording: $(cat "$out")"
+  pass "declared waits defer escalation, verified activity suppresses it, and inconclusive lanes still escalate"
 }
 
 # `fm-send --resolve-key default` answers a keyless decision by appending a
@@ -127,7 +133,9 @@ test_wedge_threshold_keeps_a_wait_past_a_default_key_answer() {
   dir=$(wedge_threshold_fixture keyless-retraction \
     "$(printf 'paused: waiting on the vendor release\nresolved: the vendor shipped')" 0)
   state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"; capture="$dir/pane.txt"
-  wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$working" exit \
+  # A status-log claim alone does not prove activity after the wait is retracted.
+  wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" \
+    'state: working · source: status-log · working: compiling' exit \
     || fail "a worker's own keyless resolved line did not retract its wait: $(cat "$out")"
   grep -F "possible wedge, escalation 1" "$out" >/dev/null \
     || fail "a retracted wait did not return to the wedge ladder: $(cat "$out")"
@@ -532,13 +540,10 @@ working: still parked at that gate'
   unarmed_probes=$(wc -l < "$FM_FAKE_CREW_STATE_LOG" | tr -d ' ')
   unset FM_FAKE_CREW_STATE_LOG
 
-  [ "$unarmed_probes" -eq 0 ] \
-    || fail "an unarmed home spent $unarmed_probes current-state read(s) on a parked gate over three thresholds"
+  [ "$unarmed_probes" -eq 3 ] \
+    || fail "an unarmed home spent $unarmed_probes current-state read(s) over three thresholds, not one busy recheck each"
 
-  # The same fixture with only the flag added, counted the same way, so the
-  # zero above is the flag's doing rather than a fixture that could never have
-  # reached the reader: one armed threshold must spend a read. A guard placed
-  # after the consult instead of before it would make both counts nonzero.
+  # Unarmed thresholds still recheck activity, but must not add a parked-gate consult.
   dir=$(wedge_threshold_fixture parked-gate-armed-probe-count "$escalated" 2000)
   arm_parked_gate "$dir"
   state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"; capture="$dir/pane.txt"
@@ -638,7 +643,7 @@ arm_worker_wait() {  # <case-dir>
 
 test_wedge_threshold_defers_to_a_worker_blocker() {
   local dir state fakebin out capture window key n reported case_log
-  local working='state: working · source: run-step · ci running'
+  local working='state: working · source: status-log · still compiling'
   window="test:fm-wedge"; key=$(printf '%s' "$window" | tr ':/.' '___')
 
   dir=$(wedge_threshold_fixture worker-blocker-fresh \
@@ -721,7 +726,7 @@ resolved: firstmate supplied the key' \
 # recheck throttle.
 test_wedge_threshold_worker_wait_is_off_until_armed() {
   local dir state fakebin out capture window key
-  local working='state: working · source: run-step · ci running'
+  local working='state: working · source: status-log · still compiling'
   window="test:fm-wedge"; key=$(printf '%s' "$window" | tr ':/.' '___')
   dir=$(wedge_threshold_fixture worker-blocker-unarmed 'blocked: need the API key for the staging account' 2000 600)
   state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"; capture="$dir/pane.txt"
@@ -934,9 +939,8 @@ test_wedge_threshold_escalates_when_no_run_is_executing() {
   pass "parked, terminal, ci-monitoring, coarse, runless, absent and unreadable runs keep the unchanged wedge ladder"
 }
 
-# Absent config/wedge-defer-validating an executing run is no deferral at all:
-# the lane escalates on the unchanged schedule and wording, and the consult is
-# never reached, so no current-state read is spent and no chain is started.
+# The optional validating deferral does not replace the ordinary activity check.
+# Without it, verified activity still suppresses escalation; unknown activity does not.
 test_wedge_threshold_validating_run_is_off_until_armed() {
   local dir state fakebin out capture window key n probes
   local verdict='state: working · source: run-step · validating (running) · run: 01RUNLIVE'
@@ -949,8 +953,25 @@ test_wedge_threshold_validating_run_is_off_until_armed() {
   : > "$FM_FAKE_CREW_STATE_LOG"
   n=1
   while [ "$n" -le 3 ]; do
+    probes=$(wc -l < "$FM_FAKE_CREW_STATE_LOG" | tr -d ' ')
+    wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$verdict" absorb \
+      || fail "an unarmed home escalated verified validation activity at threshold $n: $(cat "$out")"
+    # An absorbed round spans several polls, not one state read.
+    [ "$(wc -l < "$FM_FAKE_CREW_STATE_LOG" | tr -d ' ')" -gt "$probes" ] \
+      || fail "an absorbed validation round never rechecked activity"
+    n=$((n + 1))
+  done
+  [ "$(wedge_stale_wakes "$state" "$window")" -eq 0 ] \
+    || fail "verified validation activity queued a stale wake"
+  [ ! -e "$state/.validating-since-$key" ] \
+    || fail "verified activity started an unarmed validating deferral chain"
+
+  verdict='state: unknown · source: pane · no verified activity'
+  : > "$FM_FAKE_CREW_STATE_LOG"
+  n=1
+  while [ "$n" -le 3 ]; do
     wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$verdict" exit \
-      || fail "an unarmed home stopped escalating a running validation at threshold $n: $(cat "$out")"
+      || fail "an unarmed home stopped escalating unknown activity at threshold $n: $(cat "$out")"
     ack_stopped_cycle "$state" || fail "could not acknowledge unarmed validating escalation $n"
     grep -F "possible wedge, escalation $n" "$out" >/dev/null \
       || fail "an unarmed home did not reach escalation $n: $(cat "$out")"
@@ -960,11 +981,11 @@ test_wedge_threshold_validating_run_is_off_until_armed() {
   unset FM_FAKE_CREW_STATE_LOG
   grep -F 'demand-deep-inspection: same pane has wedge-escalated 3 times in a row' "$out" >/dev/null \
     || fail "an unarmed home lost the demand-deep-inspection wording: $(cat "$out")"
-  [ "$probes" -eq 0 ] \
-    || fail "an unarmed home spent $probes current-state read(s) on a running validation over three thresholds"
+  [ "$probes" -eq 3 ] \
+    || fail "an unarmed home spent $probes current-state read(s), not one activity recheck per threshold"
   [ ! -e "$state/.validating-since-$key" ] \
     || fail "an unarmed home started a validating deferral chain"
-  pass "with config/wedge-defer-validating absent a running validation keeps the unchanged ladder, wording and reads"
+  pass "without validating deferral, verified activity suppresses escalation and unknown activity keeps the ordinary ladder"
 }
 
 if [ -n "${FM_TEST_ONLY:-}" ]; then

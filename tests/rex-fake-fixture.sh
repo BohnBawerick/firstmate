@@ -203,12 +203,20 @@ case "$cmd:$sub" in
   send:)
     has_block "$sid" "$bid" || notfound "block"
     [ -n "$p0" ] || exit 2
+    [ ! -f "$D/send-fail" ] || exit 4
     printf '%s\n' "$p0" >>"$D/sent"
     [ ! -f "$D/agent-on-send" ] || printf '%s\n' "$bid" >> "$D/agent-blocks" ;;
   send-key:)
     has_block "$sid" "$bid" || notfound "block"
     case "$p0" in enter|escape|tab|ctrl+c|ctrl+u) ;; *) exit 2 ;; esac
-    printf '%s\n' "$p0" >>"$D/keys" ;;
+    printf '%s\n' "$p0" >>"$D/keys"
+    if [ "$p0" = enter ]; then
+      u=${bid#block:}
+      for format in vt txt; do
+        [ ! -f "$D/after-enter/$u.$format" ] || cp "$D/after-enter/$u.$format" "$D/capture/$u.$format"
+      done
+      [ ! -f "$D/after-enter/$u.json" ] || cp "$D/after-enter/$u.json" "$D/status/$u.json"
+    fi ;;
   do:)
     has_session "$sid" || notfound "session"
     [ ! -f "$D/do-fail" ] || exit 3

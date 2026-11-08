@@ -568,7 +568,7 @@ test_archive_retry_removes_stale_files_from_a_partial_generation() {
 }
 
 test_archive_revalidates_sources_immediately_before_publication() {
-  local home export_root archive archive_pid rc=0 wait_count=0 index
+  local home export_root archive rc=0 fakebin real_python
   home=$(make_home archive-final-revalidate)
   export_root="$TMP_ROOT/export-archive-final-revalidate"
   printf '%s\n' "$export_root" > "$home/config/record-export-root"
@@ -577,25 +577,36 @@ test_archive_revalidates_sources_immediately_before_publication() {
     || fail "final revalidation setup could not initialize its root: $(cat "$home/sync.err")"
   archive="$export_root/archive/task-a/final-revalidate-generation"
   mkdir -p "$archive/inbox"
-  index=0
-  while [ "$index" -lt 10000 ]; do
-    printf 'stale %s\n' "$index" > "$archive/inbox/$(printf '%05d' "$index").msg"
-    index=$((index + 1))
-  done
+  printf 'stale bytes\n' > "$archive/inbox/00000.msg"
 
-  run_export "$home" archive-task task-a > "$home/archive.out" 2> "$home/archive.err" &
-  archive_pid=$!
-  while [ -e "$archive/inbox/00000.msg" ]; do
-    kill -0 "$archive_pid" 2>/dev/null || break
-    wait_count=$((wait_count + 1))
-    [ "$wait_count" -le 1000 ] || break
-    sleep 0.01
-  done
-  [ ! -e "$archive/inbox/00000.msg" ] \
-    || { wait "$archive_pid" || true; fail "archive did not begin replacing its stale partial generation"; }
-  printf 'changed after final comparison\n' >> "$home/state/task-a.status"
-  wait "$archive_pid" || rc=$?
+  # Change the source at the unlink boundary, not after a scheduler-dependent delay.
+  fakebin="$home/fakebin"
+  mkdir -p "$fakebin"
+  real_python=$(command -v python3)
+  printf '#!%s\n' "$real_python" > "$fakebin/python3"
+  cat >> "$fakebin/python3" <<'PY'
+import os
+import runpy
+import sys
+
+if len(sys.argv) < 3 or os.path.basename(sys.argv[1]) != "fm-record-export.py" or sys.argv[2] != "archive-task":
+    os.execv(sys.executable, [sys.executable, *sys.argv[1:]])
+real_unlink = os.unlink
+def unlink(path, *, dir_fd=None):
+    if path == "00000.msg":
+        with open(os.environ["FM_TEST_ARCHIVE_SOURCE"], "a") as source:
+            source.write("changed during stale-generation replacement\n")
+    return real_unlink(path, dir_fd=dir_fd)
+os.unlink = unlink
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name="__main__")
+PY
+  chmod +x "$fakebin/python3"
+  PATH="$fakebin:$PATH" FM_TEST_ARCHIVE_SOURCE="$home/state/task-a.status" \
+    run_export "$home" archive-task task-a > "$home/archive.out" 2> "$home/archive.err" || rc=$?
   [ "$rc" -ne 0 ] || fail "archive committed after a source changed during stale-generation replacement"
+  assert_grep "record export source changed during archive capture" "$home/archive.err" \
+    "archive refusal did not identify the changed source"
   assert_absent "$archive/manifest.v1.json" "archive committed a manifest after its final source comparison"
   assert_present "$home/state/task-a.meta" "final comparison race removed live metadata"
   pass "teardown archive revalidates sources immediately before publication"

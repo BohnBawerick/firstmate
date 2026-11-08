@@ -4,17 +4,13 @@
 # Origin: the 2026-09-12 GitHub Actions starvation incident. firstmate CI had no
 # concurrency deduplication, so every superseded PR head kept its full job
 # fan-out, and four jobs carried no timeout at all. These tests hold both
-# safeguards: PR runs supersede within one PR while close main pushes keep only
-# the newest run, and every CI job carries a finite hang tripwire drawn from the
+# safeguards: PR runs supersede within one PR while each main push keeps its
+# own run, and every CI job carries a finite hang tripwire drawn from the
 # three-tier timeout policy that docs/fm-test-portable-shards.md "Timeouts"
 # owns (fast, normal, heavy), so no job drifts back to a one-off number.
 #
-# They also hold the outside pull request gate the maintainer approved in
-# DOP-167 (keep public CI within GitHub's 40-job limit): a PR from an author
-# without write access runs only the quick checks and a failing Full suite
-# verdict until the full-ci label is added, the label and later pushes run the
-# whole suite, any other label neither starts nor cancels a run, and close main
-# pushes keep only the newest run.
+# Every PR head runs the full suite regardless of author permissions.
+# The full-ci label reruns it; other labels neither start nor cancel a run.
 #
 # They also hold the fork opt-out: the repository variables FM_CI_SKIP_PUSH and
 # FM_CI_SKIP_MACOS let a fork skip the push run and the macOS job through a
@@ -423,7 +419,7 @@ test_main_pushes_are_never_cancelled() {
 }
 
 # DOP-167: adding any other label neither starts nor cancels a run, while the
-# full-ci label joins the PR's group so it replaces the quick-check run.
+# full-ci label joins the PR's group so it replaces the preceding run.
 test_only_the_full_ci_label_joins_the_pr_group() {
   local push other another full
   push=$(resolve_concurrency number=108 run_id=900020) || fail "could not resolve PR concurrency"

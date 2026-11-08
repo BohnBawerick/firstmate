@@ -5,8 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-    # labeled lets the full-ci go-ahead start the full suite; see the
-    # outside pull request gate below.
+    # The optional full-ci label reruns the complete suite.
     types: [opened, synchronize, reopened, labeled]
 
 permissions:
@@ -17,9 +16,7 @@ permissions:
 # every main push keeps its own non-cancelling group, preserving the fork's
 # complete post-merge validation history.
 # A label other than full-ci gets a unique, non-cancelling group, so adding
-# one never cancels a running suite. Evidence and rationale: the September 12
-# Actions starvation report, section 3 "Workflow mechanics to ship first", and
-# the October 28 concurrency measurements behind the full-ci gate.
+# one never cancels a running suite.
 # The compliance workflow deliberately keeps its own event-specific groups; do
 # not collapse it onto this simpler shape.
 concurrency:

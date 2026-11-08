@@ -8,7 +8,7 @@
 #   bin/fm-dot-mailbox.sh list [--queue <q>] [--status <pending|replied|all>] [--cursor <c>] [--limit <n>]
 #   bin/fm-dot-mailbox.sh reply <message_id> <reply_text | -> [--correlation-id <id>]
 #   bin/fm-dot-mailbox.sh status
-#   bin/fm-dot-mailbox.sh serve [--host <host>] [--port <port>] [--allow-local-callbacks]
+#   bin/fm-dot-mailbox.sh serve [--host <host>] [--port <port>] [--allow-local-callbacks] [--scrooge-token-file <path>] [--scrooge-host <tailscale-ip>] [--scrooge-port <port>]
 #   bin/fm-dot-mailbox.sh --help
 #
 # Environment:
@@ -28,7 +28,7 @@ Usage:
   fm-dot-mailbox.sh list [--queue <q>] [--status <pending|replied|all>] [--cursor <c>] [--limit <n>]
   fm-dot-mailbox.sh reply <message_id> <reply_text | -> [--correlation-id <id>]
   fm-dot-mailbox.sh status
-  fm-dot-mailbox.sh serve [--host <host>] [--port <port>] [--allow-local-callbacks]
+  fm-dot-mailbox.sh serve [--host <host>] [--port <port>] [--allow-local-callbacks] [--scrooge-token-file <path>] [--scrooge-host <tailscale-ip>] [--scrooge-port <port>]
   fm-dot-mailbox.sh --help
 
 Commands:

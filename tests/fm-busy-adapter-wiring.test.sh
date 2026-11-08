@@ -888,7 +888,12 @@ case "\${1:-}" in
     esac
     ;;
   capture-pane) printf 'working\n' ;;
-  display-message) printf '0\n' ;;
+  display-message)
+    case "\$*" in
+      *'#{pane_current_command}'*) printf 'claude\n' ;;
+      *) printf '0\n' ;;
+    esac
+    ;;
   *) exit 0 ;;
 esac
 SH

@@ -125,11 +125,10 @@ redraw() {
 }
 submit_line() {
   local _line=$_buf _c _hex
-  if [ "${_line:0:1}" = "$MARK" ]; then
-    _c="injection"
-  else
-    _c="user"
-  fi
+  case "$_line" in
+    "$MARK"*) _c="injection" ;;
+    *) _c="user" ;;
+  esac
   _hex=$(printf '%s' "$_line" | od -An -tx1 | tr -d ' \n')
   printf '%s\t%s\t%s\n' "$_hex" "$_line" "$_c" >> "$LOG"
   _buf=
@@ -457,7 +456,8 @@ test_scenario_d() {
   start_daemon claude
 
   echo "done: PR https://example.test/pr/400" > "$STATE_DIR/fake-c1.status"
-  sleep 6
+  wait_for_log "Firstmate" "$LOG_FILE" \
+    || fail "Scenario D: the daemon did not submit its doorbell"
 
   local submitted_count doorbell record
   submitted_count=$(grep -c '' "$LOG_FILE" || true)

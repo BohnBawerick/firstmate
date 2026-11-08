@@ -57,7 +57,7 @@ DELTA_SHIM="$TMP_ROOT/delta-shim"
 EXEC_LOG="$TMP_ROOT/delta-execs"
 mkdir -p "$DELTA_SHIM"
 for TOOL in perl shasum sha256sum od tail head wc tr date stat dirname basename; do
-  REAL=$(PATH=/usr/bin:/bin command -v "$TOOL" 2>/dev/null || true)
+  REAL=$(command -v "$TOOL" 2>/dev/null || true)
   [ -n "$REAL" ] || continue
   cat > "$DELTA_SHIM/$TOOL" <<SH
 #!/bin/sh
@@ -124,7 +124,7 @@ if [ -e "$FM_TEST_REWRITE_DONE" ]; then
 fi
 printf '11:%s.%s:%s.%s:123:456\n' "$epoch" "$fraction" "$epoch" "$fraction"
 SH
-REAL_SHASUM=$(PATH=/usr/bin:/bin command -v shasum)
+REAL_SHASUM=$(command -v shasum)
 cat > "$SUBSECOND_SHIM/shasum" <<SH
 #!/bin/sh
 "$REAL_SHASUM" "\$@" || exit \$?

@@ -924,7 +924,8 @@ fm_autoarm_claim_open "$state" || die 'the native recovery claim is not open'
 fm_autoarm_ledger_read "$state" || die 'the native claim could not be read'
 [ "$FM_AUTOARM_OWNER" = "${BASHPID:-$$}" ] || die 'the helper owner lost its local identity'
 [ "$FM_AUTOARM_OWNER_SESSION_ID" = native-session ] || die 'the claim lost native session proof'
-[ "$FM_AUTOARM_OWNER_LOCK_IDENTITY" = win:7204 ] || die 'the claim lost its native holder'
+[ "$FM_AUTOARM_OWNER_LOCK_IDENTITY" = 'win-pid=7204 command=C:/Users/u/.local/bin/claude' ] \
+  || die 'the claim lost its native holder identity'
 if fm_autoarm_claim_next "$state"; then die 'a second Stop replaced active native recovery'; else rc=$?; fi
 [ "$rc" = 2 ] || die 'an open native claim did not refuse a second generation'
 fm_autoarm_ledger_read "$state" || die 'the deferred claim could not be read'
@@ -937,6 +938,8 @@ printf 'win:7300\n' > "$state/.lock"
 fm_autoarm_claim_open "$state" && die 'a replacement native holder adopted the old claim'
 printf 'win:7204\n' > "$state/.lock"
 FM_TEST_WIN_TABLE='' fm_autoarm_claim_open "$state" && die 'a dead native holder kept its claim'
+FM_TEST_WIN_TABLE="${FM_TEST_WIN_TABLE//claude.exe/other.exe}" fm_autoarm_claim_open "$state" \
+  && die 'a reused native pid with a different executable kept its claim'
 sed '1s/owner_pid=[^ ]*/owner_pid=win:7204/' "$state/saved-claim" > "$state/.claude-autoarm-epoch"
 fm_autoarm_claim_open "$state" && die 'a native identity was accepted as a local helper owner'
 cp "$state/saved-claim" "$state/.claude-autoarm-epoch"
@@ -1839,6 +1842,9 @@ SH
       i=$((i + 1))
     done
     [ -e "$dir/home/state/ready" ] || fail "the $host fixture did not start"
+    out=$(FM_HOME="$dir/home" bash "$ROOT/bin/fm-lock.sh" status 2>&1); rc=$?
+    expect_code 0 "$rc" "the $host status inspection failed: $out"
+    assert_contains "$out" "lock: stale" "status treated the shared $host as a live session: $out"
     for terminal in codex claude; do
       printf '%s\n' "$pid" > "$dir/home/state/.lock"
       printf 'S1\n' > "$dir/home/state/.lock-session"

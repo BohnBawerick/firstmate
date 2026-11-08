@@ -1225,9 +1225,10 @@ STUB
   assert_grep 'Pass `--skip pr,ci` on every `no-mistakes axi run` for this task' "$payload" \
     "the promoted worker was not told to skip the pr and ci steps"
 
-  rm "$home/data/$id/brief.md"
-  FM_HOME="$home" "$BRIEF" "$id" proj --mode no-mistakes --pr manual >/dev/null 2>&1 \
-    || fail "ordinary pr=manual ship brief generation should succeed"
+  # Preserve the promoted fixture while giving normal scaffolding an unused task directory.
+  mv "$home/data/$id" "$TMP_ROOT/pr-manual-promote/promoted-task"
+  out=$(FM_HOME="$home" "$BRIEF" "$id" proj --mode no-mistakes --pr manual 2>&1) \
+    || fail "ordinary pr=manual ship brief generation should succeed: $out"
   awk '/^# Definition of done$/ { emit=1 } emit' "$home/data/$id/brief.md" > "$TMP_ROOT/pr-manual-promote/brief-dod"
   awk '/^# Definition of done$/ { emit=1 } emit' "$payload" > "$TMP_ROOT/pr-manual-promote/delivered-dod"
   cmp -s "$TMP_ROOT/pr-manual-promote/brief-dod" "$TMP_ROOT/pr-manual-promote/delivered-dod" \

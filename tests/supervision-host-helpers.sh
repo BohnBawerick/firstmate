@@ -37,6 +37,10 @@ FAKEBIN=$(fm_fakebin "$TMP_ROOT/fakebin")
 ln -s /bin/bash "$FAKEBIN/claude"
 FAKE_CLAUDE="$FAKEBIN/claude"
 
+# Separate main-side drain processes share the owning session's identity.
+HOST_TEST_SESSION=fm-supervision-host-test
+MAIN_DRAIN='export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" "$@" 2>&1'
+
 # The stub engine. It records its environment and arguments, then acts like a
 # branch turn through the real scripts according to $FM_HOME/stub-mode:
 #   handle      drain, claim the task's lease, report, acknowledge, release
@@ -275,6 +279,8 @@ start_host() {  # <home> [park options...]
   FM_HOME="$home" FM_CREW_STATE_BIN="$home/fakebin/fm-crew-state.sh" PATH="$home/fakebin:$PATH" \
     MIRROR_ROOT="$MIRROR_ROOT" "$FAKE_CLAUDE" -c '
       printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+      printf "%s\n" fm-supervision-host-test > "$FM_HOME/state/.lock-session"
+      export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID=fm-supervision-host-test
       printf "%s\n" "$$" >> "$FM_HOME/claude-pids"
       rm -f "$FM_HOME/host.rc"
       for seed in "$FM_HOME"/mirror-seed.*; do
@@ -414,7 +420,7 @@ present_unacknowledged_outcome_twice() {  # <name>
   FM_HOME="$PRESENTED_HOME" "$ROOT/bin/fm-branch-outcome.sh" append --task epsilon --verdict captain \
     --summary 'epsilon PR is ready to merge' >/dev/null || fail "fixture: could not record the captain outcome"
   for _ in 1 2; do
-    drained=$(FM_HOME="$PRESENTED_HOME" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+    drained=$(FM_HOME="$PRESENTED_HOME" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
     assert_contains "$drained" "epsilon: epsilon PR is ready to merge" "fixture: the drain must present the captain outcome"
   done
   [ "$(cat "$PRESENTED_HOME/state/.branch-outcomes-cursor")" = 1 ] || fail "fixture: the drain did not advance the read cursor"
@@ -485,6 +491,8 @@ start_hook_session() {  # <home>
   FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_CREW_STATE_BIN="$home/fakebin/fm-crew-state.sh" \
     PATH="$home/fakebin:$PATH" "$FAKE_CLAUDE" -c '
       printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+      printf "%s\n" fm-supervision-host-test > "$FM_HOME/state/.lock-session"
+      export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID=fm-supervision-host-test
       printf "%s\n" "$$" >> "$FM_HOME/claude-pids"
       for seed in "$FM_HOME"/mirror-seed.*; do
         [ -f "$seed" ] || continue
@@ -524,7 +532,7 @@ hook_exited() { [ -s "$1/hook.rc" ]; }
 # (MAIN_ACK) when that turn's handling is done.
 main_drain() {  # <home>; prints the drain and sets MAIN_ACK
   local out
-  out=$(FM_HOME="$1" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
+  out=$(FM_HOME="$1" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   MAIN_ACK=$(printf '%s\n' "$out" | sed -n 's/^WAKE_ACK_REQUIRED: after handling completes run bin\/fm-wake-drain.sh //p' | tail -1)
   printf '%s\n' "$out"
 }
@@ -734,7 +742,7 @@ leave_a_cycle_for_main_and_restart() {  # <home>
   [ -n "$LEFT_ARM" ] && [ "$LEFT_ARM" != 1 ] || fail "fixture: the successor watcher has no arm of its own"
   main_drain "$home" >/dev/null
   # shellcheck disable=SC2086 # the printed acknowledgement arguments
-  [ -z "$MAIN_ACK" ] || FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
+  [ -z "$MAIN_ACK" ] || FM_HOME="$home" "$FAKE_CLAUDE" -c 'export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
     || fail "takeover: main's acknowledgement failed: $MAIN_ACK"
   # The session restarts: the old one ends, and a new one holds the lock.
   first_session=$(tail -n 1 "$home/claude-pids")
@@ -844,10 +852,10 @@ park_outcome() {  # <name> <park-seconds>; sets PARK_OUTCOME to boundary or hand
 # Main's side of a handed-back wake: drain, then run the printed acknowledgement.
 main_drain_and_ack() {  # <home>
   local out ack
-  out=$(FM_HOME="$1" "$ROOT/bin/fm-wake-drain.sh" 2>&1)
+  out=$(FM_HOME="$1" "$FAKE_CLAUDE" -c "$MAIN_DRAIN" "$ROOT/bin/fm-wake-drain.sh")
   ack=$(printf '%s\n' "$out" | sed -n 's/^WAKE_ACK_REQUIRED: after handling completes run bin\/fm-wake-drain.sh //p' | tail -1)
   # shellcheck disable=SC2086 # the printed acknowledgement arguments
-  [ -z "$ack" ] || FM_HOME="$1" "$ROOT/bin/fm-wake-drain.sh" $ack >/dev/null 2>&1 || fail "main's acknowledgement failed: $ack"
+  [ -z "$ack" ] || FM_HOME="$1" "$FAKE_CLAUDE" -c 'export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $ack || fail "main's acknowledgement failed: $ack"
 }
 
 
@@ -861,6 +869,8 @@ start_session() {  # <home>
   FM_HOME="$home" FM_CREW_STATE_BIN="$home/fakebin/fm-crew-state.sh" PATH="$home/fakebin:$PATH" \
     MIRROR_ROOT="$MIRROR_ROOT" "$FAKE_CLAUDE" -c '
       printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+      printf "%s\n" fm-supervision-host-test > "$FM_HOME/state/.lock-session"
+      export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID=fm-supervision-host-test
       printf "%s\n" "$$" >> "$FM_HOME/claude-pids"
       while [ ! -e "$FM_HOME/session.stop" ] && [ -d "$FM_HOME" ] \
         && kill -0 "$FM_TEST_SUITE_PID" 2>/dev/null; do
@@ -994,12 +1004,12 @@ assert_lost_handoff_keeps_watching() {  # <boundary|pass-through>
   assert_grep 'supervision-handoff' "$home/main-drain.out" "main must receive the hand-back again"
   [ -n "$MAIN_ACK" ] || fail "$mode: no main acknowledgement"
   [ -f "$home/state/.supervision-handoff-pending" ] || fail "$mode: presentation incorrectly confirmed ownership"
-  FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" "$@"' "$ROOT/bin/fm-wake-drain.sh" \
+  FM_HOME="$home" "$FAKE_CLAUDE" -c 'export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" "$@"' "$ROOT/bin/fm-wake-drain.sh" \
     --ack-through 0 --recovery-generation "${MAIN_ACK##* }" > "$home/stale-ack.out" 2>&1 \
     || fail "$mode: the stale acknowledgement could not be checked"
   [ -f "$home/state/.supervision-handoff-pending" ] || fail "$mode: a stale acknowledgement confirmed unseen work"
   # shellcheck disable=SC2086 # The drain's printed arguments.
-  FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" "$@"' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
+  FM_HOME="$home" "$FAKE_CLAUDE" -c 'export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" "$@"' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
     || fail "$mode: main could not acknowledge"
   wait_until 150 bash -c '[ ! -e "$1/state/.supervision-handoff-pending" ]' _ "$home" \
     || fail "$mode: acknowledgement did not confirm ownership"
@@ -1010,4 +1020,3 @@ assert_lost_handoff_keeps_watching() {  # <boundary|pass-through>
   stop_home_processes "$home"
   pass "host+hook: $mode survives a lost continuation, retries, and transfers one watcher after acknowledgement"
 }
-

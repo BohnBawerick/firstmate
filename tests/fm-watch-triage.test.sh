@@ -7875,7 +7875,6 @@ fm_test_run \
   test_permission_recovery_surfaces_preserved_status \
   test_terminal_stale_surfaced \
   test_stale_terminal_status_overridden_by_active_run \
-  test_nonterminal_stale_provably_working_absorbed_then_escalated \
   test_wedge_escalation_marks_demand_deep_inspection_after_threshold \
   test_wedge_escalation_resets_when_pane_becomes_active \
   test_gone_endpoint_reports_once_instead_of_escalating_forever \

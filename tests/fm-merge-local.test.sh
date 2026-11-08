@@ -43,6 +43,17 @@ fm_git_identity fmtest fmtest@example.invalid
 MERGE_LOCAL="$ROOT/bin/fm-merge-local.sh"
 TMP_ROOT=$(fm_test_tmproot fm-merge-local-tests)
 
+write_ready_meta() {
+  local meta=$1 project branch head
+  fm_write_meta "$@"
+  project=$(grep '^project=' "$meta" | cut -d= -f2-)
+  branch=$(grep '^branch=' "$meta" | cut -d= -f2-)
+  [ -n "$branch" ] || branch="fm/$(basename "$meta" .meta)"
+  head=$(git -C "$project" rev-parse --verify --quiet "refs/heads/$branch^{commit}" 2>/dev/null) \
+    || head=0000000000000000000000000000000000000000
+  printf 'local_done_head=%s\n' "$head" >> "$meta"
+}
+
 run_merge_local() {
   # A bootstrapped home has a resolvable data directory for captain holds.
   mkdir -p "$FM_HOME/data"
@@ -113,7 +124,7 @@ test_fast_forward_local_only_project() {
   git -C "$proj_dir" commit --quiet -am "feature commit"
   git -C "$proj_dir" checkout main --quiet
 
-  fm_write_meta "$state_dir/task-loc1.meta" \
+  write_ready_meta "$state_dir/task-loc1.meta" \
     "window=fm-task-loc1" \
     "worktree=$case_dir/wt" \
     "project=$proj_dir" \
@@ -151,7 +162,7 @@ test_fast_forward_no_mistakes_firstmate_repo() {
   git -C "$fm_root" commit --quiet -am "firstmate fix"
   git -C "$fm_root" checkout main --quiet
 
-  fm_write_meta "$state_dir/task-fm1.meta" \
+  write_ready_meta "$state_dir/task-fm1.meta" \
     "window=fm-task-fm1" \
     "worktree=$case_dir/wt" \
     "project=$fm_root" \
@@ -189,7 +200,7 @@ test_fast_forward_direct_pr_firstmate_repo() {
   git -C "$fm_root" commit --quiet -am "direct pr fix"
   git -C "$fm_root" checkout main --quiet
 
-  fm_write_meta "$state_dir/task-fm2.meta" \
+  write_ready_meta "$state_dir/task-fm2.meta" \
     "window=fm-task-fm2" \
     "worktree=$case_dir/wt" \
     "project=$fm_root" \
@@ -233,7 +244,7 @@ test_fast_forward_symlinked_firstmate_repo() {
   # path. Only a physical-path comparison sees these as one repository; a literal
   # one would refuse this merge as a PR-mode task on an ordinary project, and the
   # approved firstmate merge would never reach the running tree.
-  fm_write_meta "$state_dir/task-fm-link.meta" \
+  write_ready_meta "$state_dir/task-fm-link.meta" \
     "window=fm-task-fm-link" \
     "worktree=$case_dir/wt" \
     "project=$fm_link" \
@@ -269,7 +280,7 @@ test_refuses_no_mistakes_ordinary_project() {
   git -C "$proj_dir" commit --quiet -am "change"
   git -C "$proj_dir" checkout main --quiet
 
-  fm_write_meta "$state_dir/task-ord1.meta" \
+  write_ready_meta "$state_dir/task-ord1.meta" \
     "window=fm-task-ord1" \
     "worktree=$case_dir/wt" \
     "project=$proj_dir" \
@@ -303,7 +314,7 @@ test_refuses_direct_pr_ordinary_project() {
   git -C "$proj_dir" commit --quiet -am "change"
   git -C "$proj_dir" checkout main --quiet
 
-  fm_write_meta "$state_dir/task-ord2.meta" \
+  write_ready_meta "$state_dir/task-ord2.meta" \
     "window=fm-task-ord2" \
     "worktree=$case_dir/wt" \
     "project=$proj_dir" \
@@ -350,7 +361,7 @@ test_refuses_missing_project() {
   state_dir="$case_dir/state"
   mkdir -p "$state_dir"
 
-  fm_write_meta "$state_dir/task-missproj.meta" \
+  write_ready_meta "$state_dir/task-missproj.meta" \
     "window=fm-task-missproj" \
     "worktree=$case_dir/wt" \
     "project=$case_dir/nonexistent" \
@@ -379,7 +390,7 @@ test_refuses_missing_branch() {
   mkdir -p "$state_dir"
   make_repo "$proj_dir" main
 
-  fm_write_meta "$state_dir/task-nobranch.meta" \
+  write_ready_meta "$state_dir/task-nobranch.meta" \
     "window=fm-task-nobranch" \
     "worktree=$case_dir/wt" \
     "project=$proj_dir" \
@@ -395,7 +406,7 @@ test_refuses_missing_branch() {
   set -e
 
   expect_code 1 "$rc" "missing-branch: fm-merge-local should refuse"
-  assert_grep "branch fm/task-nobranch does not exist in $proj_dir" "$case_dir/stderr" \
+  assert_grep "branch fm/task-nobranch differs from the recorded local done head" "$case_dir/stderr" \
     "missing-branch: refusal did not explain missing branch"
   pass "fm-merge-local refuses when branch fm/<id> does not exist"
 }
@@ -414,7 +425,7 @@ test_refuses_dirty_project() {
   git -C "$proj_dir" checkout main --quiet
   echo "uncommitted edit" >> "$proj_dir/file.txt"
 
-  fm_write_meta "$state_dir/task-dirty.meta" \
+  write_ready_meta "$state_dir/task-dirty.meta" \
     "window=fm-task-dirty" \
     "worktree=$case_dir/wt" \
     "project=$proj_dir" \
@@ -449,7 +460,7 @@ test_refuses_off_default_project() {
   git -C "$proj_dir" commit --quiet -am "change"
   git -C "$proj_dir" checkout other-branch --quiet
 
-  fm_write_meta "$state_dir/task-offdef.meta" \
+  write_ready_meta "$state_dir/task-offdef.meta" \
     "window=fm-task-offdef" \
     "worktree=$case_dir/wt" \
     "project=$proj_dir" \
@@ -486,7 +497,7 @@ test_refuses_diverged_branch() {
   git -C "$proj_dir" add other.txt
   git -C "$proj_dir" commit --quiet -m "competing change on main"
 
-  fm_write_meta "$state_dir/task-div.meta" \
+  write_ready_meta "$state_dir/task-div.meta" \
     "window=fm-task-div" \
     "worktree=$case_dir/wt" \
     "project=$proj_dir" \
@@ -556,7 +567,7 @@ test_firstmate_repo_pushes_fork() {
   case_dir="$TMP_ROOT/fm-push-fork"
   remote=$(make_fm_repo_with_origin "$case_dir" task-push)
   fm_root="$case_dir/firstmate"
-  fm_write_meta "$case_dir/state/task-push.meta" \
+  write_ready_meta "$case_dir/state/task-push.meta" \
     "window=fm-task-push" "worktree=$case_dir/wt" "project=$fm_root" \
     "kind=ship" "mode=no-mistakes"
 
@@ -588,7 +599,7 @@ test_firstmate_repo_refuses_non_fast_forward_push() {
   git -C "$other" commit --quiet -m "commit only the fork has"
   git -C "$other" push --quiet origin main
   remote_before=$(git -C "$remote" rev-parse main)
-  fm_write_meta "$case_dir/state/task-div2.meta" \
+  write_ready_meta "$case_dir/state/task-div2.meta" \
     "window=fm-task-div2" "worktree=$case_dir/wt" "project=$fm_root" \
     "kind=ship" "mode=no-mistakes"
 
@@ -621,7 +632,7 @@ test_firstmate_repo_reports_push_failure() {
   printf '#!/bin/sh\necho "fork refuses pushes"\nexit 1\n' > "$remote/hooks/pre-receive"
   chmod +x "$remote/hooks/pre-receive"
   remote_before=$(git -C "$remote" rev-parse main)
-  fm_write_meta "$case_dir/state/task-rej.meta" \
+  write_ready_meta "$case_dir/state/task-rej.meta" \
     "window=fm-task-rej" "worktree=$case_dir/wt" "project=$fm_root" \
     "kind=ship" "mode=direct-PR"
 
@@ -650,7 +661,7 @@ test_firstmate_repo_reads_pr_back_merged() {
   make_fm_repo_with_origin "$case_dir" task-prm >/dev/null
   fm_root="$case_dir/firstmate"
   fakebin=$(make_fake_gh "$case_dir")
-  fm_write_meta "$case_dir/state/task-prm.meta" \
+  write_ready_meta "$case_dir/state/task-prm.meta" \
     "window=fm-task-prm" "worktree=$case_dir/wt" "project=$fm_root" \
     "kind=ship" "mode=no-mistakes" "pr=https://github.com/example/firstmate/pull/7"
 
@@ -676,7 +687,7 @@ test_firstmate_repo_reports_pr_not_merged() {
   remote=$(make_fm_repo_with_origin "$case_dir" task-pro)
   fm_root="$case_dir/firstmate"
   fakebin=$(make_fake_gh "$case_dir")
-  fm_write_meta "$case_dir/state/task-pro.meta" \
+  write_ready_meta "$case_dir/state/task-pro.meta" \
     "window=fm-task-pro" "worktree=$case_dir/wt" "project=$fm_root" \
     "kind=ship" "mode=no-mistakes" "pr=https://github.com/example/firstmate/pull/8"
 
@@ -709,7 +720,7 @@ test_firstmate_repo_skips_single_origin_without_fork() {
   git -C "$fm_root" commit --quiet -am "firstmate fix"
   git -C "$fm_root" checkout main --quiet
   remote_before=$(git -C "$remote" rev-parse main)
-  fm_write_meta "$case_dir/state/task-no-fork.meta" \
+  write_ready_meta "$case_dir/state/task-no-fork.meta" \
     "window=fm-task-no-fork" "worktree=$case_dir/wt" "project=$fm_root" \
     "kind=ship" "mode=no-mistakes"
 
@@ -736,7 +747,7 @@ test_firstmate_repo_refuses_missing_origin_after_remap() {
   upstream="$case_dir/upstream.git"
   upstream_before=$(git -C "$upstream" rev-parse main)
   git -C "$fm_root" remote remove origin
-  fm_write_meta "$case_dir/state/task-missing-origin.meta" \
+  write_ready_meta "$case_dir/state/task-missing-origin.meta" \
     "window=fm-task-missing-origin" "worktree=$case_dir/wt" "project=$fm_root" \
     "kind=ship" "mode=no-mistakes"
 
@@ -762,7 +773,7 @@ test_firstmate_repo_refuses_upstream_without_url() {
   fm_root="$case_dir/firstmate"
   remote_before=$(git -C "$remote" rev-parse main)
   git -C "$fm_root" config --unset-all remote.upstream.url
-  fm_write_meta "$case_dir/state/task-upstream-url.meta" \
+  write_ready_meta "$case_dir/state/task-upstream-url.meta" \
     "window=fm-task-upstream-url" "worktree=$case_dir/wt" "project=$fm_root" \
     "kind=ship" "mode=no-mistakes"
 
@@ -792,7 +803,7 @@ test_firstmate_repo_never_pushes_unproven_origin() {
   # A leftover fork remote means the remap is incomplete.
   git -C "$fm_root" remote add fork "file://$case_dir/elsewhere.git"
   remote_before=$(git -C "$remote" rev-parse main)
-  fm_write_meta "$case_dir/state/task-unp.meta" \
+  write_ready_meta "$case_dir/state/task-unp.meta" \
     "window=fm-task-unp" "worktree=$case_dir/wt" "project=$fm_root" \
     "kind=ship" "mode=no-mistakes"
 
@@ -821,7 +832,7 @@ test_firstmate_repo_never_uses_mismatched_push_url() {
   git -C "$fm_root" remote set-url --add --push origin "$upstream_url"
   remote_before=$(git -C "$remote" rev-parse main)
   upstream_before=$(git -C "$upstream" rev-parse main)
-  fm_write_meta "$case_dir/state/task-push-url.meta" \
+  write_ready_meta "$case_dir/state/task-push-url.meta" \
     "window=fm-task-push-url" "worktree=$case_dir/wt" "project=$fm_root" \
     "kind=ship" "mode=no-mistakes"
 
@@ -845,7 +856,7 @@ test_firstmate_repo_skips_non_github_pr_readback() {
   case_dir="$TMP_ROOT/fm-non-github-pr"
   remote=$(make_fm_repo_with_origin "$case_dir" task-non-github)
   fm_root="$case_dir/firstmate"
-  fm_write_meta "$case_dir/state/task-non-github.meta" \
+  write_ready_meta "$case_dir/state/task-non-github.meta" \
     "window=fm-task-non-github" "worktree=$case_dir/wt" "project=$fm_root" \
     "kind=ship" "mode=no-mistakes" \
     "pr=https://gitlab.example.com/group/firstmate/-/merge_requests/9"
@@ -873,7 +884,7 @@ test_firstmate_repo_uses_locked_pr_snapshot() {
   real_sleep=$(command -v sleep)
   ready="$case_dir/post-lock.ready"
   release="$case_dir/post-lock.release"
-  fm_write_meta "$case_dir/state/task-pr-snapshot.meta" \
+  write_ready_meta "$case_dir/state/task-pr-snapshot.meta" \
     "window=fm-task-pr-snapshot" "worktree=$case_dir/wt" "project=$fm_root" \
     "kind=ship" "mode=no-mistakes" "spawn_gen=original" \
     "pr=https://github.com/BohnBawerick/firstmate/pull/7"
@@ -919,7 +930,7 @@ SH
     fail "locked-pr-snapshot: fork read began before the task control lock was released"
   fi
 
-  fm_write_meta "$case_dir/state/task-pr-snapshot.meta" \
+  write_ready_meta "$case_dir/state/task-pr-snapshot.meta" \
     "window=fm-task-pr-snapshot-reused" "worktree=$case_dir/reused-wt" "project=$fm_root" \
     "kind=ship" "mode=no-mistakes" "spawn_gen=replacement" \
     "pr=https://github.com/BohnBawerick/firstmate/pull/99"

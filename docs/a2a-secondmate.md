@@ -3,6 +3,7 @@
 An A2A second mate is an agent that Firstmate reaches over the [A2A protocol](https://a2a-protocol.org), such as a Hermes profile with its A2A platform enabled.
 It has no terminal, home checkout or local process.
 Firstmate routes work to it with ordinary `fm-send`, and each reply comes back as one correlated line in the mate's parent status channel, which wakes Firstmate like any other second-mate report.
+Scrooge-initiated messages use the separate authenticated [dot mailbox peer route](dot-mcp-bridge.md), not A2A's reply path.
 The local commands need Bash, `jq` and Python 3.
 
 ## How a message travels

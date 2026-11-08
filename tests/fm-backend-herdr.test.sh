@@ -18,8 +18,6 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/herdr-test-safety.sh"
 # shellcheck source=tests/herdr-client-pair-fixture.sh
 . "$(dirname "${BASH_SOURCE[0]}")/herdr-client-pair-fixture.sh"
-# shellcheck source=bin/fm-timeout-lib.sh
-. "$ROOT/bin/fm-timeout-lib.sh"
 
 command -v jq >/dev/null 2>&1 || { echo "skip: jq not found (required by the herdr adapter)"; exit 0; }
 
@@ -920,17 +918,17 @@ test_process_state_tolerates_missing_and_malformed_process_fields() {
   pass "herdr process state: missing fields read empty and malformed views stay unreadable"
 }
 
-test_process_state_shell_verdict_survives_several_shell_processes() {
+test_process_state_several_shells_do_not_prove_departure() {
   local sleep_bin shell_pid out
-  sleep_bin=$(command -v sleep) || fail "sleep not found"
+  sleep_bin=$(idle_shell_fixture_binary) || fail "sleep not found"
   "$sleep_bin" 300 &
   shell_pid=$!
   out=$(process_state_read two-shells "$(process_info_body "$shell_pid" \
     '[{"pid":'"$shell_pid"',"name":"zsh","argv0":"-zsh","cmdline":"-zsh"},{"pid":1,"name":"bash","argv":["bash","-l"]}]')")
   kill "$shell_pid" 2>/dev/null || true
-  [ "${out%% *}" = shell ] \
-    || fail "a foreground of only shells over a real childless shell must read shell, got '$out'"
-  pass "herdr process state: a foreground of several shells still proves a shell-only pane"
+  [ "${out%% *}" = unreadable ] \
+    || fail "multiple foreground shells must not satisfy the single idle-shell departure proof, got '$out'"
+  pass "herdr process state: multiple foreground shells do not prove agent departure"
 }
 
 test_process_state_jq_calls_do_not_grow_with_foreground_processes() {
@@ -6877,10 +6875,9 @@ test_registered_agent_with_an_agent_descendant_outside_the_foreground_stays_aliv
 test_agent_descendant_under_a_spaced_install_path_stays_alive
 test_registered_agent_with_an_unreadable_process_view_is_unknown
 test_registered_agent_with_an_empty_foreground_remains_unreadable
-test_registered_agent_with_an_empty_foreground_over_a_real_shell_settles_via_descendant_walk
 test_process_state_reads_every_foreground_process_with_args_intact
 test_process_state_tolerates_missing_and_malformed_process_fields
-test_process_state_shell_verdict_survives_several_shell_processes
+test_process_state_several_shells_do_not_prove_departure
 test_process_state_jq_calls_do_not_grow_with_foreground_processes
 test_projection_reclaim_rollback_refuses_a_stale_registration
 test_projection_cleanup_exact_succeeds_only_when_the_task_pane_closed

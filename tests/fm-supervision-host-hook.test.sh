@@ -414,7 +414,7 @@ test_successor_close_during_main_turn_is_delivered_at_the_next_turn_end() {
   watcher_live "$home" && fail "the absent opt-in changed the default one-shot successor"
   [ ! -e "$home/state/.supervision-handoff-pending" ] || fail "the absent opt-in queued a hand-back receipt"
   # shellcheck disable=SC2086 # the printed acknowledgement arguments
-  [ -z "$MAIN_ACK" ] || FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
+  [ -z "$MAIN_ACK" ] || FM_HOME="$home" "$FAKE_CLAUDE" -c 'export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
     || fail "successor close: main's acknowledgement failed: $MAIN_ACK"
   turn_end "$home"
   wait_until_deadline 60 hook_exited "$home" || fail "successor close: the next turn end never closed: $(cat "$home/state/.supervision-host.log")"
@@ -535,7 +535,7 @@ test_unrecorded_successor_is_stopped_rather_than_left_for_main() {
     || fail "unrecorded successor: the record left inside the directory was not removed: $(ls -A "$home/state/.supervision-host-left")"
   main_drain "$home" >/dev/null
   # shellcheck disable=SC2086 # the printed acknowledgement arguments
-  [ -z "$MAIN_ACK" ] || FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
+  [ -z "$MAIN_ACK" ] || FM_HOME="$home" "$FAKE_CLAUDE" -c 'export CLAUDE_PID=$$ CLAUDE_CODE_SESSION_ID='"$HOST_TEST_SESSION"'; "$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
     || fail "unrecorded successor: main's acknowledgement failed: $MAIN_ACK"
   turn_end "$home"
   wait_until 150 host_owns_the_only_cycle "$home" \

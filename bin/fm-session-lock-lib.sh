@@ -1016,7 +1016,7 @@ fm_session_lock_inspect() {  # <state>
       FM_LOCK_INSPECT_LIVE_HARNESS=false
       ;;
     readable)
-      if fm_harness_process_matches "$FM_PROC_COMM" "$FM_PROC_ARGS"; then
+      if fm_harness_process_matches "$FM_PROC_COMM" "$FM_PROC_ARGS" && ! fm_session_lock_codex_app_host "$pid"; then
         # shellcheck disable=SC2034 # Output globals, read by lock status and inbox ready.
         FM_LOCK_INSPECT_STATE=held
         # shellcheck disable=SC2034 # Output globals, read by lock status and inbox ready.
