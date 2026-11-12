@@ -1986,12 +1986,17 @@ _fm_composer_locate_footer_zone() {  # <plain>
 #     view the verdict and the extractor read;
 #   - the row opens `/` (or `…`, a name truncated to its column) and carries a
 #     gap of two or more spaces before its description. A numbered-choice
-#     dialog row (`❯ 1. Yes`) has neither, and stays a bare candidate.
+#     dialog row (`❯ 1. Yes`) has neither, and stays a bare candidate;
+#   - the row is indented past the envelope's glyph row, as Claude indents its
+#     popup rows. A draft typed at the prompt column keeps its read even when
+#     it repeats the command with a wide gap.
 _fm_composer_bare_is_popup_selection() {  # <plain-screen> <screen> <styled> <row>
-  local plain=$1 screen=$2 styled=$3 row=$4 trimmed glyph='' rest
+  local plain=$1 screen=$2 styled=$3 row=$4 trimmed glyph='' rest envelope_indent
   [ "$row" -ge 0 ] && [ "$FM_COMPOSER_FOOTER_GLYPH" -ge 0 ] \
     && [ "$row" -gt "$FM_COMPOSER_FOOTER_AFTER" ] || return 1
   trimmed=$(_fm_composer_screen_row "$FM_COMPOSER_FOOTER_GLYPH" "$plain")
+  fm_composer_normalize_spaces_var trimmed
+  envelope_indent=${trimmed%%[![:space:]]*}
   fm_composer_normalize_trim_var trimmed
   fm_composer_leading_agent_glyph_var glyph "$trimmed" || return 1
   rest=$(_fm_composer_screen_row "$FM_COMPOSER_FOOTER_GLYPH" "$screen")
@@ -2000,6 +2005,8 @@ _fm_composer_bare_is_popup_selection() {  # <plain-screen> <screen> <styled> <ro
   fm_composer_normalize_trim_var rest
   case "$rest" in /*) ;; *) return 1 ;; esac
   trimmed=$(_fm_composer_screen_row "$row" "$plain")
+  fm_composer_normalize_spaces_var trimmed
+  case "$trimmed" in "$envelope_indent "*) ;; *) return 1 ;; esac
   fm_composer_normalize_trim_var trimmed
   fm_composer_leading_agent_glyph_var glyph "$trimmed" || return 1
   rest=${trimmed#*"$glyph"}
@@ -2027,6 +2034,22 @@ _fm_composer_bare_rule_sandwich() {  # <plain-screen> <row>
   above=$(_fm_composer_screen_row "$((row - 1))" "$plain")
   fm_composer_normalize_trim_var above
   _fm_composer_titled_rule_row "$above" "${below//─/ }"
+}
+
+# _fm_composer_typed_slash_survives: 0 when glyph <row> of <screen>, read under
+# the calling read's <styled> ghost-strip threshold, still holds typed text
+# opening with `/`. A caller without a styled screen keeps its plain reading.
+_fm_composer_typed_slash_survives() {  # <plain-screen> <screen> <styled> <row>
+  local plain=$1 screen=$2 styled=$3 row=$4 trimmed rest glyph=''
+  [ -n "$screen" ] || return 0
+  trimmed=$(_fm_composer_screen_row "$row" "$plain")
+  fm_composer_normalize_trim_var trimmed
+  fm_composer_leading_agent_glyph_var glyph "$trimmed" || return 1
+  rest=$(_fm_composer_screen_row "$row" "$screen")
+  rest=$(_fm_composer_row_content "$rest" "$styled")
+  rest=${rest#"$glyph"}
+  fm_composer_normalize_trim_var rest
+  case "$rest" in /*) return 0 ;; *) return 1 ;; esac
 }
 
 _fm_composer_select_cursorless() {  # <plain-screen> [<screen> <styled>]
@@ -2061,8 +2084,11 @@ _fm_composer_select_cursorless() {  # <plain-screen> [<screen> <styled>]
   fi
   if [ "$bare" -gt "$generic" ]; then
     # Claude's selected slash-menu label repeats the enclosed input with a padded description.
+    # Typed text the calling read strips as ghost never licenses the demotion,
+    # the same rule _fm_composer_bare_is_popup_selection applies.
     if [ "$FM_COMPOSER_SCAN_PI_GLYPH" = '❯' ] \
-       && [ "$bare" -eq "$((FM_COMPOSER_SCAN_PI_CLOSE + 1))" ]; then
+       && [ "$bare" -eq "$((FM_COMPOSER_SCAN_PI_CLOSE + 1))" ] \
+       && _fm_composer_typed_slash_survives "$plain" "$screen" "$styled" "$FM_COMPOSER_SCAN_PI_GLYPH_ROW"; then
       raw=$(_fm_composer_screen_row "$FM_COMPOSER_SCAN_PI_GLYPH_ROW" "$plain")
       fm_composer_normalize_spaces_var raw
       indent=${raw%%[![:space:]]*}
