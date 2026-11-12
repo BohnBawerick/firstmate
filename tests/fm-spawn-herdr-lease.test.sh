@@ -316,7 +316,7 @@ test_never_moving_worktree_entry() {
   out=$(run_lease_spawn "$dir" "$id"); status=$?
   [ "$status" -ne 0 ] || fail "a pane that never moves was accepted"
   assert_contains "$out" "not its recorded worktree" "wrong cwd did not refuse"
-  assert_contains "$out" "Herdr pane 'default:%9'" "refusal did not identify the pane"
+  assert_contains "$out" "Herdr pane 'default:w2:p2'" "refusal did not identify the pane"
   assert_contains "$out" "last foreground_cwd='$dir/project'" "refusal lost the last cwd"
   assert_contains "$out" "agent_status='shell-starting'" "refusal lost agent status"
   [ "$(cat "$dir/fake/cd-sends")" = 2 ] || fail "a stuck pane received more than one retry"
