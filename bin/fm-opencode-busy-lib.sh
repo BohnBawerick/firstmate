@@ -14,7 +14,11 @@ fm_opencode_write_busy_plugin() {
 // reports activity and ignores other sessions until the latched session settles,
 // so a child's terminal event can never clear the worker's busy state. The
 // turn-ended touch stays the watcher's wake NOTIFICATION, never current-state
-// truth.
+// truth. Every event applies strictly in emission order through one queue
+// shared by the server hook and the setup subscription: the record serializes
+// only on its lock, so a turn's terminal busy - emitted a millisecond before
+// its idle, delivered without awaiting this hook - would otherwise be free to
+// win the last write and leave an idle worker recorded busy.
 import { execFile } from "node:child_process";
 const notifyTurnEnd = $busy_notify_turnend;
 const busyEvent = (state, event, turnEnded = false) =>
@@ -52,58 +56,68 @@ const setupEventSubscription = (ctx, handler) => {
   })();
   return () => controller.abort();
 };
-const makeHandler = (ctx) => {
+// One handler, one session latch, and one queue serve both entry points. The
+// setup subscription supplies the OpenCode context that ownership checks read;
+// before it arrives, and when the context offers no session lookup, every
+// session counts as owned, as the server hook alone always allowed.
+let pluginCtx = null;
+let activeSession = null;
+let queue = Promise.resolve();
+const owns = async (id) => {
+  const ctx = pluginCtx;
+  if (!ctx) return true;
   const workerSession = process.env.FM_OPENCODE_SESSION;
-  const owns = async (id) => {
-    if (!ctx) return true;
-    if (workerSession) return id === workerSession;
-    const result = await ctx.session.get({ sessionID: id });
-    const session = result.data ?? result;
-    const directory = ctx.location?.project?.directory;
-    return typeof directory === "string" && directory.length > 0 && !session.parentID && session.location?.directory === directory;
-  };
-  let activeSession = null;
-  return async (event) => {
-    const type = eventType(event);
-    const id = sessionID(event);
-    if (type === "session.execution.started") {
+  if (workerSession) return id === workerSession;
+  if (!ctx.session || typeof ctx.session.get !== "function") return true;
+  const result = await ctx.session.get({ sessionID: id });
+  const session = result.data ?? result;
+  const directory = ctx.location?.project?.directory;
+  return typeof directory === "string" && directory.length > 0 && !session.parentID && session.location?.directory === directory;
+};
+const apply = async (event) => {
+  const ctx = pluginCtx;
+  const type = eventType(event);
+  const id = sessionID(event);
+  if (type === "session.execution.started") {
+    if (activeSession === null && id && await owns(id)) activeSession = id;
+    if (id === activeSession) await busyEvent("busy", "session-execution-started");
+    return;
+  }
+  if (type === "session.execution.succeeded" || type === "session.execution.interrupted" || type === "session.execution.failed") {
+    if (id === activeSession) {
+      activeSession = null;
+      await busyEvent("idle", type.replace(/\./g, "-"), !!ctx && notifyTurnEnd);
+    }
+    if (!ctx && notifyTurnEnd) await touchTurnEnded();
+    return;
+  }
+  if (type === "session.status") {
+    const properties = eventProperties(event);
+    const statusType = properties.status && properties.status.type;
+    if (statusType === "busy" || statusType === "retry") {
       if (activeSession === null && id && await owns(id)) activeSession = id;
-      if (id === activeSession) await busyEvent("busy", "session-execution-started");
+      if (id === activeSession) await busyEvent("busy", "session-" + statusType);
       return;
     }
-    if (type === "session.execution.succeeded" || type === "session.execution.interrupted" || type === "session.execution.failed") {
-      if (id === activeSession) {
-        activeSession = null;
-        await busyEvent("idle", type.replace(/\./g, "-"), !!ctx && notifyTurnEnd);
-      }
-      if (!ctx && notifyTurnEnd) await touchTurnEnded();
-      return;
+    if (statusType === "idle" && id === activeSession) {
+      activeSession = null;
+      await busyEvent("idle", "session-status-idle");
     }
-    if (type === "session.status") {
-      const properties = eventProperties(event);
-      const statusType = properties.status && properties.status.type;
-      if (statusType === "busy" || statusType === "retry") {
-        if (activeSession === null && id && await owns(id)) activeSession = id;
-        if (id === activeSession) await busyEvent("busy", "session-" + statusType);
-        return;
-      }
-      if (statusType === "idle" && id === activeSession) {
-        activeSession = null;
-        await busyEvent("idle", "session-status-idle");
-      }
-      return;
+    return;
+  }
+  if (type === "session.idle") {
+    if (id === activeSession) {
+      activeSession = null;
+      await busyEvent("idle", "session-idle", !!ctx && notifyTurnEnd);
     }
-    if (type === "session.idle") {
-      if (id === activeSession) {
-        activeSession = null;
-        await busyEvent("idle", "session-idle", !!ctx && notifyTurnEnd);
-      }
-      if (!ctx && notifyTurnEnd) await touchTurnEnded();
-    }
-  };
+    if (!ctx && notifyTurnEnd) await touchTurnEnded();
+  }
+};
+const handleEvent = (event) => {
+  queue = queue.then(() => apply(event), () => apply(event));
+  return queue;
 };
 export const FmBusyState = async () => {
-  const handleEvent = makeHandler();
   return {
     event: async ({ event }) => handleEvent(event),
   };
@@ -113,7 +127,8 @@ export default {
   id: "fm.busy-state",
   server: FmBusyState,
   setup(ctx) {
-    return setupEventSubscription(ctx, makeHandler(ctx));
+    pluginCtx = ctx || null;
+    return setupEventSubscription(ctx, handleEvent);
   },
 };
 EOF
@@ -127,7 +142,11 @@ EOF
 // only start while the main session is already busy) and ignores other
 // sessions' status until the latched session settles, so a child's idle can
 // never clear the worker's busy state. The session.idle touch stays the
-// watcher's wake NOTIFICATION, never current-state truth.
+// watcher's wake NOTIFICATION, never current-state truth. Every event applies
+// strictly in emission order through one queue: the record serializes only on
+// its lock, so a turn's terminal busy - emitted a millisecond before its idle,
+// delivered without awaiting this hook - would otherwise be free to win the
+// last write and leave an idle worker recorded busy.
 import { execFile } from "node:child_process";
 const notifyTurnEnd = $busy_notify_turnend;
 const busyEvent = (state, event) =>
@@ -139,33 +158,38 @@ const busyEvent = (state, event) =>
   });
 export const FmBusyState = async () => {
   let activeSession = null;
-  return {
-    event: async ({ event }) => {
-      if (event.type === "session.status") {
-        const sessionID = event.properties.sessionID;
-        const statusType = event.properties.status && event.properties.status.type;
-        if (statusType === "busy" || statusType === "retry") {
-          if (activeSession === null) activeSession = sessionID;
-          if (sessionID === activeSession) await busyEvent("busy", "session-" + statusType);
-          return;
-        }
-        if (statusType === "idle" && sessionID === activeSession) {
-          activeSession = null;
-          await busyEvent("idle", "session-status-idle");
-        }
+  let queue = Promise.resolve();
+  const apply = async (event) => {
+    if (event.type === "session.status") {
+      const sessionID = event.properties.sessionID;
+      const statusType = event.properties.status && event.properties.status.type;
+      if (statusType === "busy" || statusType === "retry") {
+        if (activeSession === null) activeSession = sessionID;
+        if (sessionID === activeSession) await busyEvent("busy", "session-" + statusType);
         return;
       }
-      if (event.type === "session.idle") {
-        if (event.properties.sessionID === activeSession) {
-          activeSession = null;
-          await busyEvent("idle", "session-idle");
-        }
-        if (notifyTurnEnd) {
-          await new Promise((resolve) => {
-            execFile("touch", ["$TURNEND"], () => resolve());
-          });
-        }
+      if (statusType === "idle" && sessionID === activeSession) {
+        activeSession = null;
+        await busyEvent("idle", "session-status-idle");
       }
+      return;
+    }
+    if (event.type === "session.idle") {
+      if (event.properties.sessionID === activeSession) {
+        activeSession = null;
+        await busyEvent("idle", "session-idle");
+      }
+      if (notifyTurnEnd) {
+        await new Promise((resolve) => {
+          execFile("touch", ["$TURNEND"], () => resolve());
+        });
+      }
+    }
+  };
+  return {
+    event: ({ event }) => {
+      queue = queue.then(() => apply(event), () => apply(event));
+      return queue;
     },
   };
 };
