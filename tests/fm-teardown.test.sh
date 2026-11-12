@@ -3610,15 +3610,18 @@ esac
 SH
   chmod +x "$case_dir/fakebin/herdr"
 
-  # Populate window-keyed and task-keyed watcher internal markers.
-  : > "$case_dir/state/.stale-default_w4W_pM"
-  : > "$case_dir/state/.stale-since-default_w4W_pM"
-  : > "$case_dir/state/.hash-default_w4W_pM"
-  : > "$case_dir/state/.count-default_w4W_pM"
-  : > "$case_dir/state/.wedge-escalations-default_w4W_pM"
-  : > "$case_dir/state/.paused-default_w4W_pM"
-  : > "$case_dir/state/.paused-rechecked-default_w4W_pM"
-  : > "$case_dir/state/.paused-resurfaced-default_w4W_pM"
+  # Populate window-keyed and task-keyed watcher internal markers, named the way
+  # the watcher names them for this endpoint.
+  local wkey
+  wkey=$(bash -c '. "$1"; window_key "$2"' _ "$ROOT/bin/fm-watch-key-lib.sh" default:w4W:pM)
+  : > "$case_dir/state/.stale-$wkey"
+  : > "$case_dir/state/.stale-since-$wkey"
+  : > "$case_dir/state/.hash-$wkey"
+  : > "$case_dir/state/.count-$wkey"
+  : > "$case_dir/state/.wedge-escalations-$wkey"
+  : > "$case_dir/state/.paused-$wkey"
+  : > "$case_dir/state/.paused-rechecked-$wkey"
+  : > "$case_dir/state/.paused-resurfaced-$wkey"
   : > "$case_dir/state/.seen-task-x1_status"
   : > "$case_dir/state/.seen-task-x1_turn-ended"
   : > "$case_dir/state/.hb-surfaced-task-x1"
@@ -3627,14 +3630,14 @@ SH
     || fail "window-marker-retire: forced teardown failed: $(cat "$case_dir/stderr")"
 
   for f in \
-    "$case_dir/state/.stale-default_w4W_pM" \
-    "$case_dir/state/.stale-since-default_w4W_pM" \
-    "$case_dir/state/.hash-default_w4W_pM" \
-    "$case_dir/state/.count-default_w4W_pM" \
-    "$case_dir/state/.wedge-escalations-default_w4W_pM" \
-    "$case_dir/state/.paused-default_w4W_pM" \
-    "$case_dir/state/.paused-rechecked-default_w4W_pM" \
-    "$case_dir/state/.paused-resurfaced-default_w4W_pM" \
+    "$case_dir/state/.stale-$wkey" \
+    "$case_dir/state/.stale-since-$wkey" \
+    "$case_dir/state/.hash-$wkey" \
+    "$case_dir/state/.count-$wkey" \
+    "$case_dir/state/.wedge-escalations-$wkey" \
+    "$case_dir/state/.paused-$wkey" \
+    "$case_dir/state/.paused-rechecked-$wkey" \
+    "$case_dir/state/.paused-resurfaced-$wkey" \
     "$case_dir/state/.seen-task-x1_status" \
     "$case_dir/state/.seen-task-x1_turn-ended" \
     "$case_dir/state/.hb-surfaced-task-x1"; do
