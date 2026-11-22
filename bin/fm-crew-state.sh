@@ -24,7 +24,7 @@
 # Output is one stable, parseable, token-tight line firstmate can read every
 # heartbeat:
 #
-#   state: <working|parked|done|blocked|paused|failed|unknown> · source: <run-step|pane|status-log|remote-endpoint|mailbox|none> · <detail>
+#   state: <working|parked|done|blocked|paused|failed|unknown> · source: <run-step|pane|status-log|remote-endpoint|mailbox|review-park|none> · <detail>
 #
 # A run-step reading whose run came from inventory selection ends its detail
 # with a `run: <id>` field naming that run, and a terminal one appends
@@ -34,7 +34,9 @@
 # run id at all, because there the id belongs to a run the verdict did not come
 # from (rule 2b).
 #
-# Logic, in order:
+# Logic, numbered for reference. Status-log reconciliation in rule 3 precedes
+# rule 2b. A lane parked on review by bin/fm-park.sh short-circuits after the
+# worktree check: paused, or blocked when its relaunch failed.
 #   1. Resolve worktree + backend target + kind from state/<id>.meta.
 #      A secondmate with a transport (dot-mcp or a2a) uses that transport's snapshot,
 #      not a process probe; an A2A mate reports its in-flight requests as children.
@@ -356,6 +358,23 @@ QUALITY_POSTURE=$(meta_value quality)
 # probe proves nothing for it - the remote arm below reads the true source.
 if [ -z "$TRANSPORT_SCRIPT" ] && [ -z "$REMOTE_HOST" ] && { [ -z "$WT" ] || [ ! -d "$WT" ]; }; then
   emit unknown none "worktree gone (torn down?)"
+fi
+
+# A lane parked on review (bin/fm-park.sh) stopped its agent on purpose; its
+# record, not the stopped pane or an old run, is the current state.
+PARK_RECORD=$STATE/$ID.review-park
+if [ -f "$PARK_RECORD" ]; then
+  PARK_PR=$(fm_meta_get "$PARK_RECORD" pr)
+  PARK_HEAD=$(fm_meta_get "$PARK_RECORD" head)
+  PARK_AT=$(fm_meta_get "$PARK_RECORD" parked_at)
+  PARK_WHEN=$(date -u -r "$PARK_AT" +%Y-%m-%dT%H:%MZ 2>/dev/null || date -u -d "@$PARK_AT" +%Y-%m-%dT%H:%MZ 2>/dev/null || printf '%s' "$PARK_AT")
+  if [ -n "$(fm_meta_get "$PARK_RECORD" resume_error)" ]; then
+    emit blocked review-park "parked on review: PR $PARK_PR at ${PARK_HEAD:0:12}; the relaunch on review activity failed - run bin/fm-park.sh resume"
+  fi
+  if [ -n "$(fm_meta_get "$PARK_RECORD" pending)" ]; then
+    emit paused review-park "parking on review: PR $PARK_PR at ${PARK_HEAD:0:12} since $PARK_WHEN; the agent's stop is not yet confirmed"
+  fi
+  emit paused review-park "parked on review: PR $PARK_PR at ${PARK_HEAD:0:12} since $PARK_WHEN; agent stopped, relaunches on review activity"
 fi
 
 # --- status log ------------------------------------------------------------
