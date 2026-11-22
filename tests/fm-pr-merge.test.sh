@@ -5722,7 +5722,15 @@ SH
 #!/usr/bin/env bash
 set -eu
 fixture=$(dirname "$FM_TEST_GH_AXI_LOG")
-emit() { jq -rc '"FMJSON:" + tojson'; }
+full=false
+for arg in "$@"; do
+  if [ "$arg" = --full ]; then full=true; fi
+done
+emit() {
+  jq -rc --argjson full "$full" '
+    ("FMJSON:" + tojson) |
+    if $full or length <= 4000 then . else .[:4000] + "... (truncated)" end'
+}
 read_batch() {
   IFS=' ' read -r number branch < "$fixture/active-pull"
   head=$(git --git-dir="$fixture/remote.git" rev-parse "refs/heads/$branch")
@@ -5744,7 +5752,8 @@ read_batch() {
 }
 case "$1 $2" in
   'api /user') printf '{"login":"fixture"}\n' | emit ;;
-  'api /repos/example/repo') printf '{"default_branch":"main"}\n' | emit ;;
+  'api /repos/example/repo')
+    jq -nc '{default_branch:"main", description:("x" * 5000)}' | emit ;;
   'api /repos/example/repo/pulls?state=open&per_page=100')
     if [ -e "$fixture/active-pull" ]; then read_batch; fi |
       jq -sc 'map(select(.state == "open")) + [{user:{login:"other"}}]' | emit ;;

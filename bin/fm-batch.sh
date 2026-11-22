@@ -108,7 +108,7 @@ export GH_HOST=$host
 # Prefix each page before gh-axi renders it, then decode the full JSON locally.
 api() {
   local output
-  output=$(gh-axi api "$@" --jq '"FMJSON:" + tojson') || return
+  output=$(gh-axi api "$@" --full --jq '"FMJSON:" + tojson') || return
   printf '%s\n' "$output" | jq -R '
     if startswith("FMJSON:") then ltrimstr("FMJSON:") | fromjson
     else error("invalid GitHub API output") end'
