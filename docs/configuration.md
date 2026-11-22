@@ -866,6 +866,14 @@ A refused registration, such as a draft, or one cut at the scan's time bound, wh
 With the file absent, the check sweep does not run the scan, and `pr=` and the merge poll come only from a manual `bin/fm-pr-check.sh <id> <PR url>` run.
 The flag takes effect at the next check sweep, and is a home-local preference that is not inherited by secondmate homes.
 
+## Branch batching (config/batch-projects)
+
+List one registered project name per line in `config/batch-projects` to let this home's watcher publish the next batch automatically.
+Blank lines and lines beginning with `#` are ignored.
+This is a home-local choice for GitHub projects registered as `direct-PR`.
+Batch lanes complete their build and lint before reporting a local-only ready branch.
+Use `bin/fm-batch.sh --help` for the batch commands, including the release step.
+
 ## Degraded PR watch (config/pr-degraded-watch)
 
 The optional local, gitignored `config/pr-degraded-watch` presence flag opts this home into waking once when a ready PR or MR degrades, including a GitHub failing check, a GitLab failed pipeline, or a merge-train drop.

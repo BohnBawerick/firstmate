@@ -5675,7 +5675,7 @@ test_allow_no_pipeline_is_attended_only_and_gitlab_only() {
 }
 
 test_batch_queue_fix_and_merge() {
-  local case_dir project remote base task sha head next tree url rc
+  local case_dir project remote base task sha head next tree url rc landed watchdog
   case_dir=$(make_case batch-queue)
   project="$case_dir/home/projects/example"
   remote="$case_dir/remote.git"
@@ -5700,7 +5700,7 @@ SH
   base=$(git -C "$project" rev-parse HEAD)
   git -C "$project" push -q origin "$base:refs/heads/main"
   printf '%s\n' '- example [direct-PR] - fixture' > "$case_dir/home/data/projects.md"
-  for task in one two later repair; do
+  for task in one two later repair automatic; do
     git -C "$project" checkout -qb "fm/$task" "$base"
     printf '%s\n' "$task" > "$project/$task"
     git -C "$project" add -- "$task"
@@ -5718,11 +5718,19 @@ emit() { jq -rc '"FMJSON:" + tojson'; }
 read_batch() {
   IFS=' ' read -r number branch < "$fixture/active-pull"
   head=$(git --git-dir="$fixture/remote.git" rev-parse "refs/heads/$branch")
-  merged=false
-  if [ "$number" = 1 ] && grep -q '^pr merge ' "$FM_TEST_GH_LOG"; then merged=true; fi
-  jq -nc --argjson number "$number" --arg branch "$branch" --arg head "$head" --argjson merged "$merged" '
+  merged=false landed=''
+  if [ "$number" = 1 ] && grep -q '^pr merge ' "$FM_TEST_GH_LOG"; then
+    merged=true
+    landed=$(cat "$fixture/merge-commit")
+  elif [ -f "$fixture/merge-commit-$number" ]; then
+    merged=true
+    landed=$(cat "$fixture/merge-commit-$number")
+  fi
+  jq -nc --argjson number "$number" --arg branch "$branch" --arg head "$head" \
+    --argjson merged "$merged" --arg landed "$landed" '
     {number:$number, html_url:("https://github.com/example/repo/pull/" + ($number | tostring)),
      user:{login:"fixture"}, state:(if $merged then "closed" else "open" end), merged:$merged,
+     merge_commit_sha:$landed,
      head:{ref:$branch, sha:$head, repo:{full_name:"example/repo"}},
      base:{ref:"main", repo:{full_name:"example/repo"}}}'
 }
@@ -5752,6 +5760,10 @@ esac
 SH
   chmod +x "$case_dir/fakebin/gh-axi"
   local FM_TEST_PR_COMMAND="$ROOT/bin/fm-batch.sh"
+  rc=0
+  run_pr_merge "$case_dir" example release release/first > "$case_dir/out" 2> "$case_dir/err" || rc=$?
+  expect_code 1 "$rc" "a release needs a landed batch"
+  git -C "$project" show-ref --verify --quiet refs/heads/release/first && fail "an unbatched release was created"
   for task in one two; do
     sha=$(git -C "$project" rev-parse "fm/$task")
     run_pr_merge "$case_dir" example enqueue "$task" "$sha" || fail "could not enqueue $task"
@@ -5815,19 +5827,50 @@ SH
   FM_HOME="$case_dir/home" FM_STATE_OVERRIDE="$case_dir/state" \
     "$ROOT/bin/fm-captain-hold.sh" answer two --release --decision-file "$case_dir/decision" >/dev/null ||
     fail "could not release batch member"
+  tree=$(git -C "$project" rev-parse "$next^{tree}")
+  landed=$(git -C "$project" commit-tree "$tree" -p "$base" -m "Squashed batch")
+  printf '%s\n' "$landed" > "$case_dir/merge-commit"
   run_pr_merge "$case_dir" example merge "$next" > "$case_dir/out" 2> "$case_dir/err" ||
     fail "green batch merge failed: $(cat "$case_dir/err")"
   assert_logged_gh_merge "$case_dir" 1 example/repo --squash
-  tree=$(git -C "$project" rev-parse "$next^{tree}")
-  base=$(git -C "$project" commit-tree "$tree" -p "$base" -m "Squashed batch")
+  base=$(git -C "$project" commit-tree "$tree" -p "$landed" -m "Advance after landing")
   git -C "$project" push -q origin "$base:refs/heads/main"
-  run_pr_merge "$case_dir" example run > "$case_dir/out" || fail "could not publish next batch"
+  run_pr_merge "$case_dir" example release release/first > "$case_dir/out" || fail "could not start a release"
+  [ "$(git -C "$project" rev-parse refs/heads/release/first)" = "$landed" ] ||
+    fail "release missed the exact merge commit"
+
+  run_pr_merge "$case_dir" example dequeue later || fail "could not dequeue the later task"
+  printf 'done: ready in branch fm/later\n' > "$case_dir/state/later.status"
+  printf 'done: ready in branch fm/automatic\n' > "$case_dir/state/automatic.status"
+  printf 'example\n' > "$case_dir/home/config/batch-projects"
+  FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$case_dir/home" FM_STATE_OVERRIDE="$case_dir/state" \
+  FM_TEST_GH_AXI_LOG="$case_dir/gh-axi.log" FM_TEST_GH_LOG="$case_dir/gh.log" \
+  PATH="$case_dir/fakebin:$PATH" FM_CHECK_INTERVAL=0 FM_CHECK_TIMEOUT=120 FM_POLL=1 \
+    "$ROOT/bin/fm-watch.sh" > "$case_dir/watch.out" 2> "$case_dir/watch.err" &
+  watchdog=$!
+  fm_test_track_pid "$watchdog"
+  for _ in $(seq 1 450); do
+    grep -q '^check: batch example: published ' "$case_dir/watch.out" && break
+    kill -0 "$watchdog" 2>/dev/null || break
+    sleep 0.1
+  done
+  assert_grep 'check: batch example: published https://github.com/example/repo/pull/2' "$case_dir/watch.out" \
+    "watcher did not publish the next batch: $(cat "$case_dir/watch.out" "$case_dir/watch.err")"
+  wait "$watchdog" || fail "batch watcher check failed"
   run_pr_merge "$case_dir" example status > "$case_dir/ledger"
   next=$(jq -er '.batches[1].published' "$case_dir/ledger")
   [ "$(git -C "$project" rev-parse "$next^1")" = "$base" ] || fail "second batch missed the new default head"
-  jq -e '.batches[0].state == "merged" and (.batches[1].members | map(.task)) == ["later"]' \
+  jq -e '.batches[0].state == "merged" and (.batches[1].members | map(.task)) == ["automatic"]' \
     "$case_dir/ledger" >/dev/null || fail "next batch lost the queue or history"
-  pass "batch publication retries, queues later branches, fixes forward, and uses the guarded merge"
+  tree=$(git -C "$project" rev-parse "$next^{tree}")
+  landed=$(git -C "$project" commit-tree "$tree" -p "$base" -m "Squashed single-task batch")
+  git -C "$project" push -q origin "$landed:refs/heads/main"
+  printf '%s\n' "$landed" > "$case_dir/merge-commit-2"
+  run_pr_merge "$case_dir" example release release/second > "$case_dir/out" ||
+    fail "could not start a release from the single-task batch"
+  [ "$(git -C "$project" rev-parse refs/heads/release/second)" = "$landed" ] ||
+    fail "single-task release missed the exact merge commit"
+  pass "batch retries, fixes forward, merges through the guard, feeds releases, and publishes from the watcher"
 }
 
 test_batch_queue_fix_and_merge

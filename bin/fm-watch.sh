@@ -4233,6 +4233,19 @@ while :; do
       [ -z "$FM_CHECK_RESULT" ] || pr_register_reason="check: pr-register: $FM_CHECK_RESULT"
       [ -z "$FM_CHECK_CUT" ] || fm_wake_append check pr-register "check: pr-register: $FM_CHECK_CUT" || exit 1
     fi
+    # Batch publication is opted into per project. The check runs with the
+    # existing timeout and queues its own publication or landing notice here.
+    batch_reason=
+    if [ -f "$CONFIG/batch-projects" ] && [ ! -L "$CONFIG/batch-projects" ]; then
+      while IFS= read -r batch_project || [ -n "$batch_project" ]; do
+        case "$batch_project" in ''|\#*) continue ;; esac
+        FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+          run_check_capture "$SCRIPT_DIR/fm-batch.sh" "$batch_project" check || exit 1
+        [ -n "$FM_CHECK_RESULT" ] || continue
+        batch_reason="check: batch $batch_project: $(printf '%s' "$FM_CHECK_RESULT" | fm_wake_clean_field)"
+        fm_wake_append check "batch-$batch_project" "$batch_reason" || exit 1
+      done < "$CONFIG/batch-projects"
+    fi
     for c in "$STATE"/*.check.sh; do
       [ -e "$c" ] || continue
       is_pr_poll=0
@@ -4422,6 +4435,7 @@ EOF
       wake "$reason"
     fi
     touch "$STATE/.last-check"
+    [ -z "$batch_reason" ] || wake "$batch_reason"
     [ -z "$pr_register_reason" ] || wake "$pr_register_reason"
     if [ -n "$contribution_check_output" ]; then
       wake "$contribution_check_output"
