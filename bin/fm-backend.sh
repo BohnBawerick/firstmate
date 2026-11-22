@@ -50,12 +50,10 @@
 # Codex App is intentionally not in the known set yet.
 # docs/codex-app-backend.md owns that blocked backend contract.
 #
-# Compatibility contract: a task's meta may omit `backend=`; every reader here
-# treats that as `tmux` (fm_backend_of_meta), and fm-spawn.sh does not write
-# `backend=tmux` for a default-backend task, so existing and newly spawned
-# default-path metas stay byte-identical. Only a task spawned on a non-tmux
-# spawn-capable backend, currently herdr, zellij, orca, cmux, paseo, rex, or
-# t3code, tern, or hc, carries an explicit `backend=` line.
+# Task metadata may omit `backend=`.
+# Dispatch uses tmux unless the recorded Herdr session and pane agree with the window.
+# fm-spawn.sh writes an explicit backend only for non-tmux tasks, so
+# default-path metas stay byte-identical.
 #
 # Event-source framing (herdr-addendum "Events as the core abstraction"): a
 # backend's supervision surface is conceptually an EVENT SOURCE - it produces
@@ -592,11 +590,21 @@ fm_meta_get() {  # <meta-file> <key>
   printf '%s' "$value"
 }
 
-# fm_backend_of_meta: the backend recorded in <meta-file>, defaulting to
-# `tmux` when the field is absent - the P1 compatibility contract.
+# fm_backend_of_meta: choose the dispatch backend for <meta-file>.
 fm_backend_of_meta() {  # <meta-file>
-  local v
+  local v session pane
   v=$(fm_meta_get "$1" backend)
+  if [ -z "$v" ] && [ -n "$(fm_meta_get "$1" herdr_pane_id)" ] &&
+    ! grep -q '^backend=' "$1" 2>/dev/null; then
+    session=$(fm_backend_meta_exact_value "$1" herdr_session) || session=
+    pane=$(fm_backend_meta_exact_value "$1" herdr_pane_id) || pane=
+    if [ -n "$session" ] && [ -n "$pane" ] &&
+      [ "$(fm_backend_meta_exact_value "$1" window)" = "$session:$pane" ] &&
+      fm_backend_endpoint_atom_valid "$session" &&
+      [[ "$pane" =~ ^w[A-Za-z0-9]+:p[A-Za-z0-9]+$ ]]; then
+      v=herdr
+    fi
+  fi
   printf '%s' "${v:-tmux}"
 }
 

@@ -897,6 +897,16 @@ This is a home-local choice for GitHub projects registered as `direct-PR`.
 Batch lanes complete their build and lint before reporting a local-only ready branch.
 Use `bin/fm-batch.sh --help` for the batch commands, including the release step.
 
+To check the combined changes before publishing, save a Bash script as `config/batch-checks/<project>` using the registered project name.
+Firstmate runs that script in a temporary detached checkout of the proposed batch commit and sets `FM_BATCH_HEAD` to its full commit ID.
+The script can run project-wide checks or call the project's build offload tool from that checkout.
+A nonzero exit stops publication and reports the command's output.
+A project without a check file publishes without this extra check.
+For automatic publishing through the watcher, the check must fit within `FM_CHECK_TIMEOUT`.
+
+Use the open batch's published branch as the starting point for a fix that depends on its combined changes.
+When a worker adds to an existing local-only ready branch and reports a revised done, use `bin/fm-ready-head.sh --help` to record its new head before presenting it for approval or adding it to an open batch.
+
 ## Degraded PR watch (config/pr-degraded-watch)
 
 The optional local, gitignored `config/pr-degraded-watch` presence flag opts this home into waking once when a ready PR or MR degrades, including a GitHub failing check, a GitLab failed pipeline, or a merge-train drop.
@@ -1915,6 +1925,13 @@ An absent or blank file changes nothing, while a present path that is not a read
 The text is static and never executed or expanded; secondmate charters never take it, and the file is local to each home rather than part of secondmate inherited configuration.
 
 `bin/fm-brief.sh`'s header owns the placement rule and its safety argument.
+
+## Project build offload (config/build-offload)
+
+An optional, home-local `config/build-offload/<project>` gives ship and scout workers the default host and commands for heavy builds.
+Use the project name passed to `bin/fm-brief.sh` as the filename, put the host alias on the first line, and put the shell commands on the following lines.
+Firstmate copies the commands into the brief without executing or expanding them.
+Task-specific build instructions take precedence, and projects without a file receive no offload instructions.
 
 ## Home branch prompt include (config/branch-prompt-include.md)
 

@@ -2071,7 +2071,7 @@ families_for_changed_path() {
       printf '%s\n' pr-forge
       printf '%s\n' "__script__:fm-backend-t3code.test.sh"
       ;;
-    bin/fm-pr-*|bin/fm-merge-local.sh|bin/fm-review-diff.sh|\
+    bin/fm-pr-*|bin/fm-batch.sh|bin/fm-ready-head.sh|bin/fm-merge-local.sh|bin/fm-review-diff.sh|\
     bin/fm-x-*|bin/fm-check*|bin/fm-pipeline-spend.sh)
       # The merge, PR-merge, and teardown paths carry the fleet-mutation gate,
       # whose placement and refusal wording are pinned by the ownership suite.

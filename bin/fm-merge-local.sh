@@ -10,7 +10,7 @@
 # rule #1 "never run state-changing git in projects/", and it is narrow: it only
 # runs for mode=local-only tasks, only after the captain approves (or yolo=on
 # auto-approves), and only as a clean fast-forward. A diverged branch needs a
-# rebase and a new task/approval record under bin/fm-dod-lib.sh's head-latching
+# rebase and a ready head recorded under bin/fm-dod-lib.sh's head-latching
 # contract before landing. See AGENTS.md prime directives,
 # project management, and task lifecycle.
 # The task's existing per-task control lock serializes the captain-hold check

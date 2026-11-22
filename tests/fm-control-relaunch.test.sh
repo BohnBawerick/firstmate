@@ -111,7 +111,11 @@ case "${1:-}" in
         *pane_current_path*)
           if [ -n "${FM_FAKE_CWD_RACE_READY:-}" ]; then
             : > "$FM_FAKE_CWD_RACE_READY"
-            /bin/sleep 1
+            for ((poll = 0; poll < 300; poll++)); do
+              [ ! -e "$FM_FAKE_CWD_RACE_READY.release" ] || break
+              /bin/sleep 0.1
+            done
+            [ -e "$FM_FAKE_CWD_RACE_READY.release" ] || exit 1
           fi
           cat "$D/cwd"; printf '\n'; exit 0 ;;
       esac
@@ -2262,18 +2266,20 @@ test_prepublication_failure_keeps_concurrent_durable_metadata() {
     run_control "$dir" rl30 relaunch --harness codex --note "preserve concurrent metadata" \
       > "$dir/control.out" &
   control_pid=$!
-  while [ ! -e "$dir/cwd-race-ready" ] && [ "$i" -lt 200 ]; do
-    /bin/sleep 0.01
+  fm_test_track_pid "$control_pid"
+  while [ ! -e "$dir/cwd-race-ready" ] && [ "$i" -lt 300 ]; do
+    /bin/sleep 0.1
     i=$((i + 1))
   done
   [ -e "$dir/cwd-race-ready" ] || {
     kill "$control_pid" 2>/dev/null || true
     wait "$control_pid" 2>/dev/null || true
-    fail "relaunch did not reach its pre-publication endpoint check"
+    fail "relaunch did not reach its pre-publication endpoint check: $(cat "$dir/control.out")"
   }
   link_out=$(env PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" FM_ROOT_OVERRIDE="$ROOT" \
     "$X_LINK" rl30 request-30 --carry-count 2 --carry-ts 1700000000 \
       --carry-platform x --carry-max 280 2>&1); rc=$?
+  : > "$dir/cwd-race-ready.release"
   expect_code 0 "$rc" "concurrent durable metadata publication should succeed"$'\n'"$link_out"
   wait "$control_pid"; rc=$?
   expect_code 1 "$rc" "the staged pre-publication launch failure should fail closed"

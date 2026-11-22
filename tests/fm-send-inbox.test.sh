@@ -119,6 +119,52 @@ record_body() { # <record>
   bash -c '. "$1"; fm_task_inbox_body "$2"' _ "$ROOT/bin/fm-task-inbox-lib.sh" "$2"
 }
 
+test_herdr_claude_doorbell_uses_native_pane_id() {
+  local dir
+  dir=$(setup_case herdr-claude)
+  fm_write_meta "$dir/home/state/t1.meta" "window=default:w123:p2" \
+    "herdr_session=default" "herdr_pane_id=w123:p2" "kind=ship" "harness=claude"
+  cat > "$dir/fakebin/herdr" <<'SH'
+#!/usr/bin/env bash
+set -eu
+[ "${HERDR_SESSION:-}" = default ] || exit 2
+case "$1 $2" in
+  'status --json') printf '{"server":{"running":true}}\n'; exit 0 ;;
+esac
+[ "$3" = w123:p2 ] || exit 2
+case "$1 $2" in
+  'pane get') printf '{"result":{"pane":{"pane_id":"w123:p2"}}}\n' ;;
+  'pane read')
+    text=''
+    if [ -f "$FM_SEND_LOG.composer" ]; then text=$(cat "$FM_SEND_LOG.composer"); fi
+    border=$(printf '%*s' "$((${#text} + 2))" '' | tr ' ' '-')
+    printf '╭%s╮\n│ %s │\n╰%s╯\n' "$border" "$text" "$border"
+    ;;
+  'pane send-text') printf '%s\n' "$4" | tee "$FM_SEND_LOG.composer" >> "$FM_SEND_LOG" ;;
+  'pane send-keys')
+    [ "$4" = enter ] || exit 2
+    printf '%s\n' "$3" > "$FM_SEND_LOG.enter"
+    : > "$FM_SEND_LOG.composer"
+    ;;
+  'agent get') printf '{"result":{"agent":{"agent":"claude","agent_status":"idle"}}}\n' ;;
+  *) exit 2 ;;
+esac
+SH
+  chmod +x "$dir/fakebin/herdr"
+  run_send "$dir" "$dir/send.err" -- t1 "please continue" || fail "Herdr steer refused"
+  [ -f "$dir/home/state/t1.inbox/001.msg" ] || fail "Herdr steer was not recorded"
+  [ "$(cat "$dir/send.log.enter" 2>/dev/null)" = w123:p2 ] ||
+    fail "Herdr did not submit the doorbell to w123:p2: $(cat "$dir/send.err")"
+  assert_contains "$(cat "$dir/send.log")" "Firstmate instruction waiting" "Herdr did not type a doorbell"
+  rm -- "$dir/send.log.enter"
+  fm_write_meta "$dir/home/state/t1.meta" "window=default:w123:p2" \
+    "herdr_session=other" "herdr_pane_id=w123:p2" "kind=ship" "harness=claude"
+  run_send "$dir" "$dir/send.err" -- t1 "please continue" || fail "mismatched endpoint blocked durable steer"
+  [ -f "$dir/home/state/t1.inbox/002.msg" ] || fail "the mismatched endpoint lost the steer"
+  [ ! -e "$dir/send.log.enter" ] || fail "mismatched endpoint metadata was allowed to select Herdr"
+  pass "fm-send inbox: Claude's recorded Herdr session and pane resolve to a native doorbell target"
+}
+
 test_text_steer_rides_inbox() {
   local dir err rc rec body typed
   dir=$(setup_case café)
@@ -457,7 +503,7 @@ test_meta_lock_contention_fails_bounded() {
     . "$1"
     fm_lock_acquire_wait "$2"
     touch "$3"
-    sleep 30
+    exec sleep 30
   ' _ "$ROOT/bin/fm-wake-lib.sh" "$lock" "$marker" &
   holder=$!
   i=0
@@ -542,6 +588,7 @@ test_empty_message_refused() {
   pass "fm-send: an empty or whitespace-only text steer refuses before marking, recording, or typing"
 }
 
+test_herdr_claude_doorbell_uses_native_pane_id
 test_text_steer_rides_inbox
 test_deep_home_doorbell_stays_short
 test_multiline_steer_is_legal

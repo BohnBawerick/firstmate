@@ -12,7 +12,8 @@
 # contract.
 # For local-only tasks, the first accepted done head is latched as exactly one
 # local_done_head= full commit id in the live task metadata. Observing done again
-# never changes that identity. Revised work needs a new task/approval record.
+# never changes that identity. Firstmate can explicitly record a newer done
+# for a descendant with bin/fm-ready-head.sh.
 # The optional third argument is the task's full ship-branch name (a project's
 # registered prefix may replace the legacy `fm/` one); it defaults to `fm/<task-id>`
 # and is the immutable task branch rendered in every delivery contract.
@@ -881,8 +882,8 @@ fm_dod_local_done_head() {  # <meta>
 # callers may supply captured meta; compare it with the live record under the
 # existing control/meta locks before publishing to the live owner only. A caller
 # already holding the live meta lock passes meta-locked and retains its locks.
-fm_dod_pin_local_done_head() (  # <state> <id> <meta> <sha> <captured-meta> [meta-locked]
-  local state=$1 id=$2 meta=$3 sha=$4 captured=$5 script_dir live control='' lock='' tmp='' pinned
+fm_dod_pin_local_done_head() (  # <state> <id> <meta> <sha> <captured-meta> [meta-locked] [status-line]
+  local state=$1 id=$2 meta=$3 sha=$4 captured=$5 script_dir live control='' lock='' tmp='' pinned epoch
   script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
   # These lazy imports are canonical lint roots. Keep their subshell-local
   # initializers out of ShellCheck's analysis of the sourcing caller's globals.
@@ -908,8 +909,83 @@ fm_dod_pin_local_done_head() (  # <state> <id> <meta> <sha> <captured-meta> [met
     return
   fi
   tmp=$(mktemp "$state/.local-done-$id.XXXXXX") || return 1
-  { cat "$live" && printf '\nlocal_done_head=%s\n' "$sha"; } > "$tmp" || return 1
+  {
+    cat "$live" && printf '\nlocal_done_head=%s\n' "$sha" || return 1
+    if _fm_status_at_epoch "${7:-}" epoch; then
+      printf 'local_done_at=%s\n' "$epoch" || return 1
+    fi
+  } > "$tmp" || return 1
   fm_backlog_record_publish "$tmp" "$live" 'local readiness metadata' "$state"
+)
+
+# Called by fm-ready-head.sh under the task's control and meta locks.
+# Store the audit entry in the same atomic update as the new ready head.
+fm_dod_rerecord_local_done_head() (  # <state> <id> <old-head> <new-head>
+  local state=$1 id=$2 old=$3 new=$4 meta="$1/$2.meta" status="$1/$2.status"
+  local branch project wt line epoch previous earlier earlier_epoch ref tmp='' recorded_at
+  if ! fm_backlog_record_present "$meta" 'local readiness metadata' "$state" ||
+    ! fm_backlog_record_present "$status" 'local readiness report' "$state"; then
+    printf 'error: %s\n' "$FM_BACKLOG_TRANSITION_ERROR" >&2
+    return 1
+  fi
+  if [ "$(fm_dod_meta_value "$meta" kind)" != ship ] ||
+    [ "$(fm_dod_meta_value "$meta" mode)" != local-only ] ||
+    [ -n "$(fm_dod_meta_value "$meta" pr)" ]; then
+    echo "error: $id must be an unpublished local-only ship" >&2
+    return 1
+  fi
+  if [ "$(fm_dod_local_done_head "$meta")" != "$old" ]; then
+    echo "error: $id's recorded ready head differs from $old" >&2
+    return 1
+  fi
+  branch=$(fm_dod_meta_value "$meta" branch)
+  project=$(fm_dod_meta_value "$meta" project)
+  wt=$(fm_dod_meta_value "$meta" worktree)
+  ref="refs/heads/$branch"
+  if ! git check-ref-format "$ref" || [ -z "$project" ] || [ -z "$wt" ] ||
+    [ "$(git -C "$project" rev-parse --verify "$ref^{commit}")" != "$new" ] ||
+    [ "$(git -C "$wt" symbolic-ref --quiet HEAD)" != "$ref" ] ||
+    [ "$(git -C "$wt" rev-parse --verify HEAD)" != "$new" ] ||
+    [ "$old" = "$new" ] || ! git -C "$project" merge-base --is-ancestor "$old" "$new"; then
+    echo "error: $new must be a descendant of $old at the tip of $id's recorded branch in both Git copies" >&2
+    return 1
+  fi
+  line=$(status_current_line "$status" ship) || return 1
+  if [ "$(status_line_verb "$line")" != "done" ] ||
+    [ "$(status_line_note "$line")" != "ready in branch $branch" ] ||
+    ! _fm_status_at_epoch "$line" epoch; then
+    echo "error: $id must report a revised, timestamped ready status for $branch" >&2
+    return 1
+  fi
+  previous=$(fm_dod_meta_value "$meta" local_done_at) || previous=
+  if [ -z "$previous" ]; then
+    # Older records did not preserve the time of the original done.
+    while IFS= read -r earlier || [ -n "$earlier" ]; do
+      [ "$earlier" != "$line" ] || break
+      [ "$(status_line_verb "$earlier")" = "done" ] &&
+        [ "$(status_line_note "$earlier")" = "ready in branch $branch" ] || continue
+      _fm_status_at_epoch "$earlier" earlier_epoch || earlier_epoch=0
+      previous=$earlier_epoch
+    done < "$status"
+  fi
+  case "$previous" in ''|*[!0-9]*) previous=$epoch ;; esac
+  if [ "$epoch" -le "$previous" ]; then
+    echo "error: $id's ready report must be newer than its previous ready report" >&2
+    return 1
+  fi
+  recorded_at=$(date +%s) || return 1
+  tmp=$(mktemp "$state/.local-done-$id.XXXXXX") || return 1
+  trap 'rm -f -- "$tmp"' EXIT
+  awk -v head="$new" -v epoch="$epoch" -v audit="$recorded_at $old $new" '
+    /^local_done_head=/ { print "local_done_head=" head; next }
+    /^local_done_at=/ { next }
+    { print }
+    END { print "local_done_at=" epoch; print "local_done_revision=" audit }
+  ' "$meta" > "$tmp" || return 1
+  [ "$(status_current_line "$status" ship)" = "$line" ] &&
+    [ "$(git -C "$project" rev-parse --verify "$ref^{commit}")" = "$new" ] ||
+    { echo "error: $id's ready report or branch changed while recording $new" >&2; return 1; }
+  fm_backlog_record_publish "$tmp" "$meta" 'local readiness metadata' "$state"
 )
 
 # 0 when the forge's head for a PR is the head the done names. In no-mistakes
@@ -1176,8 +1252,8 @@ fm_dod_accept_ship_done() {  # <kind> <mode> <worktree> <project> <line> [<state
   if fm_dod_named_head_reachable_outside_worktree "$wt" "$project" "$mode" "$sha"; then
     if [ "$mode" = local-only ] && [ -n "$meta" ]; then
       if [ -z "$state" ] || [ -z "$id" ] \
-        || ! fm_dod_pin_local_done_head "$state" "$id" "$meta" "$sha" "$captured" "${9:-}"; then
-        printf '%s\n' "local-only done head could not be recorded or differs from the recorded head; revised work requires a new task/approval record"
+        || ! fm_dod_pin_local_done_head "$state" "$id" "$meta" "$sha" "$captured" "${9:-}" "$line"; then
+        printf '%s\n' "local-only done head could not be recorded or differs from the recorded head; Firstmate can record a descendant with fm-ready-head.sh"
         return 1
       fi
     fi

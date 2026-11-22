@@ -139,7 +139,9 @@ run_hook UserPromptSubmit
 [ "$(fm_busy_classify tmux fake:w cortex worker "$state")" = 'busy cortex-hook' ] || fail 'submit did not open busy'
 busy_lock="$(fm_busy_record_path "$state" worker).lock"
 mkdir "$busy_lock" || fail 'could not hold the busy writer lock'
-FM_BUSY_LOCK_STALE_SECS=3600 run_hook Stop
+perl -e 'my $future = time + 3600; utime($future, $future, $ARGV[0]) == 1 or die "$!"' "$busy_lock" \
+  || fail 'could not keep the lock newer than the refusal window'
+FM_BUSY_LOCK_STALE_SECS=1 run_hook Stop
 assert_absent "$state/worker.turn-ended" 'Stop notified while its apply lock was held'
 [ "$(fm_busy_classify tmux fake:w cortex worker "$state")" = 'busy cortex-hook' ] || fail 'a lock-refused Stop changed busy state'
 [ -d "$busy_lock" ] || fail 'Stop broke a live held lock'

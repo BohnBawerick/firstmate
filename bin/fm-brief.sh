@@ -176,6 +176,8 @@
 # regular file, or text carrying its own "Delivery contract: mode=" line (which
 # a later scout promotion could not outrank), stops the scaffold before
 # anything is written. Secondmate charters never take it.
+# Ship and scout briefs also render config/build-offload/<project> when set.
+# See docs/configuration.md for the host and command format.
 # Refuses to overwrite an existing brief.
 set -eu
 
@@ -498,8 +500,41 @@ if [ "$KIND" != secondmate ] && { [ -e "$BRIEF_INCLUDE_FILE" ] || [ -L "$BRIEF_I
   [ -n "$(printf '%s' "$BRIEF_INCLUDE_BODY" | tr -d '[:space:]')" ] || BRIEF_INCLUDE_BODY=
 fi
 
+BUILD_HOST=
+BUILD_COMMANDS=
+if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
+  case "${POS[1]}" in
+    ''|.|..|*/*|*$'\n'*) BUILD_OFFLOAD_FILE= ;;
+    *) BUILD_OFFLOAD_FILE="$CONFIG/build-offload/${POS[1]}" ;;
+  esac
+  if [ -n "$BUILD_OFFLOAD_FILE" ] && { [ -e "$BUILD_OFFLOAD_FILE" ] || [ -L "$BUILD_OFFLOAD_FILE" ]; }; then
+    { [ -f "$BUILD_OFFLOAD_FILE" ] && [ ! -L "$BUILD_OFFLOAD_FILE" ] &&
+      IFS= read -r BUILD_HOST < "$BUILD_OFFLOAD_FILE" &&
+      BUILD_COMMANDS=$(tail -n +2 "$BUILD_OFFLOAD_FILE"); } || {
+      echo "error: $BUILD_OFFLOAD_FILE must be a readable regular file with a host line and commands" >&2
+      exit 1
+    }
+    case "$BUILD_HOST" in
+      ''|*[!A-Za-z0-9._@-]*)
+        echo "error: $BUILD_OFFLOAD_FILE must start with one build host alias" >&2
+        exit 1
+        ;;
+    esac
+    if [ -z "${BUILD_COMMANDS//[[:space:]]/}" ]; then
+      echo "error: $BUILD_OFFLOAD_FILE must include build offload commands after the host" >&2
+      exit 1
+    fi
+  fi
+fi
+
 # Append the include as the last section of a ship or scout scaffold.
 append_brief_include() {
+  if [ -n "$BUILD_HOST" ]; then
+    {
+      printf '\n# Build offload\nUse %s for heavy builds unless the task specifies otherwise.\n\n' "$BUILD_HOST"
+      printf '%s\n' "$BUILD_COMMANDS" | sed 's/^/    /'
+    } >> "$BRIEF"
+  fi
   [ -n "$BRIEF_INCLUDE_BODY" ] || return 0
   printf '\n%s\n%s\n%s\n' \
     '# Home brief additions' \

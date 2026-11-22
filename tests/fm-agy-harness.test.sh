@@ -551,7 +551,12 @@ SH
 set -u
 if [ "${1:-}" = models ]; then
   if [ "${FM_FAKE_AGY_MODELS_FAIL:-0}" = 1 ]; then exit 3; fi
-  if [ "${FM_FAKE_AGY_MODELS_HANG:-0}" = 1 ]; then cat > /dev/null; sleep 30; exit 0; fi
+  if [ "${FM_FAKE_AGY_MODELS_HANG:-0}" = 1 ]; then
+    cat > /dev/null
+    sleep 30
+    : > "${FM_FAKE_AGY_STATE}.models-completed"
+    exit 0
+  fi
   printf 'gemini-3.7-flash-high\tGemini 3.7 Flash (High)\n'
   printf 'gemini-3.8-flash-high\tGemini 3.8 Flash (High)\n'
   printf 'gemini-3.8-flash-medium\tGemini 3.8 Flash (Medium)\n'
@@ -701,17 +706,15 @@ test_agy_unreachable_listing_launches_unvalidated() {
 }
 
 test_agy_hung_listing_is_cut_off_and_launches() {
-  local id rec out rc started elapsed
+  local id rec out rc
   id="agy-hanglisting-z8-$$"
   rec=$(make_agy_spawn_case hanglisting "$id")
   read_agy_spawn_record "$rec"
   rc=0
-  started=$(date +%s)
   out=$(FM_FAKE_AGY_MODELS_HANG=1 run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" \
     "$FAKEBIN_DIR" "$id" --model gemini-3.8-flash-low) || rc=$?
-  elapsed=$(( $(date +%s) - started ))
   expect_code 0 "$rc" "a hung model listing must not block the spawn"
-  [ "$elapsed" -lt 20 ] || fail "the model probe was not cut off by its bound (took ${elapsed}s)"
+  [ ! -e "$CASE_DIR/agy.state.models-completed" ] || fail "the model listing ran to completion"
   assert_contains "$out" "did not answer within 1s" "a hung listing launched without its timeout notice"
   [ -s "$CASE_DIR/launch.log" ] || fail "a hung listing produced no launch command"
   assert_contains "$(cat "$CASE_DIR/launch.log")" "--model 'gemini-3.8-flash-low'" \
@@ -720,18 +723,16 @@ test_agy_hung_listing_is_cut_off_and_launches() {
 }
 
 test_agy_zero_model_timeout_is_clamped_to_the_default_bound() {
-  local id rec out rc started elapsed
+  local id rec out rc
   id="agy-zerobound-z14-$$"
   rec=$(make_agy_spawn_case zerobound "$id")
   read_agy_spawn_record "$rec"
   rc=0
-  started=$(date +%s)
   out=$(FM_FAKE_AGY_MODELS_HANG=1 FM_AGY_MODELS_TIMEOUT=0 \
     run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" \
     "$FAKEBIN_DIR" "$id" --model gemini-3.8-flash-low) || rc=$?
-  elapsed=$(( $(date +%s) - started ))
   expect_code 0 "$rc" "a hung listing with a zero bound must not block the spawn"
-  [ "$elapsed" -lt 25 ] || fail "a zero model bound disabled the deadline (took ${elapsed}s)"
+  [ ! -e "$CASE_DIR/agy.state.models-completed" ] || fail "the zero bound let the model listing run to completion"
   assert_contains "$out" "did not answer within 15s" \
     "a zero model bound was not clamped to the documented default"
   [ -s "$CASE_DIR/launch.log" ] || fail "a zero model bound produced no launch command"

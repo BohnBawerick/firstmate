@@ -14,9 +14,13 @@
 # Enqueue only after build and lint pass at the supplied full commit ID. The
 # task must have recorded a local-only ready head in this home. Run publishes
 # the waiting tasks against the current default branch or resumes a prior
-# publish. While a batch is open, run leaves later tasks queued. Fix appends
-# one checked task to the open batch. After a merge, run can publish the next
-# batch. A closed, unmerged batch needs to be reopened before it can proceed.
+# publish. While a batch is open, run leaves later tasks queued. Fix adds
+# one checked task to the open batch or updates an existing member after
+# fm-ready-head.sh records its revised head. A task branch based on the
+# current batch head advances the batch directly. The optional
+# config/batch-checks/<project> runs against the assembled head before push.
+# After a merge, run can publish the next batch. A closed, unmerged batch
+# needs to be reopened before it can proceed.
 # If a queued task conflicts, dequeue it before retrying. Its branch is kept.
 # Refresh merges the current default into the open batch if the merge gate
 # reports that it is behind. The updated head needs its own green checks.
@@ -39,7 +43,8 @@ root=${FM_ROOT_OVERRIDE:-${dir%/*}}
 home=${FM_HOME:-$root}
 state=${FM_STATE_OVERRIDE:-$home/state}
 data=${FM_DATA_OVERRIDE:-$home/data}
-auto_projects="${FM_CONFIG_OVERRIDE:-$home/config}/batch-projects"
+config="${FM_CONFIG_OVERRIDE:-$home/config}"
+auto_projects="$config/batch-projects"
 
 usage() {
   sed -n '2,${/^#/!q;p;}' "$0" | sed 's/^# \{0,1\}//'
@@ -184,11 +189,11 @@ if [ "$action" = dequeue ]; then
 elif [ "$action" = enqueue ] || [ "$action" = fix ]; then
   member=$(checked_member "$1" "$2")
   existing=$(jq -c --arg task "$1" '[.queue[], .batches[].members[]] | map(select(.task == $task)) | first // null' <<< "$records")
-  if [ "$existing" != null ]; then
-    [ "$existing" = "$member" ] || fail "$1 already has a different checked head"
-    [ "$action" = fix ] || exit 0
-  fi
   if [ "$action" = enqueue ]; then
+    if [ "$existing" != null ]; then
+      [ "$existing" = "$member" ] || fail "$1 already has a different checked head"
+      exit 0
+    fi
     save --argjson member "$member" '
       .queue += [$member] | .excluded = ((.excluded // []) - [$member.task])'
     exit 0
@@ -370,6 +375,27 @@ add_commit() {
   git_project commit-tree "$tree" -p "$parent" -p "$commit" -m "Batch: $label"
 }
 
+check_batch_head() (
+  local check_file="$config/batch-checks/$name" candidate=$1 scratch rc=0
+  [ -e "$check_file" ] || [ -L "$check_file" ] || return 0
+  # The watcher captures this command's stdout for its check wake.
+  if [ "$action" = check ]; then exec 2>&1; fi
+  [ -f "$check_file" ] && [ ! -L "$check_file" ] && [ -r "$check_file" ] ||
+    fail "$check_file must be a readable regular file"
+  case "$check_file" in /*) ;; *) check_file="$PWD/$check_file" ;; esac
+  scratch=$(mktemp -d "${TMPDIR:-/tmp}/fm-batch-check.XXXXXX")
+  trap 'rm -rf -- "$scratch"' EXIT
+  trap 'exit 1' HUP INT TERM
+  git clone --quiet --shared --no-checkout -- "$project" "$scratch/checkout"
+  git -C "$scratch/checkout" -c core.hooksPath=/dev/null checkout --quiet --detach "$candidate"
+  (cd "$scratch/checkout" && FM_BATCH_HEAD="$candidate" bash "$check_file") > "$scratch/output" 2>&1 || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    cat "$scratch/output" >&2
+    fail "pre-publish check failed for $candidate (exit $rc)"
+  fi
+)
+
+checked_head=
 # shellcheck disable=SC2016 # jq binds the head and membership variables.
 if [ "$action" = refresh ]; then
   [ -n "$active" ] && [ -n "$url" ] || fail "refresh requires an open batch"
@@ -379,6 +405,8 @@ if [ "$action" = refresh ]; then
     start=$(current_base_head)
     next=$(add_commit "$head" "$start" "$base")
     if [ "$next" != "$head" ]; then
+      check_batch_head "$next"
+      checked_head=$next
       id=$(jq -r '.id' <<< "$active")
       git_project update-ref "refs/firstmate/batches/$id" "$next"
       save --arg head "$next" '.batches[-1].head = $head'
@@ -387,17 +415,36 @@ if [ "$action" = refresh ]; then
   fi
 elif [ "$action" = fix ]; then
   [ -n "$active" ] && [ -n "$url" ] || fail "fix requires an open batch"
-  if ! jq -e --argjson member "$member" '.members | index($member) != null' <<< "$active" >/dev/null; then
+  previous=$(jq -c --arg task "$1" 'first(.members[] | select(.task == $task)) // null' <<< "$active")
+  if [ "$previous" != "$member" ]; then
     [ "$head" = "$published" ] || fail "run must finish publishing the current batch update first"
-    [ "$existing" = null ] ||
-      jq -e --argjson member "$member" '.queue | index($member) != null' <<< "$records" >/dev/null ||
-      fail "$1 already belongs to another batch"
-    next=$(add_commit "$head" "$2" "$1")
+    if [ "$previous" != null ]; then
+      old=$(jq -er '.head' <<< "$previous")
+      if ! fm_pr_head_valid "$old" ||
+        [ "$(jq -er '.branch' <<< "$previous")" != "$(jq -er '.branch' <<< "$member")" ] ||
+        ! git_project merge-base --is-ancestor "$old" "$2"; then
+        fail "$1 must advance its existing batch member on the same branch"
+      fi
+    else
+      [ "$existing" = null ] ||
+        jq -e --argjson member "$member" '.queue | index($member) != null' <<< "$records" >/dev/null ||
+        fail "$1 already has a different checked head or belongs to another batch"
+    fi
+    if git_project merge-base --is-ancestor "$head" "$2"; then
+      next=$2
+    else
+      next=$(add_commit "$head" "$2" "$1")
+    fi
     [ "$next" != "$head" ] || fail "$1 adds no commits to the batch"
+    check_batch_head "$next"
+    checked_head=$next
     id=$(jq -r '.id' <<< "$active")
     git_project update-ref "refs/firstmate/batches/$id" "$next"
-    save --argjson member "$member" --arg head "$next" '
-      .queue -= [$member] | .batches[-1] |= (.members += [$member] | .head = $head)'
+    save --argjson member "$member" --argjson previous "$previous" --arg head "$next" '
+      .queue -= [$member] | .batches[-1] |= (
+        .head = $head | .members |=
+          if $previous == null then . + [$member]
+          else map(if . == $previous then $member else . end) end)'
     head=$next
   fi
 elif [ -z "$active" ]; then
@@ -411,6 +458,8 @@ elif [ -z "$active" ]; then
   [ "$head" != "$start" ] &&
     [ "$(git_project rev-parse "$head^{tree}")" != "$(git_project rev-parse "$start^{tree}")" ] ||
     fail "the queued tasks add no changes to $base"
+  check_batch_head "$head"
+  checked_head=$head
   serial=$(jq '.batches | length + 1' <<< "$records")
   repo_key=$(printf '%s\n' "$identity/$account" | fm_role_sha256_stdin)
   id="batch-${repo_key:0:16}-${head:0:12}-$serial"
@@ -428,21 +477,22 @@ if [ "$head" = "$published" ]; then
 fi
 
 if [ -z "$url" ]; then
-  # Query every page and count only this login's open pull requests.
-  pulls=$(api "/repos/$repo/pulls?state=open&per_page=100" --paginate |
-    jq -sc --arg account "$account" 'add // [] | map(select((.user.login | ascii_downcase) == $account))')
+  query_head=$(jq -rn --arg head "${repo%%/*}:$branch" '$head | @uri')
+  pulls=$(api "/repos/$repo/pulls?state=open&head=$query_head&per_page=100" --paginate |
+    jq -sc --arg branch "$branch" 'add // [] | map(select(.head.ref == $branch))')
   case "$(jq 'length' <<< "$pulls")" in
     0) ;;
     1)
       pull=$(jq -c '.[0]' <<< "$pulls")
       read_pull "$pull"
       ;;
-    *) fail "$account already has multiple open pull requests in $repo" ;;
+    *) fail "multiple open pull requests match batch branch $branch in $repo" ;;
   esac
 fi
 
 # Push without force. A lost response can be retried at the same head.
 [ "$action" != check ] || check_opt_in || exit 0
+[ "$checked_head" = "$head" ] || check_batch_head "$head"
 git_project push --quiet --no-follow-tags --recurse-submodules=no origin "$head:refs/heads/$branch"
 if [ -z "$url" ]; then
   serial=$(jq '.batches | length' <<< "$records")

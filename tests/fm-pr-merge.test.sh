@@ -5683,7 +5683,7 @@ test_allow_no_pipeline_is_attended_only_and_gitlab_only() {
 }
 
 test_batch_queue_fix_and_merge() {
-  local case_dir project remote base task sha head next tree url rc landed watchdog
+  local case_dir project remote base task sha head next tree url rc landed watchdog check_file branch
   case_dir=$(make_case batch-queue)
   project="$case_dir/home/projects/example"
   remote="$case_dir/remote.git"
@@ -5755,8 +5755,12 @@ case "$1 $2" in
   'api /repos/example/repo')
     jq -nc '{default_branch:"main", description:("x" * 5000)}' | emit ;;
   'api /repos/example/repo/pulls?state=open&per_page=100')
+    jq -nc '[{user:{login:"fixture"},head:{ref:"topic/one"}},
+             {user:{login:"fixture"},head:{ref:"topic/two"}}]' | emit ;;
+  'api /repos/example/repo/pulls?state=open&head=example%3Afm%2Fbatch%2Ffixture%2F'*'&per_page=100')
     if [ -e "$fixture/active-pull" ]; then read_batch; fi |
-      jq -sc 'map(select(.state == "open")) + [{user:{login:"other"}}]' | emit ;;
+      jq -sc --arg query "$2" 'map(select(.state == "open" and
+        ($query | split("&head=example%3A")[1] | split("&")[0]) == (.head.ref | @uri)))' | emit ;;
   'api /repos/example/repo/pulls/'*) read_batch | emit ;;
   'api POST')
     branch=
@@ -5785,6 +5789,32 @@ SH
     sha=$(git -C "$project" rev-parse "fm/$task")
     run_pr_merge "$case_dir" example enqueue "$task" "$sha" || fail "could not enqueue $task"
   done
+  mkdir -p "$case_dir/home/config/batch-checks"
+  check_file="$case_dir/home/config/batch-checks/example"
+  cat > "$check_file" <<'SH'
+set -eu
+test "$(git rev-parse HEAD)" = "$FM_BATCH_HEAD"
+test -z "$(git branch --show-current)"
+test -f one
+test -f two
+printf '%s\n' "$FM_BATCH_HEAD" >> "$(dirname "$0")/heads"
+if [ -f "$(dirname "$0")/reject" ]; then
+  echo "fixture lint failed"
+  exit 23
+fi
+SH
+  touch "$(dirname "$check_file")/reject"
+  rc=0
+  run_pr_merge "$case_dir" example run > "$case_dir/out" 2> "$case_dir/err" || rc=$?
+  expect_code 1 "$rc" "initial batch check blocks publish"
+  assert_grep 'fixture lint failed' "$case_dir/err" "check failure output was lost"
+  [ ! -s "$case_dir/gh-axi.log" ] || fail "failing initial batch check created a pull request"
+  [ -z "$(git --git-dir="$remote" for-each-ref refs/heads/fm/batch)" ] ||
+    fail "failing initial batch check pushed a branch"
+  run_pr_merge "$case_dir" example status > "$case_dir/ledger"
+  jq -e '(.queue | map(.task)) == ["one", "two"] and .batches == []' "$case_dir/ledger" >/dev/null ||
+    fail "failing initial batch check did not leave the queue available for correction"
+  rm -- "$(dirname "$check_file")/reject"
   rc=0
   run_pr_merge "$case_dir" example run > "$case_dir/out" 2> "$case_dir/err" || rc=$?
   expect_code 1 "$rc" "the first publish loses its response after creation"
@@ -5793,6 +5823,9 @@ SH
   assert_grep "$url" "$case_dir/out" "retry did not recover the same pull request"
   run_pr_merge "$case_dir" example status > "$case_dir/ledger"
   head=$(jq -er '.batches[0].published' "$case_dir/ledger")
+  branch=$(jq -er '.batches[0].branch' "$case_dir/ledger")
+  [ "$(tail -n 1 "$(dirname "$check_file")/heads")" = "$head" ] ||
+    fail "the initial check did not run against the published head"
   for task in one two; do
     git -C "$project" merge-base --is-ancestor "fm/$task" "$head" || fail "batch omitted $task"
   done
@@ -5802,16 +5835,47 @@ SH
   run_pr_merge "$case_dir" example run > "$case_dir/out" || fail "run failed while $url was open"
   git -C "$project" merge-base --is-ancestor "$sha" "$head" && fail "later task entered the open batch"
   sha=$(git -C "$project" rev-parse fm/repair)
+  touch "$(dirname "$check_file")/reject"
+  rc=0
+  run_pr_merge "$case_dir" example fix repair "$sha" > "$case_dir/out" 2> "$case_dir/err" || rc=$?
+  expect_code 1 "$rc" "batch fix check blocks the push"
+  assert_grep 'fixture lint failed' "$case_dir/err" "fix check failure output was lost"
+  [ "$(git --git-dir="$remote" rev-parse "refs/heads/$branch")" = "$head" ] ||
+    fail "failing fix check changed the published branch"
+  run_pr_merge "$case_dir" example status > "$case_dir/ledger"
+  jq -e --arg head "$head" '.batches[0].head == $head and (.batches[0].members | length) == 2' \
+    "$case_dir/ledger" >/dev/null || fail "failing fix check changed the active batch plan"
+  rm -- "$(dirname "$check_file")/reject"
   run_pr_merge "$case_dir" example fix repair "$sha" > "$case_dir/out" || fail "could not fix $url"
   run_pr_merge "$case_dir" example status > "$case_dir/ledger"
   next=$(jq -er '.batches[0].published' "$case_dir/ledger")
   git -C "$project" merge-base --is-ancestor "$head" "$next" || fail "fix rewrote the batch"
   git -C "$project" merge-base --is-ancestor "$sha" "$next" || fail "fix commit is absent"
   [ "$(git -C "$project" rev-parse fm/repair)" = "$sha" ] || fail "fix rewrote the task branch"
+  [ "$(tail -n 1 "$(dirname "$check_file")/heads")" = "$next" ] ||
+    fail "the fix check did not run against the published head"
   jq -e --arg url "$url" \
     '(.queue | map(.task)) == ["later"] and
      (.batches[0].members | map(.task)) == ["one", "two", "repair"] and
      .batches[0].url == $url' "$case_dir/ledger" >/dev/null || fail "ledger lost batch membership"
+
+  git -C "$project" checkout -q fm/repair
+  git -C "$project" merge -q --ff-only "$next"
+  printf 'revised repair\n' >> "$project/repair"
+  git -C "$project" commit -qam 'Fix from the open batch head'
+  next=$(git -C "$project" rev-parse HEAD)
+  printf 'worktree=%s\n' "$project" >> "$case_dir/state/repair.meta"
+  printf '%s\n' 'done: ready in branch fm/repair' 'working: fixing from the batch' \
+    'done [at=1790000001]: ready in branch fm/repair' > "$case_dir/state/repair.status"
+  FM_HOME="$case_dir/home" FM_STATE_OVERRIDE="$case_dir/state" \
+    "$ROOT/bin/fm-ready-head.sh" repair "$sha" "$next" >/dev/null || fail "could not record the revised repair"
+  run_pr_merge "$case_dir" example fix repair "$next" > "$case_dir/out" || fail "could not fix $url from its head"
+  run_pr_merge "$case_dir" example status > "$case_dir/ledger"
+  jq -e --arg head "$next" '
+    .batches[0].published == $head and
+    (.batches[0].members | map(select(.task == "repair") | .head)) == [$head]
+  ' "$case_dir/ledger" >/dev/null || fail "batch-based fix did not publish the exact head and replace its member"
+  rm -- "$check_file"
 
   tree=$(git -C "$project" rev-parse "$base^{tree}")
   base=$(git -C "$project" commit-tree "$tree" -p "$base" -m "Advance default")

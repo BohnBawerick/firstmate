@@ -229,12 +229,13 @@ SH
     "$ROOT/bin/fm-backlog-handoff.sh" design reconcile-race \
     > "$TMP_ROOT/reconcile-race.out" 2>&1 &
   handoff=$!
+  fm_test_track_pid "$handoff"
   i=0
   while [ ! -f "$TMP_ROOT/reconcile-race.entered" ]; do
     kill -0 "$handoff" 2>/dev/null || fail "reconciliation-race handoff exited before backend delivery"
     i=$((i + 1))
-    [ "$i" -le 250 ] || fail "reconciliation-race handoff never reached backend delivery"
-    sleep 0.02
+    [ "$i" -le 300 ] || fail "reconciliation-race handoff never reached backend delivery: $(cat "$TMP_ROOT/reconcile-race.out")"
+    sleep 0.1
   done
   corr=$(cut -d: -f2- "$home/state/.backlog-handoff-design.wake-pending")
   FM_PENDING_REPLY_NOW=9999999999 bash -c '

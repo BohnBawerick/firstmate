@@ -66,6 +66,34 @@ test_branch_advance_does_not_change_approval() {
   pass 'branch advance refuses, and restoring the reported X lands exactly X'
 }
 
+test_revised_ready_head_requires_new_done_and_descendant() {
+  local new other ready status
+  make_case revised
+  status="$HOME_DIR/state/local-task.status"
+  printf 'done [at=1790000000]: ready in branch fm/local-task\n' > "$status"
+  record_done || fail 'initial ready head was refused'
+  git -C "$WT" commit -q --allow-empty -m Y
+  new=$(git -C "$WT" rev-parse HEAD)
+  other=$(git -C "$WT" commit-tree "$BASE^{tree}" -p "$BASE" -m diverged)
+  (
+    export FM_HOME="$HOME_DIR"
+    ready="$ROOT/bin/fm-ready-head.sh"
+    "$ready" local-task "$X" "$new" >/dev/null 2>&1 && fail 'old done rebound to a new head'
+    printf 'working: revising\ndone [at=1790000001]: ready in branch fm/local-task\n' >> "$status"
+    "$ready" local-task "$BASE" "$new" >/dev/null 2>&1 && fail 'incorrect old head was accepted'
+    git -C "$WT" reset -q --hard "$other"
+    "$ready" local-task "$X" "$other" >/dev/null 2>&1 && fail 'non-descendant was recorded'
+    [ "$(fm_dod_local_done_head "$META")" = "$X" ] || fail 'refusal moved the ready head'
+    git -C "$WT" reset -q --hard "$new"
+    "$ready" local-task "$X" "$new" >/dev/null || fail 'revised ready head was refused'
+    [ "$(fm_dod_local_done_head "$META")" = "$new" ] || fail 'revision did not move the ready head'
+    grep -Eq "^local_done_revision=[0-9]+ $X $new$" "$META" || fail 'revision audit entry is missing'
+  ) || fail 'ready head test failed'
+  land >/dev/null || fail 'revised ready head did not land'
+  [ "$(git -C "$PROJ" rev-parse HEAD)" = "$new" ] || fail 'landing used the wrong revision'
+  pass 'Firstmate records a newer ready report for a descendant and audits the change'
+}
+
 test_missing_and_malformed_head_refuse() {
   local value
   for value in missing empty abbreviated expression duplicate; do
@@ -309,6 +337,7 @@ SH
 }
 
 fm_test_run test_two_tasks_cannot_undo_a_same_tree_landing test_branch_advance_does_not_change_approval \
+  test_revised_ready_head_requires_new_done_and_descendant \
   test_missing_and_malformed_head_refuse test_change_after_hold_check_refuses \
   test_diverged_default_refuses test_change_during_approval_check_refuses \
   test_snapshot_cannot_pin_a_replacement_task test_done_recording_preserves_caller_locks

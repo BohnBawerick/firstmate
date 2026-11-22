@@ -2062,6 +2062,43 @@ test_crewmate_scaffolds_forbid_pool_administration() {
   pass "fm-brief.sh: every crewmate scaffold forbids administering the shared worktree pool"
 }
 
+test_project_build_offload_is_rendered_only_for_matching_worker_briefs() {
+  local home dir id brief
+  home="$TMP_ROOT/build-offload"
+  dir="$home/config/build-offload"
+  mkdir -p "$dir"
+  cat > "$dir/fixture project" <<'EOF'
+work-pc
+cx-offload "${FM_TASK_ID}" cargo fmt --all -- --check
+cx-offload "${FM_TASK_ID}" cargo clippy --workspace --all-targets -- -D warnings
+EOF
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" offload-ship "fixture project" --mode local-only >/dev/null ||
+    fail "ship offload brief did not scaffold"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" offload-scout "fixture project" --scout >/dev/null ||
+    fail "scout offload brief did not scaffold"
+  for id in offload-ship offload-scout; do
+    brief="$home/data/$id/brief.md"
+    assert_grep "Use work-pc for heavy builds unless the task specifies otherwise." "$brief" "build host is missing"
+    # shellcheck disable=SC2016 # Worker variables remain literal in the brief.
+    assert_grep '    cx-offload "${FM_TASK_ID}" cargo fmt --all -- --check' "$brief" "format command was lost or expanded"
+    # shellcheck disable=SC2016 # Worker variables remain literal in the brief.
+    assert_grep '    cx-offload "${FM_TASK_ID}" cargo clippy --workspace --all-targets -- -D warnings' "$brief" "lint command is missing"
+  done
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" offload-mate --secondmate "fixture project" >/dev/null ||
+    fail "secondmate charter did not scaffold"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" offload-other another-project --mode local-only >/dev/null ||
+    fail "unconfigured ship brief did not scaffold"
+  for id in offload-mate offload-other; do
+    assert_no_grep '# Build offload' "$home/data/$id/brief.md" "offload settings leaked into $id"
+  done
+  printf 'work-pc\n' > "$dir/invalid"
+  if FM_HOME="$home" "$ROOT/bin/fm-brief.sh" offload-invalid invalid --scout >/dev/null 2>&1; then
+    fail "an offload file with no commands was accepted"
+  fi
+  [ ! -e "$home/data/offload-invalid" ] || fail "invalid offload config left a partial scaffold"
+  pass "fm-brief.sh: build offload defaults are project-specific and apply to ship and scout workers"
+}
+
 test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
@@ -2105,6 +2142,7 @@ test_workers_wait_without_spending_turns
 test_wait_no_turns_absent_keeps_the_previous_brief
 test_inbox_guidance_explains_marked_body_terminator
 test_home_brief_include_is_appended_last
+test_project_build_offload_is_rendered_only_for_matching_worker_briefs
 test_base_branch_is_rendered_and_bounded
 test_ship_branch_prefix_defaults_to_legacy_fm
 test_ship_branch_prefix_override_is_consistent_across_modes
