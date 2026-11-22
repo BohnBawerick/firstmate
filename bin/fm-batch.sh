@@ -1,0 +1,379 @@
+#!/usr/bin/env bash
+# Batch checked local task branches into one GitHub pull request per repository and account.
+#
+#   fm-batch.sh <project> enqueue <task-id> <checked-head>
+#   fm-batch.sh <project> dequeue <task-id>
+#   fm-batch.sh <project> run
+#   fm-batch.sh <project> fix <task-id> <checked-head>
+#   fm-batch.sh <project> refresh
+#   fm-batch.sh <project> merge <reviewed-batch-head>
+#   fm-batch.sh <project> status
+#
+# Use a registered direct-PR GitHub project with push access to origin.
+# Enqueue only after build and lint pass at the supplied full commit ID. The
+# task must have recorded a local-only ready head in this home. Run publishes
+# the waiting tasks against the current default branch or resumes a prior
+# publish. While a batch is open, run leaves later tasks queued. Fix appends
+# one checked task to the open batch. After a merge, run can publish the next
+# batch. A closed, unmerged batch needs to be reopened before it can proceed.
+# If a queued task conflicts, dequeue it before retrying. Its branch is kept.
+# Refresh merges the current default into the open batch if the merge gate
+# reports that it is behind. The updated head needs its own green checks.
+#
+# Merge requires the same approval or standing authority as fm-pr-merge.sh.
+# Use the reviewed head from status. The merge gate checks the live head, CI,
+# and each member's hold. Status prints the durable queue and batch history,
+# including task IDs, branch names, checked heads, and pull request URLs.
+# The ledger lives under data/batches/<host>/<owner>/<repo>/<login>/ledger.json.
+# This command serializes publishers that share a Firstmate home. Another
+# publisher using the same account must use that home to share the queue.
+set -euo pipefail
+umask 077
+
+dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+root=${FM_ROOT_OVERRIDE:-${dir%/*}}
+home=${FM_HOME:-$root}
+state=${FM_STATE_OVERRIDE:-$home/state}
+data=${FM_DATA_OVERRIDE:-$home/data}
+
+usage() {
+  sed -n '2,${/^#/!q;p;}' "$0" | sed 's/^# \{0,1\}//'
+}
+fail() {
+  printf 'error: %s\n' "$*" >&2
+  exit 1
+}
+case "${1:-}" in -h|--help) usage; exit 0 ;; esac
+[ "$#" -ge 2 ] || { usage >&2; exit 2; }
+name=$1 action=$2
+shift 2
+case "$action:$#" in
+  enqueue:2|dequeue:1|fix:2|refresh:0|run:0|merge:1|status:0) ;;
+  *) usage >&2; exit 2 ;;
+esac
+case "$name" in ''|.|..|*/*|*$'\n'*) fail "invalid project name" ;; esac
+
+# shellcheck source=bin/fm-dod-lib.sh
+. "$dir/fm-dod-lib.sh"
+# shellcheck source=bin/fm-role-lib.sh
+. "$dir/fm-role-lib.sh"
+# shellcheck source=bin/fm-self-repo-lib.sh
+. "$dir/fm-self-repo-lib.sh"
+# shellcheck source=bin/fm-backlog-transition-lib.sh
+. "$dir/fm-backlog-transition-lib.sh"
+# shellcheck source=bin/fm-session-lock-lib.sh
+. "$dir/fm-session-lock-lib.sh"
+# shellcheck source=bin/fm-wake-lib.sh
+. "$dir/fm-wake-lib.sh"
+# shellcheck source=bin/fm-lease-lib.sh
+. "$dir/fm-lease-lib.sh"
+
+posture=$("$dir/fm-project-mode.sh" "$name")
+[ "${posture%% *}" = direct-PR ] || fail "$name must be registered as direct-PR"
+[ "$("$dir/fm-project-mode.sh" --forge "$name")" = none ] || fail "$name must use GitHub"
+project=$(cd "${FM_PROJECTS_OVERRIDE:-$home/projects}/$name" && pwd -P)
+fm_is_firstmate_repo "$project" "$root" "$home" && fail "Firstmate lands through its local merge path"
+git_project() { git -C "$project" "$@"; }
+
+origin=$(git_project remote get-url origin)
+identity=$(fm_role_remote_identity "$origin" "$project" nolocal)
+host=${identity%%/*}
+repo=${identity#*/}
+fm_pr_url_parse "https://$identity/pull/1" ||
+  fail "$name must have a GitHub origin on an allowed host"
+push_urls=$(git_project remote get-url --push --all origin)
+[[ "$push_urls" != *$'\n'* ]] &&
+  [ "$(fm_role_remote_identity "$push_urls" "$project" nolocal)" = "$identity" ] ||
+  fail "origin must have one push URL for $identity"
+export GH_HOST=$host
+
+# Prefix each page before gh-axi renders it, then decode the full JSON locally.
+api() {
+  local output
+  output=$(gh-axi api "$@" --jq '"FMJSON:" + tojson') || return
+  printf '%s\n' "$output" | jq -R '
+    if startswith("FMJSON:") then ltrimstr("FMJSON:") | fromjson
+    else error("invalid GitHub API output") end'
+}
+account=$(api /user | jq -er '.login | select(test("^[A-Za-z0-9][A-Za-z0-9-]*$"))')
+account=$(printf '%s' "$account" | tr '[:upper:]' '[:lower:]')
+batch_root="$data/batches/$host/$repo/$account"
+ledger="$batch_root/ledger.json"
+empty='{"queue":[],"batches":[]}'
+records=$empty
+if [ "$action" != status ]; then
+  fm_require_session_lock "$state" "manage a batch pull request"
+  if [ "$action" = merge ]; then
+    fm_lease_forbid_branch "batch merge (fm-batch)" --away-relocated
+  else
+    fm_lease_forbid_branch "batch publication (fm-batch)"
+  fi
+  mkdir -p -- "$batch_root"
+  lock="$batch_root/.lock"
+  fm_lock_acquire_wait "$lock"
+  unset temporary
+  trap 'if [ -n "${temporary:-}" ]; then unlink "$temporary" || true; fi; fm_lock_release "$lock"' EXIT
+  trap 'exit 1' HUP INT TERM
+fi
+if [ -e "$ledger" ] || [ -L "$ledger" ]; then
+  [ -f "$ledger" ] && [ ! -L "$ledger" ] || fail "batch ledger is not a regular file"
+  records=$(jq -ec 'select((.queue | type) == "array" and (.batches | type) == "array")' "$ledger")
+fi
+if [ "$action" = status ]; then
+  jq . <<< "$records"
+  exit 0
+fi
+
+save() {
+  records=$(jq -ce "$@" <<< "$records")
+  temporary=$(mktemp "$batch_root/.ledger.XXXXXX")
+  printf '%s\n' "$records" > "$temporary"
+  mv -f -- "$temporary" "$ledger"
+  unset temporary
+}
+
+checked_member() {
+  local task=$1 checked=$2 meta branch pinned ref
+  if ! fm_pr_task_id_valid "$task" || ! fm_pr_head_valid "$checked"; then
+    fail "invalid task ID or checked head"
+  fi
+  meta="$state/$task.meta"
+  [ -f "$meta" ] && [ ! -L "$meta" ] || fail "missing task metadata for $task"
+  [ "$(fm_dod_meta_value "$meta" kind)" = ship ] &&
+    [ "$(fm_dod_meta_value "$meta" mode)" = local-only ] &&
+    [ "$(fm_backlog_canonical_existing "$(fm_dod_meta_value "$meta" project)")" = "$project" ] &&
+    [ -z "$(fm_dod_meta_value "$meta" pr)" ] ||
+    fail "$task must be an unpublished local-only ship for $name"
+  pinned=$(fm_dod_local_done_head "$meta") || fail "$task has no recorded ready head"
+  branch=$(fm_dod_meta_value "$meta" branch)
+  git check-ref-format "refs/heads/$branch" ||
+    fail "$task has an invalid branch"
+  ref=$(git_project rev-parse --verify "refs/heads/$branch^{commit}")
+  [ "$ref" = "$checked" ] && [ "$pinned" = "$checked" ] ||
+    fail "$task's branch and recorded ready head must both match $checked"
+  jq -nc --arg task "$task" --arg branch "$branch" --arg head "$checked" \
+    '{task:$task, branch:$branch, head:$head}'
+}
+
+# shellcheck disable=SC2016 # jq binds the task and member variables.
+if [ "$action" = dequeue ]; then
+  fm_pr_task_id_valid "$1" || fail "invalid task ID"
+  save --arg task "$1" '.queue |= map(select(.task != $task))'
+  exit 0
+elif [ "$action" = enqueue ] || [ "$action" = fix ]; then
+  member=$(checked_member "$1" "$2")
+  existing=$(jq -c --arg task "$1" '[.queue[], .batches[].members[]] | map(select(.task == $task)) | first // null' <<< "$records")
+  if [ "$existing" != null ]; then
+    [ "$existing" = "$member" ] || fail "$1 already has a different checked head"
+    [ "$action" = fix ] || exit 0
+  fi
+  if [ "$action" = enqueue ]; then
+    save --argjson member "$member" '.queue += [$member]'
+    exit 0
+  fi
+fi
+
+active=$(jq -c '.batches[-1] | select(. != null and .state != "merged")' <<< "$records")
+if [ -n "$active" ]; then
+  branch=$(jq -r '.branch' <<< "$active")
+  base=$(jq -r '.base' <<< "$active")
+  head=$(jq -r '.head' <<< "$active")
+  published=$(jq -r '.published' <<< "$active")
+  url=$(jq -r '.url' <<< "$active")
+  number=$(jq -r '.number' <<< "$active")
+  case "$branch" in "fm/batch/$account/"*) ;; *) fail "invalid recorded batch branch" ;; esac
+  git check-ref-format "refs/heads/$branch" ||
+    fail "invalid recorded batch branch or head"
+  fm_pr_head_valid "$head" || fail "invalid recorded batch head"
+  if [ -n "$published" ]; then
+    fm_pr_head_valid "$published" || fail "invalid published batch head"
+  fi
+  if [ -n "$url" ]; then
+    fm_pr_url_parse "$url" && [ "$FM_PR_NUMBER" = "$number" ] ||
+      fail "invalid recorded batch pull request"
+  fi
+fi
+
+read_pull() {
+  local pull=$1
+  jq -e --arg account "$account" --arg repo "$repo" --arg branch "$branch" \
+    --arg base "$base" --arg url "$url" --arg head "$head" --arg published "$published" '
+    (.user.login | ascii_downcase) == $account and
+    (.head.repo.full_name | ascii_downcase) == $repo and
+    (.base.repo.full_name | ascii_downcase) == $repo and
+    .head.ref == $branch and .base.ref == $base and
+    ($url == "" or .html_url == $url) and
+    (.head.sha == $head or (.state == "open" and .head.sha == $published))
+  ' <<< "$pull" >/dev/null || fail "pull request identity or head differs from the recorded batch"
+  url=$(jq -er '.html_url' <<< "$pull")
+  number=$(jq -er '.number | select(type == "number" and . > 0)' <<< "$pull")
+  fm_pr_url_parse "$url" &&
+    [ "$FM_PR_HOST" = "$host" ] && [ "$(printf '%s' "$FM_PR_PATH" | tr '[:upper:]' '[:lower:]')" = "$repo" ] &&
+    [ "$FM_PR_NUMBER" = "$number" ] || fail "GitHub returned an unexpected pull request URL"
+}
+
+# Read after every forge write. Retain the planned head before publishing so
+# a failed response can be retried without selecting a different set of tasks.
+if [ -n "$active" ] && [ -n "$url" ]; then
+  pull=$(api "/repos/$repo/pulls/$number")
+  read_pull "$pull"
+  if jq -e '.merged == true' <<< "$pull" >/dev/null; then
+    save '.batches[-1].state = "merged"'
+    printf 'merged %s\n' "$url"
+    case "$action" in
+      merge) exit 0 ;;
+      fix|refresh) fail "$action requires an open batch" ;;
+    esac
+    active=
+  else
+    jq -e '.state == "open"' <<< "$pull" >/dev/null || fail "reopen $url to continue its batch"
+  fi
+fi
+
+if [ "$action" = merge ]; then
+  [ -n "$active" ] && [ -n "$url" ] && [ "$head" = "$published" ] ||
+    fail "publish the batch before merging"
+  fm_pr_head_valid "$1" && [ "$1" = "$head" ] || fail "reviewed head differs from the published batch"
+  id=$(jq -r '.id' <<< "$active")
+  fm_pr_task_id_valid "$id" || fail "invalid batch ID"
+  merge_dir="$state/.batch-merges"
+  mkdir -p -- "$merge_dir"
+  meta="$merge_dir/$id.meta"
+  (
+    control="$state/.control-$id.lock"
+    fm_lock_acquire_wait "$control"
+    trap 'if [ -n "${temporary:-}" ]; then unlink "$temporary" || true; fi; fm_lock_release "$control"' EXIT
+    if [ -e "$meta" ] || [ -L "$meta" ]; then
+      fm_backlog_record_present "$meta" "batch merge record" "$state" &&
+        [ "$(fm_dod_meta_value "$meta" kind)" = batch ] &&
+        [ "$(fm_dod_meta_value "$meta" pr)" = "$url" ] || fail "batch task ID is already in use"
+    fi
+    temporary=$(mktemp "$merge_dir/.batch-meta.XXXXXX")
+    {
+      printf 'kind=batch\nproject=%s\nbatch_head=%s\n' "$project" "$head"
+      jq -r '.members[] | "batch_member=\(.task) \(.head)"' <<< "$active"
+      printf 'pr=%s\n' "$url"
+    } > "$temporary"
+    fm_backlog_record_publish "$temporary" "$meta" "batch merge record" "$state"
+    unset temporary
+  )
+  "$dir/fm-pr-merge.sh" "$id" "$url" --expected-head "$head"
+  pull=$(api "/repos/$repo/pulls/$number")
+  read_pull "$pull"
+  if jq -e '.merged == true' <<< "$pull" >/dev/null; then
+    save '.batches[-1].state = "merged"'
+  fi
+  exit 0
+fi
+
+current_base_head() {
+  local base_ref sha
+  git check-ref-format "refs/heads/$base"
+  base_ref=$(git_project ls-remote --exit-code origin "refs/heads/$base")
+  sha=${base_ref%%$'\t'*}
+  fm_pr_head_valid "$sha" && [ "${base_ref#*$'\t'}" = "refs/heads/$base" ] ||
+    fail "cannot resolve the current head of $base"
+  git_project fetch --quiet --no-write-fetch-head origin "$sha"
+  printf '%s\n' "$sha"
+}
+
+add_commit() {
+  local parent=$1 commit=$2 label=$3 tree
+  if git_project merge-base --is-ancestor "$commit" "$parent"; then
+    printf '%s\n' "$parent"
+    return
+  fi
+  tree=$(git_project merge-tree --write-tree "$parent" "$commit") ||
+    fail "cannot add $label to the batch: $tree"
+  tree=${tree%%$'\n'*}
+  git_project commit-tree "$tree" -p "$parent" -p "$commit" -m "Batch: $label"
+}
+
+# shellcheck disable=SC2016 # jq binds the head and membership variables.
+if [ "$action" = refresh ]; then
+  [ -n "$active" ] && [ -n "$url" ] || fail "refresh requires an open batch"
+  if [ "$head" = "$published" ]; then
+    default_branch=$(api "/repos/$repo" | jq -er '.default_branch')
+    [ "$default_branch" = "$base" ] || fail "default branch changed from $base to $default_branch"
+    start=$(current_base_head)
+    next=$(add_commit "$head" "$start" "$base")
+    if [ "$next" != "$head" ]; then
+      id=$(jq -r '.id' <<< "$active")
+      git_project update-ref "refs/firstmate/batches/$id" "$next"
+      save --arg head "$next" '.batches[-1].head = $head'
+      head=$next
+    fi
+  fi
+elif [ "$action" = fix ]; then
+  [ -n "$active" ] && [ -n "$url" ] || fail "fix requires an open batch"
+  if ! jq -e --argjson member "$member" '.members | index($member) != null' <<< "$active" >/dev/null; then
+    [ "$head" = "$published" ] || fail "run must finish publishing the current batch update first"
+    [ "$existing" = null ] ||
+      jq -e --argjson member "$member" '.queue | index($member) != null' <<< "$records" >/dev/null ||
+      fail "$1 already belongs to another batch"
+    next=$(add_commit "$head" "$2" "$1")
+    [ "$next" != "$head" ] || fail "$1 adds no commits to the batch"
+    id=$(jq -r '.id' <<< "$active")
+    git_project update-ref "refs/firstmate/batches/$id" "$next"
+    save --argjson member "$member" --arg head "$next" '
+      .queue -= [$member] | .batches[-1] |= (.members += [$member] | .head = $head)'
+    head=$next
+  fi
+elif [ -z "$active" ]; then
+  jq -e '.queue | length > 0' <<< "$records" >/dev/null || exit 0
+  base=$(api "/repos/$repo" | jq -er '.default_branch')
+  start=$(current_base_head)
+  head=$start
+  while IFS= read -r item; do
+    head=$(add_commit "$head" "$(jq -er '.head' <<< "$item")" "$(jq -er '.task' <<< "$item")")
+  done < <(jq -c '.queue[]' <<< "$records")
+  [ "$head" != "$start" ] &&
+    [ "$(git_project rev-parse "$head^{tree}")" != "$(git_project rev-parse "$start^{tree}")" ] ||
+    fail "the queued tasks add no changes to $base"
+  serial=$(jq '.batches | length + 1' <<< "$records")
+  repo_key=$(printf '%s\n' "$identity/$account" | fm_role_sha256_stdin)
+  id="batch-${repo_key:0:16}-${head:0:12}-$serial"
+  branch="fm/batch/$account/$serial-${head:0:12}"
+  url='' number='' published=''
+  git_project update-ref "refs/firstmate/batches/$id" "$head"
+  save --arg id "$id" --arg branch "$branch" --arg base "$base" --arg head "$head" '
+    .batches += [{id:$id, branch:$branch, base:$base, head:$head, published:"", state:"planned",
+      url:"", number:"", members:.queue}] | .queue = []'
+fi
+
+if [ "$head" = "$published" ]; then
+  printf '%s\n' "$url"
+  exit 0
+fi
+
+if [ -z "$url" ]; then
+  # Query every page and count only this login's open pull requests.
+  pulls=$(api "/repos/$repo/pulls?state=open&per_page=100" --paginate |
+    jq -sc --arg account "$account" 'add // [] | map(select((.user.login | ascii_downcase) == $account))')
+  case "$(jq 'length' <<< "$pulls")" in
+    0) ;;
+    1)
+      pull=$(jq -c '.[0]' <<< "$pulls")
+      read_pull "$pull"
+      ;;
+    *) fail "$account already has multiple open pull requests in $repo" ;;
+  esac
+fi
+
+# Push without force. A lost response can be retried at the same head.
+git_project push --no-follow-tags --recurse-submodules=no origin "$head:refs/heads/$branch"
+if [ -z "$url" ]; then
+  serial=$(jq '.batches | length' <<< "$records")
+  body=$(jq -r '.batches[-1].members[] | "- \(.task) (\(.branch))"' <<< "$records")
+  pull=$(api POST "/repos/$repo/pulls" --raw-field "title=Batch $account / $serial" \
+    --raw-field "base=$base" --raw-field "head=$branch" --raw-field "body=$body")
+else
+  pull=$(api "/repos/$repo/pulls/$number")
+fi
+read_pull "$pull"
+jq -e --arg head "$head" '.state == "open" and .head.sha == $head' <<< "$pull" >/dev/null ||
+  fail "$url has not reported the planned head yet"
+# shellcheck disable=SC2016 # jq binds the URL, number, and head.
+save --arg url "$url" --arg number "$number" --arg head "$head" '
+  .batches[-1] |= (.url = $url | .number = $number | .published = $head | .state = "open")'
+printf '%s\n' "$url"

@@ -790,7 +790,7 @@ run_pr_merge() {
   FM_TEST_TEA_LOG="$case_dir/tea.log" \
   HOME="${FM_TEST_USER_HOME:-$case_dir/user-home}" \
   PATH="$case_dir/fakebin:$PATH" \
-    "$PR_MERGE" "$@"
+    "${FM_TEST_PR_COMMAND:-$PR_MERGE}" "$@"
   rc=$?
   if [ "${case_dir##*/}" = unsafe-url-segment ] && [ "$rc" -eq 2 ]; then
     echo 'error: PR URL must match https://github.com/<owner>/<repo>/pull/<number>' >&2
@@ -5674,6 +5674,163 @@ test_allow_no_pipeline_is_attended_only_and_gitlab_only() {
   pass "fm-pr-merge --allow-no-pipeline is attended-only, takes no value, and applies only to GitLab"
 }
 
+test_batch_queue_fix_and_merge() {
+  local case_dir project remote base task sha head next tree url rc
+  case_dir=$(make_case batch-queue)
+  project="$case_dir/home/projects/example"
+  remote="$case_dir/remote.git"
+  url=https://github.com/example/repo/pull/1
+  mkdir -p "$(dirname "$project")"
+  fm_git_init_commit "$project"
+  git init -q --bare "$remote"
+  git -C "$project" remote add origin git@github.com:example/repo.git
+  cat > "$case_dir/git-ssh" <<'SH'
+#!/usr/bin/env bash
+set -eu
+case "${!#}" in
+  "git-upload-pack "*) service=git-upload-pack ;;
+  "git-receive-pack "*) service=git-receive-pack ;;
+  *) exit 2 ;;
+esac
+exec "$service" "$(dirname "$0")/remote.git"
+SH
+  chmod +x "$case_dir/git-ssh"
+  git -C "$project" config core.sshCommand "$(printf '%q' "$case_dir/git-ssh")"
+  git -C "$project" config ssh.variant ssh
+  base=$(git -C "$project" rev-parse HEAD)
+  git -C "$project" push -q origin "$base:refs/heads/main"
+  printf '%s\n' '- example [direct-PR] - fixture' > "$case_dir/home/data/projects.md"
+  for task in one two later repair; do
+    git -C "$project" checkout -qb "fm/$task" "$base"
+    printf '%s\n' "$task" > "$project/$task"
+    git -C "$project" add -- "$task"
+    git -C "$project" commit -qm "$task"
+    sha=$(git -C "$project" rev-parse HEAD)
+    fm_write_meta "$case_dir/state/$task.meta" \
+      "kind=ship" "mode=local-only" "project=$project" "branch=fm/$task" "local_done_head=$sha"
+  done
+  add_gh_mocks "$case_dir" "$base"
+  cat > "$case_dir/fakebin/gh-axi" <<'SH'
+#!/usr/bin/env bash
+set -eu
+fixture=$(dirname "$FM_TEST_GH_AXI_LOG")
+emit() { jq -rc '"FMJSON:" + tojson'; }
+read_batch() {
+  IFS=' ' read -r number branch < "$fixture/active-pull"
+  head=$(git --git-dir="$fixture/remote.git" rev-parse "refs/heads/$branch")
+  merged=false
+  if [ "$number" = 1 ] && grep -q '^pr merge ' "$FM_TEST_GH_LOG"; then merged=true; fi
+  jq -nc --argjson number "$number" --arg branch "$branch" --arg head "$head" --argjson merged "$merged" '
+    {number:$number, html_url:("https://github.com/example/repo/pull/" + ($number | tostring)),
+     user:{login:"fixture"}, state:(if $merged then "closed" else "open" end), merged:$merged,
+     head:{ref:$branch, sha:$head, repo:{full_name:"example/repo"}},
+     base:{ref:"main", repo:{full_name:"example/repo"}}}'
+}
+case "$1 $2" in
+  'api /user') printf '{"login":"fixture"}\n' | emit ;;
+  'api /repos/example/repo') printf '{"default_branch":"main"}\n' | emit ;;
+  'api /repos/example/repo/pulls?state=open&per_page=100')
+    if [ -e "$fixture/active-pull" ]; then read_batch; fi |
+      jq -sc 'map(select(.state == "open")) + [{user:{login:"other"}}]' | emit ;;
+  'api /repos/example/repo/pulls/'*) read_batch | emit ;;
+  'api POST')
+    branch=
+    for arg in "$@"; do case "$arg" in head=*) branch=$arg ;; esac; done
+    [ -n "$branch" ]
+    if [ -e "$fixture/active-pull" ]; then
+      old=$(cut -d' ' -f1 "$fixture/active-pull")
+      number=$((old + 1))
+    else
+      number=1
+    fi
+    printf '%s %s\n' "$number" "${branch#head=}" > "$fixture/active-pull"
+    printf '%s\n' "$number" >> "$FM_TEST_GH_AXI_LOG"
+    [ "$number" != 1 ] || exit 1
+    read_batch | emit ;;
+  *) exit 2 ;;
+esac
+SH
+  chmod +x "$case_dir/fakebin/gh-axi"
+  local FM_TEST_PR_COMMAND="$ROOT/bin/fm-batch.sh"
+  for task in one two; do
+    sha=$(git -C "$project" rev-parse "fm/$task")
+    run_pr_merge "$case_dir" example enqueue "$task" "$sha" || fail "could not enqueue $task"
+  done
+  rc=0
+  run_pr_merge "$case_dir" example run > "$case_dir/out" 2> "$case_dir/err" || rc=$?
+  expect_code 1 "$rc" "the first publish loses its response after creation"
+  grep -qx 1 "$case_dir/gh-axi.log" || fail "fixture did not create the first pull request: $(cat "$case_dir/err")"
+  run_pr_merge "$case_dir" example run > "$case_dir/out" || fail "could not recover $url"
+  assert_grep "$url" "$case_dir/out" "retry did not recover the same pull request"
+  run_pr_merge "$case_dir" example status > "$case_dir/ledger"
+  head=$(jq -er '.batches[0].published' "$case_dir/ledger")
+  for task in one two; do
+    git -C "$project" merge-base --is-ancestor "fm/$task" "$head" || fail "batch omitted $task"
+  done
+
+  sha=$(git -C "$project" rev-parse fm/later)
+  run_pr_merge "$case_dir" example enqueue later "$sha" || fail "could not queue the later task"
+  run_pr_merge "$case_dir" example run > "$case_dir/out" || fail "run failed while $url was open"
+  git -C "$project" merge-base --is-ancestor "$sha" "$head" && fail "later task entered the open batch"
+  sha=$(git -C "$project" rev-parse fm/repair)
+  run_pr_merge "$case_dir" example fix repair "$sha" > "$case_dir/out" || fail "could not fix $url"
+  run_pr_merge "$case_dir" example status > "$case_dir/ledger"
+  next=$(jq -er '.batches[0].published' "$case_dir/ledger")
+  git -C "$project" merge-base --is-ancestor "$head" "$next" || fail "fix rewrote the batch"
+  git -C "$project" merge-base --is-ancestor "$sha" "$next" || fail "fix commit is absent"
+  [ "$(git -C "$project" rev-parse fm/repair)" = "$sha" ] || fail "fix rewrote the task branch"
+  jq -e --arg url "$url" \
+    '(.queue | map(.task)) == ["later"] and
+     (.batches[0].members | map(.task)) == ["one", "two", "repair"] and
+     .batches[0].url == $url' "$case_dir/ledger" >/dev/null || fail "ledger lost batch membership"
+
+  tree=$(git -C "$project" rev-parse "$base^{tree}")
+  base=$(git -C "$project" commit-tree "$tree" -p "$base" -m "Advance default")
+  git -C "$project" push -q origin "$base:refs/heads/main"
+  run_pr_merge "$case_dir" example refresh > "$case_dir/out" || fail "could not refresh $url"
+  run_pr_merge "$case_dir" example status > "$case_dir/ledger"
+  head=$next
+  next=$(jq -er '.batches[0].published' "$case_dir/ledger")
+  git -C "$project" merge-base --is-ancestor "$head" "$next" || fail "refresh rewrote the batch"
+  git -C "$project" merge-base --is-ancestor "$base" "$next" || fail "refresh omitted the current default"
+
+  write_github_red_json "$case_dir" "$next" ci
+  rc=0
+  run_pr_merge "$case_dir" example merge "$next" > "$case_dir/out" 2> "$case_dir/err" || rc=$?
+  expect_code 1 "$rc" "the ordinary merge gate refuses a red batch"
+  assert_grep "check 'ci' is not green" "$case_dir/err" "red batch did not reach the check gate"
+  write_github_live_json "$case_dir" "$next"
+  FM_HOME="$case_dir/home" FM_STATE_OVERRIDE="$case_dir/state" \
+    "$ROOT/bin/fm-tasks-axi.sh" add two "Held batch member" --kind ship --repo example >/dev/null ||
+    fail "could not register held task"
+  FM_HOME="$case_dir/home" FM_STATE_OVERRIDE="$case_dir/state" \
+    "$ROOT/bin/fm-captain-hold.sh" hold two --reason "pending" >/dev/null ||
+    fail "could not hold batch member"
+  rc=0
+  run_pr_merge "$case_dir" example merge "$next" > "$case_dir/out" 2> "$case_dir/err" || rc=$?
+  expect_code 1 "$rc" "a held member blocks the entire batch"
+  assert_grep 'task two is still held' "$case_dir/err" "batch did not check every member's hold"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" "batch merged before its guards cleared"
+  printf 'approved\n' > "$case_dir/decision"
+  FM_HOME="$case_dir/home" FM_STATE_OVERRIDE="$case_dir/state" \
+    "$ROOT/bin/fm-captain-hold.sh" answer two --release --decision-file "$case_dir/decision" >/dev/null ||
+    fail "could not release batch member"
+  run_pr_merge "$case_dir" example merge "$next" > "$case_dir/out" 2> "$case_dir/err" ||
+    fail "green batch merge failed: $(cat "$case_dir/err")"
+  assert_logged_gh_merge "$case_dir" 1 example/repo --squash
+  tree=$(git -C "$project" rev-parse "$next^{tree}")
+  base=$(git -C "$project" commit-tree "$tree" -p "$base" -m "Squashed batch")
+  git -C "$project" push -q origin "$base:refs/heads/main"
+  run_pr_merge "$case_dir" example run > "$case_dir/out" || fail "could not publish next batch"
+  run_pr_merge "$case_dir" example status > "$case_dir/ledger"
+  next=$(jq -er '.batches[1].published' "$case_dir/ledger")
+  [ "$(git -C "$project" rev-parse "$next^1")" = "$base" ] || fail "second batch missed the new default head"
+  jq -e '.batches[0].state == "merged" and (.batches[1].members | map(.task)) == ["later"]' \
+    "$case_dir/ledger" >/dev/null || fail "next batch lost the queue or history"
+  pass "batch publication retries, queues later branches, fixes forward, and uses the guarded merge"
+}
+
+test_batch_queue_fix_and_merge
 test_gitlab_head_override_args_refuse_before_recording
 test_secondmate_merge_reports_upward_once
 test_secondmate_merge_reports_on_the_local_route

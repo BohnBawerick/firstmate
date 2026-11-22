@@ -13,6 +13,8 @@
 # parse below owns why.
 # Firstmate's own repository is local-authoritative, so this script refuses its
 # tasks before any forge read or write and directs them to bin/fm-merge-local.sh.
+# A batch record from bin/fm-batch.sh pins the reviewed head and brings each
+# member's control lock and captain hold into the same merge transaction.
 #
 # Usage:
 #   fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--update-branch]
@@ -579,6 +581,16 @@ fm_backlog_directory_present "$STATE" "state directory" || {
   exit 1
 }
 META="$STATE/$ID.meta"
+BATCH_MERGE=false
+BATCH_META="$STATE/.batch-merges/$ID.meta"
+if [ -e "$BATCH_META" ] || [ -L "$BATCH_META" ]; then
+  if [ -e "$META" ] || [ -L "$META" ]; then
+    echo "error: task and batch merge IDs collide: $ID" >&2
+    exit 1
+  fi
+  META=$BATCH_META
+  BATCH_MERGE=true
+fi
 
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
@@ -606,9 +618,15 @@ MERGE_EXPECTED_SPAWN_GEN=$FM_BACKLOG_META_SPAWN_GEN
 
 MERGE_CONTROL_LOCK=
 MERGE_META_LOCK=
+BATCH_CONTROL_LOCKS=()
+BATCH_TASKS=()
 merge_control_cleanup() {
+  local lock
   [ -z "$MERGE_META_LOCK" ] || fm_lock_release "$MERGE_META_LOCK" || true
   fm_afk_contract_lock_release || true
+  for lock in ${BATCH_CONTROL_LOCKS[@]+"${BATCH_CONTROL_LOCKS[@]}"}; do
+    fm_lock_release "$lock" || true
+  done
   [ -z "$MERGE_CONTROL_LOCK" ] || fm_lock_release "$MERGE_CONTROL_LOCK" || true
 }
 trap merge_control_cleanup EXIT
@@ -626,6 +644,40 @@ PROJ=$(grep '^project=' "$META" | cut -d= -f2- || true)
 if [ -n "$PROJ" ] && [ -d "$PROJ" ] && fm_is_firstmate_repo "$PROJ" "$FM_ROOT" "$FM_HOME"; then
   echo "error: task $ID is Firstmate's local-authoritative repository; use bin/fm-merge-local.sh $ID after approval instead of merging its PR" >&2
   exit 1
+fi
+lock_batch_members() {
+  local membership task sha extra member lock previous=''
+  [ "$PROVIDER" = github ] && [ "$UPDATE_BRANCH" = false ] &&
+    [ "$(fm_dod_meta_value "$META" kind)" = batch ] && [ -n "$EXPECTED_HEAD" ] &&
+    [ "$(fm_dod_meta_value "$META" batch_head)" = "$EXPECTED_HEAD" ] &&
+    [ "$(fm_dod_meta_value "$META" pr)" = "$URL" ] || return 1
+  membership=$(sed -n 's/^batch_member=//p' "$META" | LC_ALL=C sort) || return 1
+  [ -n "$membership" ] || return 1
+  while IFS=' ' read -r task sha extra; do
+    [ -z "$extra" ] && fm_pr_task_id_valid "$task" && [ "$task" != "$ID" ] &&
+      [ "$task" != "$previous" ] &&
+      fm_pr_head_valid "$sha" || return 1
+    previous=$task
+    member="$STATE/$task.meta"
+    lock="$STATE/.control-$task.lock"
+    fm_lock_acquire_wait "$lock" || return 1
+    BATCH_CONTROL_LOCKS+=("$lock")
+    fm_backlog_record_present "$member" "batch member" "$STATE" &&
+      [ "$(fm_dod_meta_value "$member" kind)" = ship ] &&
+      [ "$(fm_dod_meta_value "$member" mode)" = local-only ] &&
+      [ "$(fm_backlog_canonical_existing "$(fm_dod_meta_value "$member" project)")" = "$PROJ" ] &&
+      [ "$(fm_dod_local_done_head "$member")" = "$sha" ] &&
+      git -C "$PROJ" merge-base --is-ancestor "$sha" "$EXPECTED_HEAD" || return 1
+    BATCH_TASKS+=("$task")
+  done <<< "$membership"
+}
+if [ "$BATCH_MERGE" = true ]; then
+  # shellcheck source=bin/fm-dod-lib.sh
+  . "$SCRIPT_DIR/fm-dod-lib.sh"
+  lock_batch_members || {
+    echo "error: could not lock and verify the reviewed batch and its members" >&2
+    exit 1
+  }
 fi
 
 # Reading the merge request state needs both tools. Report them together and
@@ -1645,17 +1697,17 @@ record_pr_metadata() {
 }
 
 require_released_captain_hold() {
-  local hold_status=0
+  local task=${1:-$ID} hold_status=0
   FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-    "$SCRIPT_DIR/fm-captain-hold.sh" open "$ID" --distinguish-absent || hold_status=$?
+    "$SCRIPT_DIR/fm-captain-hold.sh" open "$task" --distinguish-absent || hold_status=$?
   case "$hold_status" in
     0)
-      echo "error: task $ID is still held for the captain; release it before merging" >&2
+      echo "error: task $task is still held for the captain; release it before merging" >&2
       return 1
       ;;
     1|3) return 0 ;;
     *)
-      echo "error: could not determine whether task $ID is still held for the captain; refusing to merge" >&2
+      echo "error: could not determine whether task $task is still held for the captain; refusing to merge" >&2
       return 1
       ;;
   esac
@@ -1734,6 +1786,10 @@ persist_accepted_merge_authority() {
   MERGE_META_LOCK=
   if [ "$status" -eq 0 ]; then
     return 0
+  fi
+  if [ "$BATCH_MERGE" = true ]; then
+    printf 'actionable: the forge accepted the merge request for %s but its merge authority could not be persisted\n' "$URL" >&2
+    return 1
   fi
   printf 'actionable: the forge accepted the merge request for %s but its merge authority could not be persisted; the merge poll remains armed\n' \
     "$URL" >&2
@@ -1932,9 +1988,14 @@ forgejo_confirm_merged() {
 away_status=0
 require_current_away_authority || away_status=$?
 [ "$away_status" -eq 0 ] || exit "$away_status"
-require_recorded_pr_identity || exit 1
-record_pr_metadata || exit 1
+if [ "$BATCH_MERGE" = false ]; then
+  require_recorded_pr_identity || exit 1
+  record_pr_metadata || exit 1
+fi
 require_released_captain_hold || exit 1
+for batch_task in ${BATCH_TASKS[@]+"${BATCH_TASKS[@]}"}; do
+  require_released_captain_hold "$batch_task" || exit 1
+done
 
 # Accepted confused-agent-grade limitation, as in bin/fm-lease-lib.sh, not an
 # oversight: if this lock-owning shell dies while its gh or glab child lives,
@@ -2122,6 +2183,7 @@ esac
 # Reached only after the forge confirmed the merge landed: set -e exits on a
 # refused or failed merge above, and a queued forge merge exits without an
 # outcome while its existing poll remains armed.
+[ "$BATCH_MERGE" = false ] || exit 0
 outcome_rc=0
 fm_merge_outcome_report "$FM_HOME" "$STATE" "$ID" "$URL" self \
   "${FM_PR_MERGE_AUTHORITY:-}" || outcome_rc=$?
