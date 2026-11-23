@@ -121,6 +121,8 @@
 # name a live quarantined space and is retained for that sweep.
 # data/<id>/ is deliberately left in place: a successor spawn reads brief.md
 # from it.
+# A local-only ship that appears in a data/batches ledger is retained until all
+# batches naming it are merged; the refusal names each outstanding batch PR.
 # Worktree-slot ownership (teardown-slot-collision): a treehouse pool slot is
 # reused across tasks, so a stale, duplicated, or drifted worktree= record can
 # name a slot a DIFFERENT live task now holds. Cleanup kills every process under
@@ -536,6 +538,47 @@ teardown_export_records() {  # <state> <task-id>
     }
 }
 
+teardown_refuse_open_batch_member() {  # <task-id>
+  local task=$1 batches="$DATA/batches" ledger refs='' ledger_refs ref
+  [ -e "$batches" ] || [ -L "$batches" ] || return 0
+  if [ ! -d "$batches" ] || [ -L "$batches" ] || [ ! -r "$batches" ] || [ ! -x "$batches" ]; then
+    echo "REFUSED: cannot safely inspect batch ledgers at $batches; preserving task $task" >&2
+    return 1
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "REFUSED: cannot inspect batch ledgers for task $task because jq is unavailable; preserving task" >&2
+    return 1
+  fi
+  for ledger in "$batches"/*/*/*/*/ledger.json; do
+    [ -e "$ledger" ] || continue
+    if [ -L "$ledger" ] || [ ! -f "$ledger" ] || [ ! -r "$ledger" ]; then
+      echo "REFUSED: batch ledger is not a readable regular file: $ledger; preserving task $task" >&2
+      return 1
+    fi
+    if ! ledger_refs=$(jq -r --arg task "$task" '
+      if type != "object" or (.queue | type) != "array" or (.batches | type) != "array" or
+         any(.batches[]; (.state | type) != "string" or (.members | type) != "array") then
+        error("invalid batch ledger")
+      else
+        [.batches[] | select(.state != "merged") |
+          select(any(.members[]; .task == $task)) |
+          ((.url | select(type == "string" and length > 0)) //
+            ("batch " + (.id // "unknown")))] | unique | .[]
+      end' "$ledger" 2>/dev/null); then
+      echo "REFUSED: cannot read batch ledger $ledger; preserving task $task" >&2
+      return 1
+    fi
+    while IFS= read -r ref; do
+      [ -n "$ref" ] || continue
+      refs="${refs}${refs:+, }$ref"
+    done <<< "$ledger_refs"
+  done
+  if [ -n "$refs" ]; then
+    echo "REFUSED: task $task belongs to an unmerged batch ($refs); preserving task records and worktree until that batch merges" >&2
+    return 1
+  fi
+}
+
 if [ "$#" -lt 1 ] || ! fm_task_id_path_safe "$1"; then
   echo "error: invalid teardown request" >&2
   exit 2
@@ -682,6 +725,9 @@ fm_backlog_record_present "$META" "task record" "$STATE" || {
 }
 TEARDOWN_META_KIND=$(fm_meta_get "$META" kind)
 [ -n "$TEARDOWN_META_KIND" ] || TEARDOWN_META_KIND=ship
+if [ "$TEARDOWN_META_KIND" = ship ] && [ "$(fm_meta_get "$META" mode)" = local-only ]; then
+  teardown_refuse_open_batch_member "$ID" || exit 1
+fi
 # Retiring a persistent secondmate is main's alone in both postures; the kind
 # is read under the metadata lock (role partition: bin/fm-lease-lib.sh).
 [ "$TEARDOWN_META_KIND" != secondmate ] || fm_lease_forbid_branch "secondmate retirement (fm-teardown)"

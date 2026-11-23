@@ -744,6 +744,55 @@ test_local_only_fork_remote_allows() {
   pass "local-only worktree with HEAD on a fork remote is torn down and the home summary is refreshed"
 }
 
+test_open_batch_member_teardown_refuses_until_batch_merges() {
+  local case_dir head rc merge_meta ledger
+  case_dir=$(make_case open-batch-member)
+  write_meta "$case_dir" local-only ship
+  wt_commit "$case_dir" "batch member work"
+  add_fork_with_pushed_branch "$case_dir"
+  head=$(git -C "$case_dir/wt" rev-parse HEAD)
+  printf 'local_done_head=%s\n' "$head" >> "$case_dir/state/task-x1.meta"
+  ledger="$case_dir/data/batches/github.com/example/repo/fmtest/ledger.json"
+  mkdir -p "$(dirname "$ledger")" "$case_dir/state/.batch-merges"
+  printf '{"queue":[],"batches":[{"id":"batch-fixture","url":"https://github.com/example/repo/pull/99","number":99,"state":"open","members":[{"task":"task-x1","head":"%s"}]}]}\n' \
+    "$head" > "$ledger"
+  merge_meta="$case_dir/state/.batch-merges/batch-fixture.meta"
+  printf 'kind=batch\nproject=%s\nbatch_head=%s\npr=https://github.com/example/repo/pull/99\nbatch_member=task-x1 %s\n' \
+    "$case_dir/project" "$head" "$head" > "$merge_meta"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "open-batch-member: teardown unexpectedly removed an open batch member"
+  assert_present "$case_dir/state/task-x1.meta" "open-batch-member: refusal removed member metadata"
+  assert_present "$case_dir/wt" "open-batch-member: refusal removed the worktree"
+  assert_contains "$(cat "$case_dir/stderr")" \
+    "https://github.com/example/repo/pull/99" \
+    "open-batch-member: refusal must name the batch pull request"
+
+  set +e
+  FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$case_dir/home" \
+    FM_STATE_OVERRIDE="$case_dir/state" FM_DATA_OVERRIDE="$case_dir/data" \
+    FM_CONFIG_OVERRIDE="$case_dir/config" PATH="$case_dir/fakebin:$PATH" \
+    "$ROOT/bin/fm-pr-merge.sh" batch-fixture "https://github.com/example/repo/pull/99" \
+    --expected-head "$head" > "$case_dir/merge.stdout" 2> "$case_dir/merge.stderr"
+  rc=$?
+  set -e
+  assert_not_contains "$(cat "$case_dir/merge.stderr")" \
+    "could not lock and verify the reviewed batch and its members" \
+    "open-batch-member: retained metadata must let the merge verify batch membership"
+
+  jq -e '.batches[0].state = "merged"' "$ledger" > "$ledger.next" && mv "$ledger.next" "$ledger"
+  set +e
+  run_teardown "$case_dir" > "$case_dir/merged.stdout" 2> "$case_dir/merged.stderr"
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "merged-batch-member: teardown should allow cleanup after the batch merges"
+  assert_absent "$case_dir/state/task-x1.meta" "merged-batch-member: cleanup left member metadata behind"
+  pass "fm-teardown: retains an open batch member until its batch merges, then allows cleanup"
+}
+
 test_teardown_closes_the_backlog_item_itself() {
   local case_dir out
   case_dir=$(make_case tasks-axi-close)
@@ -6891,6 +6940,7 @@ test_forced_child_missing_adapter_sibling_refuses_before_cleanup
 test_forced_secondmate_own_missing_adapter_sibling_refuses_before_child_cleanup
 test_retained_sources_still_reach_the_ordinary_refusal
 test_local_only_fork_remote_allows
+test_open_batch_member_teardown_refuses_until_batch_merges
 test_teardown_closes_the_backlog_item_itself
 test_teardown_closes_a_gerrit_task_with_its_change_url_as_a_note
 test_teardown_closes_a_gitlab_task_with_its_merge_request_url_as_a_note
