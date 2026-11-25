@@ -904,6 +904,16 @@ A nonzero exit stops publication and reports the command's output.
 A project without a check file publishes without this extra check.
 For automatic publishing through the watcher, the check must fit within `FM_CHECK_TIMEOUT`.
 
+To require a heavy check, such as test shards or scenarios, at each task's ready head before the task joins a batch, save a Bash script as `config/batch-task-checks/<project>`.
+Firstmate runs it in a temporary detached checkout of that head with `FM_TASK_ID`, `FM_TASK_HEAD` and `FM_TASK_BRANCH` set.
+Exit 0 lets the task in, exit 75 means the check is still running elsewhere, and any other exit keeps the task out and reports the script's output.
+Firstmate asks a running check again on every `run` and watcher sweep, so the script must start its work once per head and then report that work's result.
+The script itself runs on this machine and inside `FM_CHECK_TIMEOUT` when the watcher calls it, so it should hand the heavy work to the project's CI runners or build offload host rather than run it locally.
+A project without this file batches tasks after their build and lint, as before.
+
+While one batch is open, the next waiting tasks form one batch stacked on its head, so their CI runs before the open batch lands.
+`bin/fm-batch.sh --help` describes how a stacked batch follows changes to the open batch, lands after it, and moves onto the default branch.
+
 Use the open batch's published branch as the starting point for a fix that depends on its combined changes.
 When a worker adds to an existing local-only ready branch and reports a revised done, use `bin/fm-ready-head.sh --help` to record its new head before presenting it for approval or adding it to an open batch.
 

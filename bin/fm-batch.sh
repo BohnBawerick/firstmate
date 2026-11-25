@@ -12,16 +12,33 @@
 #
 # Use a registered direct-PR GitHub project with push access to origin.
 # Enqueue only after build and lint pass at the supplied full commit ID. The
-# task must have recorded a local-only ready head in this home. Run publishes
-# the waiting tasks against the current default branch or resumes a prior
-# publish. While a batch is open, run leaves later tasks queued. Fix adds
-# one checked task to the open batch or updates an existing member after
-# fm-ready-head.sh records its revised head. A task branch based on the
-# current batch head advances the batch directly. The optional
-# config/batch-checks/<project> runs against the assembled head before push.
-# After a merge, run can publish the next batch. A closed, unmerged batch
-# needs to be reopened before it can proceed.
+# task must have recorded a local-only ready head in this home. The optional
+# config/batch-task-checks/<project> is a heavy check that must also pass at
+# that head before the task joins a batch. Enqueue and fix run it in a
+# temporary detached checkout with FM_TASK_ID, FM_TASK_HEAD and FM_TASK_BRANCH
+# set. Exit 0 lets the task in. Exit 75 means the check still runs elsewhere;
+# run and the watcher ask again until it answers, so the script must be
+# idempotent per head. Any other exit keeps the task out until its ready head
+# changes or an explicit enqueue retries it.
+# Run publishes the waiting tasks against the current default branch or
+# resumes a prior publish. While a batch is open, run stacks the waiting tasks
+# into one batch built on the open batch's published head, with its pull
+# request into the open batch's branch, so its CI runs while the open batch
+# waits. Later tasks stay queued while two batches are open. A change to the
+# open batch merges into the stacked batch, which then needs fresh checks.
+# After the open batch lands, run moves the stacked pull request onto the
+# default branch. It keeps the tested head, and so its CI result, only when the
+# default branch holds exactly the landed tree it was built on; otherwise it
+# merges the default branch in first. A stacked batch merges only after that.
+# Fix adds one checked task to a batch or updates an existing member after
+# fm-ready-head.sh records its revised head. A member returns to its own
+# batch; a new task joins the stacked batch only when built on its head, and
+# the open batch otherwise. A task branch based on the current batch head
+# advances the batch directly. The optional config/batch-checks/<project> runs
+# against each assembled head before push. A closed, unmerged batch needs to
+# be reopened before either batch can proceed.
 # If a queued task conflicts, dequeue it before retrying. Its branch is kept.
+# Dequeue also drops a waiting or failed heavy check.
 # Refresh merges the current default into the open batch if the merge gate
 # reports that it is behind. The updated head needs its own green checks.
 # Release starts a local branch at GitHub's exact merge commit for the latest
@@ -29,8 +46,9 @@
 #
 # Merge requires the same approval or standing authority as fm-pr-merge.sh.
 # Use the reviewed head from status. The merge gate checks the live head, CI,
-# and each member's hold. Status prints the durable queue and batch history,
-# including task IDs, branch names, checked heads, and pull request URLs.
+# and each member's hold. Status prints the durable queue, heavy checks, and
+# batch history, including task IDs, branch names, checked heads, stacked
+# bases, and pull request URLs.
 # The ledger lives under data/batches/<host>/<owner>/<repo>/<login>/ledger.json.
 # This command serializes publishers that share a Firstmate home. Another
 # publisher using the same account must use that home to share the queue.
@@ -135,7 +153,7 @@ if [ "$action" != status ]; then
   lock="$batch_root/.lock"
   fm_lock_acquire_wait "$lock"
   unset temporary
-  trap 'if [ -n "${temporary:-}" ]; then unlink "$temporary" || true; fi; fm_lock_release "$lock"' EXIT
+  trap 'if [ -n "${temporary:-}" ]; then unlink "$temporary" || true; fi; if [ -n "${check_dir:-}" ]; then rm -rf -- "$check_dir" || true; fi; fm_lock_release "$lock"' EXIT
   trap 'exit 1' HUP INT TERM
 fi
 if [ -e "$ledger" ] || [ -L "$ledger" ]; then
@@ -178,12 +196,122 @@ checked_member() {
     '{task:$task, branch:$branch, head:$head}'
 }
 
+# Configured checks run in a temporary detached checkout of one commit.
+check_dir=
+checkout_commit() {
+  check_dir=$(mktemp -d "${TMPDIR:-/tmp}/fm-batch-check.XXXXXX") || fail "cannot create a check directory"
+  git clone --quiet --shared --no-checkout -- "$project" "$check_dir/checkout" ||
+    fail "cannot clone $name for a check"
+  git -C "$check_dir/checkout" -c core.hooksPath=/dev/null checkout --quiet --detach "$1" ||
+    fail "cannot check out $1 for a check"
+}
+drop_checkout() {
+  rm -rf -- "$check_dir"
+  check_dir=
+}
+# The watcher reads only stdout, so a check failure is also printed there.
+check_fail() {
+  if [ "$action" = check ]; then printf 'error: %s\n' "$*"; fi
+  fail "$*"
+}
+# Set check_path to the absolute path of a configured check script, or empty.
+find_check() {
+  check_path=$1
+  if [ ! -e "$check_path" ] && [ ! -L "$check_path" ]; then
+    check_path=
+    return 0
+  fi
+  [ -f "$check_path" ] && [ ! -L "$check_path" ] && [ -r "$check_path" ] ||
+    check_fail "$check_path must be a readable regular file"
+  case "$check_path" in /*) ;; *) check_path="$PWD/$check_path" ;; esac
+}
+
+check_batch_head() {
+  local rc=0
+  find_check "$config/batch-checks/$name"
+  [ -n "$check_path" ] || return 0
+  checkout_commit "$1"
+  (cd "$check_dir/checkout" && FM_BATCH_HEAD="$1" bash "$check_path") > "$check_dir/output" 2>&1 || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    if [ "$action" = check ]; then cat -- "$check_dir/output"; else cat -- "$check_dir/output" >&2; fi
+    drop_checkout
+    check_fail "pre-publish check failed for $1 (exit $rc)"
+  fi
+  drop_checkout
+}
+
+# Run the project's heavy task check at one ready head. Set check_rc to 0 when
+# it passed, 75 while it still runs elsewhere, or 1 after reporting a failure.
+task_check() {
+  local task=$1 head=$2 branch=$3
+  check_rc=0
+  find_check "$config/batch-task-checks/$name"
+  [ -n "$check_path" ] || return 0
+  checkout_commit "$head"
+  (cd "$check_dir/checkout" &&
+    FM_TASK_ID="$task" FM_TASK_HEAD="$head" FM_TASK_BRANCH="$branch" bash "$check_path") \
+    > "$check_dir/output" 2>&1 || check_rc=$?
+  case "$check_rc" in
+    0|75) ;;
+    *)
+      if [ "$action" = check ]; then
+        printf 'heavy check failed for %s at %s (exit %s)\n' "$task" "$head" "$check_rc"
+        cat -- "$check_dir/output"
+      else
+        cat -- "$check_dir/output" >&2
+        printf 'error: heavy check failed for %s at %s (exit %s)\n' "$task" "$head" "$check_rc" >&2
+      fi
+      check_rc=1
+      ;;
+  esac
+  drop_checkout
+}
+
+# Queue a checked member once its heavy check passes; otherwise record why it waits.
+# shellcheck disable=SC2016 # jq binds the member.
+admit() {
+  local member=$1
+  task_check "$(jq -r '.task' <<< "$member")" "$(jq -r '.head' <<< "$member")" \
+    "$(jq -r '.branch' <<< "$member")"
+  case "$check_rc" in
+    0)
+      save --argjson member "$member" '
+        .checks = ((.checks // []) | map(select(.task != $member.task))) |
+        .queue += [$member] | .excluded = ((.excluded // []) - [$member.task])'
+      ;;
+    75)
+      save --argjson member "$member" '
+        .checks = ((.checks // []) | map(select(.task != $member.task))) + [$member + {state:"running"}]'
+      ;;
+    *)
+      save --argjson member "$member" '
+        .checks = ((.checks // []) | map(select(.task != $member.task))) + [$member + {state:"failed"}]'
+      ;;
+  esac
+}
+
+# Ask each running heavy check again. A task whose ready head moved drops its
+# entry, so the next discovery checks the new head.
+# shellcheck disable=SC2016 # jq binds the entry.
+poll_task_checks() {
+  local entry member
+  while IFS= read -r entry; do
+    if member=$(checked_member "$(jq -r '.task' <<< "$entry")" "$(jq -r '.head' <<< "$entry")" 2>/dev/null); then
+      admit "$member"
+    else
+      save --argjson entry "$entry" '.checks -= [$entry]'
+    fi
+  done < <(jq -c '(.checks // [])[] | select(.state == "running")' <<< "$records")
+}
+
 # shellcheck disable=SC2016 # jq binds the task and member variables.
 if [ "$action" = dequeue ]; then
   fm_pr_task_id_valid "$1" || fail "invalid task ID"
   save --arg task "$1" '
-    if any(.queue[]; .task == $task) then
-      (.queue |= map(select(.task != $task))) | .excluded = ((.excluded // []) + [$task] | unique)
+    if any(.queue[], (.checks // [])[]; .task == $task) then
+      (.queue |= map(select(.task != $task))) |
+      .checks = ((.checks // []) | map(select(.task != $task))) |
+      .excluded = ((.excluded // []) + [$task] | unique)
     else . end'
   exit 0
 elif [ "$action" = enqueue ] || [ "$action" = fix ]; then
@@ -194,9 +322,15 @@ elif [ "$action" = enqueue ] || [ "$action" = fix ]; then
       [ "$existing" = "$member" ] || fail "$1 already has a different checked head"
       exit 0
     fi
-    save --argjson member "$member" '
-      .queue += [$member] | .excluded = ((.excluded // []) - [$member.task])'
-    exit 0
+    admit "$member"
+    case "$check_rc" in
+      0) exit 0 ;;
+      75)
+        printf '%s waits for its heavy check; run queues it once the check passes\n' "$1"
+        exit 0
+        ;;
+      *) exit 1 ;;
+    esac
   fi
 fi
 
@@ -226,25 +360,54 @@ discover_ready() {
       sha=$(fm_dod_local_done_head "$meta") || continue
     fi
     candidate=$(checked_member "$task" "$sha" 2>/dev/null) || continue
-    # shellcheck disable=SC2016 # jq binds the ready queue entry.
-    save --argjson candidate "$candidate" '.queue += [$candidate]'
+    # A heavy check recorded for this exact head is polled or kept out instead.
+    # shellcheck disable=SC2016 # jq binds the candidate.
+    jq -e --argjson candidate "$candidate" '
+      any((.checks // [])[]; .task == $candidate.task and .head == $candidate.head)
+    ' <<< "$records" >/dev/null && continue
+    admit "$candidate"
   done
 }
+if [ "$action" = check ] || [ "$action" = run ]; then
+  poll_task_checks
+fi
 if [ "$action" = check ]; then
   discover_ready
 fi
 
-active=$(jq -c '.batches[-1] | select(. != null and .state != "merged")' <<< "$records")
-if [ -n "$active" ]; then
-  branch=$(jq -r '.branch' <<< "$active")
-  base=$(jq -r '.base' <<< "$active")
-  head=$(jq -r '.head' <<< "$active")
-  published=$(jq -r '.published' <<< "$active")
-  url=$(jq -r '.url' <<< "$active")
-  number=$(jq -r '.number' <<< "$active")
+# The ledger holds at most two unmerged batches: the open batch, based on the
+# default branch, and one batch stacked on the open batch's head.
+unmerged=$(jq -c '[.batches | to_entries[] | select(.value.state != "merged") | .key]' <<< "$records")
+# shellcheck disable=SC2016 # jq binds the batch count.
+jq -e --argjson total "$(jq '.batches | length' <<< "$records")" '
+  length <= 2 and (length == 0 or .[-1] == $total - 1) and (length < 2 or .[0] == $total - 2)
+' <<< "$unmerged" >/dev/null || fail "the batch ledger has an unexpected set of unmerged batches"
+lower=$(jq -r '.[0] // empty' <<< "$unmerged")
+upper=$(jq -r '.[1] // empty' <<< "$unmerged")
+bidx='' id='' branch='' base='' head='' published='' url='' number=''
+stacked_on='' stacked_head='' retarget_from='' alt_base='' checked_heads=''
+
+# Load one ledger batch into the working variables and validate it.
+# shellcheck disable=SC2016 # jq binds the index and IDs.
+load_batch() {
+  local batch below
+  bidx=$1
+  batch=$(jq -c --argjson i "$bidx" '.batches[$i]' <<< "$records")
+  id=$(jq -r '.id' <<< "$batch")
+  branch=$(jq -r '.branch' <<< "$batch")
+  base=$(jq -r '.base' <<< "$batch")
+  head=$(jq -r '.head' <<< "$batch")
+  published=$(jq -r '.published' <<< "$batch")
+  url=$(jq -r '.url' <<< "$batch")
+  number=$(jq -r '.number' <<< "$batch")
+  stacked_on=$(jq -r '.stacked_on // ""' <<< "$batch")
+  stacked_head=$(jq -r '.stacked_head // ""' <<< "$batch")
+  retarget_from=$(jq -r '.retarget_from // ""' <<< "$batch")
+  fm_pr_task_id_valid "$id" || fail "invalid batch ID"
   case "$branch" in "fm/batch/$account/"*) ;; *) fail "invalid recorded batch branch" ;; esac
-  git check-ref-format "refs/heads/$branch" ||
-    fail "invalid recorded batch branch or head"
+  if ! git check-ref-format "refs/heads/$branch" || ! git check-ref-format "refs/heads/$base"; then
+    fail "invalid recorded batch branch or base"
+  fi
   fm_pr_head_valid "$head" || fail "invalid recorded batch head"
   if [ -n "$published" ]; then
     fm_pr_head_valid "$published" || fail "invalid published batch head"
@@ -253,16 +416,30 @@ if [ -n "$active" ]; then
     fm_pr_url_parse "$url" && [ "$FM_PR_NUMBER" = "$number" ] ||
       fail "invalid recorded batch pull request"
   fi
-fi
+  alt_base=$retarget_from
+  if [ -n "$alt_base" ]; then
+    git check-ref-format "refs/heads/$alt_base" || fail "invalid recorded batch base"
+  fi
+  if [ -n "$stacked_on" ]; then
+    fm_pr_head_valid "$stacked_head" || fail "invalid recorded stacked head"
+    below=$(jq -ce --argjson i "$((bidx - 1))" --arg id "$stacked_on" --arg base "$base" '
+      if $i >= 0 then .batches[$i] | select(.id == $id and .branch == $base) else empty end
+    ' <<< "$records") || fail "stacked batch $id does not follow the batch it is stacked on"
+    # GitHub may move the pull request itself once the lower batch lands.
+    if [ "$(jq -r '.state' <<< "$below")" = merged ]; then
+      alt_base=$(jq -r '.base' <<< "$below")
+    fi
+  fi
+}
 
 read_pull() {
   local pull=$1
   jq -e --arg account "$account" --arg repo "$repo" --arg branch "$branch" \
-    --arg base "$base" --arg url "$url" --arg head "$head" --arg published "$published" '
+    --arg base "$base" --arg alt "$alt_base" --arg url "$url" --arg head "$head" --arg published "$published" '
     (.user.login | ascii_downcase) == $account and
     (.head.repo.full_name | ascii_downcase) == $repo and
     (.base.repo.full_name | ascii_downcase) == $repo and
-    .head.ref == $branch and .base.ref == $base and
+    .head.ref == $branch and (.base.ref == $base or ($alt != "" and .base.ref == $alt)) and
     ($url == "" or .html_url == $url) and
     (.head.sha == $head or (.state == "open" and .head.sha == $published))
   ' <<< "$pull" >/dev/null || fail "pull request identity or head differs from the recorded batch"
@@ -278,26 +455,37 @@ remember_merge() {
   landed=$(jq -er '.merge_commit_sha' <<< "$pull")
   fm_pr_head_valid "$landed" || fail "$url has no valid merge commit"
   # shellcheck disable=SC2016 # jq binds the exact landed commit.
-  save --arg landed "$landed" '.batches[-1] |= (.state = "merged" | .merged_commit = $landed)'
+  save --argjson i "$bidx" --arg landed "$landed" '.batches[$i] |= (.state = "merged" | .merged_commit = $landed)'
+}
+
+# Read the loaded batch's pull request. Record a merge, or refuse a closed one.
+sync_batch() {
+  landed_now=
+  [ -n "$url" ] || return 0
+  pull=$(api "/repos/$repo/pulls/$number")
+  read_pull "$pull"
+  if jq -e '.merged == true' <<< "$pull" >/dev/null; then
+    # shellcheck disable=SC2016 # jq binds the lower batch's branch.
+    if [ -n "$stacked_on" ] && jq -e --arg base "$base" '.base.ref == $base' <<< "$pull" >/dev/null; then
+      fail "$url merged into $base instead of the default branch"
+    fi
+    remember_merge
+    printf 'merged %s\n' "$url"
+    landed_now=1
+  elif [ "$action" != release ]; then
+    jq -e '.state == "open"' <<< "$pull" >/dev/null || fail "reopen $url to continue its batch"
+  fi
 }
 
 # Read after every forge write. Retain the planned head before publishing so
 # a failed response can be retried without selecting a different set of tasks.
-if [ -n "$active" ] && [ -n "$url" ]; then
-  pull=$(api "/repos/$repo/pulls/$number")
-  read_pull "$pull"
-  if jq -e '.merged == true' <<< "$pull" >/dev/null; then
-    remember_merge
-    printf 'merged %s\n' "$url"
-    case "$action" in
-      merge) exit 0 ;;
-      fix|refresh) fail "$action requires an open batch" ;;
-    esac
-    active=
-  elif [ "$action" != release ]; then
-    jq -e '.state == "open"' <<< "$pull" >/dev/null || fail "reopen $url to continue its batch"
-  fi
-fi
+while [ -n "$lower" ]; do
+  load_batch "$lower"
+  sync_batch
+  [ -n "$landed_now" ] || break
+  [ "$action" != merge ] || exit 0
+  lower=$upper upper=
+done
 
 if [ "$action" = release ]; then
   landed_batch=$(jq -ce '.batches | map(select(.state == "merged")) | last' <<< "$records") ||
@@ -317,14 +505,19 @@ if [ "$action" = release ]; then
 fi
 
 if [ "$action" = merge ]; then
-  [ -n "$active" ] && [ -n "$url" ] && [ "$head" = "$published" ] ||
+  [ -n "$lower" ] && [ -n "$url" ] && [ "$head" = "$published" ] ||
     fail "publish the batch before merging"
+  [ -z "$stacked_on" ] && [ -z "$retarget_from" ] ||
+    fail "run must move $url onto the default branch before merging"
+  if [ "$1" != "$head" ] && [ -n "$upper" ] &&
+    [ "$1" = "$(jq -r --argjson i "$upper" '.batches[$i].head' <<< "$records")" ]; then
+    fail "merge $url first; the batch stacked on it lands after it"
+  fi
   fm_pr_head_valid "$1" && [ "$1" = "$head" ] || fail "reviewed head differs from the published batch"
-  id=$(jq -r '.id' <<< "$active")
-  fm_pr_task_id_valid "$id" || fail "invalid batch ID"
   merge_dir="$state/.batch-merges"
   mkdir -p -- "$merge_dir"
   meta="$merge_dir/$id.meta"
+  members=$(jq -c --argjson i "$bidx" '.batches[$i].members' <<< "$records")
   (
     control="$state/.control-$id.lock"
     fm_lock_acquire_wait "$control"
@@ -337,7 +530,7 @@ if [ "$action" = merge ]; then
     temporary=$(mktemp "$merge_dir/.batch-meta.XXXXXX")
     {
       printf 'kind=batch\nproject=%s\nbatch_head=%s\n' "$project" "$head"
-      jq -r '.members[] | "batch_member=\(.task) \(.head)"' <<< "$active"
+      jq -r '.[] | "batch_member=\(.task) \(.head)"' <<< "$members"
       printf 'pr=%s\n' "$url"
     } > "$temporary"
     fm_backlog_record_publish "$temporary" "$meta" "batch merge record" "$state"
@@ -350,6 +543,12 @@ if [ "$action" = merge ]; then
     remember_merge
   fi
   exit 0
+fi
+
+if [ -n "$upper" ]; then
+  load_batch "$upper"
+  sync_batch
+  [ -z "$landed_now" ] || fail "$url landed before the batch it is stacked on"
 fi
 
 current_base_head() {
@@ -375,47 +574,165 @@ add_commit() {
   git_project commit-tree "$tree" -p "$parent" -p "$commit" -m "Batch: $label"
 }
 
-check_batch_head() (
-  local check_file="$config/batch-checks/$name" candidate=$1 scratch rc=0
-  [ -e "$check_file" ] || [ -L "$check_file" ] || return 0
-  # The watcher captures this command's stdout for its check wake.
-  if [ "$action" = check ]; then exec 2>&1; fi
-  [ -f "$check_file" ] && [ ! -L "$check_file" ] && [ -r "$check_file" ] ||
-    fail "$check_file must be a readable regular file"
-  case "$check_file" in /*) ;; *) check_file="$PWD/$check_file" ;; esac
-  scratch=$(mktemp -d "${TMPDIR:-/tmp}/fm-batch-check.XXXXXX")
-  trap 'rm -rf -- "$scratch"' EXIT
-  trap 'exit 1' HUP INT TERM
-  git clone --quiet --shared --no-checkout -- "$project" "$scratch/checkout"
-  git -C "$scratch/checkout" -c core.hooksPath=/dev/null checkout --quiet --detach "$candidate"
-  (cd "$scratch/checkout" && FM_BATCH_HEAD="$candidate" bash "$check_file") > "$scratch/output" 2>&1 || rc=$?
-  if [ "$rc" -ne 0 ]; then
-    cat "$scratch/output" >&2
-    fail "pre-publish check failed for $candidate (exit $rc)"
-  fi
-)
+# Record a new head for the loaded batch after its pre-publish check passes.
+# shellcheck disable=SC2016 # jq binds the index and head.
+advance_batch() {
+  check_batch_head "$1"
+  checked_heads="$checked_heads $1"
+  git_project update-ref "refs/firstmate/batches/$id" "$1"
+  save --argjson i "$bidx" --arg head "$1" '.batches[$i].head = $head'
+  head=$1
+}
 
-checked_head=
+# Move a stacked batch onto the default branch once the batch below it landed.
+# GitHub squashes that batch, so its merge commit is never an ancestor of this
+# head. Keep the tested head, and its CI result, only when the default branch
+# holds exactly the landed tree this batch was built on. Otherwise merge the
+# default branch in, which needs fresh checks.
+# shellcheck disable=SC2016 # jq binds the index, base and source branch.
+promote_batch() {
+  local below below_base default start
+  below=$(jq -c --argjson i "$((bidx - 1))" '.batches[$i]' <<< "$records")
+  below_base=$(jq -r '.base' <<< "$below")
+  default=$(api "/repos/$repo" | jq -er '.default_branch')
+  [ "$default" = "$below_base" ] || fail "default branch changed from $below_base to $default"
+  retarget_from=$base
+  base=$default
+  alt_base=$retarget_from
+  start=$(current_base_head)
+  if [ "$stacked_head" != "$(jq -r '.head' <<< "$below")" ] ||
+    [ "$start" != "$(jq -r '.merged_commit' <<< "$below")" ] ||
+    [ "$(git_project rev-parse "$start^{tree}")" != "$(git_project rev-parse "$stacked_head^{tree}")" ]; then
+    advance_batch "$(add_commit "$head" "$start" "$base")"
+  fi
+  save --argjson i "$bidx" --arg base "$base" --arg from "$retarget_from" '
+    .batches[$i] |= (.base = $base | .retarget_from = $from | del(.stacked_on, .stacked_head))'
+  stacked_on='' stacked_head=''
+}
+
+# Plan a batch from the queue on top of a start commit.
+# shellcheck disable=SC2016 # jq binds the batch fields.
+plan_batch() {
+  local start=$1 on_branch=$2 below_id=$3 next item serial repo_key
+  next=$start
+  while IFS= read -r item; do
+    next=$(add_commit "$next" "$(jq -er '.head' <<< "$item")" "$(jq -er '.task' <<< "$item")")
+  done < <(jq -c '.queue[]' <<< "$records")
+  [ "$next" != "$start" ] &&
+    [ "$(git_project rev-parse "$next^{tree}")" != "$(git_project rev-parse "$start^{tree}")" ] ||
+    fail "the queued tasks add no changes to $on_branch"
+  check_batch_head "$next"
+  checked_heads="$checked_heads $next"
+  serial=$(jq '.batches | length + 1' <<< "$records")
+  repo_key=$(printf '%s\n' "$identity/$account" | fm_role_sha256_stdin)
+  id="batch-${repo_key:0:16}-${next:0:12}-$serial"
+  git_project update-ref "refs/firstmate/batches/$id" "$next"
+  save --arg id "$id" --arg branch "fm/batch/$account/$serial-${next:0:12}" --arg base "$on_branch" \
+    --arg head "$next" --arg below "$below_id" --arg start "$start" '
+    .batches += [{id:$id, branch:$branch, base:$base, head:$head, published:"", state:"planned",
+      url:"", number:"", members:.queue} +
+      (if $below == "" then {} else {stacked_on:$below, stacked_head:$start} end)] | .queue = []'
+  load_batch "$((serial - 1))"
+}
+
+# Push the loaded batch and open or update its pull request, then move a
+# promoted batch's pull request onto the default branch.
+# shellcheck disable=SC2016 # jq binds the pull request fields.
+publish_batch() {
+  local query_head pulls serial body below_url
+  if [ "$head" != "$published" ]; then
+    if [ -z "$url" ]; then
+      query_head=$(jq -rn --arg head "${repo%%/*}:$branch" '$head | @uri')
+      pulls=$(api "/repos/$repo/pulls?state=open&head=$query_head&per_page=100" --paginate |
+        jq -sc --arg branch "$branch" 'add // [] | map(select(.head.ref == $branch))')
+      case "$(jq 'length' <<< "$pulls")" in
+        0) ;;
+        1)
+          pull=$(jq -c '.[0]' <<< "$pulls")
+          read_pull "$pull"
+          ;;
+        *) fail "multiple open pull requests match batch branch $branch in $repo" ;;
+      esac
+    fi
+    # Push without force. A lost response can be retried at the same head.
+    [ "$action" != check ] || check_opt_in || exit 0
+    case " $checked_heads " in *" $head "*) ;; *) check_batch_head "$head" ;; esac
+    git_project push --quiet --no-follow-tags --recurse-submodules=no origin "$head:refs/heads/$branch"
+    if [ -z "$url" ]; then
+      serial=$((bidx + 1))
+      body=$(jq -r --argjson i "$bidx" '.batches[$i].members[] | "- \(.task) (\(.branch))"' <<< "$records")
+      if [ -n "$stacked_on" ]; then
+        below_url=$(jq -r --argjson i "$((bidx - 1))" '.batches[$i].url' <<< "$records")
+        body="$body"$'\n\n'"Stacked on $below_url, which lands first."
+        body="$body"$'\n'"After it lands, this pull request moves onto $(jq -r --argjson i "$((bidx - 1))" '.batches[$i].base' <<< "$records") and its diff may also list that batch's squashed changes."
+      fi
+      pull=$(api POST "/repos/$repo/pulls" --raw-field "title=Batch $account / $serial" \
+        --raw-field "base=$base" --raw-field "head=$branch" --raw-field "body=$body")
+    else
+      pull=$(api "/repos/$repo/pulls/$number")
+    fi
+    read_pull "$pull"
+    jq -e --arg head "$head" '.state == "open" and .head.sha == $head' <<< "$pull" >/dev/null ||
+      fail "$url has not reported the planned head yet"
+    save --argjson i "$bidx" --arg url "$url" --arg number "$number" --arg head "$head" '
+      .batches[$i] |= (.url = $url | .number = $number | .published = $head | .state = "open")'
+    published=$head
+    if [ "$action" = check ]; then
+      if [ -n "$stacked_on" ]; then
+        printf 'published %s stacked on %s\n' "$url" "$(jq -r --argjson i "$((bidx - 1))" '.batches[$i].url' <<< "$records")"
+      else
+        printf 'published %s\n' "$url"
+      fi
+    fi
+  fi
+  [ -n "$retarget_from" ] || return 0
+  pull=$(api "/repos/$repo/pulls/$number")
+  read_pull "$pull"
+  if ! jq -e --arg base "$base" '.base.ref == $base' <<< "$pull" >/dev/null; then
+    pull=$(api PATCH "/repos/$repo/pulls/$number" --raw-field "base=$base")
+    read_pull "$pull"
+    jq -e --arg base "$base" '.base.ref == $base' <<< "$pull" >/dev/null ||
+      fail "$url still targets $retarget_from"
+  fi
+  save --argjson i "$bidx" '.batches[$i] |= del(.retarget_from)'
+  retarget_from='' alt_base=''
+  if [ "$action" = check ]; then printf 'moved %s onto %s\n' "$url" "$base"; fi
+}
+
+if [ -n "$lower" ]; then
+  load_batch "$lower"
+  if [ -n "$stacked_on" ]; then
+    promote_batch
+  fi
+fi
+
 # shellcheck disable=SC2016 # jq binds the head and membership variables.
 if [ "$action" = refresh ]; then
-  [ -n "$active" ] && [ -n "$url" ] || fail "refresh requires an open batch"
+  [ -n "$lower" ] && [ -n "$url" ] || fail "refresh requires an open batch"
   if [ "$head" = "$published" ]; then
     default_branch=$(api "/repos/$repo" | jq -er '.default_branch')
     [ "$default_branch" = "$base" ] || fail "default branch changed from $base to $default_branch"
-    start=$(current_base_head)
-    next=$(add_commit "$head" "$start" "$base")
-    if [ "$next" != "$head" ]; then
-      check_batch_head "$next"
-      checked_head=$next
-      id=$(jq -r '.id' <<< "$active")
-      git_project update-ref "refs/firstmate/batches/$id" "$next"
-      save --arg head "$next" '.batches[-1].head = $head'
-      head=$next
-    fi
+    next=$(add_commit "$head" "$(current_base_head)" "$base")
+    [ "$next" = "$head" ] || advance_batch "$next"
   fi
 elif [ "$action" = fix ]; then
-  [ -n "$active" ] && [ -n "$url" ] || fail "fix requires an open batch"
-  previous=$(jq -c --arg task "$1" 'first(.members[] | select(.task == $task)) // null' <<< "$active")
+  # A member returns to its own batch. A new task joins the stacked batch only
+  # when it is built on that batch's head; otherwise it joins the open batch.
+  target=$lower
+  if [ -n "$upper" ]; then
+    if jq -e --argjson i "$upper" --arg task "$1" 'any(.batches[$i].members[]; .task == $task)' \
+      <<< "$records" >/dev/null; then
+      target=$upper
+    elif ! jq -e --argjson i "$lower" --arg task "$1" 'any(.batches[$i].members[]; .task == $task)' \
+      <<< "$records" >/dev/null &&
+      git_project merge-base --is-ancestor "$(jq -r --argjson i "$upper" '.batches[$i].head' <<< "$records")" "$2"; then
+      target=$upper
+    fi
+  fi
+  [ -n "$target" ] || fail "fix requires an open batch"
+  load_batch "$target"
+  [ -n "$url" ] || fail "fix requires an open batch"
+  previous=$(jq -c --argjson i "$bidx" --arg task "$1" 'first(.batches[$i].members[] | select(.task == $task)) // null' <<< "$records")
   if [ "$previous" != "$member" ]; then
     [ "$head" = "$published" ] || fail "run must finish publishing the current batch update first"
     if [ "$previous" != null ]; then
@@ -430,86 +747,58 @@ elif [ "$action" = fix ]; then
         jq -e --argjson member "$member" '.queue | index($member) != null' <<< "$records" >/dev/null ||
         fail "$1 already has a different checked head or belongs to another batch"
     fi
+    task_check "$1" "$2" "$(jq -r '.branch' <<< "$member")"
+    case "$check_rc" in
+      0) ;;
+      75) fail "the heavy check for $1 at $2 is still running; repeat the fix once it passes" ;;
+      *) exit 1 ;;
+    esac
     if git_project merge-base --is-ancestor "$head" "$2"; then
       next=$2
     else
       next=$(add_commit "$head" "$2" "$1")
     fi
     [ "$next" != "$head" ] || fail "$1 adds no commits to the batch"
-    check_batch_head "$next"
-    checked_head=$next
-    id=$(jq -r '.id' <<< "$active")
-    git_project update-ref "refs/firstmate/batches/$id" "$next"
-    save --argjson member "$member" --argjson previous "$previous" --arg head "$next" '
-      .queue -= [$member] | .batches[-1] |= (
-        .head = $head | .members |=
-          if $previous == null then . + [$member]
-          else map(if . == $previous then $member else . end) end)'
-    head=$next
+    advance_batch "$next"
+    save --argjson i "$bidx" --argjson member "$member" --argjson previous "$previous" '
+      .queue -= [$member] | .checks = ((.checks // []) | map(select(.task != $member.task))) |
+      .batches[$i].members |=
+        if $previous == null then . + [$member]
+        else map(if . == $previous then $member else . end) end'
   fi
-elif [ -z "$active" ]; then
-  jq -e '.queue | length > 0' <<< "$records" >/dev/null || exit 0
-  base=$(api "/repos/$repo" | jq -er '.default_branch')
-  start=$(current_base_head)
-  head=$start
-  while IFS= read -r item; do
-    head=$(add_commit "$head" "$(jq -er '.head' <<< "$item")" "$(jq -er '.task' <<< "$item")")
-  done < <(jq -c '.queue[]' <<< "$records")
-  [ "$head" != "$start" ] &&
-    [ "$(git_project rev-parse "$head^{tree}")" != "$(git_project rev-parse "$start^{tree}")" ] ||
-    fail "the queued tasks add no changes to $base"
-  check_batch_head "$head"
-  checked_head=$head
-  serial=$(jq '.batches | length + 1' <<< "$records")
-  repo_key=$(printf '%s\n' "$identity/$account" | fm_role_sha256_stdin)
-  id="batch-${repo_key:0:16}-${head:0:12}-$serial"
-  branch="fm/batch/$account/$serial-${head:0:12}"
-  url='' number='' published=''
-  git_project update-ref "refs/firstmate/batches/$id" "$head"
-  save --arg id "$id" --arg branch "$branch" --arg base "$base" --arg head "$head" '
-    .batches += [{id:$id, branch:$branch, base:$base, head:$head, published:"", state:"planned",
-      url:"", number:"", members:.queue}] | .queue = []'
 fi
 
-if [ "$head" = "$published" ]; then
-  [ "$action" = check ] || printf '%s\n' "$url"
-  exit 0
+# Publish the open batch, then rebuild the stacked batch on its current head.
+if [ -n "$lower" ]; then
+  load_batch "$lower"
+  publish_batch
+fi
+if [ -n "$upper" ]; then
+  lower_id=$id lower_head=$head
+  load_batch "$upper"
+  if [ "$stacked_head" != "$lower_head" ]; then
+    advance_batch "$(add_commit "$head" "$lower_head" "batch $lower_id")"
+    # shellcheck disable=SC2016 # jq binds the index and lower head.
+    save --argjson i "$bidx" --arg on "$lower_head" '.batches[$i].stacked_head = $on'
+    stacked_head=$lower_head
+  fi
+  publish_batch
 fi
 
-if [ -z "$url" ]; then
-  query_head=$(jq -rn --arg head "${repo%%/*}:$branch" '$head | @uri')
-  pulls=$(api "/repos/$repo/pulls?state=open&head=$query_head&per_page=100" --paginate |
-    jq -sc --arg branch "$branch" 'add // [] | map(select(.head.ref == $branch))')
-  case "$(jq 'length' <<< "$pulls")" in
-    0) ;;
-    1)
-      pull=$(jq -c '.[0]' <<< "$pulls")
-      read_pull "$pull"
-      ;;
-    *) fail "multiple open pull requests match batch branch $branch in $repo" ;;
-  esac
+# Assemble waiting tasks: on the default branch when no batch is open, or on
+# the open batch's published head when nothing is stacked on it yet.
+if { [ "$action" = run ] || [ "$action" = check ]; } && [ -z "$upper" ] &&
+  jq -e '.queue | length > 0' <<< "$records" >/dev/null; then
+  if [ -z "$lower" ]; then
+    base=$(api "/repos/$repo" | jq -er '.default_branch')
+    plan_batch "$(current_base_head)" "$base" ""
+    publish_batch
+  elif [ -n "$url" ] && [ "$head" = "$published" ] && [ -z "$retarget_from" ]; then
+    plan_batch "$head" "$branch" "$id"
+    publish_batch
+  fi
 fi
 
-# Push without force. A lost response can be retried at the same head.
-[ "$action" != check ] || check_opt_in || exit 0
-[ "$checked_head" = "$head" ] || check_batch_head "$head"
-git_project push --quiet --no-follow-tags --recurse-submodules=no origin "$head:refs/heads/$branch"
-if [ -z "$url" ]; then
-  serial=$(jq '.batches | length' <<< "$records")
-  body=$(jq -r '.batches[-1].members[] | "- \(.task) (\(.branch))"' <<< "$records")
-  pull=$(api POST "/repos/$repo/pulls" --raw-field "title=Batch $account / $serial" \
-    --raw-field "base=$base" --raw-field "head=$branch" --raw-field "body=$body")
-else
-  pull=$(api "/repos/$repo/pulls/$number")
-fi
-read_pull "$pull"
-jq -e --arg head "$head" '.state == "open" and .head.sha == $head' <<< "$pull" >/dev/null ||
-  fail "$url has not reported the planned head yet"
-# shellcheck disable=SC2016 # jq binds the URL, number, and head.
-save --arg url "$url" --arg number "$number" --arg head "$head" '
-  .batches[-1] |= (.url = $url | .number = $number | .published = $head | .state = "open")'
-if [ "$action" = check ]; then
-  printf 'published %s\n' "$url"
-else
-  printf '%s\n' "$url"
+if [ "$action" != check ]; then
+  jq -r '.batches[] | select(.state != "merged" and .url != "") | .url' <<< "$records"
 fi

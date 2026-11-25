@@ -5682,12 +5682,18 @@ test_allow_no_pipeline_is_attended_only_and_gitlab_only() {
   pass "fm-pr-merge --allow-no-pipeline is attended-only, takes no value, and applies only to GitLab"
 }
 
-test_batch_queue_fix_and_merge() {
-  local case_dir project remote base task sha head next tree url rc landed watchdog check_file branch
-  case_dir=$(make_case batch-queue)
+# A batch project fixture: a local clone of a bare origin reached over a fake
+# ssh, one local-only ready task branch per named task, and a gh-axi fake that
+# keeps each batch pull request in pull-<number> as "<branch> <base>".
+# A pull request merges when gh logs its merge (landing at merge-commit) or when
+# merge-commit-<number> exists, and closes when closed-<number> exists.
+# Args: case-name task... Echoes the case directory.
+make_batch_case() {
+  local name=$1 case_dir project remote base task sha
+  shift
+  case_dir=$(make_case "$name")
   project="$case_dir/home/projects/example"
   remote="$case_dir/remote.git"
-  url=https://github.com/example/repo/pull/1
   mkdir -p "$(dirname "$project")"
   fm_git_init_commit "$project"
   git init -q --bare "$remote"
@@ -5708,7 +5714,7 @@ SH
   base=$(git -C "$project" rev-parse HEAD)
   git -C "$project" push -q origin "$base:refs/heads/main"
   printf '%s\n' '- example [direct-PR] - fixture' > "$case_dir/home/data/projects.md"
-  for task in one two later repair automatic; do
+  for task in "$@"; do
     git -C "$project" checkout -qb "fm/$task" "$base"
     printf '%s\n' "$task" > "$project/$task"
     git -C "$project" add -- "$task"
@@ -5717,7 +5723,7 @@ SH
     fm_write_meta "$case_dir/state/$task.meta" \
       "kind=ship" "mode=local-only" "project=$project" "branch=fm/$task" "local_done_head=$sha"
   done
-  add_gh_mocks "$case_dir" "$base"
+  add_gh_mocks "$case_dir" "$base" >&2
   cat > "$case_dir/fakebin/gh-axi" <<'SH'
 #!/usr/bin/env bash
 set -eu
@@ -5732,23 +5738,28 @@ emit() {
     if $full or length <= 4000 then . else .[:4000] + "... (truncated)" end'
 }
 read_batch() {
-  IFS=' ' read -r number branch < "$fixture/active-pull"
+  local number=$1 branch base head merged=false landed='' closed=false
+  IFS=' ' read -r branch base < "$fixture/pull-$number"
   head=$(git --git-dir="$fixture/remote.git" rev-parse "refs/heads/$branch")
-  merged=false landed=''
-  if [ "$number" = 1 ] && grep -q '^pr merge ' "$FM_TEST_GH_LOG"; then
+  if grep -q "^pr merge $number " "$FM_TEST_GH_LOG"; then
     merged=true
     landed=$(cat "$fixture/merge-commit")
   elif [ -f "$fixture/merge-commit-$number" ]; then
     merged=true
     landed=$(cat "$fixture/merge-commit-$number")
+  elif [ -f "$fixture/closed-$number" ]; then
+    closed=true
   fi
-  jq -nc --argjson number "$number" --arg branch "$branch" --arg head "$head" \
-    --argjson merged "$merged" --arg landed "$landed" '
+  jq -nc --argjson number "$number" --arg branch "$branch" --arg base "$base" --arg head "$head" \
+    --argjson merged "$merged" --argjson closed "$closed" --arg landed "$landed" '
     {number:$number, html_url:("https://github.com/example/repo/pull/" + ($number | tostring)),
-     user:{login:"fixture"}, state:(if $merged then "closed" else "open" end), merged:$merged,
+     user:{login:"fixture"}, state:(if $merged or $closed then "closed" else "open" end), merged:$merged,
      merge_commit_sha:$landed,
      head:{ref:$branch, sha:$head, repo:{full_name:"example/repo"}},
-     base:{ref:"main", repo:{full_name:"example/repo"}}}'
+     base:{ref:$base, repo:{full_name:"example/repo"}}}'
+}
+pull_count() {
+  find "$fixture" -maxdepth 1 -name 'pull-*' | wc -l | tr -d ' '
 }
 case "$1 $2" in
   'api /user') printf '{"login":"fixture"}\n' | emit ;;
@@ -5758,28 +5769,48 @@ case "$1 $2" in
     jq -nc '[{user:{login:"fixture"},head:{ref:"topic/one"}},
              {user:{login:"fixture"},head:{ref:"topic/two"}}]' | emit ;;
   'api /repos/example/repo/pulls?state=open&head=example%3Afm%2Fbatch%2Ffixture%2F'*'&per_page=100')
-    if [ -e "$fixture/active-pull" ]; then read_batch; fi |
+    number=0
+    while [ "$number" -lt "$(pull_count)" ]; do
+      number=$((number + 1))
+      read_batch "$number"
+    done |
       jq -sc --arg query "$2" 'map(select(.state == "open" and
         ($query | split("&head=example%3A")[1] | split("&")[0]) == (.head.ref | @uri)))' | emit ;;
-  'api /repos/example/repo/pulls/'*) read_batch | emit ;;
+  'api /repos/example/repo/pulls/'*) read_batch "${2##*/}" | emit ;;
   'api POST')
-    branch=
-    for arg in "$@"; do case "$arg" in head=*) branch=$arg ;; esac; done
-    [ -n "$branch" ]
-    if [ -e "$fixture/active-pull" ]; then
-      old=$(cut -d' ' -f1 "$fixture/active-pull")
-      number=$((old + 1))
-    else
-      number=1
-    fi
-    printf '%s %s\n' "$number" "${branch#head=}" > "$fixture/active-pull"
+    branch= base=
+    for arg in "$@"; do
+      case "$arg" in head=*) branch=${arg#head=} ;; base=*) base=${arg#base=} ;; esac
+    done
+    [ -n "$branch" ] && [ -n "$base" ]
+    number=$(($(pull_count) + 1))
+    printf '%s %s\n' "$branch" "$base" > "$fixture/pull-$number"
     printf '%s\n' "$number" >> "$FM_TEST_GH_AXI_LOG"
-    [ "$number" != 1 ] || exit 1
-    read_batch | emit ;;
+    [ "$number" != 1 ] || [ ! -e "$fixture/lose-pull-1" ] || exit 1
+    read_batch "$number" | emit ;;
+  'api PATCH')
+    number=${3##*/} base=
+    for arg in "$@"; do case "$arg" in base=*) base=${arg#base=} ;; esac; done
+    [ -n "$base" ]
+    IFS=' ' read -r branch _ < "$fixture/pull-$number"
+    printf '%s %s\n' "$branch" "$base" > "$fixture/pull-$number"
+    printf 'patch %s %s\n' "$number" "$base" >> "$FM_TEST_GH_AXI_LOG"
+    read_batch "$number" | emit ;;
   *) exit 2 ;;
 esac
 SH
   chmod +x "$case_dir/fakebin/gh-axi"
+  printf '%s\n' "$case_dir"
+}
+
+test_batch_queue_fix_and_merge() {
+  local case_dir project remote base task sha head next tree url rc landed watchdog check_file branch
+  case_dir=$(make_batch_case batch-queue one two repair automatic)
+  project="$case_dir/home/projects/example"
+  remote="$case_dir/remote.git"
+  url=https://github.com/example/repo/pull/1
+  base=$(git -C "$project" rev-parse main)
+  touch "$case_dir/lose-pull-1"
   local FM_TEST_PR_COMMAND="$ROOT/bin/fm-batch.sh"
   rc=0
   run_pr_merge "$case_dir" example release release/first > "$case_dir/out" 2> "$case_dir/err" || rc=$?
@@ -5830,10 +5861,6 @@ SH
     git -C "$project" merge-base --is-ancestor "fm/$task" "$head" || fail "batch omitted $task"
   done
 
-  sha=$(git -C "$project" rev-parse fm/later)
-  run_pr_merge "$case_dir" example enqueue later "$sha" || fail "could not queue the later task"
-  run_pr_merge "$case_dir" example run > "$case_dir/out" || fail "run failed while $url was open"
-  git -C "$project" merge-base --is-ancestor "$sha" "$head" && fail "later task entered the open batch"
   sha=$(git -C "$project" rev-parse fm/repair)
   touch "$(dirname "$check_file")/reject"
   rc=0
@@ -5855,7 +5882,7 @@ SH
   [ "$(tail -n 1 "$(dirname "$check_file")/heads")" = "$next" ] ||
     fail "the fix check did not run against the published head"
   jq -e --arg url "$url" \
-    '(.queue | map(.task)) == ["later"] and
+    '.queue == [] and
      (.batches[0].members | map(.task)) == ["one", "two", "repair"] and
      .batches[0].url == $url' "$case_dir/ledger" >/dev/null || fail "ledger lost batch membership"
 
@@ -5920,8 +5947,6 @@ SH
   [ "$(git -C "$project" rev-parse refs/heads/release/first)" = "$landed" ] ||
     fail "release missed the exact merge commit"
 
-  run_pr_merge "$case_dir" example dequeue later || fail "could not dequeue the later task"
-  printf 'done: ready in branch fm/later\n' > "$case_dir/state/later.status"
   printf 'done: ready in branch fm/automatic\n' > "$case_dir/state/automatic.status"
   printf 'example\n' > "$case_dir/home/config/batch-projects"
   FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$case_dir/home" FM_STATE_OVERRIDE="$case_dir/state" \
@@ -5954,7 +5979,201 @@ SH
   pass "batch retries, fixes forward, merges through the guard, feeds releases, and publishes from the watcher"
 }
 
+# A batch published while another is open stacks on the open batch's head,
+# follows every change to it, lands only after it, and moves onto the default
+# branch afterwards: keeping its tested head when the landed tree is exactly
+# what it was built on, and merging the default branch in when it is not.
+test_batch_stacks_on_the_open_batch() {
+  local case_dir project remote main lower upper third fourth landed other next rc
+  local url1=https://github.com/example/repo/pull/1 url2=https://github.com/example/repo/pull/2
+  local url3=https://github.com/example/repo/pull/3
+  case_dir=$(make_batch_case batch-stacked one two repair three four)
+  project="$case_dir/home/projects/example"
+  remote="$case_dir/remote.git"
+  local FM_TEST_PR_COMMAND="$ROOT/bin/fm-batch.sh"
+  main=$(git -C "$project" rev-parse main)
+  batch() { run_pr_merge "$case_dir" example "$@"; }
+  ledger() { batch status > "$case_dir/ledger" || fail "could not read the batch ledger"; }
+  enqueue() { batch enqueue "$1" "$(git -C "$project" rev-parse "fm/$1")" || fail "could not enqueue $1"; }
+
+  enqueue one
+  batch run > "$case_dir/out" || fail "could not publish the first batch"
+  ledger
+  lower=$(jq -er '.batches[0].published' "$case_dir/ledger")
+
+  enqueue two
+  batch run > "$case_dir/out" || fail "a queued task did not stack on the open batch"
+  assert_grep "$url2" "$case_dir/out" "run did not report the stacked pull request"
+  ledger
+  upper=$(jq -er '.batches[1].published' "$case_dir/ledger")
+  jq -e --arg lower "$lower" '
+    .queue == [] and .batches[0].state == "open" and .batches[1].state == "open" and
+    .batches[1].base == .batches[0].branch and .batches[1].stacked_on == .batches[0].id and
+    .batches[1].stacked_head == $lower and (.batches[1].members | map(.task)) == ["two"]
+  ' "$case_dir/ledger" >/dev/null || fail "the stacked batch was not recorded on the open batch"
+  [ "$(cut -d' ' -f2 "$case_dir/pull-2")" = "$(jq -r '.batches[0].branch' "$case_dir/ledger")" ] ||
+    fail "the stacked pull request does not target the open batch's branch"
+  git -C "$project" merge-base --is-ancestor "$lower" "$upper" || fail "the stacked batch is not built on the open batch"
+  git -C "$project" merge-base --is-ancestor fm/two "$upper" || fail "the stacked batch omitted its task"
+
+  write_github_live_json "$case_dir" "$upper"
+  rc=0
+  batch merge "$upper" > "$case_dir/out" 2> "$case_dir/err" || rc=$?
+  expect_code 1 "$rc" "the stacked batch must not land before the open batch"
+  assert_grep "merge $url1 first" "$case_dir/err" "the refusal did not name the batch that lands first"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" "a stacked batch reached the forge merge"
+
+  batch fix repair "$(git -C "$project" rev-parse fm/repair)" > "$case_dir/out" ||
+    fail "could not fix the open batch: $(cat "$case_dir/out")"
+  ledger
+  next=$(jq -er '.batches[0].published' "$case_dir/ledger")
+  [ "$next" != "$lower" ] || fail "the fix did not change the open batch"
+  lower=$next
+  next=$(jq -er '.batches[1].published' "$case_dir/ledger")
+  git -C "$project" merge-base --is-ancestor "$upper" "$next" || fail "the stacked batch was rewritten instead of advanced"
+  git -C "$project" merge-base --is-ancestor "$lower" "$next" || fail "the stacked batch missed the open batch's new head"
+  jq -e --arg lower "$lower" '.batches[1].stacked_head == $lower and
+    (.batches[0].members | map(.task)) == ["one", "repair"]' "$case_dir/ledger" >/dev/null ||
+    fail "the fix went to the wrong batch or the stacked batch lost its base"
+  [ "$(git --git-dir="$remote" rev-parse "$(jq -r '.batches[1].branch' "$case_dir/ledger")")" = "$next" ] ||
+    fail "the rebuilt stacked batch was not pushed"
+  upper=$next
+
+  # The open batch lands as a squash whose tree is exactly its tested head.
+  landed=$(git -C "$project" commit-tree "$(git -C "$project" rev-parse "$lower^{tree}")" -p "$main" -m "Squashed batch 1")
+  git -C "$project" push -q origin "$landed:refs/heads/main"
+  printf '%s\n' "$landed" > "$case_dir/merge-commit"
+  write_github_live_json "$case_dir" "$lower"
+  batch merge "$lower" > "$case_dir/out" 2> "$case_dir/err" || fail "the open batch did not merge: $(cat "$case_dir/err")"
+  assert_logged_gh_merge "$case_dir" 1 example/repo --squash
+  batch run > "$case_dir/out" || fail "run did not move the stacked batch onto main"
+  ledger
+  jq -e --arg upper "$upper" '
+    .batches[0].state == "merged" and .batches[1].base == "main" and
+    .batches[1].head == $upper and .batches[1].published == $upper and
+    (.batches[1] | has("stacked_on") or has("stacked_head") or has("retarget_from") | not)
+  ' "$case_dir/ledger" >/dev/null || fail "the stacked batch did not keep its tested head on main"
+  [ "$(cut -d' ' -f2 "$case_dir/pull-2")" = main ] || fail "the stacked pull request still targets the landed branch"
+  grep -qx 'patch 2 main' "$case_dir/gh-axi.log" || fail "the stacked pull request was not moved onto main"
+
+  enqueue three
+  batch run > "$case_dir/out" || fail "a third batch did not stack on the promoted batch"
+  ledger
+  third=$(jq -er '.batches[2].published' "$case_dir/ledger")
+  git -C "$project" merge-base --is-ancestor "$upper" "$third" || fail "the third batch is not built on the second"
+
+  # The second batch lands, then main moves on before the third is promoted.
+  landed=$(git -C "$project" commit-tree "$(git -C "$project" rev-parse "$upper^{tree}")" -p "$landed" -m "Squashed batch 2")
+  git -C "$project" checkout -q --detach "$landed"
+  printf 'other\n' > "$project/other"
+  git -C "$project" add -- other
+  git -C "$project" commit -qm "Unrelated landing"
+  other=$(git -C "$project" rev-parse HEAD)
+  git -C "$project" push -q origin "$other:refs/heads/main"
+  printf '%s\n' "$landed" > "$case_dir/merge-commit"
+  write_github_live_json "$case_dir" "$upper"
+  batch merge "$upper" > "$case_dir/out" 2> "$case_dir/err" || fail "the promoted batch did not merge: $(cat "$case_dir/err")"
+  batch run > "$case_dir/out" || fail "run did not rebuild the third batch on the moved main"
+  ledger
+  next=$(jq -er '.batches[2].published' "$case_dir/ledger")
+  [ "$next" != "$third" ] || fail "the third batch kept a head that was never tested on the moved main"
+  git -C "$project" merge-base --is-ancestor "$third" "$next" || fail "the third batch was rewritten instead of advanced"
+  git -C "$project" merge-base --is-ancestor "$other" "$next" || fail "the third batch missed the moved main"
+  jq -e '.batches[1].state == "merged" and .batches[2].base == "main" and
+    (.batches[2] | has("stacked_on") | not)' "$case_dir/ledger" >/dev/null ||
+    fail "the third batch was not moved onto main"
+  grep -qx 'patch 3 main' "$case_dir/gh-axi.log" || fail "the third pull request was not moved onto main"
+  third=$next
+
+  # A closed open batch stops everything until it is reopened.
+  enqueue four
+  batch run > "$case_dir/out" || fail "a fourth batch did not stack"
+  ledger
+  fourth=$(jq -er '.batches[3].published' "$case_dir/ledger")
+  : > "$case_dir/closed-3"
+  rc=0
+  batch run > "$case_dir/out" 2> "$case_dir/err" || rc=$?
+  expect_code 1 "$rc" "a closed open batch must stop the run"
+  assert_grep "reopen $url3 to continue its batch" "$case_dir/err" "the run did not ask to reopen the closed batch"
+  ledger
+  jq -e --arg fourth "$fourth" '.batches[3].published == $fourth and .batches[3].state == "open"' \
+    "$case_dir/ledger" >/dev/null || fail "the stacked batch changed while the batch below it was closed"
+  rm -- "$case_dir/closed-3"
+  batch run > "$case_dir/out" || fail "run did not continue after the batch was reopened"
+  pass "batches stack one level deep, follow the open batch, land after it, and keep CI only on an unchanged base"
+}
+
+# A project's heavy task check must pass at a task's ready head before the task
+# joins a batch. A failure keeps it out; a check still running elsewhere keeps
+# it waiting until a later run sees it pass.
+test_batch_heavy_task_check_gates_entry() {
+  local case_dir project checks rc
+  case_dir=$(make_batch_case batch-heavy good bad slow)
+  project="$case_dir/home/projects/example"
+  checks="$case_dir/home/config/batch-task-checks"
+  local FM_TEST_PR_COMMAND="$ROOT/bin/fm-batch.sh"
+  batch() { run_pr_merge "$case_dir" example "$@"; }
+  ledger() { batch status > "$case_dir/ledger" || fail "could not read the batch ledger"; }
+  mkdir -p "$checks"
+  cat > "$checks/example" <<'SH'
+set -eu
+test "$(git rev-parse HEAD)" = "$FM_TASK_HEAD"
+test -f "$FM_TASK_ID"
+printf '%s %s\n' "$FM_TASK_ID" "$FM_TASK_BRANCH" >> "$(dirname "$0")/ran"
+if [ -f "$(dirname "$0")/fail-$FM_TASK_ID" ]; then
+  echo "fixture shard failed"
+  exit 3
+fi
+if [ -f "$(dirname "$0")/wait-$FM_TASK_ID" ]; then exit 75; fi
+SH
+  : > "$checks/fail-bad"
+  : > "$checks/wait-slow"
+
+  rc=0
+  batch enqueue bad "$(git -C "$project" rev-parse fm/bad)" > "$case_dir/out" 2> "$case_dir/err" || rc=$?
+  expect_code 1 "$rc" "a failing heavy check must refuse the enqueue"
+  assert_grep 'fixture shard failed' "$case_dir/err" "the heavy check output was lost"
+  assert_grep 'heavy check failed for bad' "$case_dir/err" "the refusal did not name the task"
+  batch enqueue slow "$(git -C "$project" rev-parse fm/slow)" > "$case_dir/out" ||
+    fail "a running heavy check must not fail the enqueue"
+  assert_grep 'slow waits for its heavy check' "$case_dir/out" "the waiting task was not reported"
+  batch enqueue good "$(git -C "$project" rev-parse fm/good)" || fail "a passing heavy check refused the enqueue"
+  grep -qx 'good fm/good' "$checks/ran" || fail "the heavy check did not run at the task's head and branch"
+  ledger
+  jq -e '(.queue | map(.task)) == ["good"] and
+    ((.checks | map("\(.task)=\(.state)")) | sort) == ["bad=failed", "slow=running"]' "$case_dir/ledger" >/dev/null ||
+    fail "only the passing task should be queued"
+
+  batch run > "$case_dir/out" || fail "could not publish the passing task"
+  ledger
+  jq -e '(.batches[0].members | map(.task)) == ["good"] and (.batches | length) == 1' "$case_dir/ledger" >/dev/null ||
+    fail "a task whose heavy check had not passed joined the batch"
+
+  rm -- "$checks/wait-slow"
+  batch run > "$case_dir/out" || fail "run did not ask the running heavy check again"
+  ledger
+  jq -e '(.batches[1].members | map(.task)) == ["slow"] and (.checks | map(.task)) == ["bad"]' \
+    "$case_dir/ledger" >/dev/null || fail "the task whose heavy check passed was not batched"
+
+  rc=0
+  batch fix bad "$(git -C "$project" rev-parse fm/bad)" > "$case_dir/out" 2> "$case_dir/err" || rc=$?
+  expect_code 1 "$rc" "a failing heavy check must keep a task out of the open batch"
+  assert_grep 'heavy check failed for bad' "$case_dir/err" "the fix refusal did not name the task"
+  ledger
+  jq -e '(.batches[0].members | map(.task)) == ["good"]' "$case_dir/ledger" >/dev/null ||
+    fail "the failed task joined the open batch"
+
+  rm -- "$checks/fail-bad"
+  batch enqueue bad "$(git -C "$project" rev-parse fm/bad)" || fail "an explicit enqueue did not retry the heavy check"
+  ledger
+  jq -e '(.queue | map(.task)) == ["bad"] and .checks == []' "$case_dir/ledger" >/dev/null ||
+    fail "the retried task was not queued"
+  pass "a heavy task check keeps failing and unfinished tasks out of every batch until it passes"
+}
+
 test_batch_queue_fix_and_merge
+test_batch_stacks_on_the_open_batch
+test_batch_heavy_task_check_gates_entry
 test_gitlab_head_override_args_refuse_before_recording
 test_secondmate_merge_reports_upward_once
 test_secondmate_merge_reports_on_the_local_route
