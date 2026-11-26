@@ -6,8 +6,9 @@
 # exactly as the captain set it (model roles, theme, providers, compaction).
 # Each key below pins one setting whose captain-facing value would park an
 # unattended worker on an interactive prompt, change its pinned model under it,
-# or make its composer unreadable to bin/fm-composer-lib.sh. Verified against
-# omp 18.1.11's own settings schema (`omp config list`).
+# make its composer unreadable to bin/fm-composer-lib.sh, or consume resources
+# needed by other workers. Original keys verified against omp 18.1.11's
+# settings schema (`omp config list`); `lsp.enabled` verified on omp 19.2.1.
 composer:
   # Renders a bare `❯` (U+276F) row, a glyph the shared composer classifier
   # already reads; the shipped default `band` and six other shapes are not in
@@ -25,3 +26,8 @@ retry:
   # `confirm` pops a dialog when a usage window runs low; `auto` lets omp fall
   # through the captain's own fallback chain without a keystroke.
   usageReservePolicy: auto
+lsp:
+  # Each Rust worktree starts its own memory-heavy rust-analyzer. Diagnostics
+  # on write also run cargo check per worktree on the supervision host; workers
+  # already run their checks explicitly.
+  enabled: false
