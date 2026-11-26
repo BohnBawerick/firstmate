@@ -538,8 +538,8 @@ teardown_export_records() {  # <state> <task-id>
     }
 }
 
-teardown_refuse_open_batch_member() {  # <task-id>
-  local task=$1 batches="$DATA/batches" ledger refs='' ledger_refs ref
+teardown_refuse_pending_batch_member() {  # <task-id>
+  local task=$1 batches="$DATA/batches" ledger refs='' ledger_refs ready kind ref
   [ -e "$batches" ] || [ -L "$batches" ] || return 0
   if [ ! -d "$batches" ] || [ -L "$batches" ] || [ ! -r "$batches" ] || [ ! -x "$batches" ]; then
     echo "REFUSED: cannot safely inspect batch ledgers at $batches; preserving task $task" >&2
@@ -549,32 +549,41 @@ teardown_refuse_open_batch_member() {  # <task-id>
     echo "REFUSED: cannot inspect batch ledgers for task $task because jq is unavailable; preserving task" >&2
     return 1
   fi
+  ready=$(fm_dod_local_done_head "$META") || ready=
   for ledger in "$batches"/*/*/*/*/ledger.json; do
     [ -e "$ledger" ] || continue
     if [ -L "$ledger" ] || [ ! -f "$ledger" ] || [ ! -r "$ledger" ]; then
       echo "REFUSED: batch ledger is not a readable regular file: $ledger; preserving task $task" >&2
       return 1
     fi
-    if ! ledger_refs=$(jq -r --arg task "$task" '
+    if ! ledger_refs=$(jq -r --arg task "$task" --arg head "$ready" '
       if type != "object" or (.queue | type) != "array" or (.batches | type) != "array" or
          any(.batches[]; (.state | type) != "string" or (.members | type) != "array") then
         error("invalid batch ledger")
       else
-        [.batches[] | select(.state != "merged") |
-          select(any(.members[]; .task == $task)) |
-          ((.url | select(type == "string" and length > 0)) //
-            ("batch " + (.id // "unknown")))] | unique | .[]
+        [(if any(.queue[]; .task == $task) then ["pending", "batch queue"] else empty end),
+         (.batches[] |
+          if .state == "merged" then
+            select($head != "" and any(.members[]; .task == $task and .head == $head)) |
+            ["landed", $head]
+          else
+            select(any(.members[]; .task == $task)) |
+            ["pending", ((.url | select(type == "string" and length > 0)) //
+              ("batch " + (.id // "unknown")))]
+          end)] | unique[] | @tsv
       end' "$ledger" 2>/dev/null); then
       echo "REFUSED: cannot read batch ledger $ledger; preserving task $task" >&2
       return 1
     fi
-    while IFS= read -r ref; do
-      [ -n "$ref" ] || continue
-      refs="${refs}${refs:+, }$ref"
+    while IFS=$'\t' read -r kind ref; do
+      case "$kind" in
+        landed) TEARDOWN_MERGED_BATCH_HEAD=$ref ;;
+        pending) refs="${refs}${refs:+, }$ref" ;;
+      esac
     done <<< "$ledger_refs"
   done
   if [ -n "$refs" ]; then
-    echo "REFUSED: task $task belongs to an unmerged batch ($refs); preserving task records and worktree until that batch merges" >&2
+    echo "REFUSED: task $task is still queued or belongs to an unmerged batch ($refs); preserving task records and worktree until it lands" >&2
     return 1
   fi
 }
@@ -725,8 +734,9 @@ fm_backlog_record_present "$META" "task record" "$STATE" || {
 }
 TEARDOWN_META_KIND=$(fm_meta_get "$META" kind)
 [ -n "$TEARDOWN_META_KIND" ] || TEARDOWN_META_KIND=ship
+TEARDOWN_MERGED_BATCH_HEAD=
 if [ "$TEARDOWN_META_KIND" = ship ] && [ "$(fm_meta_get "$META" mode)" = local-only ]; then
-  teardown_refuse_open_batch_member "$ID" || exit 1
+  teardown_refuse_pending_batch_member "$ID" || exit 1
 fi
 # Retiring a persistent secondmate is main's alone in both postures; the kind
 # is read under the metadata lock (role partition: bin/fm-lease-lib.sh).
@@ -2308,6 +2318,13 @@ validate_worktree_teardown_safety() {
     fi
     unmerged=$(printf '%s\n' "$unmerged_raw" | head -5)
     if [ -n "$dirty" ] || [ -n "$unmerged" ]; then
+      # A batch squash can land the exact checked head's content without
+      # putting that commit on local main or any remote-tracking branch.
+      if [ -z "$dirty" ] && [ -n "$TEARDOWN_MERGED_BATCH_HEAD" ] &&
+        [ "$(git -C "$WT" rev-parse --verify HEAD)" = "$TEARDOWN_MERGED_BATCH_HEAD" ] &&
+        content_in_default; then
+        return 0
+      fi
       echo "REFUSED: local-only worktree $WT has work not yet merged into $DEFAULT and not on any remote." >&2
       [ -n "$dirty" ] && report_worktree_dirt "$dirty"
       [ -n "$unmerged" ] && printf 'commits not yet on %s:\n%s\n' "$DEFAULT" "$unmerged" >&2

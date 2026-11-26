@@ -793,6 +793,55 @@ test_open_batch_member_teardown_refuses_until_batch_merges() {
   pass "fm-teardown: retains an open batch member until its batch merges, then allows cleanup"
 }
 
+test_batch_follow_up_teardown_refuses_until_landed() {
+  local case_dir first next ledger rc
+  case_dir=$(make_case batch-follow-up)
+  write_meta "$case_dir" local-only ship
+  wt_commit_file "$case_dir" callout initial
+  first=$(git -C "$case_dir/wt" rev-parse HEAD)
+  land_on_origin_main "$case_dir" callout initial
+  wt_commit_file "$case_dir" callout revised
+  next=$(git -C "$case_dir/wt" rev-parse HEAD)
+  printf 'local_done_head=%s\n' "$next" >> "$case_dir/state/task-x1.meta"
+
+  ledger="$case_dir/data/batches/github.com/example/repo/fmtest/ledger.json"
+  mkdir -p "$(dirname "$ledger")"
+  jq -n --arg first "$first" --arg next "$next" '
+    {queue:[{task:"task-x1", branch:"fm/task-x1", head:$next}],
+     batches:[{state:"merged", members:[{task:"task-x1", branch:"fm/task-x1", head:$first}]}]}
+  ' > "$ledger"
+  rc=0
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+  expect_code 1 "$rc" "queued follow-up: teardown should refuse"
+  assert_contains "$(cat "$case_dir/stderr")" "batch queue" "queued follow-up: refusal must name the batch queue"
+  assert_present "$case_dir/state/task-x1.meta" "queued follow-up: refusal removed member metadata"
+  assert_present "$case_dir/wt" "queued follow-up: refusal removed the worktree"
+
+  jq -e '
+    .batches += [{state:"open", url:"https://github.com/example/repo/pull/100", members:.queue}] |
+    .queue = []' "$ledger" > "$ledger.next" && mv "$ledger.next" "$ledger"
+  rc=0
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+  expect_code 1 "$rc" "open follow-up: teardown should refuse"
+  assert_contains "$(cat "$case_dir/stderr")" "https://github.com/example/repo/pull/100" \
+    "open follow-up: refusal must name the new batch pull request"
+  assert_present "$case_dir/state/task-x1.meta" "open follow-up: refusal removed member metadata"
+  assert_present "$case_dir/wt" "open follow-up: refusal removed the worktree"
+
+  jq -e '.batches[1].state = "merged"' "$ledger" > "$ledger.next" && mv "$ledger.next" "$ledger"
+  rc=0
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+  expect_code 1 "$rc" "a merged ledger entry without the follow-up content must not allow cleanup"
+  assert_present "$case_dir/state/task-x1.meta" "missing content: refusal removed member metadata"
+
+  land_on_origin_main "$case_dir" callout revised
+  rc=0
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+  expect_code 0 "$rc" "landed follow-up: teardown should allow cleanup: $(cat "$case_dir/stderr")"
+  assert_absent "$case_dir/state/task-x1.meta" "landed follow-up: cleanup left member metadata behind"
+  pass "fm-teardown: retains a queued or open follow-up until the second batch is squash-merged"
+}
+
 test_teardown_closes_the_backlog_item_itself() {
   local case_dir out
   case_dir=$(make_case tasks-axi-close)
@@ -6941,6 +6990,7 @@ test_forced_secondmate_own_missing_adapter_sibling_refuses_before_child_cleanup
 test_retained_sources_still_reach_the_ordinary_refusal
 test_local_only_fork_remote_allows
 test_open_batch_member_teardown_refuses_until_batch_merges
+test_batch_follow_up_teardown_refuses_until_landed
 test_teardown_closes_the_backlog_item_itself
 test_teardown_closes_a_gerrit_task_with_its_change_url_as_a_note
 test_teardown_closes_a_gitlab_task_with_its_merge_request_url_as_a_note

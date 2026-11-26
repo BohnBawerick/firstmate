@@ -20,6 +20,9 @@
 # run and the watcher ask again until it answers, so the script must be
 # idempotent per head. Any other exit keeps the task out until its ready head
 # changes or an explicit enqueue retries it.
+# After a task's batch merges, enqueue a descendant of its latest merged member
+# head on the same task branch. To assemble a follow-up after a squash merge,
+# run uses the landed member as the merge base (Git 2.40 or newer).
 # Run publishes the waiting tasks against the current default branch or
 # resumes a prior publish. While a batch is open, run stacks the waiting tasks
 # into one batch built on the open batch's published head, with its pull
@@ -316,11 +319,25 @@ if [ "$action" = dequeue ]; then
   exit 0
 elif [ "$action" = enqueue ] || [ "$action" = fix ]; then
   member=$(checked_member "$1" "$2")
-  existing=$(jq -c --arg task "$1" '[.queue[], .batches[].members[]] | map(select(.task == $task)) | first // null' <<< "$records")
   if [ "$action" = enqueue ]; then
+    existing=$(jq -c --arg task "$1" '
+      first((.queue[], (.batches[] | select(.state != "merged") | .members[])) |
+        select(.task == $task)) // null' <<< "$records")
     if [ "$existing" != null ]; then
       [ "$existing" = "$member" ] || fail "$1 already has a different checked head"
       exit 0
+    fi
+    landed_member=$(jq -c --arg task "$1" '
+      last(.batches[] | select(.state == "merged") | .members[] |
+        select(.task == $task)) // null' <<< "$records")
+    if [ "$landed_member" != null ]; then
+      [ "$landed_member" != "$member" ] || exit 0
+      landed_head=$(jq -er '.head' <<< "$landed_member")
+      if ! fm_pr_head_valid "$landed_head" ||
+        [ "$(jq -er '.branch' <<< "$landed_member")" != "$(jq -er '.branch' <<< "$member")" ] ||
+        ! git_project merge-base --is-ancestor "$landed_head" "$2"; then
+        fail "$1 must advance its latest merged batch member on the same branch"
+      fi
     fi
     admit "$member"
     case "$check_rc" in
@@ -332,6 +349,7 @@ elif [ "$action" = enqueue ] || [ "$action" = fix ]; then
       *) exit 1 ;;
     esac
   fi
+  existing=$(jq -c --arg task "$1" '[.queue[], .batches[].members[]] | map(select(.task == $task)) | first // null' <<< "$records")
 fi
 
 discover_ready() {
@@ -563,12 +581,17 @@ current_base_head() {
 }
 
 add_commit() {
-  local parent=$1 commit=$2 label=$3 tree
+  local parent=$1 commit=$2 label=$3 landed_head=${4:-} tree
+  local merge_args=(--write-tree)
   if git_project merge-base --is-ancestor "$commit" "$parent"; then
     printf '%s\n' "$parent"
     return
   fi
-  tree=$(git_project merge-tree --write-tree "$parent" "$commit") ||
+  # A squash lands the old member's changes without making it an ancestor.
+  if [ -n "$landed_head" ] && ! git_project merge-base --is-ancestor "$landed_head" "$parent"; then
+    merge_args+=(--merge-base="$landed_head")
+  fi
+  tree=$(git_project merge-tree "${merge_args[@]}" "$parent" "$commit") ||
     fail "cannot add $label to the batch: $tree"
   tree=${tree%%$'\n'*}
   git_project commit-tree "$tree" -p "$parent" -p "$commit" -m "Batch: $label"
@@ -616,8 +639,13 @@ plan_batch() {
   local start=$1 on_branch=$2 below_id=$3 next item serial repo_key
   next=$start
   while IFS= read -r item; do
-    next=$(add_commit "$next" "$(jq -er '.head' <<< "$item")" "$(jq -er '.task' <<< "$item")")
-  done < <(jq -c '.queue[]' <<< "$records")
+    next=$(add_commit "$next" "$(jq -er '.head' <<< "$item")" "$(jq -er '.task' <<< "$item")" \
+      "$(jq -r '.landed_head' <<< "$item")")
+  done < <(jq -c '
+    (reduce (.batches[] | select(.state == "merged") | .members[]) as $member
+      ({}; .[$member.task] = $member.head)) as $landed |
+    .queue[] | . + {landed_head: ($landed[.task] // "")}
+  ' <<< "$records")
   [ "$next" != "$start" ] &&
     [ "$(git_project rev-parse "$next^{tree}")" != "$(git_project rev-parse "$start^{tree}")" ] ||
     fail "the queued tasks add no changes to $on_branch"

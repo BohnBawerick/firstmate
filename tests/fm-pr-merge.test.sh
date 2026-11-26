@@ -6171,9 +6171,70 @@ SH
   pass "a heavy task check keeps failing and unfinished tasks out of every batch until it passes"
 }
 
+test_batch_reenqueue_after_merge() {
+  local case_dir project first next sibling base landed head rc
+  case_dir=$(make_batch_case batch-reenqueue one)
+  project="$case_dir/home/projects/example"
+  local FM_TEST_PR_COMMAND="$ROOT/bin/fm-batch.sh"
+  first=$(git -C "$project" rev-parse fm/one)
+  base=$(git -C "$project" rev-parse main)
+  run_pr_merge "$case_dir" example enqueue one "$first" || fail "could not enqueue the initial head"
+  run_pr_merge "$case_dir" example run > "$case_dir/out" || fail "could not publish the initial batch"
+  landed=$(git -C "$project" commit-tree "$first^{tree}" -p "$base" -m "Squash initial batch")
+  git -C "$project" push -q origin "$landed:refs/heads/main"
+  printf '%s\n' "$landed" > "$case_dir/merge-commit-1"
+  run_pr_merge "$case_dir" example run > "$case_dir/out" || fail "could not record the initial merge"
+
+  printf '%s\n' 'revised in the follow-up' > "$project/one"
+  git -C "$project" commit -qam "Update the same file after the squash"
+  next=$(git -C "$project" rev-parse HEAD)
+  git -C "$project" branch fm/renamed "$next"
+  fm_write_meta "$case_dir/state/one.meta" \
+    "kind=ship" "mode=local-only" "project=$project" "branch=fm/renamed" "local_done_head=$next"
+  rc=0
+  run_pr_merge "$case_dir" example enqueue one "$next" > "$case_dir/out" 2> "$case_dir/err" || rc=$?
+  expect_code 1 "$rc" "a descendant on a different branch must not rejoin"
+  assert_grep 'same branch' "$case_dir/err" "the branch refusal did not explain the rejoin rule"
+
+  fm_write_meta "$case_dir/state/one.meta" \
+    "kind=ship" "mode=local-only" "project=$project" "branch=fm/one" "local_done_head=$next"
+  run_pr_merge "$case_dir" example enqueue one "$next" || fail "the descendant could not rejoin"
+  run_pr_merge "$case_dir" example enqueue one "$next" || fail "repeating the queued head must be a no-op"
+  run_pr_merge "$case_dir" example status > "$case_dir/ledger"
+  jq -e --arg first "$first" --arg next "$next" '
+    (.queue | map(.head)) == [$next] and .batches[0].members[0].head == $first
+  ' "$case_dir/ledger" >/dev/null || fail "re-enqueue duplicated the entry or rewrote merged history"
+  run_pr_merge "$case_dir" example run > "$case_dir/out" || fail "could not publish the follow-up"
+  run_pr_merge "$case_dir" example status > "$case_dir/ledger"
+  head=$(jq -er --arg next "$next" '
+    .batches[1] | select(.state == "open" and (.members | map(.head)) == [$next]) | .published
+  ' "$case_dir/ledger") || fail "the follow-up was not published as a new batch"
+  [ "$(git -C "$project" show "$head:one")" = 'revised in the follow-up' ] ||
+    fail "the published batch lost the follow-up edit"
+  run_pr_merge "$case_dir" example enqueue one "$next" || fail "the open member must take precedence over history"
+
+  landed=$(git -C "$project" commit-tree "$head^{tree}" -p "$landed" -m "Squash follow-up batch")
+  git -C "$project" push -q origin "$landed:refs/heads/main"
+  printf '%s\n' "$landed" > "$case_dir/merge-commit-2"
+  run_pr_merge "$case_dir" example run > "$case_dir/out" || fail "could not record the follow-up merge"
+  sibling=$(git -C "$project" commit-tree "$next^{tree}" -p "$first" -m "Diverge from the latest member")
+  git -C "$project" reset -q --soft "$sibling"
+  fm_write_meta "$case_dir/state/one.meta" \
+    "kind=ship" "mode=local-only" "project=$project" "branch=fm/one" "local_done_head=$sibling"
+  rc=0
+  run_pr_merge "$case_dir" example enqueue one "$sibling" > "$case_dir/out" 2> "$case_dir/err" || rc=$?
+  expect_code 1 "$rc" "a descendant of only the older merged head must not rejoin"
+  assert_grep 'latest merged batch member' "$case_dir/err" "the ancestry refusal did not explain the rejoin rule"
+  run_pr_merge "$case_dir" example status > "$case_dir/ledger"
+  jq -e '.queue == [] and (.batches | map(.state)) == ["merged", "merged"]' "$case_dir/ledger" >/dev/null ||
+    fail "refusing the divergent head changed the queue or the merged batches"
+  pass "a same-branch descendant rejoins after a squash merge; branch changes and divergence are refused"
+}
+
 test_batch_queue_fix_and_merge
 test_batch_stacks_on_the_open_batch
 test_batch_heavy_task_check_gates_entry
+test_batch_reenqueue_after_merge
 test_gitlab_head_override_args_refuse_before_recording
 test_secondmate_merge_reports_upward_once
 test_secondmate_merge_reports_on_the_local_route

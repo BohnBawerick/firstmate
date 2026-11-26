@@ -896,6 +896,9 @@ Blank lines and lines beginning with `#` are ignored.
 This is a home-local choice for GitHub projects registered as `direct-PR`.
 Batch lanes complete their build and lint before reporting a local-only ready branch.
 Use `bin/fm-batch.sh --help` for the batch commands, including the release step.
+After a task's batch merges, use `enqueue` to submit a new checked head on the same branch.
+The new head must descend from the task's head in its latest merged batch.
+It goes through the usual checks and queue; assembling the follow-up after a squash merge requires Git 2.40 or newer.
 
 To check the combined changes before publishing, save a Bash script as `config/batch-checks/<project>` using the registered project name.
 Firstmate runs that script in a temporary detached checkout of the proposed batch commit and sets `FM_BATCH_HEAD` to its full commit ID.
