@@ -32,7 +32,8 @@
 # After the open batch lands, run moves the stacked pull request onto the
 # default branch. It keeps the tested head, and so its CI result, only when the
 # default branch holds exactly the landed tree it was built on; otherwise it
-# merges the default branch in first. A stacked batch merges only after that.
+# merges the default branch in using the landed batch's head as the merge base
+# after a squash (Git 2.40 or newer). A stacked batch merges only after promotion.
 # Fix adds one checked task to a batch or updates an existing member after
 # fm-ready-head.sh records its revised head. A member returns to its own
 # batch; a new task joins the stacked batch only when built on its head, and
@@ -587,8 +588,10 @@ add_commit() {
     printf '%s\n' "$parent"
     return
   fi
-  # A squash lands the old member's changes without making it an ancestor.
-  if [ -n "$landed_head" ] && ! git_project merge-base --is-ancestor "$landed_head" "$parent"; then
+  # A squash can land changes without retaining the commit that carried them.
+  if [ -n "$landed_head" ] &&
+    { ! git_project merge-base --is-ancestor "$landed_head" "$parent" ||
+      ! git_project merge-base --is-ancestor "$landed_head" "$commit"; }; then
     merge_args+=(--merge-base="$landed_head")
   fi
   tree=$(git_project merge-tree "${merge_args[@]}" "$parent" "$commit") ||
@@ -614,19 +617,28 @@ advance_batch() {
 # default branch in, which needs fresh checks.
 # shellcheck disable=SC2016 # jq binds the index, base and source branch.
 promote_batch() {
-  local below below_base default start
+  local below below_base below_head default start merge_base next
   below=$(jq -c --argjson i "$((bidx - 1))" '.batches[$i]' <<< "$records")
   below_base=$(jq -r '.base' <<< "$below")
+  below_head=$(jq -r '.head' <<< "$below")
   default=$(api "/repos/$repo" | jq -er '.default_branch')
   [ "$default" = "$below_base" ] || fail "default branch changed from $below_base to $default"
   retarget_from=$base
   base=$default
   alt_base=$retarget_from
   start=$(current_base_head)
-  if [ "$stacked_head" != "$(jq -r '.head' <<< "$below")" ] ||
+  if [ "$stacked_head" != "$below_head" ] ||
     [ "$start" != "$(jq -r '.merged_commit' <<< "$below")" ] ||
     [ "$(git_project rev-parse "$start^{tree}")" != "$(git_project rev-parse "$stacked_head^{tree}")" ]; then
-    advance_batch "$(add_commit "$head" "$start" "$base")"
+    merge_base=$below_head
+    # If the lower batch advanced before the upper batch could follow it,
+    # use the older base so the changes the upper batch missed are kept.
+    if [ "$stacked_head" != "$below_head" ] &&
+      ! git_project merge-base --is-ancestor "$below_head" "$head"; then
+      merge_base=$stacked_head
+    fi
+    next=$(add_commit "$head" "$start" "$base" "$merge_base")
+    advance_batch "$next"
   fi
   save --argjson i "$bidx" --arg base "$base" --arg from "$retarget_from" '
     .batches[$i] |= (.base = $base | .retarget_from = $from | del(.stacked_on, .stacked_head))'
@@ -727,9 +739,11 @@ publish_batch() {
   if [ "$action" = check ]; then printf 'moved %s onto %s\n' "$url" "$base"; fi
 }
 
+promoted_from_published=
 if [ -n "$lower" ]; then
   load_batch "$lower"
   if [ -n "$stacked_on" ]; then
+    if [ "$head" = "$published" ]; then promoted_from_published=$id; fi
     promote_batch
   fi
 fi
@@ -762,7 +776,9 @@ elif [ "$action" = fix ]; then
   [ -n "$url" ] || fail "fix requires an open batch"
   previous=$(jq -c --argjson i "$bidx" --arg task "$1" 'first(.batches[$i].members[] | select(.task == $task)) // null' <<< "$records")
   if [ "$previous" != "$member" ]; then
-    [ "$head" = "$published" ] || fail "run must finish publishing the current batch update first"
+    # A promotion in this invocation can be published together with the fix.
+    [ "$head" = "$published" ] || [ "$id" = "$promoted_from_published" ] ||
+      fail "run must finish publishing the current batch update first"
     if [ "$previous" != null ]; then
       old=$(jq -er '.head' <<< "$previous")
       if ! fm_pr_head_valid "$old" ||
@@ -805,7 +821,8 @@ if [ -n "$upper" ]; then
   lower_id=$id lower_head=$head
   load_batch "$upper"
   if [ "$stacked_head" != "$lower_head" ]; then
-    advance_batch "$(add_commit "$head" "$lower_head" "batch $lower_id")"
+    next=$(add_commit "$head" "$lower_head" "batch $lower_id")
+    advance_batch "$next"
     # shellcheck disable=SC2016 # jq binds the index and lower head.
     save --argjson i "$bidx" --arg on "$lower_head" '.batches[$i].stacked_head = $on'
     stacked_head=$lower_head

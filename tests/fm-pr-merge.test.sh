@@ -6103,6 +6103,127 @@ test_batch_stacks_on_the_open_batch() {
   pass "batches stack one level deep, follow the open batch, land after it, and keep CI only on an unchanged base"
 }
 
+test_batch_promotes_overlapping_edits_after_squash() {
+  local scenario case_dir project main lower upper member landed default head rc expected lower_member check
+  local FM_TEST_PR_COMMAND="$ROOT/bin/fm-batch.sh"
+  for scenario in run fix conflict stale; do
+    case_dir=$(make_batch_case "batch-promote-$scenario" one)
+    project="$case_dir/home/projects/example"
+    main=$(git -C "$project" rev-parse main)
+    batch() { run_pr_merge "$case_dir" example "$@"; }
+
+    printf 'lower edit\n' > "$project/README.md"
+    git -C "$project" commit -qam "Lower batch edits the shared line"
+    member=$(git -C "$project" rev-parse HEAD)
+    fm_write_meta "$case_dir/state/one.meta" \
+      "kind=ship" "mode=local-only" "project=$project" "branch=fm/one" "local_done_head=$member"
+    batch enqueue one "$member" && batch run > "$case_dir/out" ||
+      fail "could not publish the lower batch"
+    batch status > "$case_dir/ledger" || fail "could not read the batch ledger"
+    lower=$(jq -er '.batches[0].published' "$case_dir/ledger")
+
+    git -C "$project" checkout -qb fm/two "$lower"
+    printf 'upper edit\n' > "$project/README.md"
+    git -C "$project" commit -qam "Upper batch edits the same line"
+    member=$(git -C "$project" rev-parse HEAD)
+    fm_write_meta "$case_dir/state/two.meta" \
+      "kind=ship" "mode=local-only" "project=$project" "branch=fm/two" "local_done_head=$member"
+    batch enqueue two "$member" && batch run > "$case_dir/out" ||
+      fail "could not publish the upper batch"
+    batch status > "$case_dir/ledger" || fail "could not read the batch ledger"
+    upper=$(jq -er '.batches[1].published' "$case_dir/ledger")
+
+    if [ "$scenario" = stale ]; then
+      git -C "$project" checkout -q fm/one
+      printf 'late lower edit\n' > "$project/late-lower"
+      git -C "$project" add -- late-lower
+      git -C "$project" commit -qm "Fix the lower member"
+      lower_member=$(git -C "$project" rev-parse HEAD)
+      fm_write_meta "$case_dir/state/one.meta" \
+        "kind=ship" "mode=local-only" "project=$project" "branch=fm/one" "local_done_head=$lower_member"
+      check="$case_dir/home/config/batch-checks/example"
+      mkdir -p "$(dirname "$check")"
+      # Publish the lower fix, then fail the check that would let the upper batch follow.
+      printf 'if grep -qx "upper edit" README.md; then exit 1; fi\n' > "$check"
+      rc=0
+      batch fix one "$lower_member" > "$case_dir/out" 2> "$case_dir/err" || rc=$?
+      expect_code 1 "$rc" "the upper check must stop the rebuild"
+      assert_grep 'pre-publish check failed' "$case_dir/err" "the upper rebuild did not reach its check"
+      rm -- "$check"
+      batch status > "$case_dir/ledger" || fail "could not read the batch ledger"
+      lower=$(jq -er --arg member "$lower_member" '
+        .batches[0] | select(.members[0].head == $member) | .published
+      ' "$case_dir/ledger") || fail "the lower fix was not published"
+    fi
+
+    landed=$(git -C "$project" commit-tree "$lower^{tree}" -p "$main" -m "Squashed lower batch")
+    printf '%s\n' "$landed" > "$case_dir/merge-commit-1"
+    git -C "$project" checkout -q --detach "$landed"
+    printf 'default edit\n' > "$project/default"
+    git -C "$project" add -- default
+    if [ "$scenario" = conflict ]; then
+      printf 'conflicting edit\n' > "$project/README.md"
+      git -C "$project" add -- README.md
+    fi
+    git -C "$project" commit -qm "Main advances after the squash"
+    default=$(git -C "$project" rev-parse HEAD)
+    git -C "$project" push -q origin "$default:refs/heads/main"
+
+    expected='upper edit'
+    case "$scenario" in
+      run|stale)
+        batch run > "$case_dir/out" 2> "$case_dir/err" ||
+          fail "run could not promote the upper batch: $(cat "$case_dir/err")"
+        ;;
+      fix)
+        expected='fixed upper edit'
+        git -C "$project" checkout -q fm/two
+        printf '%s\n' "$expected" > "$project/README.md"
+        git -C "$project" commit -qam "Fix the upper member"
+        member=$(git -C "$project" rev-parse HEAD)
+        fm_write_meta "$case_dir/state/two.meta" \
+          "kind=ship" "mode=local-only" "project=$project" "branch=fm/two" "local_done_head=$member"
+        batch fix two "$member" > "$case_dir/out" 2> "$case_dir/err" ||
+          fail "fix could not promote and update the upper batch: $(cat "$case_dir/err")"
+        ;;
+      conflict)
+        mkdir -p "$case_dir/home/config/batch-checks"
+        printf 'exit 0\n' > "$case_dir/home/config/batch-checks/example"
+        rc=0
+        batch run > "$case_dir/out" 2> "$case_dir/err" || rc=$?
+        expect_code 1 "$rc" "a genuine conflict must stop promotion"
+        assert_grep 'cannot add main to the batch' "$case_dir/err" "promotion did not report the merge conflict"
+        assert_grep 'CONFLICT (content): Merge conflict in README.md' "$case_dir/err" \
+          "promotion did not identify the conflicting file"
+        assert_no_regex 'cannot check out|pathspec' "$case_dir/err" "promotion attempted to check out a failed merge"
+        batch status > "$case_dir/ledger" || fail "could not read the batch ledger"
+        jq -e --arg upper "$upper" --arg lower "$lower" '
+          .batches[0].state == "merged" and
+          (.batches[1] | .head == $upper and .published == $upper and .stacked_head == $lower)
+        ' "$case_dir/ledger" >/dev/null || fail "the conflict changed the upper batch"
+        continue
+        ;;
+    esac
+
+    batch status > "$case_dir/ledger" || fail "could not read the batch ledger"
+    head=$(jq -er --arg member "$member" '
+      .batches[1] | select(.base == "main" and .head == .published and
+        .members[0].head == $member and (has("stacked_on") | not)) | .published
+    ' "$case_dir/ledger") || fail "$scenario did not publish the updated upper batch on main"
+    [ "$(cut -d' ' -f2 "$case_dir/pull-2")" = main ] || fail "$scenario did not retarget the upper pull request"
+    git -C "$project" merge-base --is-ancestor "$default" "$head" || fail "$scenario omitted the current default head"
+    git -C "$project" merge-base --is-ancestor "$upper" "$head" || fail "$scenario rewrote the upper batch"
+    [ "$(git -C "$project" show "$head:README.md")" = "$expected" ] &&
+      [ "$(git -C "$project" show "$head:default")" = 'default edit' ] ||
+      fail "$scenario lost the upper or default branch edits"
+    if [ "$scenario" = stale ]; then
+      [ "$(git -C "$project" show "$head:late-lower")" = 'late lower edit' ] ||
+        fail "promotion lost a lower batch edit that the upper batch had not picked up"
+    fi
+  done
+  pass "run and fix promote overlapping edits after a squash, but genuine conflicts stop before checkout"
+}
+
 # A project's heavy task check must pass at a task's ready head before the task
 # joins a batch. A failure keeps it out; a check still running elsewhere keeps
 # it waiting until a later run sees it pass.
@@ -6231,6 +6352,7 @@ test_batch_reenqueue_after_merge() {
   pass "a same-branch descendant rejoins after a squash merge; branch changes and divergence are refused"
 }
 
+test_batch_promotes_overlapping_edits_after_squash
 test_batch_queue_fix_and_merge
 test_batch_stacks_on_the_open_batch
 test_batch_heavy_task_check_gates_entry
